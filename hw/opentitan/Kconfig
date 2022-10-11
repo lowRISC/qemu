@@ -25,6 +25,9 @@ config OT_ENTROPY_SRC
 config OT_FLASH
     bool
 
+config OT_HMAC
+    bool
+
 config OT_IBEX_WRAPPER
     bool
 

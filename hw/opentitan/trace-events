@@ -106,6 +106,13 @@ ot_flash_error(const char *func, int line, const char *err) "%s:%d %s"
 ot_flash_info(const char *func, int line, const char *msg, uint32_t value) "%s:%d %s: 0x%08x"
 ot_flash_info_part(uint32_t op_addr, unsigned bank, unsigned infosel, unsigned addr) "op_addr 0x%06x bank %u infosel %u addr 0x%06x"
 
+# ot_hmac.c
+
+ot_hmac_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
+ot_hmac_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_hmac_fifo_write(unsigned int addr, uint64_t val, unsigned int size, uint64_t pc) "addr=0x%02x, val=0x%" PRIx64 " (%u), pc=0x%" PRIx64
+ot_hmac_debug(const char *msg) "%s"
+
 # ot_ibex_wrapper.c
 
 ot_ibex_wrapper_io_read_out(unsigned int addr, const char * regname, uint32_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%08x, pc=0x%" PRIx64
