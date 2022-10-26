@@ -18,6 +18,9 @@ config OT_ENTROPY_SRC
 config OT_FLASH
     bool
 
+config OT_IBEX_WRAPPER
+    bool
+
 config OT_LIFECYCLE
     bool
 
