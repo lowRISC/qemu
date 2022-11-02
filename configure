@@ -1097,7 +1097,7 @@ has_meson() {
 }
 
 if test -z "$meson"; then
-    if test "$explicit_python" = no && has_meson && version_ge "$(meson --version)" 0.61.5; then
+    if test "$explicit_python" = no && has meson && version_ge "$(meson --version)" 0.63.0; then
         meson=meson
     elif test "$git_submodules_action" != 'ignore' ; then
         meson=git
