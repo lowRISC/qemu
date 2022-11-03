@@ -1,0 +1,8 @@
+[wrap-git]
+url=https://github.com/libtom/libtomcrypt.git
+revision=v1.18.2
+depth=1
+diff_files = libtomcrypt/0001.patch, libtomcrypt/0002.patch
+
+[provide]
+dependency_names = libtomcrypt

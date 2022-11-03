@@ -22,3 +22,7 @@ GTAGS
 *.patch
 *.gcov
 *.sublime-*
+subprojects/*-*/
+subprojects/libtomcrypt/
+subprojects/packagecache/
+!subprojects/packagefiles/**/*.patch
