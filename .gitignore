@@ -20,3 +20,7 @@ GTAGS
 *.swp
 *.patch
 *.gcov
+subprojects/*-*/
+subprojects/libtomcrypt/
+subprojects/packagecache/
+!subprojects/packagefiles/**/*.patch

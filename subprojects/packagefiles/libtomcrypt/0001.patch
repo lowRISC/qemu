@@ -1,0 +1,132 @@
+diff --git a/src/headers/tomcrypt_custom.h b/src/headers/tomcrypt_custom.h
+index 2d5cfec..c7316db 100644
+--- a/src/headers/tomcrypt_custom.h
++++ b/src/headers/tomcrypt_custom.h
+@@ -10,6 +10,10 @@
+ #ifndef TOMCRYPT_CUSTOM_H_
+ #define TOMCRYPT_CUSTOM_H_
+ 
++#define LTC_NO_TEST
++#define LTC_EASY
++#define LTC_NO_PROTOTYPES
++
+ /* macros for various libc functions you can change for embedded targets */
+ #ifndef XMALLOC
+ #define XMALLOC  malloc
+@@ -45,6 +49,12 @@
+ #ifndef XSTRCMP
+ #define XSTRCMP strcmp
+ #endif
++#ifndef XSTRLEN
++#define XSTRLEN  strlen
++#endif
++#ifndef XSTRNCPY
++#define XSTRNCPY strncpy
++#endif
+ 
+ #ifndef XCLOCK
+ #define XCLOCK   clock
+@@ -76,63 +86,65 @@
+ #ifdef LTC_EASY
+    #define LTC_NO_CIPHERS
+    #define LTC_RIJNDAEL
+-   #define LTC_BLOWFISH
+-   #define LTC_DES
+-   #define LTC_CAST5
++   #undef  LTC_BLOWFISH
++   #undef  LTC_DES
++   #undef  LTC_CAST5
+ 
+-   #define LTC_NO_MODES
++   #undef  LTC_NO_MODES
+    #define LTC_ECB_MODE
+    #define LTC_CBC_MODE
+    #define LTC_CTR_MODE
+ 
+    #define LTC_NO_HASHES
+-   #define LTC_SHA1
+-   #define LTC_SHA3
+-   #define LTC_SHA512
+-   #define LTC_SHA384
++   #undef  LTC_SHA1
++   #undef  LTC_SHA3
++   #undef  LTC_SHA512
++   #undef  LTC_SHA384
+    #define LTC_SHA256
+-   #define LTC_SHA224
+-   #define LTC_HASH_HELPERS
++   #undef  LTC_SHA224
++   #undef  LTC_HASH_HELPERS
+ 
+    #define LTC_NO_MACS
+-   #define LTC_HMAC
+-   #define LTC_OMAC
++   #undef  LTC_HMAC
++   #undef  LTC_OMAC
+    #define LTC_CCM_MODE
++   #define LTC_GCM_MODE
+ 
+    #define LTC_NO_PRNGS
+-   #define LTC_SPRNG
+-   #define LTC_YARROW
+-   #define LTC_DEVRANDOM
+-   #define LTC_TRY_URANDOM_FIRST
+-   #define LTC_RNG_GET_BYTES
+-   #define LTC_RNG_MAKE_PRNG
++   #undef  LTC_SPRNG
++   #undef  LTC_YARROW
++   #undef  LTC_DEVRANDOM
++   #undef  LTC_TRY_URANDOM_FIRST
++   #undef  LTC_RNG_GET_BYTES
++   #undef  LTC_RNG_MAKE_PRNG
+ 
+    #define LTC_NO_PK
+-   #define LTC_MRSA
+-   #define LTC_MECC
++   #define LTC_NO_PKCS
++   #undef LTC_MRSA
++   #undef LTC_MECC
+ 
+    #define LTC_NO_MISC
+-   #define LTC_BASE64
++   #undef  LTC_BASE64
+ #endif
+ 
+ /* The minimal set of functionality to run the tests */
+ #ifdef LTC_MINIMAL
+    #define LTC_RIJNDAEL
+-   #define LTC_SHA256
+-   #define LTC_YARROW
+-   #define LTC_CTR_MODE
++   #undef LTC_SHA256
++   #undef LTC_YARROW
++   #undef LTC_CTR_MODE
+ 
+-   #define LTC_RNG_MAKE_PRNG
+-   #define LTC_RNG_GET_BYTES
+-   #define LTC_DEVRANDOM
+-   #define LTC_TRY_URANDOM_FIRST
++   #undef LTC_RNG_MAKE_PRNG
++   #undef LTC_RNG_GET_BYTES
++   #undef LTC_DEVRANDOM
++   #undef LTC_TRY_URANDOM_FIRST
+ 
+    #undef LTC_NO_FILE
+ #endif
+ 
+ /* Enable self-test test vector checking */
+ #ifndef LTC_NO_TEST
+-   #define LTC_TEST
++   #undef LTC_TEST
+ #endif
+ /* Enable extended self-tests */
+ /* #define LTC_TEST_EXT */
+@@ -392,7 +404,7 @@
+ /* #define LTC_MKAT */
+ 
+ /* Digital Signature Algorithm */
+-#define LTC_MDSA
++#undef LTC_MDSA
+ 
+ /* ECC */
+ #define LTC_MECC
