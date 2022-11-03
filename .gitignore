@@ -1,5 +1,6 @@
 /GNUmakefile
 /build/
+/build
 /.cache/
 /.vscode/
 *.pyc
@@ -20,3 +21,4 @@ GTAGS
 *.swp
 *.patch
 *.gcov
+*.sublime-*
