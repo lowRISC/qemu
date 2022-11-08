@@ -1,5 +1,19 @@
 # OpenTitan EarlGrey Trace Events
 
+# ot_aes.c
+
+ot_aes_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
+ot_aes_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_aes_buffer(const char *mode, const char * msg, const char * hexbuf) "[%s] %s: %s"
+ot_aes_request_entropy(void) ""
+ot_aes_schedule(void) ""
+ot_aes_reseed(const char *reason) "%s"
+ot_aes_fill_entropy(uint32_t bits, bool fips) "0x%08" PRIx32 " fips:%u"
+ot_aes_init(const char *what) "%s"
+ot_aes_debug(const char *func, int line, const char *msg) "%s:%d %s"
+ot_aes_error(const char *func, int line, const char *err) "%s:%d %s"
+ot_aes_info(const char *func, int line, const char *errl) "%s:%d %s"
+
 # ot_alert.c
 
 ot_alert_io_read_out(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, val=0x%" PRIx64 ", pc=0x%" PRIx64

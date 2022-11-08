@@ -1,5 +1,9 @@
 # OpenTitan devices
 
+config OT_AES
+    select OT_PRNG
+    bool
+
 config OT_ALERT
     bool
 
