@@ -1,0 +1,2 @@
+config OPENTITAN_BIGNUMBER
+    bool

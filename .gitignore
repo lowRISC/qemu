@@ -28,3 +28,5 @@ subprojects/packagecache/
 *.raw
 *.raw.bak
 *.log
+hw/opentitan/otbn/otbn/Cargo.lock
+hw/opentitan/otbn/otbn/target/

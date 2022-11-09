@@ -122,6 +122,23 @@ ot_ibex_wrapper_error(const char *msg) "%s"
 ot_lifecycle_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_lifecycle_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_otbn.c
+
+ot_otbn_change_status(const char * status) "status=%s"
+ot_otbn_deny(uint64_t pc, const char *msg) "pc=0x%" PRIx64 ", %s"
+ot_otbn_error(const char *msg) "%s"
+ot_otbn_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_otbn_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_otbn_irq(uint32_t active, uint32_t mask, bool level) "act:0x%08x msk:0x%08x lvl:%u"
+ot_otbn_mem_read(char mem, uint32_t addr, uint32_t value) "%cmem addr=0x%04x, val=0x%08x"
+ot_otbn_mem_write(char mem, uint32_t addr, uint32_t value, const char *outcome) "%cmem addr=0x%04x, val=0x%08x%s"
+ot_otbn_post_execute(uint32_t errbits, uint32_t insncount) "errbits=0x%08x, insncount=%u"
+ot_otbn_proxy_completion_bh(unsigned cmd) "aftercmd=0x%02x"
+ot_otbn_proxy_entropy_request(unsigned rnd) "%u"
+ot_otbn_proxy_entropy_req_bh(void) ""
+ot_otbn_proxy_push_entropy(const char *kind, bool fips) "%s: fips %u"
+ot_otbn_request_entropy(unsigned ep) "ep:%u"
+
 # ot_otp.c
 
 ot_otp_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64

@@ -31,6 +31,10 @@ config OT_IBEX_WRAPPER
 config OT_LIFECYCLE
     bool
 
+config OT_OTBN
+    bool
+    select OPENTITAN_BIGNUMBER
+
 config OT_OTP
     bool
 
@@ -48,3 +52,5 @@ config OT_SENSOR
 
 config OT_UART
     bool
+
+source otbn/Kconfig

@@ -1,0 +1,17 @@
+[package]
+name = "otbn-lib"
+version = "0.1.0"
+authors = ["Greg Chadwick <mail@gregchadwick.co.uk>",
+           "Emmanuel Blot <eblot@rivosinc.com>"]
+edition = "2018"
+license = "Apache-2.0"
+keywords = ["opentitan", "emulator"]
+categories = ["emulators"]
+description = "A library for building OpenTitan Big Number simulators"
+
+# Heavily based on RSS work from Greg Chadwick https://gregchadwick.co.uk/blog/building-rrs-pt1/
+
+[dependencies]
+paste = "1"
+bitflags = "1"
+ethnum = "1"
