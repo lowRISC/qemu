@@ -168,6 +168,21 @@ ot_pwrmgr_io_write(unsigned int addr, const char * regname, uint64_t val, uint64
 ot_sensor_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_sensor_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_spi_host.c
+
+ot_spi_host_reset(const char *msg) "%s"
+ot_spi_host_transfer(uint32_t tx_data, uint32_t rx_data) "tx_data: 0x%02" PRIx32 " rx_data: 0x%02" PRIx32
+ot_spi_host_read(uint64_t addr, const char * regname, uint64_t val, uint64_t pc) "addr:0x%02" PRIx64 " (%s), val:0x%" PRIx64 ", pc:0x%" PRIx64
+ot_spi_host_read_repeat(size_t count) "last read repeated %zu times"
+ot_spi_host_write(uint64_t addr, const char * regname, uint64_t val, uint64_t pc) "addr:0x%02" PRIx64 " (%s), val:0x%" PRIx64 ", pc:0x%" PRIx64
+ot_spi_host_cs(uint32_t csid, const char *level) "cs#:%u %sselected"
+ot_spi_host_status(const char *msg, uint32_t status, const char *str, unsigned cmd, unsigned rxd, unsigned txd) "%s 0x%08" PRIx32 " s:%s cq:%u rq:%u tq:%u"
+ot_spi_host_command(const char *dir, const char *spd, uint32_t csid, bool active, unsigned len, bool start) "d:%s s:%s cs#:%u csa:%u len:%u (t:%u)"
+ot_spi_host_fsm(const char *cause) "step %s"
+ot_spi_host_reject(const char *msg) "%s"
+ot_spi_host_debug(const char *msg) "%s"
+ot_spi_host_debug1(const char *msg, uint32_t val) "%s 0x%" PRIx32
+
 # ot_uart.c
 
 ot_uart_debug(const char *msg) "%s"

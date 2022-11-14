@@ -53,6 +53,10 @@ config OT_PWRMGR
 config OT_SENSOR
     bool
 
+config OT_SPI_HOST
+    bool
+    select SSI
+
 config OT_UART
     bool
 
