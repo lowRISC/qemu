@@ -213,6 +213,19 @@ static void ot_ibex_wrapper_regs_write(void *opaque, hwaddr addr,
     trace_ot_ibex_wrapper_io_write((unsigned)addr, REG_NAME(reg), val64, pc);
 
     switch (reg) {
+    case R_SW_FATAL_ERR:
+        if ((val32 >> 16u) == 0xC0DEu) {
+            /* discard MSB magic */
+            val32 &= UINT16_MAX;
+            /* discard multibool4false mark */
+            val32 >>= 4u;
+            /* std exit code should be in [0..127] range */
+            if (val32 > 127u) {
+                val32 = 127u;
+            }
+            exit((int)val32);
+        }
+        break;
     default:
         s->regs[reg] = val32;
         break;
