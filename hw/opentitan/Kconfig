@@ -45,3 +45,6 @@ config OT_PWRMGR
 
 config OT_SENSOR
     bool
+
+config OT_UART
+    bool
