@@ -79,6 +79,24 @@ const uint8_t *fifo8_pop_buf(Fifo8 *fifo, uint32_t max, uint32_t *num)
     return ret;
 }
 
+const uint8_t *fifo8_peek_buf(Fifo8 *fifo, uint32_t max, uint32_t *num)
+{
+    uint8_t *ret;
+
+    assert(max > 0 && max <= fifo->num);
+    *num = MIN(fifo->capacity - fifo->head, max);
+    ret = &fifo->data[fifo->head];
+    return ret;
+}
+
+void fifo8_consume_all(Fifo8 *fifo, uint32_t num)
+{
+    num = MIN(fifo->capacity - fifo->head, num);
+    fifo->head += num;
+    fifo->head %= fifo->capacity;
+    fifo->num -= num;
+}
+
 void fifo8_reset(Fifo8 *fifo)
 {
     fifo->num = 0;

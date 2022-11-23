@@ -91,7 +91,47 @@ uint8_t fifo8_pop(Fifo8 *fifo);
  *
  * Returns: A pointer to popped data.
  */
+
 const uint8_t *fifo8_pop_buf(Fifo8 *fifo, uint32_t max, uint32_t *num);
+
+/**
+ * fifo8_peek_buf:
+ * @fifo: FIFO to peek from
+ * @max: maximum number of bytes to peek
+ * @num: actual number of returned bytes
+ *
+ * Peek a number of elements from the FIFO up to a maximum of max. The buffer
+ * containing the peeked data is returned. This buffer points directly into
+ * the FIFO backing store and data is invalidated once any of the fifo8_* APIs
+ * are called on the FIFO.
+ *
+ * The function may return fewer bytes than requested when the data wraps
+ * around in the ring buffer; in this case only a contiguous part of the data
+ * is returned.
+ *
+ * The number of valid bytes returned is populated in *num; will always return
+ * at least 1 byte. max must not be 0 or greater than the number of bytes in
+ * the FIFO.
+ *
+ * Clients are responsible for checking the availability of requested data
+ * using fifo8_num_used().
+ *
+ * Returns: A pointer to peeked data.
+ */
+
+const uint8_t *fifo8_peek_buf(Fifo8 *fifo, uint32_t max, uint32_t *num);
+
+/**
+ * fifo8_consume_all:
+ * @fifo: fifo to consume from
+ * @num: number of bytes to consume
+ *
+ * Remove data bytes from the FIFO. Behaviour is undefined if the FIFO is empty.
+ * Clients are responsible for checking for emptyness using fifo8_is_empty().
+ *
+ */
+
+void fifo8_consume_all(Fifo8 *fifo, uint32_t num);
 
 /**
  * fifo8_reset:
