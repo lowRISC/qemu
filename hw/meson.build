@@ -68,3 +68,4 @@ subdir('tricore')
 subdir('xtensa')
 
 subdir('ibexdemo')
+subdir('opentitan')
