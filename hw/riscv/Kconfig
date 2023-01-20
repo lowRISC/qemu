@@ -9,6 +9,12 @@ config IBEX_COMMON
 
 # RISC-V machines in alphabetical order
 
+config OT_EARLGREY
+    bool
+    select IBEX
+    select IBEX_COMMON
+    select SIFIVE_PLIC
+
 config IBEXDEMO
     bool
     select IBEX

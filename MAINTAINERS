@@ -3811,6 +3811,13 @@ F: include/hw/riscv/ibex_irq.h
 F: hw/ibexdemo/*
 F: include/hw/ibexdemo/*
 
+OpenTitan
+M: Emmanuel Blot <eblot@rivosinc.com>
+M: Loïc Lefort <loic@rivosinc.com>
+S: Supported
+F: hw/opentitan/*
+F: include/hw/opentitan/*
+
 Build and test automation
 -------------------------
 Build and test automation, general continuous integration
