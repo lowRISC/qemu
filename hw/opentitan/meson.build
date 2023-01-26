@@ -22,6 +22,7 @@ softmmu_ss.add(when: 'CONFIG_OT_PRNG', if_true: files('ot_prng.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PWRMGR', if_true: files('ot_pwrmgr.c'))
 softmmu_ss.add(when: 'CONFIG_OT_SENSOR', if_true: files('ot_sensor.c'))
 softmmu_ss.add(when: 'CONFIG_OT_SPI_HOST', if_true: files('ot_spi_host.c'))
+softmmu_ss.add(when: 'CONFIG_OT_TIMER', if_true: files('ot_timer.c'))
 softmmu_ss.add(when: 'CONFIG_OT_UART', if_true: files('ot_uart.c'))
 
 subdir('otbn')

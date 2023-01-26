@@ -57,6 +57,9 @@ config OT_SPI_HOST
     bool
     select SSI
 
+config OT_TIMER
+    bool
+
 config OT_UART
     bool
 
