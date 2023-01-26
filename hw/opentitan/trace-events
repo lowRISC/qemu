@@ -183,6 +183,11 @@ ot_spi_host_reject(const char *msg) "%s"
 ot_spi_host_debug(const char *msg) "%s"
 ot_spi_host_debug1(const char *msg, uint32_t val) "%s 0x%" PRIx32
 
+# ot_timer.c
+
+ot_timer_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
+ot_timer_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+
 # ot_uart.c
 
 ot_uart_debug(const char *msg) "%s"
