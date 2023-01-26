@@ -23,6 +23,7 @@ struct UnimplementedDeviceState {
     unsigned offset_fmt_width;
     char *name;
     uint64_t size;
+    uint32_t unimp_report;
 };
 
 /**
