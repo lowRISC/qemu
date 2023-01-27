@@ -46,6 +46,7 @@
 #include "hw/opentitan/ot_pinmux.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_sensor.h"
+#include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_earlgrey.h"
@@ -60,6 +61,8 @@ static void ot_earlgrey_soc_flash_ctrl_configure(
 static void ot_earlgrey_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_earlgrey_soc_otp_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+static void ot_earlgrey_soc_uart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 
 /* ------------------------------------------------------------------------ */
@@ -180,39 +183,87 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_UART0] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-uart",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_UART,
+        .cfg = &ot_earlgrey_soc_uart_configure,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
             { 0x40000000u, 0x40u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 1),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 2),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 3),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 4),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 5),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 6),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 7),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+        ),
     },
     [OT_EARLGREY_SOC_DEV_UART1] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-uart",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_UART,
+        .cfg = &ot_earlgrey_soc_uart_configure,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
             { 0x40010000u, 0x40u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 9),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 10),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 11),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 12),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 13),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 14),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 15),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 16)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+        ),
     },
     [OT_EARLGREY_SOC_DEV_UART2] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-uart",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_UART,
+        .cfg = &ot_earlgrey_soc_uart_configure,
         .instance = 2,
         .memmap = MEMMAPENTRIES(
             { 0x40020000u, 0x40u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 17),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 18),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 19),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 20),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 21),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 22),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 23),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 24)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+        ),
     },
     [OT_EARLGREY_SOC_DEV_UART3] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-uart",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_UART,
+        .cfg = &ot_earlgrey_soc_uart_configure,
         .instance = 3,
         .memmap = MEMMAPENTRIES(
             { 0x40030000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 25),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 26),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 27),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 28),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 29),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 30),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 31),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 32)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
         ),
     },
     [OT_EARLGREY_SOC_DEV_GPIO] = {
@@ -755,6 +806,12 @@ static void ot_earlgrey_soc_otp_ctrl_configure(
         qdev_prop_set_drive_err(dev, "drive", blk_by_legacy_dinfo(dinfo),
                                 &error_fatal);
     }
+}
+
+static void ot_earlgrey_soc_uart_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    qdev_prop_set_chr(dev, "chardev", serial_hd(def->instance));
 }
 
 /* ------------------------------------------------------------------------ */
