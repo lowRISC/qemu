@@ -29,6 +29,7 @@ config OT_EARLGREY
     select OT_PINMUX
     select OT_PWRMGR
     select OT_SENSOR
+    select OT_SPI_HOST
     select OT_UART
     select SIFIVE_PLIC
 

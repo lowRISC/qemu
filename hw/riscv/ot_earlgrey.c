@@ -48,10 +48,13 @@
 #include "hw/opentitan/ot_pinmux.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_sensor.h"
+#include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_earlgrey.h"
+#include "hw/ssi/ssi.h"
+#include "sysemu/blockdev.h"
 #include "sysemu/sysemu.h"
 
 /* ------------------------------------------------------------------------ */
@@ -373,21 +376,31 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_SPI_HOST0] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-spi_host",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_SPI_HOST,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
             { 0x40300000u, 0x40u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 131),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("bus-num", 0)
+        ),
     },
     [OT_EARLGREY_SOC_DEV_SPI_HOST1] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-spi_host",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_SPI_HOST,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
             { 0x40310000u, 0x40u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 133),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 134)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("bus-num", 1)
         ),
     },
     [OT_EARLGREY_SOC_DEV_USBDEV] = {
@@ -746,6 +759,7 @@ static const uint32_t ot_earlgrey_pmp_addrs[] = {
 
 enum OtEarlgreyBoardDevice {
     OT_EARLGREY_BOARD_DEV_SOC,
+    OT_EARLGREY_BOARD_DEV_FLASH,
     _OT_EARLGREY_BOARD_DEV_COUNT,
 };
 
@@ -919,6 +933,23 @@ static void ot_earlgrey_board_realize(DeviceState *dev, Error **errp)
     DeviceState *soc = board->devices[OT_EARLGREY_BOARD_DEV_SOC];
     object_property_add_child(OBJECT(board), "soc", OBJECT(soc));
     sysbus_realize_and_unref(SYS_BUS_DEVICE(soc), &error_fatal);
+
+    DeviceState *spihost =
+        RISCV_OT_EARLGREY_SOC(soc)->devices[OT_EARLGREY_SOC_DEV_SPI_HOST0];
+    DeviceState *flash = board->devices[OT_EARLGREY_BOARD_DEV_FLASH];
+    BusState *spibus = qdev_get_child_bus(spihost, "spi0");
+    assert(spibus);
+
+    DriveInfo *dinfo = drive_get(IF_MTD, 0, 0);
+    if (dinfo) {
+        qdev_prop_set_drive_err(DEVICE(flash), "drive",
+                                blk_by_legacy_dinfo(dinfo), &error_fatal);
+    }
+    object_property_add_child(OBJECT(board), "dataflash", OBJECT(flash));
+    ssi_realize_and_unref(flash, SSI_BUS(spibus), errp);
+
+    qemu_irq cs = qdev_get_gpio_in_named(flash, SSI_GPIO_CS, 0);
+    qdev_connect_gpio_out_named(spihost, SSI_GPIO_CS, 0, cs);
 }
 
 static void ot_earlgrey_board_init(Object *obj)
@@ -928,6 +959,7 @@ static void ot_earlgrey_board_init(Object *obj)
     s->devices = g_new0(DeviceState *, _OT_EARLGREY_BOARD_DEV_COUNT);
     s->devices[OT_EARLGREY_BOARD_DEV_SOC] =
         qdev_new(TYPE_RISCV_OT_EARLGREY_SOC);
+    s->devices[OT_EARLGREY_BOARD_DEV_FLASH] = qdev_new("is25wp128");
 }
 
 static void ot_earlgrey_board_class_init(ObjectClass *oc, void *data)
