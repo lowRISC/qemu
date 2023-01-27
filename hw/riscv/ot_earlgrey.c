@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_flash.h"
+#include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otbn.h"
@@ -516,11 +517,15 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_HMAC] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-hmac",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_HMAC,
         .memmap = MEMMAPENTRIES(
             { 0x41110000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 165),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 166),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 167),
+            OT_EARLGREY_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
         ),
     },
     [OT_EARLGREY_SOC_DEV_KMAC] = {
