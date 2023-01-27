@@ -23,6 +23,7 @@ config OT_EARLGREY
     select OT_FLASH
     select OT_IBEX_WRAPPER
     select OT_LIFECYCLE
+    select OT_OTBN
     select OT_OTP
     select OT_PINMUX
     select OT_PWRMGR

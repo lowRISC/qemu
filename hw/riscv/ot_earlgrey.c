@@ -42,6 +42,7 @@
 #include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_lifecycle.h"
+#include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_pinmux.h"
 #include "hw/opentitan/ot_pwrmgr.h"
@@ -531,11 +532,21 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_OTBN] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-otbn",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_OTBN,
         .memmap = MEMMAPENTRIES(
             { 0x41130000u, 0x10000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 171),
+            OT_EARLGREY_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("edn-u", EDN0),
+            OT_EARLGREY_SOC_DEVLINK("edn-r", EDN1)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("edn-u-ep", 6u),
+            IBEX_DEV_INT_PROP("edn-r-ep", 0u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_KEYMGR] = {
