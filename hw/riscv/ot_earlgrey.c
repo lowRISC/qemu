@@ -49,6 +49,7 @@
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_sensor.h"
 #include "hw/opentitan/ot_spi_host.h"
+#include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
@@ -323,11 +324,16 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_TIMER] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-timer",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_TIMER,
         .memmap = MEMMAPENTRIES(
             { 0x40100000u, 0x200u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO(0, HART, IRQ_M_TIMER),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 124)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
         ),
     },
     [OT_EARLGREY_SOC_DEV_OTP_CTRL] = {
