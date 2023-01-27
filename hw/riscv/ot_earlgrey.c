@@ -38,6 +38,7 @@
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_flash.h"
+#include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_pinmux.h"
@@ -557,11 +558,15 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_IBEX_WRAPPER] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-ibex_wrapper",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_IBEX_WRAPPER,
         .memmap = MEMMAPENTRIES(
             { 0x411f0000u, 0x100u }
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("edn-ep", 7u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_RV_DM] = {
