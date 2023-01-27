@@ -32,6 +32,7 @@
 #include "hw/boards.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/misc/unimp.h"
+#include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_ast.h"
 #include "hw/opentitan/ot_clkmgr.h"
@@ -452,11 +453,18 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_AES] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-aes",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_AES,
         .memmap = MEMMAPENTRIES(
             { 0x41100000u, 0x100u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("edn-ep", 5u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_HMAC] = {
