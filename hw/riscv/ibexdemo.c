@@ -15,8 +15,8 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Notes: GPIO output, SPI, TIMER and UART devices are supported. PWM is only a
- *        dummy device, GPIO inputs are not supported.
+ * Notes: GPIO output, SIMCTRL, SPI, TIMER and UART devices are supported. PWM
+ *        is only a dummy device, GPIO inputs are not supported.
  */
 
 #include "qemu/osdep.h"
@@ -28,6 +28,7 @@
 #include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/ibexdemo/ibexdemo_gpio.h"
+#include "hw/ibexdemo/ibexdemo_simctrl.h"
 #include "hw/ibexdemo/ibexdemo_spi.h"
 #include "hw/ibexdemo/ibexdemo_timer.h"
 #include "hw/ibexdemo/ibexdemo_uart.h"
@@ -77,6 +78,7 @@ enum IbexDemoSocDevice {
     IBEXDEMO_SOC_DEV_GPIO,
     IBEXDEMO_SOC_DEV_HART,
     IBEXDEMO_SOC_DEV_PWM,
+    IBEXDEMO_SOC_DEV_SIMCTRL,
     IBEXDEMO_SOC_DEV_SPI,
     IBEXDEMO_SOC_DEV_TIMER,
     IBEXDEMO_SOC_DEV_UART,
@@ -97,6 +99,12 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_UINT_PROP("mtvec", 0x00100001u)
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_SIMCTRL] = {
+        .type = TYPE_IBEXDEMO_SIMCTRL,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x00020000u, .size = 0x0400u }
         ),
     },
     [IBEXDEMO_SOC_DEV_GPIO] = {
