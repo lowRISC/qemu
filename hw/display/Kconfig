@@ -37,6 +37,9 @@ config SSD0303
 config SSD0323
     bool
 
+config ST7735
+    bool
+
 config VGA_PCI
     bool
     default y if PCI_DEVICES
