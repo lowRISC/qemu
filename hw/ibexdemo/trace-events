@@ -1,5 +1,10 @@
 # IbexDemo Trace Events
 
+# ibexdemo_gpio
+
+ibexdemo_gpio_input(uint32_t gpios) "in: [0x%08x]"
+ibexdemo_gpio_output(uint32_t gpios) "out: [0x%08x]"
+
 # ibexdemo_spi.c
 
 ibexdemo_spi_output(uint8_t byte) "[0x%02x]"
