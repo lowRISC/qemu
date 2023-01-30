@@ -1,1 +1,5 @@
 # IbexDemo Trace Events
+
+# ibexdemo_spi.c
+
+ibexdemo_spi_output(uint8_t byte) "[0x%02x]"
