@@ -1,5 +1,9 @@
 # Ibex Demo System
 
+config IBEXDEMO_SPI
+    bool
+    select SSI
+
 config IBEXDEMO_TIMER
     bool
 
