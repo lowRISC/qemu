@@ -1,5 +1,8 @@
 # Ibex Demo System
 
+config IBEXDEMO_GPIO
+    bool
+
 config IBEXDEMO_SPI
     bool
     select SSI
