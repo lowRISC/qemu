@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Notes: TIMER and UART devices are supported. PWM is only a dummy device.
+ * Notes: SPI, TIMER and UART devices are supported. PWM is only a dummy device.
  */
 
 #include "qemu/osdep.h"
@@ -26,6 +26,7 @@
 #include "elf.h"
 #include "exec/address-spaces.h"
 #include "hw/boards.h"
+#include "hw/ibexdemo/ibexdemo_spi.h"
 #include "hw/ibexdemo/ibexdemo_timer.h"
 #include "hw/ibexdemo/ibexdemo_uart.h"
 #include "hw/loader.h"
@@ -33,6 +34,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibexdemo.h"
+#include "hw/ssi/ssi.h"
 #include "sysemu/sysemu.h"
 
 /* ------------------------------------------------------------------------ */
@@ -70,6 +72,7 @@ static const uint32_t IBEXDEMO_BOOT[] = {
 enum IbexDemoSocDevice {
     IBEXDEMO_SOC_DEV_HART,
     IBEXDEMO_SOC_DEV_PWM,
+    IBEXDEMO_SOC_DEV_SPI,
     IBEXDEMO_SOC_DEV_TIMER,
     IBEXDEMO_SOC_DEV_UART,
 };
@@ -116,6 +119,12 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x80003000u, .size = 0x1000u }
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_SPI] = {
+        .type = TYPE_IBEXDEMO_SPI,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x80004000u, .size = 0x0400u }
         ),
     },
     /* clang-format on */
