@@ -14,6 +14,8 @@
  *
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Notes: PWM is only a dummy device.
  */
 
 #include "qemu/osdep.h"
@@ -25,6 +27,7 @@
 #include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
+#include "hw/misc/unimp.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibexdemo.h"
@@ -62,6 +65,7 @@ static const uint32_t IBEXDEMO_BOOT[] = {
 
 enum IbexDemoSocDevice {
     IBEXDEMO_SOC_DEV_HART,
+    IBEXDEMO_SOC_DEV_PWM,
 };
 
 enum IbexDemoBoardDevice {
@@ -79,6 +83,14 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_UINT_PROP("mtvec", 0x00100001u)
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_PWM] = {
+        .type = TYPE_UNIMPLEMENTED_DEVICE,
+        .name = "ibexdemo-pwm",
+        .cfg = &ibex_unimp_configure,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x80003000u, .size = 0x1000u }
         ),
     },
     /* clang-format on */
