@@ -18,6 +18,9 @@
 
 typedef enum SSICSMode SSICSMode;
 
+#define TYPE_SSI_BUS "SSI"
+OBJECT_DECLARE_SIMPLE_TYPE(SSIBus, SSI_BUS)
+
 #define TYPE_SSI_PERIPHERAL "ssi-peripheral"
 OBJECT_DECLARE_TYPE(SSIPeripheral, SSIPeripheralClass,
                     SSI_PERIPHERAL)
