@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Notes: UART device is supported. PWM is only a dummy device.
+ * Notes: TIMER and UART devices are supported. PWM is only a dummy device.
  */
 
 #include "qemu/osdep.h"
@@ -26,6 +26,7 @@
 #include "elf.h"
 #include "exec/address-spaces.h"
 #include "hw/boards.h"
+#include "hw/ibexdemo/ibexdemo_timer.h"
 #include "hw/ibexdemo/ibexdemo_uart.h"
 #include "hw/loader.h"
 #include "hw/misc/unimp.h"
@@ -69,6 +70,7 @@ static const uint32_t IBEXDEMO_BOOT[] = {
 enum IbexDemoSocDevice {
     IBEXDEMO_SOC_DEV_HART,
     IBEXDEMO_SOC_DEV_PWM,
+    IBEXDEMO_SOC_DEV_TIMER,
     IBEXDEMO_SOC_DEV_UART,
 };
 
@@ -97,6 +99,15 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             IBEX_GPIO_SYSBUS_IRQ(0, IBEXDEMO_SOC_DEV_HART, 16)
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_TIMER] = {
+        .type = TYPE_IBEXDEMO_TIMER,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x80002000u, .size = 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            IBEX_GPIO_SYSBUS_IRQ(0, IBEXDEMO_SOC_DEV_HART, IRQ_M_TIMER)
         ),
     },
     [IBEXDEMO_SOC_DEV_PWM] = {
