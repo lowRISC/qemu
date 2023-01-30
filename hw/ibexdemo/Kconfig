@@ -1,4 +1,7 @@
 # Ibex Demo System
 
+config IBEXDEMO_TIMER
+    bool
+
 config IBEXDEMO_UART
     bool
