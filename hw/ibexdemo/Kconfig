@@ -1,2 +1,4 @@
 # Ibex Demo System
 
+config IBEXDEMO_UART
+    bool
