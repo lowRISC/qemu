@@ -15,7 +15,8 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Notes: SPI, TIMER and UART devices are supported. PWM is only a dummy device.
+ * Notes: GPIO output, SPI, TIMER and UART devices are supported. PWM is only a
+ *        dummy device, GPIO inputs are not supported.
  */
 
 #include "qemu/osdep.h"
@@ -26,6 +27,7 @@
 #include "elf.h"
 #include "exec/address-spaces.h"
 #include "hw/boards.h"
+#include "hw/ibexdemo/ibexdemo_gpio.h"
 #include "hw/ibexdemo/ibexdemo_spi.h"
 #include "hw/ibexdemo/ibexdemo_timer.h"
 #include "hw/ibexdemo/ibexdemo_uart.h"
@@ -41,6 +43,8 @@
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
 
+static void ibexdemo_soc_gpio_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ibexdemo_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ibexdemo_soc_uart_configure(
@@ -70,6 +74,7 @@ static const uint32_t IBEXDEMO_BOOT[] = {
 };
 
 enum IbexDemoSocDevice {
+    IBEXDEMO_SOC_DEV_GPIO,
     IBEXDEMO_SOC_DEV_HART,
     IBEXDEMO_SOC_DEV_PWM,
     IBEXDEMO_SOC_DEV_SPI,
@@ -92,6 +97,13 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_UINT_PROP("mtvec", 0x00100001u)
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_GPIO] = {
+        .type = TYPE_IBEXDEMO_GPIO,
+        .cfg = &ibexdemo_soc_gpio_configure,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x80000000u, .size = 0x1000u }
         ),
     },
     [IBEXDEMO_SOC_DEV_UART] = {
@@ -158,6 +170,13 @@ struct IbexDemoMachineState {
 /* ------------------------------------------------------------------------ */
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
+
+static void ibexdemo_soc_gpio_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    qdev_prop_set_uint32(dev, "in_count", IBEXDEMO_GPIO_IN_MAX);
+    qdev_prop_set_uint32(dev, "out_count", IBEXDEMO_GPIO_OUT_MAX);
+}
 
 static void ibexdemo_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
