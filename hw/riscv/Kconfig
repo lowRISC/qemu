@@ -13,6 +13,7 @@ config IBEXDEMO
     bool
     select IBEX
     select IBEX_COMMON
+    select IBEXDEMO_GPIO
     select IBEXDEMO_SPI
     select IBEXDEMO_TIMER
     select IBEXDEMO_UART
