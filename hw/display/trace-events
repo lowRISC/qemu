@@ -177,3 +177,11 @@ macfb_ctrl_write(uint64_t addr, uint64_t value, unsigned int size) "addr 0x%"PRI
 macfb_sense_read(uint32_t value) "video sense: 0x%"PRIx32
 macfb_sense_write(uint32_t value) "video sense: 0x%"PRIx32
 macfb_update_mode(uint32_t width, uint32_t height, uint8_t depth) "setting mode to width %"PRId32 " height %"PRId32 " size %d"
+
+# st7735
+st7735_reset(const char *msg) "%s"
+st7735_set(const char *msg, bool enable) "%s: %u"
+st7735_gpio(const char *line, bool enable) "%s: %u"
+st7735_cursor(const char *axis, uint16_t start, uint16_t end) "%s: %hu..%hu"
+
+
