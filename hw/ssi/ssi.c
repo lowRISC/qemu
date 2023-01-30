@@ -23,9 +23,6 @@ struct SSIBus {
     BusState parent_obj;
 };
 
-#define TYPE_SSI_BUS "SSI"
-OBJECT_DECLARE_SIMPLE_TYPE(SSIBus, SSI_BUS)
-
 static const TypeInfo ssi_bus_info = {
     .name = TYPE_SSI_BUS,
     .parent = TYPE_BUS,
