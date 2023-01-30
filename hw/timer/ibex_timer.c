@@ -31,7 +31,7 @@
 #include "hw/timer/ibex_timer.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
-#include "target/riscv/cpu.h"
+#include "hw/registerfields.h"
 #include "migration/vmstate.h"
 
 REG32(ALERT_TEST, 0x00)
