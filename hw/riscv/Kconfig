@@ -21,6 +21,7 @@ config MICROCHIP_PFSOC
 config OPENTITAN
     bool
     select IBEX
+    select IBEX_TIMER
     select IBEX_UART
     select SIFIVE_PLIC
     select UNIMP
