@@ -261,3 +261,10 @@ void ibex_load_kernel(AddressSpace *as)
         }
     }
 }
+
+uint64_t ibex_get_current_pc(void)
+{
+    CPUState *cs = current_cpu;
+
+    return cs && cs->cc->get_pc ? cs->cc->get_pc(cs) : 0u;
+}
