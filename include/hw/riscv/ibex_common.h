@@ -268,11 +268,23 @@ void ibex_configure_devices(DeviceState **devices, BusState *bus,
 void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
                           DeviceState *parent);
 
+/* ------------------------------------------------------------------------ */
+/* CPU */
+/* ------------------------------------------------------------------------ */
+
 /**
  * Load an ELF application into a CPU address space.
  * @as the address space to load the application into, maybe NULL to use the
  * default address space
  */
 void ibex_load_kernel(AddressSpace *as);
+
+/**
+ * Helper for device debugging: report the current guest PC, if any.
+ *
+ * If a HW access is performed from another device but the CPU, reported PC
+ * is 0.
+ */
+uint64_t ibex_get_current_pc(void);
 
 #endif /* HW_RISCV_IBEX_COMMON_H */
