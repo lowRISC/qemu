@@ -351,6 +351,11 @@ struct CPUArchState {
     int64_t last_icount;
     bool itrigger_enabled;
 
+    /* debug module */
+    uint32_t dcsr;
+    target_ulong dpc;
+    target_ulong dscratch[RV_MAX_DSCRATCH];
+
     /* machine specific rdtime callback */
     uint64_t (*rdtime_fn)(void *);
     void *rdtime_fn_arg;
