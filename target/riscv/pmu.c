@@ -186,6 +186,9 @@ int riscv_pmu_incr_ctr(RISCVCPU *cpu, enum riscv_pmu_event_idx event_idx)
     if (!cpu->cfg.pmu_mask) {
         return 0;
     }
+    if (get_field(env->dcsr, DCSR_STOPCOUNT)) {
+        return 0;
+    }
     value = g_hash_table_lookup(cpu->pmu_event_ctr_map,
                                 GUINT_TO_POINTER(event_idx));
     if (!value) {
