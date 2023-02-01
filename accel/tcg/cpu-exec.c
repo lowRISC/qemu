@@ -1046,6 +1046,13 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 tb_add_jump(last_tb, tb_exit, tb);
             }
 
+            if (unlikely((cflags != -1) && (cflags & CF_SINGLE_STEP))) {
+                CPUClass *cc = cpu->cc;
+                if (cc->debug_enable_singlestep) {
+                    cc->debug_enable_singlestep(cpu, pc);
+                }
+            }
+
             cpu_loop_exec_tb(cpu, tb, pc, &last_tb, &tb_exit);
 
             /* Try to align the host and virtual clocks
