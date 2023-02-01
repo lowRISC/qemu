@@ -735,6 +735,10 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
         *ret = cpu->exception_index;
         if (*ret == EXCP_DEBUG) {
             cpu_handle_debug_exception(cpu);
+            if (cpu->exception_index < 0) {
+                /* the handler has cleared the exception */
+                return false;
+            }
         }
         cpu->exception_index = -1;
         return true;
