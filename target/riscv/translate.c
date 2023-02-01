@@ -117,6 +117,8 @@ typedef struct DisasContext {
     TCGOp *insn_start;
 } DisasContext;
 
+#define DISAS_SSTEP       DISAS_TARGET_0
+
 static inline bool has_ext(DisasContext *ctx, uint32_t ext)
 {
     return ctx->misa_ext & ext;
@@ -1226,6 +1228,10 @@ static void riscv_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     decode_opc(env, ctx, opcode16);
     ctx->base.pc_next += ctx->cur_insn_len;
 
+    if (unlikely(ctx->base.singlestep_enabled)) {
+        ctx->base.is_jmp = DISAS_SSTEP;
+    }
+
     /* Only the first insn within a TB is allowed to cross a page boundary. */
     if (ctx->base.is_jmp == DISAS_NEXT) {
         if (ctx->itrigger || !is_same_page(&ctx->base, ctx->base.pc_next)) {
@@ -1250,6 +1256,10 @@ static void riscv_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
 
     switch (ctx->base.is_jmp) {
+    case DISAS_SSTEP:
+        ctx->pc_save = ctx->base.pc_first;
+        gen_goto_tb(ctx, 0, 0);
+        break;
     case DISAS_TOO_MANY:
         gen_goto_tb(ctx, 0, 0);
         break;
