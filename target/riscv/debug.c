@@ -176,22 +176,24 @@ void tselect_csr_write(CPURISCVState *env, target_ulong val)
     }
 }
 
-static target_ulong tdata1_validate(CPURISCVState *env, target_ulong val,
-                                    trigger_type_t t)
+static target_ulong tdata1_validate(CPURISCVState *env, target_ulong index,
+                                    target_ulong val, trigger_type_t t)
 {
-    uint32_t type, dmode;
+    uint32_t type, dmode, cdmode;
     target_ulong tdata1;
 
     switch (riscv_cpu_mxl(env)) {
     case MXL_RV32:
         type = extract32(val, 28, 4);
         dmode = extract32(val, 27, 1);
+        cdmode = extract32(env->tdata1[index], 27, 1);
         tdata1 = RV32_TYPE(t);
         break;
     case MXL_RV64:
     case MXL_RV128:
         type = extract64(val, 60, 4);
         dmode = extract64(val, 59, 1);
+        cdmode = extract64(env->tdata1[index], 59, 1);
         tdata1 = RV64_TYPE(t);
         break;
     default:
@@ -203,8 +205,12 @@ static target_ulong tdata1_validate(CPURISCVState *env, target_ulong val,
                       "%s: ignoring type write to tdata1 register\n", __func__);
     }
 
-    if (dmode != 0) {
-        qemu_log_mask(LOG_UNIMP, "debug mode is not supported\n");
+    if (!(env->debug_dm && env->debugger)) {
+        if (dmode != cdmode) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: debug mode can only be changed from debugger\n",
+                          __func__);
+        }
     }
 
     return tdata1;
@@ -271,21 +277,23 @@ static inline bool type2_breakpoint_enabled(target_ulong ctrl)
 }
 
 static target_ulong type2_mcontrol_validate(CPURISCVState *env,
+                                            target_ulong index,
                                             target_ulong ctrl)
 {
     target_ulong val;
     uint32_t size;
 
     /* validate the generic part first */
-    val = tdata1_validate(env, ctrl, TRIGGER_TYPE_AD_MATCH);
+    val = tdata1_validate(env, index, ctrl, TRIGGER_TYPE_AD_MATCH);
 
     /* validate unimplemented (always zero) bits */
     warn_always_zero_bit(ctrl, TYPE2_MATCH, "match");
     warn_always_zero_bit(ctrl, TYPE2_CHAIN, "chain");
-    warn_always_zero_bit(ctrl, TYPE2_ACTION, "action");
     warn_always_zero_bit(ctrl, TYPE2_TIMING, "timing");
     warn_always_zero_bit(ctrl, TYPE2_SELECT, "select");
     warn_always_zero_bit(ctrl, TYPE2_HIT, "hit");
+    warn_always_zero_bit(ctrl, !env->debug_dm ? TYPE2_ACTION : TYPE2_ACT_TRACE,
+                         "action");
 
     /* validate size encoding */
     size = type2_breakpoint_size(env, ctrl);
@@ -301,8 +309,23 @@ static target_ulong type2_mcontrol_validate(CPURISCVState *env,
     }
 
     /* keep the mode and attribute bits */
-    val |= (ctrl & (TYPE2_U | TYPE2_S | TYPE2_M |
-                    TYPE2_LOAD | TYPE2_STORE | TYPE2_EXEC));
+    target_ulong mask = (TYPE2_U | TYPE2_S | TYPE2_M |
+                         TYPE2_LOAD | TYPE2_STORE | TYPE2_EXEC);
+    if (env->debug_dm && env->debugger) {
+        mask |= TYPE2_ACT_DEBUG;
+        switch (riscv_cpu_mxl(env)) {
+        case MXL_RV32:
+            mask |= RV32_DMODE;
+            break;
+        case MXL_RV64:
+        case MXL_RV128:
+            mask |= RV64_DMODE;
+            break;
+        default:
+            g_assert_not_reached();
+        }
+    }
+    val |= ctrl & mask;
 
     return val;
 }
@@ -365,7 +388,7 @@ static void type2_reg_write(CPURISCVState *env, target_ulong index,
 
     switch (tdata_index) {
     case TDATA1:
-        new_val = type2_mcontrol_validate(env, val);
+        new_val = type2_mcontrol_validate(env, index, val);
         if (new_val != env->tdata1[index]) {
             env->tdata1[index] = new_val;
             type2_breakpoint_remove(env, index);
@@ -401,13 +424,14 @@ static inline bool type6_breakpoint_enabled(target_ulong ctrl)
 }
 
 static target_ulong type6_mcontrol6_validate(CPURISCVState *env,
+                                             target_ulong index,
                                              target_ulong ctrl)
 {
     target_ulong val;
     uint32_t size;
 
     /* validate the generic part first */
-    val = tdata1_validate(env, ctrl, TRIGGER_TYPE_AD_MATCH6);
+    val = tdata1_validate(env, index, ctrl, TRIGGER_TYPE_AD_MATCH6);
 
     /* validate unimplemented (always zero) bits */
     warn_always_zero_bit(ctrl, TYPE6_MATCH, "match");
@@ -483,7 +507,7 @@ static void type6_reg_write(CPURISCVState *env, target_ulong index,
 
     switch (tdata_index) {
     case TDATA1:
-        new_val = type6_mcontrol6_validate(env, val);
+        new_val = type6_mcontrol6_validate(env, index, val);
         if (new_val != env->tdata1[index]) {
             env->tdata1[index] = new_val;
             type6_breakpoint_remove(env, index);
@@ -636,13 +660,13 @@ void riscv_itrigger_update_priv(CPURISCVState *env)
     riscv_itrigger_update_count(env);
 }
 
-static target_ulong itrigger_validate(CPURISCVState *env,
+static target_ulong itrigger_validate(CPURISCVState *env, target_ulong index,
                                       target_ulong ctrl)
 {
     target_ulong val;
 
     /* validate the generic part first */
-    val = tdata1_validate(env, ctrl, TRIGGER_TYPE_INST_CNT);
+    val = tdata1_validate(env, index, ctrl, TRIGGER_TYPE_INST_CNT);
 
     /* validate unimplemented (always zero) bits */
     warn_always_zero_bit(ctrl, ITRIGGER_ACTION, "action");
@@ -664,7 +688,7 @@ static void itrigger_reg_write(CPURISCVState *env, target_ulong index,
     switch (tdata_index) {
     case TDATA1:
         /* set timer for icount */
-        new_val = itrigger_validate(env, val);
+        new_val = itrigger_validate(env, index, val);
         if (new_val != env->tdata1[index]) {
             env->tdata1[index] = new_val;
             if (icount_enabled()) {
@@ -702,6 +726,35 @@ static int itrigger_get_adjust_count(CPURISCVState *env)
         count += executed;
     }
     return count;
+}
+
+static void tdata1_clear(CPURISCVState *env)
+{
+    target_ulong tselect = env->trigger_cur;
+    CPUState *cs = env_cpu(env);
+    if (cs->watchpoint_hit &&
+        cs->watchpoint_hit == env->cpu_watchpoint[tselect]) {
+        cs->watchpoint_hit = NULL;
+    }
+    int old_trig_type;
+    old_trig_type = extract_trigger_type(env, env->tdata1[tselect]);
+    switch (old_trig_type) {
+        case TRIGGER_TYPE_AD_MATCH:
+            type2_breakpoint_remove(env, tselect);
+            break;
+        case TRIGGER_TYPE_AD_MATCH6:
+            type6_breakpoint_remove(env, tselect);
+            break;
+        case TRIGGER_TYPE_NO_EXIST:
+        case TRIGGER_TYPE_UNAVAIL:
+            break;
+        default:
+            break;
+    }
+    /* only clear trigger config, not HW features */
+    env->tdata1[tselect] &= ~(riscv_cpu_mxl(env) == MXL_RV32 ?
+        (1 << (32-12)) - 1 : (1ll << (64-12)) - 1ll);
+
 }
 
 target_ulong tdata_csr_read(CPURISCVState *env, int tdata_index)
@@ -752,6 +805,12 @@ void tdata_csr_write(CPURISCVState *env, int tdata_index, target_ulong val)
                       __func__, trigger_type);
         break;
     case TRIGGER_TYPE_NO_EXIST:
+        if (!val && tdata_index == TDATA1) {
+            /* Debugger clears TDATA1 to temporarily disable BP/WP */
+            tdata1_clear(env);
+            break;
+        }
+        /* fallthrough */
     case TRIGGER_TYPE_UNAVAIL:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: trigger type: %d does not exit\n",
                       __func__, trigger_type);
@@ -766,6 +825,53 @@ target_ulong tinfo_csr_read(CPURISCVState *env)
     /* assume all triggers support the same types of triggers */
     return BIT(TRIGGER_TYPE_AD_MATCH) |
            BIT(TRIGGER_TYPE_AD_MATCH6);
+}
+
+static inline const CPUBreakpoint* cpu_breakpoint_check(CPUState *cs, vaddr pc,
+                                                        int mask)
+{
+    CPUBreakpoint *bp;
+
+    if (unlikely(!QTAILQ_EMPTY(&cs->breakpoints))) {
+        QTAILQ_FOREACH(bp, &cs->breakpoints, entry) {
+            if (bp->pc == pc && (bp->flags & mask)) {
+                return bp;
+            }
+        }
+    }
+    return NULL;
+}
+
+static inline unsigned cpu_breakpoint_index(CPUState *cs,
+                                            const CPUBreakpoint* bp)
+{
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    unsigned ix=0;
+    for (; ix<RV_MAX_TRIGGERS; ix++) {
+        if (bp == env->cpu_breakpoint[ix]) {
+            break;
+        }
+    }
+
+    return ix;
+}
+
+static inline unsigned cpu_watchpoint_index(CPUState *cs,
+                                            const CPUWatchpoint* wp)
+{
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    unsigned ix=0;
+    for (; ix<RV_MAX_TRIGGERS; ix++) {
+        if (wp == env->cpu_watchpoint[ix]) {
+            break;
+        }
+    }
+
+    return ix;
 }
 
 void riscv_cpu_debug_excp_handler(CPUState *cs)
@@ -809,11 +915,20 @@ void riscv_cpu_debug_excp_handler(CPUState *cs)
 
     if (cs->watchpoint_hit) {
         if (cs->watchpoint_hit->flags & BP_CPU) {
-            do_trigger_action(env, DBG_ACTION_BP);
+            unsigned trig_idx = cpu_watchpoint_index(cs, cs->watchpoint_hit);
+            trigger_action_t action;
+             action = (trig_idx < RV_MAX_TRIGGERS) ?
+                 get_trigger_action(env, trig_idx) : DBG_ACTION_BP;
+            do_trigger_action(env, action);
         }
     } else {
-        if (cpu_breakpoint_test(cs, env->pc, BP_CPU)) {
-            do_trigger_action(env, DBG_ACTION_BP);
+        const CPUBreakpoint *bp = cpu_breakpoint_check(cs, env->pc, BP_CPU);
+        if (bp) {
+            unsigned trig_idx = cpu_breakpoint_index(cs, bp);
+            trigger_action_t action;
+            action = (trig_idx < RV_MAX_TRIGGERS) ?
+                 get_trigger_action(env, trig_idx) : DBG_ACTION_BP;
+            do_trigger_action(env, action);
         }
     }
 }
@@ -962,7 +1077,8 @@ void riscv_trigger_realize(CPURISCVState *env)
 
 void riscv_trigger_reset_hold(CPURISCVState *env)
 {
-    target_ulong tdata1 = build_tdata1(env, TRIGGER_TYPE_AD_MATCH, 0, 0);
+    target_ulong tdata1 = build_tdata1(env, TRIGGER_TYPE_AD_MATCH,
+                                       env->debug_dm, 0);
     int i;
 
     /* init to type 2 triggers */
