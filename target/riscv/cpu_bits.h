@@ -351,7 +351,7 @@
 #define CSR_PMPADDR14       0x3be
 #define CSR_PMPADDR15       0x3bf
 
-/* Debug/Trace Registers (shared with Debug Mode) */
+/* Trace Registers (shared with Debug Mode) */
 #define CSR_TSELECT         0x7a0
 #define CSR_TDATA1          0x7a1
 #define CSR_TDATA2          0x7a2
@@ -361,7 +361,8 @@
 /* Debug Mode Registers */
 #define CSR_DCSR            0x7b0
 #define CSR_DPC             0x7b1
-#define CSR_DSCRATCH        0x7b2
+#define CSR_DSCRATCH0       0x7b2
+#define CSR_DSCRATCH1       0x7b3
 
 /* Performance Counters */
 #define CSR_MHPMCOUNTER3    0xb03
