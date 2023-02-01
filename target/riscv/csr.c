@@ -3927,6 +3927,58 @@ static RISCVException read_tinfo(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+static RISCVException read_dcsr(CPURISCVState *env, int csrno,
+                                target_ulong *val)
+{
+    *val = env->dcsr;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dcsr(CPURISCVState *env, int csrno,
+                                 target_ulong val)
+{
+    /* STEPIE feature is not supported */
+    target_ulong wmask = DCSR_PRV | DCSR_STEP | DCSR_STOPCOUNT | DCSR_STOPTIME |
+                         DCSR_EBREAKM;
+    if (riscv_has_ext(env, RVS)) {
+        wmask |= DCSR_EBREAKS;
+    }
+    if (riscv_has_ext(env, RVU)) {
+        wmask |= DCSR_EBREAKU;
+    }
+    env->dcsr &= ~wmask;
+    env->dcsr |= val & wmask;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_dpc(CPURISCVState *env, int csrno,
+                               target_ulong *val)
+{
+    *val = env->dpc;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dpc(CPURISCVState *env, int csrno,
+                                target_ulong val)
+{
+    env->dpc = val;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_dscratch(CPURISCVState *env, int csrno,
+                                    target_ulong *val)
+{
+    *val = env->dscratch[csrno - CSR_DSCRATCH0];
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dscratch(CPURISCVState *env, int csrno,
+                                    target_ulong val)
+{
+    env->dscratch[csrno - CSR_DSCRATCH0] = val;
+    return RISCV_EXCP_NONE;
+}
+
 /*
  * Functions to access Pointer Masking feature registers
  * We have to check if current priv lvl could modify
@@ -4834,6 +4886,12 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_TDATA2]    =  { "tdata2",  debug, read_tdata,   write_tdata   },
     [CSR_TDATA3]    =  { "tdata3",  debug, read_tdata,   write_tdata   },
     [CSR_TINFO]     =  { "tinfo",   debug, read_tinfo,   write_ignore  },
+
+    /* Debug CSRs */
+    [CSR_DCSR]      =  { "dcsr",      debug, read_dcsr,     write_dcsr     },
+    [CSR_DPC]       =  { "dpc",       debug, read_dpc,      write_dpc      },
+    [CSR_DSCRATCH0] =  { "dscratch0", debug, read_dscratch, write_dscratch },
+    [CSR_DSCRATCH1] =  { "dscratch1", debug, read_dscratch, write_dscratch },
 
     /* User Pointer Masking */
     [CSR_UMTE]    =    { "umte",    pointer_masking, read_umte,  write_umte },
