@@ -5230,3 +5230,14 @@ int print_insn_riscv128(bfd_vma memaddr, struct disassemble_info *info)
 {
     return print_insn_riscv(memaddr, info, rv128);
 }
+
+const char *get_riscv_debug_reg_name(int regno)
+{
+    switch (regno) {
+        case 0x0000 ... 0x0fff: return csr_name(regno);
+        case 0x1000 ... 0x101f: return rv_ireg_name_sym[regno-0x1000];
+        case 0x1020 ... 0x103f: return rv_freg_name_sym[regno-0x1020];
+        /* TODO: need to add vector regs (not part of 0.13.2 debug spec) */
+        default: return NULL;
+    }
+}
