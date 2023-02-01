@@ -4828,7 +4828,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_PMPADDR14] =  { "pmpaddr14", pmp, read_pmpaddr, write_pmpaddr },
     [CSR_PMPADDR15] =  { "pmpaddr15", pmp, read_pmpaddr, write_pmpaddr },
 
-    /* Debug CSRs */
+    /* Trigger CSRs */
     [CSR_TSELECT]   =  { "tselect", debug, read_tselect, write_tselect },
     [CSR_TDATA1]    =  { "tdata1",  debug, read_tdata,   write_tdata   },
     [CSR_TDATA2]    =  { "tdata2",  debug, read_tdata,   write_tdata   },
