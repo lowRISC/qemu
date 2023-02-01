@@ -4471,7 +4471,7 @@ RISCVException riscv_csrrw_i128(CPURISCVState *env, int csrno,
 
 /*
  * Debugger support.  If not in user mode, set env->debugger before the
- * riscv_csrrw call and clear it after the call.
+ * riscv_csrrw call and restore it after the call.
  */
 RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
                                  target_ulong *ret_value,
@@ -4480,11 +4480,12 @@ RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
 {
     RISCVException ret;
 #if !defined(CONFIG_USER_ONLY)
+    bool debugger = env->debugger;
     env->debugger = true;
 #endif
     ret = riscv_csrrw(env, csrno, ret_value, new_value, write_mask);
 #if !defined(CONFIG_USER_ONLY)
-    env->debugger = false;
+    env->debugger = debugger;
 #endif
     return ret;
 }
