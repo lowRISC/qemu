@@ -313,9 +313,12 @@ void cpu_handle_guest_debug(CPUState *cpu)
             cpu_single_step(cpu, 0);
         }
     } else {
-        gdb_set_stop_cpu(cpu);
-        qemu_system_debug_request();
-        cpu->stopped = true;
+        CPUClass *cc = CPU_GET_CLASS(cpu);
+        if (!cc->debug_request || !cc->debug_request(cpu)) {
+            gdb_set_stop_cpu(cpu);
+            qemu_system_debug_request();
+            cpu->stopped = true;
+        }
     }
 }
 
