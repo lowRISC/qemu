@@ -1130,6 +1130,25 @@ static bool riscv_cpu_debug_request(CPUState *cs)
 #endif
 }
 
+static void riscv_cpu_debug_enable_singlestep(CPUState *s, vaddr pc)
+{
+    (void)pc;
+
+#ifndef CONFIG_USER_ONLY
+    RISCVCPU *cpu = RISCV_CPU(s);
+    CPURISCVState *env = &cpu->env;
+    if (!env->debug_dm) {
+        return;
+    }
+    s->singlestep_enabled = SSTEP_ENABLE | SSTEP_NOIRQ;
+    if (get_field(env->dcsr, DCSR_STOPTIME)) {
+        s->singlestep_enabled |= SSTEP_NOTIMER;
+    }
+#else
+    s->singlestep_enabled = SSTEP_ENABLE;
+#endif
+}
+
 static void riscv_cpu_realize(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
@@ -1778,6 +1797,7 @@ static void riscv_cpu_class_init(ObjectClass *c, void *data)
     cc->gdb_num_core_regs = 33;
     cc->gdb_stop_before_watchpoint = true;
     cc->debug_request = riscv_cpu_debug_request;
+    cc->debug_enable_singlestep = riscv_cpu_debug_enable_singlestep;
     cc->disas_set_info = riscv_cpu_disas_set_info;
 #ifndef CONFIG_USER_ONLY
     cc->sysemu_ops = &riscv_sysemu_ops;
