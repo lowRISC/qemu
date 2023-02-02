@@ -67,6 +67,9 @@ source sparc64/Kconfig
 source tricore/Kconfig
 source xtensa/Kconfig
 
+# IbexDemo
+source ibexdemo/Kconfig
+
 # Symbols used by multiple targets
 config TEST_DEVICES
     bool

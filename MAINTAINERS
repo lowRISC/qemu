@@ -3808,6 +3808,9 @@ S: Supported
 F: hw/riscv/ibex_common.c
 F: include/hw/riscv/ibex_common.h
 F: include/hw/riscv/ibex_irq.h
+F: hw/ibexdemo/*
+F: include/hw/ibexdemo/*
+
 Build and test automation
 -------------------------
 Build and test automation, general continuous integration
