@@ -741,6 +741,7 @@ static void riscv_cpu_reset_hold(Object *obj)
     env->mcause = 0;
     env->miclaim = MIP_SGEIP;
     env->pc = env->resetvec;
+    env->mtvec = cpu->cfg.mtvec;
     env->bins = 0;
     env->two_stage_lookup = false;
 
@@ -1518,6 +1519,7 @@ static Property riscv_cpu_properties[] = {
 
 #ifndef CONFIG_USER_ONLY
     DEFINE_PROP_UINT64("resetvec", RISCVCPU, env.resetvec, DEFAULT_RSTVEC),
+    DEFINE_PROP_UINT64("mtvec", RISCVCPU, cfg.mtvec, 0u),
 #endif
 
     DEFINE_PROP_BOOL("short-isa-string", RISCVCPU, cfg.short_isa_string, false),
