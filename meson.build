@@ -2983,6 +2983,7 @@ if have_system
     'hw/display',
     'hw/dma',
     'hw/hyperv',
+    'hw/ibexdemo',
     'hw/i2c',
     'hw/i386',
     'hw/i386/xen',

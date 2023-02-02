@@ -23,3 +23,6 @@ ninja qemu-img
  * `--enable-debug`
  * `--enable-sanitizers`
 
+## Supported platforms
+
+ * [IbexDemo](ibexdemo.md) built for Digilent Arty7 board

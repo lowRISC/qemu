@@ -9,6 +9,13 @@ config IBEX_COMMON
 
 # RISC-V machines in alphabetical order
 
+config IBEXDEMO
+    bool
+    select IBEX
+    select IBEX_COMMON
+    select SIFIVE_PLIC
+    select UNIMP
+
 config MICROCHIP_PFSOC
     bool
     select CADENCE_SDHCI
