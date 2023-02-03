@@ -19,6 +19,11 @@ ot_aes_info(const char *func, int line, const char *errl) "%s:%d %s"
 ot_alert_io_read_out(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_alert_io_write(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_aon_timer.c
+
+ot_aon_timer_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
+ot_aon_timer_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+
 # ot_ast.c
 
 ot_ast_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64

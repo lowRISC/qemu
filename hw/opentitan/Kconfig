@@ -7,6 +7,9 @@ config OT_AES
 config OT_ALERT
     bool
 
+config OT_AON_TIMER
+    bool
+
 config OT_AST
     bool
 
