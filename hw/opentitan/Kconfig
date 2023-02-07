@@ -15,5 +15,8 @@ config OT_EDN
 config OT_ENTROPY_SRC
     bool
 
+config OT_LIFECYCLE
+    bool
+
 config OT_OTP
     bool
