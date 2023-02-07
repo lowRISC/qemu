@@ -33,6 +33,7 @@
 #include "hw/intc/sifive_plic.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_earlgrey.h"
@@ -43,6 +44,8 @@
 /* ------------------------------------------------------------------------ */
 
 static void ot_earlgrey_soc_hart_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+static void ot_earlgrey_soc_otp_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 
 /* ------------------------------------------------------------------------ */
@@ -88,7 +91,6 @@ enum OtEarlgreySocDevice {
     OT_EARLGREY_SOC_DEV_LC_CTRL,
     OT_EARLGREY_SOC_DEV_OTBN,
     OT_EARLGREY_SOC_DEV_OTP_CTRL,
-    OT_EARLGREY_SOC_DEV_OTP_CTRL_PRIM,
     OT_EARLGREY_SOC_DEV_PATTGEN,
     OT_EARLGREY_SOC_DEV_PINMUX,
     OT_EARLGREY_SOC_DEV_PLIC,
@@ -249,19 +251,15 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_OTP_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-otp_ctrl",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_OTP,
+        .cfg = &ot_earlgrey_soc_otp_ctrl_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x40130000u, 0x2000u }
+            { 0x40130000u, 0x2000u },
+            { 0x40132000u, 0x1000u }
         ),
-    },
-    [OT_EARLGREY_SOC_DEV_OTP_CTRL_PRIM] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-ot_ctrl_prim",
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x40132000u, 0x20u }
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 125),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 126)
         ),
     },
     [OT_EARLGREY_SOC_DEV_LC_CTRL] = {
@@ -666,6 +664,16 @@ static void ot_earlgrey_soc_hart_configure(
         g_free(propname);
     }
     qdev_prop_set_uint64(dev, "mseccfg", (uint64_t)OT_EARLGREY_MSECCFG);
+}
+
+static void ot_earlgrey_soc_otp_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
+    if (dinfo) {
+        qdev_prop_set_drive_err(dev, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
+    }
 }
 
 /* ------------------------------------------------------------------------ */
