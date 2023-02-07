@@ -74,6 +74,11 @@ ot_entropy_src_is_fips_capable(bool en, bool es_route, bool es_type, bool rng_bi
 ot_entropy_src_no_entropy(unsigned count) "only %u words available"
 ot_entropy_src_otp_conf(bool fw_read, bool fw_over) "fw_read: %u fw_over %u"
 
+# ot_lifecycle.c
+
+ot_lifecycle_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_lifecycle_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+
 # ot_otp.c
 
 ot_otp_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
