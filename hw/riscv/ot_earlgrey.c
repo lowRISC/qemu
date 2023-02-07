@@ -37,6 +37,7 @@
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
+#include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
@@ -273,12 +274,13 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_LC_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-lc_ctrl",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_LIFECYCLE,
         .memmap = MEMMAPENTRIES(
             { 0x40140000u, 0x100u }
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+        )
     },
     [OT_EARLGREY_SOC_DEV_ALERT_HANDLER] = {
         .type = TYPE_OT_ALERT,
