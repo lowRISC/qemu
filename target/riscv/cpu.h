@@ -365,6 +365,10 @@ struct CPUArchState {
     uint64_t sstateen[SMSTATEEN_MAX_COUNT];
     target_ulong senvcfg;
     uint64_t henvcfg;
+
+    /* Ibex custom CSRs */
+    target_ulong cpuctrlsts;
+    target_ulong secureseed;
 #endif
     target_ulong cur_pmmask;
     target_ulong cur_pmbase;
@@ -831,6 +835,8 @@ extern const bool valid_vm_1_10_32[], valid_vm_1_10_64[];
 
 void riscv_get_csr_ops(int csrno, riscv_csr_operations *ops);
 void riscv_set_csr_ops(int csrno, riscv_csr_operations *ops);
+
+void riscv_add_ibex_csr_ops(RISCVCPU *cpu);
 
 void riscv_cpu_register_gdb_regs_for_features(CPUState *cs);
 
