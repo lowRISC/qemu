@@ -2,3 +2,6 @@
 
 config OT_ALERT
     bool
+
+config OT_OTP
+    bool
