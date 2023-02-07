@@ -517,6 +517,7 @@ static void rv32_lowrisc_ibex_cpu_init(Object *obj)
 #ifndef CONFIG_USER_ONLY
     set_satp_mode_max_supported(cpu, VM_1_10_MBARE);
 #endif
+    riscv_add_ibex_csr_ops(cpu);
 }
 
 static void rv32_imafcu_nommu_cpu_init(Object *obj)
