@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_pwrmgr.h"
+#include "hw/opentitan/ot_sensor.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_earlgrey.h"
@@ -396,9 +397,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_SENSOR_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-sensor_ctrl",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_SENSOR,
         .memmap = MEMMAPENTRIES(
             { 0x40490000u, 0x40u }
         ),

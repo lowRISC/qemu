@@ -21,6 +21,7 @@ config OT_EARLGREY
     select OT_LIFECYCLE
     select OT_OTP
     select OT_PWRMGR
+    select OT_SENSOR
     select SIFIVE_PLIC
 
 config IBEXDEMO
