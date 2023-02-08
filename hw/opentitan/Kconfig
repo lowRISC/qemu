@@ -3,5 +3,8 @@
 config OT_ALERT
     bool
 
+config OT_AST
+    bool
+
 config OT_OTP
     bool
