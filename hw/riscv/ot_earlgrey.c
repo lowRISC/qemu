@@ -33,6 +33,7 @@
 #include "hw/intc/sifive_plic.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_ast.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
@@ -373,9 +374,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_AST] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-ast",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_AST,
         .memmap = MEMMAPENTRIES(
             { 0x40480000u, 0x400u }
         ),
