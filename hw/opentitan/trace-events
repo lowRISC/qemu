@@ -85,3 +85,8 @@ ot_otp_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64
 ot_otp_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_otp_access_error_on(int part, unsigned addr) "part #%u, addr 0x%04x"
 ot_otp_lifecycle(uint32_t lc_state, unsigned tcount) "lifecyle 0x%08x, transition count %u"
+
+# ot_pwrmgr.c
+
+ot_pwrmgr_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_pwrmgr_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
