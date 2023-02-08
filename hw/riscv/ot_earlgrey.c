@@ -39,6 +39,7 @@
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_earlgrey.h"
@@ -327,9 +328,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_PWRMGR] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-pwrmgr",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_PWRMGR,
         .memmap = MEMMAPENTRIES(
             { 0x40400000u, 0x80u }
         ),

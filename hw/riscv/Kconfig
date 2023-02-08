@@ -20,6 +20,7 @@ config OT_EARLGREY
     select OT_ENTROPY_SRC
     select OT_LIFECYCLE
     select OT_OTP
+    select OT_PWRMGR
     select SIFIVE_PLIC
 
 config IBEXDEMO
