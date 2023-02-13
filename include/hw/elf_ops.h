@@ -345,43 +345,43 @@ static ssize_t glue(load_elf, SZ)(const char *name, int fd,
     }
 
     switch (elf_machine) {
-        case EM_PPC64:
-            if (ehdr.e_machine != EM_PPC64) {
-                if (ehdr.e_machine != EM_PPC) {
-                    ret = ELF_LOAD_WRONG_ARCH;
-                    goto fail;
-                }
-            }
-            break;
-        case EM_X86_64:
-            if (ehdr.e_machine != EM_X86_64) {
-                if (ehdr.e_machine != EM_386) {
-                    ret = ELF_LOAD_WRONG_ARCH;
-                    goto fail;
-                }
-            }
-            break;
-        case EM_MICROBLAZE:
-            if (ehdr.e_machine != EM_MICROBLAZE) {
-                if (ehdr.e_machine != EM_MICROBLAZE_OLD) {
-                    ret = ELF_LOAD_WRONG_ARCH;
-                    goto fail;
-                }
-            }
-            break;
-        case EM_MIPS:
-        case EM_NANOMIPS:
-            if ((ehdr.e_machine != EM_MIPS) &&
-                (ehdr.e_machine != EM_NANOMIPS)) {
+    case EM_PPC64:
+        if (ehdr.e_machine != EM_PPC64) {
+            if (ehdr.e_machine != EM_PPC) {
                 ret = ELF_LOAD_WRONG_ARCH;
                 goto fail;
             }
-            break;
-        default:
-            if (elf_machine != ehdr.e_machine) {
+        }
+        break;
+    case EM_X86_64:
+        if (ehdr.e_machine != EM_X86_64) {
+            if (ehdr.e_machine != EM_386) {
                 ret = ELF_LOAD_WRONG_ARCH;
                 goto fail;
             }
+        }
+        break;
+    case EM_MICROBLAZE:
+        if (ehdr.e_machine != EM_MICROBLAZE) {
+            if (ehdr.e_machine != EM_MICROBLAZE_OLD) {
+                ret = ELF_LOAD_WRONG_ARCH;
+                goto fail;
+            }
+        }
+        break;
+    case EM_MIPS:
+    case EM_NANOMIPS:
+        if ((ehdr.e_machine != EM_MIPS) &&
+            (ehdr.e_machine != EM_NANOMIPS)) {
+            ret = ELF_LOAD_WRONG_ARCH;
+            goto fail;
+        }
+        break;
+    default:
+        if (elf_machine != ehdr.e_machine) {
+            ret = ELF_LOAD_WRONG_ARCH;
+            goto fail;
+        }
     }
 
     if (pflags) {
@@ -620,5 +620,70 @@ static ssize_t glue(load_elf, SZ)(const char *name, int fd,
         g_mapped_file_unref(mapped_file);
     }
     g_free(phdr);
+    return ret;
+}
+
+static int glue(load_elf_symbols, SZ)(const char *name, int fd, int must_swab,
+                                      int elf_machine, int clear_lsb)
+{
+    struct elfhdr ehdr;
+    int ret = ELF_LOAD_FAILED;
+
+    if (read(fd, &ehdr, sizeof(ehdr)) != sizeof(ehdr)) {
+        goto fail;
+    }
+    if (must_swab) {
+        glue(bswap_ehdr, SZ)(&ehdr);
+    }
+
+    if (elf_machine <= EM_NONE) {
+        /* The caller didn't specify an ARCH, we can figure it out */
+        elf_machine = ehdr.e_machine;
+    }
+
+    switch (elf_machine) {
+    case EM_PPC64:
+        if (ehdr.e_machine != EM_PPC64) {
+            if (ehdr.e_machine != EM_PPC) {
+                ret = ELF_LOAD_WRONG_ARCH;
+                goto fail;
+            }
+        }
+        break;
+    case EM_X86_64:
+        if (ehdr.e_machine != EM_X86_64) {
+            if (ehdr.e_machine != EM_386) {
+                ret = ELF_LOAD_WRONG_ARCH;
+                goto fail;
+            }
+        }
+        break;
+    case EM_MICROBLAZE:
+        if (ehdr.e_machine != EM_MICROBLAZE) {
+            if (ehdr.e_machine != EM_MICROBLAZE_OLD) {
+                ret = ELF_LOAD_WRONG_ARCH;
+                goto fail;
+            }
+        }
+        break;
+    case EM_MIPS:
+    case EM_NANOMIPS:
+        if ((ehdr.e_machine != EM_MIPS) &&
+            (ehdr.e_machine != EM_NANOMIPS)) {
+            ret = ELF_LOAD_WRONG_ARCH;
+            goto fail;
+        }
+        break;
+    default:
+        if (elf_machine != ehdr.e_machine) {
+            ret = ELF_LOAD_WRONG_ARCH;
+            goto fail;
+        }
+    }
+
+    glue(load_symbols, SZ)(&ehdr, fd, must_swab, clear_lsb, NULL);
+    ret = 0;
+
+fail:
     return ret;
 }

@@ -514,6 +514,61 @@ ssize_t load_elf_ram_sym(const char *filename,
     return ret;
 }
 
+/* return < 0 if error, otherwise 0 */
+int load_elf_sym(const char *filename, int big_endian, int elf_machine,
+                 int clear_lsb)
+{
+    int fd, data_order, target_data_order, must_swab;
+    ssize_t ret = ELF_LOAD_FAILED;
+    uint8_t e_ident[EI_NIDENT];
+
+    fd = open(filename, O_RDONLY | O_BINARY);
+    if (fd < 0) {
+        perror(filename);
+        return -1;
+    }
+    if (read(fd, e_ident, sizeof(e_ident)) != sizeof(e_ident)) {
+        goto fail;
+    }
+    if (e_ident[0] != ELFMAG0 ||
+        e_ident[1] != ELFMAG1 ||
+        e_ident[2] != ELFMAG2 ||
+        e_ident[3] != ELFMAG3) {
+        ret = ELF_LOAD_NOT_ELF;
+        goto fail;
+    }
+#if HOST_BIG_ENDIAN
+    data_order = ELFDATA2MSB;
+#else
+    data_order = ELFDATA2LSB;
+#endif
+    must_swab = data_order != e_ident[EI_DATA];
+    if (big_endian) {
+        target_data_order = ELFDATA2MSB;
+    } else {
+        target_data_order = ELFDATA2LSB;
+    }
+
+    if (target_data_order != e_ident[EI_DATA]) {
+        ret = ELF_LOAD_WRONG_ENDIAN;
+        goto fail;
+    }
+
+    lseek(fd, 0, SEEK_SET);
+    if (e_ident[EI_CLASS] == ELFCLASS64) {
+        ret = load_elf_symbols64(filename, fd, must_swab, elf_machine,
+                                 clear_lsb);
+    } else {
+        ret = load_elf_symbols32(filename, fd, must_swab, elf_machine,
+                                 clear_lsb);
+    }
+
+ fail:
+    close(fd);
+    return ret;
+}
+
+
 static void bswap_uboot_header(uboot_image_header_t *hdr)
 {
 #if !HOST_BIG_ENDIAN
