@@ -21,6 +21,9 @@ config OT_LIFECYCLE
 config OT_OTP
     bool
 
+config OT_PINMUX
+    bool
+
 config OT_PWRMGR
     bool
 
