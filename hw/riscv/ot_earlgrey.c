@@ -39,6 +39,7 @@
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_pinmux.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_sensor.h"
 #include "hw/qdev-properties.h"
@@ -375,9 +376,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_PINMUX] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-pinmux",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_PINMUX,
         .memmap = MEMMAPENTRIES(
             { 0x40460000u, 0x1000u }
         ),

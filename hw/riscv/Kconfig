@@ -20,6 +20,7 @@ config OT_EARLGREY
     select OT_ENTROPY_SRC
     select OT_LIFECYCLE
     select OT_OTP
+    select OT_PINMUX
     select OT_PWRMGR
     select OT_SENSOR
     select SIFIVE_PLIC
