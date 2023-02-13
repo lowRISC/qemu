@@ -203,6 +203,9 @@ ssize_t load_elf(const char *filename,
  */
 void load_elf_hdr(const char *filename, void *hdr, bool *is64, Error **errp);
 
+int load_elf_sym(const char *filename, int big_endian, int elf_machine,
+                 int clear_lsb);
+
 ssize_t load_aout(const char *filename, hwaddr addr, int max_sz,
                   int bswap_needed, hwaddr target_page_size);
 
