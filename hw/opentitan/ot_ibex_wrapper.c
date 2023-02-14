@@ -30,6 +30,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "exec/address-spaces.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/qdev-properties-system.h"
@@ -38,6 +39,11 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/sysbus.h"
 #include "trace.h"
+
+#define PARAM_NUM_SW_ALERTS     2u
+#define PARAM_NUM_REGIONS       2u
+#define PARAM_NUM_SCRATCH_WORDS 8u
+#define PARAM_NUM_ALERTS        4u
 
 /* clang-format off */
 REG32(ALERT_TEST, 0x0u)
@@ -120,10 +126,14 @@ static const char *REG_NAMES[REGS_COUNT] = {
     REG_NAME_ENTRY(FPGA_INFO),
 };
 
+#define xtrace_ot_ibex_wrapper_info(_msg_) \
+    trace_ot_ibex_wrapper_info(__func__, __LINE__, _msg_)
+
 struct OtIbexWrapperState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
+    MemoryRegion remappers[PARAM_NUM_REGIONS];
 
     uint32_t *regs;
     bool entropy_requested;
@@ -132,6 +142,52 @@ struct OtIbexWrapperState {
     OtEDNState *edn;
     uint8_t edn_ep;
 };
+
+static void
+ot_ibex_wrapper_remapper_destroy(OtIbexWrapperState *s, unsigned slot)
+{
+    assert(slot < 2u);
+    MemoryRegion *mr = &s->remappers[slot];
+    if (memory_region_is_mapped(mr)) {
+        trace_ot_ibex_wrapper_unmap(slot);
+        memory_region_transaction_begin();
+        memory_region_set_enabled(mr, false);
+        /* QEMU memory model enables unparenting alias regions */
+        MemoryRegion *sys_mem = get_system_memory();
+        memory_region_del_subregion(sys_mem, mr);
+        memory_region_transaction_commit();
+    }
+}
+
+static void ot_ibex_wrapper_remapper_create(
+    OtIbexWrapperState *s, unsigned slot, hwaddr dst, hwaddr src, size_t size)
+{
+    assert(slot < 2u);
+    MemoryRegion *mr = &s->remappers[slot];
+    trace_ot_ibex_wrapper_map(slot, src, dst, size);
+    assert(!memory_region_is_mapped(mr));
+
+    int priority = (int)(PARAM_NUM_REGIONS - slot);
+
+    MemoryRegion *sys_mem = get_system_memory();
+    MemoryRegion *mr_dst;
+
+    char *name = g_strdup_printf(TYPE_OT_IBEX_WRAPPER "-remap[%u]", slot);
+
+    memory_region_transaction_begin();
+    /*
+     * try to map onto the actual device if there's a single one, otherwise
+     * map on the whole address space.
+     */
+    MemoryRegionSection mrs;
+    mrs = memory_region_find(sys_mem, dst, (uint64_t)size);
+    mr_dst = (mrs.mr && mrs.size >= size) ? mrs.mr : sys_mem;
+    memory_region_init_alias(mr, OBJECT(s), name, mr_dst, 0u, (uint64_t)size);
+    memory_region_add_subregion_overlap(sys_mem, src, mr, priority);
+    memory_region_set_enabled(mr, true);
+    memory_region_transaction_commit();
+    g_free(name);
+}
 
 static void ot_ibex_wrapper_fill_entropy(void *opaque, uint32_t bits, bool fips)
 {
@@ -162,6 +218,49 @@ static void ot_ibex_wrapper_request_entropy(OtIbexWrapperState *s)
             s->entropy_requested = false;
             trace_ot_ibex_wrapper_error("failed to request entropy");
         }
+    }
+}
+
+static void
+ot_ibex_wrapper_update_remap(OtIbexWrapperState *s, bool doi, unsigned slot)
+{
+    assert(slot < 2u);
+    /*
+     * Warning:
+     * for now, QEMU is unable to distinguish instruction or data access.
+     * in this implementation, we chose to enable remap whenever either D or I
+     * remapping is selected, and both D & I configuration match; we disable
+     * translation when both D & I are remapping are disabled
+     */
+
+    bool en_remap_i = s->regs[R_IBUS_ADDR_EN_0 + slot];
+    bool en_remap_d = s->regs[R_DBUS_ADDR_EN_0 + slot];
+    if (!en_remap_i && !en_remap_d) {
+        /* disable */
+        ot_ibex_wrapper_remapper_destroy(s, slot);
+    } else {
+        uint32_t src_match_i = s->regs[R_IBUS_ADDR_MATCHING_0 + slot];
+        uint32_t src_match_d = s->regs[R_DBUS_ADDR_MATCHING_0 + slot];
+        if (src_match_i != src_match_d) {
+            /* I and D do not match, do nothing */
+            xtrace_ot_ibex_wrapper_info("src remapping do not match");
+            return;
+        }
+        uint32_t remap_addr_i = s->regs[R_IBUS_REMAP_ADDR_0 + slot];
+        uint32_t remap_addr_d = s->regs[R_DBUS_REMAP_ADDR_0 + slot];
+        if (remap_addr_i != remap_addr_d) {
+            /* I and D do not match, do nothing */
+            xtrace_ot_ibex_wrapper_info("dst remapping do not match");
+            return;
+        }
+        /* enable */
+        uint32_t map_size = (-src_match_i & (src_match_i + 1u)) << 1u;
+        uint32_t src_base = src_match_i & ~(map_size - 1u);
+        uint32_t dst_base = remap_addr_i;
+
+        ot_ibex_wrapper_remapper_destroy(s, slot);
+        ot_ibex_wrapper_remapper_create(s, slot, (hwaddr)dst_base,
+                                        (hwaddr)src_base, (size_t)map_size);
     }
 }
 
@@ -226,6 +325,51 @@ static void ot_ibex_wrapper_regs_write(void *opaque, hwaddr addr,
             exit((int)val32);
         }
         break;
+    case R_IBUS_REGWEN_0:
+    case R_IBUS_REGWEN_1:
+    case R_DBUS_REGWEN_0:
+    case R_DBUS_REGWEN_1:
+        val32 &= REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
+    case R_IBUS_ADDR_EN_0:
+    case R_IBUS_ADDR_EN_1:
+        if (s->regs[reg - R_IBUS_ADDR_EN_0 + R_IBUS_REGWEN_0]) {
+            s->regs[reg] = val32;
+        }
+        ot_ibex_wrapper_update_remap(s, false, reg - R_IBUS_ADDR_EN_0);
+        break;
+    case R_IBUS_ADDR_MATCHING_0:
+    case R_IBUS_ADDR_MATCHING_1:
+        if (s->regs[reg - R_IBUS_ADDR_MATCHING_0 + R_IBUS_REGWEN_0]) {
+            s->regs[reg] = val32;
+        }
+        break;
+    case R_IBUS_REMAP_ADDR_0:
+    case R_IBUS_REMAP_ADDR_1:
+        if (s->regs[reg - R_IBUS_REMAP_ADDR_0 + R_IBUS_REGWEN_0]) {
+            s->regs[reg] = val32;
+        }
+        break;
+    case R_DBUS_ADDR_EN_0:
+    case R_DBUS_ADDR_EN_1:
+        if (s->regs[reg - R_DBUS_ADDR_EN_0 + R_DBUS_REGWEN_0]) {
+            s->regs[reg] = val32;
+        }
+        ot_ibex_wrapper_update_remap(s, true, reg - R_DBUS_ADDR_EN_0);
+        break;
+    case R_DBUS_ADDR_MATCHING_0:
+    case R_DBUS_ADDR_MATCHING_1:
+        if (s->regs[reg - R_DBUS_ADDR_MATCHING_0 + R_DBUS_REGWEN_0]) {
+            s->regs[reg] = val32;
+        }
+        break;
+    case R_DBUS_REMAP_ADDR_0:
+    case R_DBUS_REMAP_ADDR_1:
+        if (s->regs[reg - R_DBUS_REMAP_ADDR_0 + R_DBUS_REGWEN_0]) {
+            s->regs[reg] = val32;
+        }
+        break;
     default:
         s->regs[reg] = val32;
         break;
@@ -252,6 +396,10 @@ static void ot_ibex_wrapper_reset(DeviceState *dev)
 
     assert(s->edn);
     assert(s->edn_ep != UINT8_MAX);
+
+    for (unsigned slot = 0; slot < PARAM_NUM_REGIONS; slot++) {
+        ot_ibex_wrapper_remapper_destroy(s, slot);
+    }
 
     memset(s->regs, 0, REGS_SIZE);
     s->regs[R_SW_RECOV_ERR] = 0x9u;

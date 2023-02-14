@@ -89,8 +89,11 @@ ot_flash_info_part(uint32_t op_addr, unsigned bank, unsigned infosel, unsigned a
 
 ot_ibex_wrapper_io_read_out(unsigned int addr, const char * regname, uint32_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%08x, pc=0x%" PRIx64
 ot_ibex_wrapper_io_write(unsigned int addr, const char * regname, uint32_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%08x, pc=0x%" PRIx64
+ot_ibex_wrapper_info(const char *func, int line, const char *msg) "%s:%d %s"
+ot_ibex_wrapper_map(unsigned slot, uint32_t src, uint32_t dst, uint32_t size) "region %u from 0x%08x to 0x%08x on 0x%x bytes"
 ot_ibex_wrapper_fill_entropy(uint32_t bits, bool fips) "0x%08" PRIx32 " fips:%u"
 ot_ibex_wrapper_request_entropy(bool again) "%u"
+ot_ibex_wrapper_unmap(unsigned slot) "region %u"
 ot_ibex_wrapper_error(const char *msg) "%s"
 
 # ot_lifecycle.c
