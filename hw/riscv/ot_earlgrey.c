@@ -38,6 +38,13 @@
 #include "sysemu/sysemu.h"
 
 /* ------------------------------------------------------------------------ */
+/* Forward Declarations */
+/* ------------------------------------------------------------------------ */
+
+static void ot_earlgrey_soc_hart_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+
+/* ------------------------------------------------------------------------ */
 /* Constants */
 /* ------------------------------------------------------------------------ */
 
@@ -125,6 +132,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
     /* clang-format off */
     [OT_EARLGREY_SOC_DEV_HART] = {
         .type = TYPE_RISCV_CPU_LOWRISC_IBEX,
+        .cfg = &ot_earlgrey_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_BOOL_PROP("pmp", true),
@@ -541,6 +549,60 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
     /* clang-format on */
 };
 
+#define PMP_CFG(_l_, _a_, _x_, _w_, _r_) \
+    ((uint8_t)(((_l_) << 7u) | ((_a_) << 3u) | ((_x_) << 2u) | ((_w_) << 1u) | \
+               ((_r_))))
+#define PMP_ADDR(_a_) ((_a_) >> 2u)
+
+#define MSECCFG(_rlb_, _mmwp_, _mml_) \
+    (((_rlb_) << 2u) | ((_mmwp_) << 1u) | ((_mml_)))
+
+enum { PMP_MODE_OFF, PMP_MODE_TOR, PMP_MODE_NA4, PMP_MODE_NAPOT };
+
+static const uint8_t ot_earlgrey_pmp_cfgs[] = {
+    /* clang-format off */
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(1, PMP_MODE_NAPOT, 1, 0, 1), /* rgn 2  [ROM: LRX]      */
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(1, PMP_MODE_TOR, 0, 1, 1), /* rgn 11 [MMIO: LRW] */
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(1, PMP_MODE_NAPOT, 1, 1, 1), /* rgn 13 [DV_ROM: LRWX]  */
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
+    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0)
+    /* clang-format on */
+};
+
+static const uint32_t ot_earlgrey_pmp_addrs[] = {
+    /* clang-format off */
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x000083fc), /* rgn 2 [ROM: base=0x0000_8000 size (2KiB)]      */
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x40000000), /* rgn 10 [MMIO: lo=0x4000_0000]                  */
+    PMP_ADDR(0x42010000), /* rgn 11 [MMIO: hi=0x4201_0000]                  */
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x000107fc), /* rgn 13 [DV_ROM: base=0x0001_0000 size (4KiB)]  */
+    PMP_ADDR(0x00000000),
+    PMP_ADDR(0x00000000)
+    /* clang-format on */
+};
+
+#define OT_EARLGREY_MSECCFG MSECCFG(1, 1, 0)
+
 enum OtEarlgreyBoardDevice {
     OT_EARLGREY_BOARD_DEV_SOC,
     _OT_EARLGREY_BOARD_DEV_COUNT,
@@ -566,6 +628,32 @@ struct OtEarlGreyBoardState {
 struct OtEarlGreyMachineState {
     MachineState parent_obj;
 };
+
+/* ------------------------------------------------------------------------ */
+/* Device Configuration */
+/* ------------------------------------------------------------------------ */
+
+static void ot_earlgrey_soc_hart_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    qdev_prop_set_uint32(dev, PROP_ARRAY_LEN_PREFIX "pmp_cfg",
+                         ARRAY_SIZE(ot_earlgrey_pmp_cfgs));
+    for (unsigned ix = 0; ix < ARRAY_SIZE(ot_earlgrey_pmp_cfgs); ix++) {
+        char *propname = g_strdup_printf("pmp_cfg[%u]", ix);
+        qdev_prop_set_uint8(dev, propname, ot_earlgrey_pmp_cfgs[ix]);
+        g_free(propname);
+    }
+
+    qdev_prop_set_uint32(dev, PROP_ARRAY_LEN_PREFIX "pmp_addr",
+                         ARRAY_SIZE(ot_earlgrey_pmp_addrs));
+    for (unsigned ix = 0; ix < ARRAY_SIZE(ot_earlgrey_pmp_addrs); ix++) {
+        char *propname = g_strdup_printf("pmp_addr[%u]", ix);
+        qdev_prop_set_uint64(dev, propname,
+                             (uint64_t)ot_earlgrey_pmp_addrs[ix]);
+        g_free(propname);
+    }
+    qdev_prop_set_uint64(dev, "mseccfg", (uint64_t)OT_EARLGREY_MSECCFG);
+}
 
 /* ------------------------------------------------------------------------ */
 /* SoC */
