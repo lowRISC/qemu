@@ -517,6 +517,13 @@ struct RISCVCPUConfig {
 
 #ifndef CONFIG_USER_ONLY
     RISCVSATPMap satp_mode;
+
+    /* physical memory protection HW configuration */
+    uint8_t *pmp_cfg;
+    uint32_t pmp_cfg_count;
+    uint64_t *pmp_addr;
+    uint32_t pmp_addr_count;
+    uint64_t mseccfg;
 #endif
 };
 
