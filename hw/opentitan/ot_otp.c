@@ -33,6 +33,7 @@
 #include "qapi/error.h"
 #include "hw/irq.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -428,6 +429,9 @@ struct OtOTPState {
     OtOTPHWCfg *hw_cfg;
 
     BlockBackend *blk; /* OTP backend */
+
+    OtEDNState *edn;
+    uint8_t edn_ep;
 };
 
 static const OtOTPPartition OtOTPPartitions[] = {
@@ -1222,6 +1226,8 @@ static void ot_otp_load_hw_cfg(OtOTPState *s)
 
 static Property ot_otp_properties[] = {
     DEFINE_PROP_DRIVE("drive", OtOTPState, blk),
+    DEFINE_PROP_LINK("edn", OtOTPState, edn, TYPE_OT_EDN, OtEDNState *),
+    DEFINE_PROP_UINT8("edn-ep", OtOTPState, edn_ep, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
 
