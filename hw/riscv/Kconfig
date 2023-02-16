@@ -13,6 +13,7 @@ config OT_EARLGREY
     bool
     select IBEX
     select IBEX_COMMON
+    select OT_ALERT
     select SIFIVE_PLIC
 
 config IBEXDEMO
