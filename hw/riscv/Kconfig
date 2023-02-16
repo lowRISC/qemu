@@ -15,6 +15,7 @@ config OT_EARLGREY
     select IBEX_COMMON
     select OT_AES
     select OT_ALERT
+    select OT_AON_TIMER
     select OT_AST
     select OT_CLKMGR
     select OT_CSRNG
