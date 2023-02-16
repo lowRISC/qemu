@@ -34,6 +34,7 @@
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_aon_timer.h"
 #include "hw/opentitan/ot_ast.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_csrng.h"
@@ -75,7 +76,11 @@ static void ot_earlgrey_soc_uart_configure(
 /* Constants */
 /* ------------------------------------------------------------------------ */
 
+/* EarlGrey/CW310 Peripheral clock is 2.5 MHz */
 #define OT_EARLGREY_PERIPHERAL_CLK_HZ 2500000u
+
+/* EarlGrey/CW310 AON clock is 250 kHz */
+#define OT_EARLGREY_AON_CLK_HZ 250000u
 
 enum OtEarlgreySocMemory {
     OT_EARLGREY_SOC_MEM_ROM,
@@ -472,11 +477,16 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_AON_TIMER] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-aon_timer",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_AON_TIMER,
         .memmap = MEMMAPENTRIES(
             { 0x40470000u, 0x40u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 156)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_AON_CLK_HZ)
         ),
     },
     [OT_EARLGREY_SOC_DEV_AST] = {
