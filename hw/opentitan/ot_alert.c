@@ -36,6 +36,7 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_edn.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -234,6 +235,9 @@ struct OtAlertState {
     IbexIRQ irqs[PARAM_N_CLASSES];
 
     OtAlertRegs *regs;
+
+    OtEDNState *edn;
+    uint8_t edn_ep;
 };
 
 static inline bool
@@ -601,6 +605,8 @@ static void ot_alert_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_alert_properties[] = {
+    DEFINE_PROP_LINK("edn", OtAlertState, edn, TYPE_OT_EDN, OtEDNState *),
+    DEFINE_PROP_UINT8("edn-ep", OtAlertState, edn_ep, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
 
