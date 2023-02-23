@@ -16,6 +16,7 @@ config OT_EARLGREY
     select OT_ALERT
     select OT_AST
     select OT_CSRNG
+    select OT_EDN
     select OT_ENTROPY_SRC
     select OT_OTP
     select SIFIVE_PLIC
