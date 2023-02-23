@@ -6,4 +6,5 @@ libtomcrypt_dep = subproject('libtomcrypt').get_variable('libtomcrypt_dep')
 
 softmmu_ss.add(when: 'CONFIG_OT_ALERT', if_true: files('ot_alert.c'))
 softmmu_ss.add(when: 'CONFIG_OT_AST', if_true: files('ot_ast.c'))
+softmmu_ss.add(when: 'CONFIG_OT_ENTROPY_SRC', if_true: files('ot_entropy_src.c'))
 softmmu_ss.add(when: 'CONFIG_OT_OTP', if_true: files('ot_otp.c'))
