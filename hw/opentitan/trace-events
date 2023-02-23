@@ -10,6 +10,33 @@ ot_alert_io_write(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, va
 ot_ast_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_ast_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_csrng.c
+
+ot_csrng_change_state(int line, const char *old, int nold, const char *new, int nnew) "@ %d [%s:%d] -> [%s:%d]"
+ot_csrng_command_scheduler(unsigned slot, const char *action) "#%u: %s"
+ot_csrng_complete_command(unsigned slot, const char *kind, const char *cmd, unsigned acmd, int res) "#%u (%s) acmd: %s(%u): %d"
+ot_csrng_connection(unsigned slot) "#%u"
+ot_csrng_end_of_gen(unsigned slot, unsigned rempack) "#%u rem %u"
+ot_csrng_entropy_injecter(unsigned slot, const char *action) "#%u: %s"
+ot_csrng_error(const char *func, int line, const char *err) "%s:%d %s"
+ot_csrng_expedite_uninstantiation(unsigned slot) "#%u"
+ot_csrng_fill_entropy(unsigned slot, bool fips) "#%u fips %u"
+ot_csrng_generate(unsigned slot, unsigned count) "#%u %u packets to generate"
+ot_csrng_hwapp_need_entropy(unsigned slot, const char *msg) "#%u: %s"
+ot_csrng_hwapp_ready(unsigned slot, bool ready, unsigned rem) "#%u: %u rem %u"
+ot_csrng_info(const char *func, int line, const char *msg, uint32_t value) "%s:%d %s: 0x%08x"
+ot_csrng_instanciate(unsigned slot, bool on) "#%u: %u"
+ot_csrng_invalid_state(const char *func, const char *state, int st) "%s [%s:%d]"
+ot_csrng_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_csrng_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_csrng_irqs(uint32_t active, uint32_t mask, uint32_t eff) "act:0x%08x msk:0x%08x eff:0x%08x"
+ot_csrng_push_command(unsigned slot, const char *cmd, unsigned acmd, char code, unsigned len) "#%u: %s(%u) %clen: %u"
+ot_csrng_retry_es_init(unsigned retry_count) "rescheduling initial ES request: %u to go"
+ot_csrng_schedule(unsigned slot, const char *kind) "#%u: %s"
+ot_csrng_show_command(const char *msg, unsigned slot, const char *cmd, unsigned acmd) "%s slot #%u, acmd: %s(%u)"
+ot_csrng_swapp_fill(unsigned count) "%u to go"
+ot_csrng_try_schedule_genbits(unsigned slot, bool ready, bool queued, unsigned rem) "? #%u rdy:%u q:%u rem:%u"
+
 # ot_entropy_src.c
 
 ot_entropy_src_available(const char *state, int st) "entropy source is ready in [%s:%u]"
