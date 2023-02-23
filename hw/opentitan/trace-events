@@ -37,6 +37,29 @@ ot_csrng_show_command(const char *msg, unsigned slot, const char *cmd, unsigned 
 ot_csrng_swapp_fill(unsigned count) "%u to go"
 ot_csrng_try_schedule_genbits(unsigned slot, bool ready, bool queued, unsigned rem) "? #%u rdy:%u q:%u rem:%u"
 
+# ot_edn.c
+
+ot_edn_change_state(unsigned appid, int line, const char *old, int nold, const char *new, int nnew) "a#%u @ %d [%s:%d] -> [%s:%d]"
+ot_edn_connect_endpoint(unsigned appid, unsigned epid) "a#%u:e#%u"
+ot_edn_ctrl_in_state(unsigned appid, const char *state, int nstate) "a#%u [%s:%d]"
+ot_edn_csrng_ack(unsigned appid, const char *state, int level) "a#%u %s %d"
+ot_edn_enable(unsigned appid, const char *msg) "a#%u: %s"
+ot_edn_ep_fifo(unsigned appid, const char *msg, unsigned remwslot) "a#%u %s rem:%u"
+ot_edn_ep_request(unsigned appid, bool avail, const char *state, int st, bool refill, unsigned rem) "a#%u avail %u, [%s:%d], refill %u, rem %u"
+ot_edn_error(unsigned appid, const char *func, int line, const char *err) "a#%u %s:%d %s"
+ot_edn_fill_bits(unsigned appid, unsigned rem, bool packet_fips, bool fips) "a#%u rem %u, fips %u/%u"
+ot_edn_fill_endpoint(unsigned appid, unsigned epid, uint32_t bits, bool fips, size_t gcnt, size_t tcnt) "a#%u:e#%u bits 0x%08x fips %u count %lu/%lu"
+ot_edn_dinfo(unsigned appid, const char *func, int line, const char *msg, uint32_t value) "a#%u %s:%d %s %u"
+ot_edn_xinfo(unsigned appid, const char *func, int line, const char *msg, uint32_t value) "a#%u %s:%d %s 0x%08x"
+ot_edn_invalid_state(unsigned appid, const char *func, const char *state, int st) "a#%u %s [%s:%d]"
+ot_edn_io_read_out(unsigned appid, unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "a#%u addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_edn_io_write(unsigned appid, unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "a#%u addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_edn_irqs(unsigned appid, uint32_t active, uint32_t mask, uint32_t eff) "#%u act:0x%08x msk:0x%08x eff:0x%08x"
+ot_edn_request_entropy(unsigned appid, unsigned epid) "a#%u:e#%u"
+ot_edn_schedule(unsigned appid, const char *cause) "a#%u %s"
+ot_edn_handle_ep_request(unsigned appid, unsigned epid) "a#%u:e#%u"
+ot_edn_update_genbits_ready(unsigned appid, unsigned rem, unsigned fslot, bool accept) "a#%u rem packet %u, free slot %u, accept? %u"
+
 # ot_entropy_src.c
 
 ot_entropy_src_available(const char *state, int st) "entropy source is ready in [%s:%u]"
