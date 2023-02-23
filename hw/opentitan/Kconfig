@@ -9,6 +9,9 @@ config OT_AST
 config OT_CSRNG
     bool
 
+config OT_EDN
+    bool
+
 config OT_ENTROPY_SRC
     bool
 
