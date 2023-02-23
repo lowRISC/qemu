@@ -35,6 +35,7 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_ast.h"
 #include "hw/opentitan/ot_csrng.h"
+#include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties.h"
@@ -494,21 +495,37 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_EDN0] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-edn",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_EDN,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
             { 0x41170000u, 0x80u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 181),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 182)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("csrng", CSRNG)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("csrng-app", 0u)
+        ),
     },
     [OT_EARLGREY_SOC_DEV_EDN1] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-edn",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_EDN,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
             { 0x41180000u, 0x80u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 183),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 184)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("csrng", CSRNG)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("csrng-app", 1u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_SRAM_CTRL_MAIN] = {
