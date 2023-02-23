@@ -132,6 +132,14 @@ ot_ibex_wrapper_request_entropy(bool again) "%u"
 ot_ibex_wrapper_unmap(unsigned slot) "region %u"
 ot_ibex_wrapper_error(const char *msg) "%s"
 
+# ot_kmac.c
+ot_kmac_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
+ot_kmac_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_kmac_state_read_out(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%03x, val=0x%" PRIx64", pc=0x%" PRIx64
+ot_kmac_msgfifo_write(unsigned int addr, uint64_t val, unsigned int size, uint64_t pc) "addr=0x%03x, val=0x%" PRIx64 " (%u), pc=0x%" PRIx64
+ot_kmac_report_error(uint8_t code, uint32_t info) "code=0x%02x info=0x%06x"
+ot_kmac_debug(const char *msg) "%s"
+
 # ot_lifecycle.c
 
 ot_lifecycle_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
