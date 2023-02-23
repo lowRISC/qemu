@@ -10,6 +10,20 @@ ot_alert_io_write(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, va
 ot_ast_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_ast_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_entropy_src.c
+
+ot_entropy_src_available(const char *state, int st) "entropy source is ready in [%s:%u]"
+ot_entropy_src_change_state(int line, const char *old, int nold, const char *new, int nnew) "@ %d [%s:%d] -> [%s:%d]"
+ot_entropy_src_error(const char *msg, const char *state, int st) "%s [%s:%u]"
+ot_entropy_src_hwfifo_fill_entropy(unsigned count) "up to %u"
+ot_entropy_src_info(const char *msg) "%s"
+ot_entropy_src_init_ongoing(const char *state, int st) "entropy source still initializing in [%s:%u]"
+ot_entropy_src_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_entropy_src_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_entropy_src_is_fips_capable(bool en, bool es_route, bool es_type, bool rng_bit_en, bool res) "en:%u rt:%u tp:%u rb:%u => %u"
+ot_entropy_src_no_entropy(unsigned count) "only %u words available"
+ot_entropy_src_otp_conf(bool fw_read, bool fw_over) "fw_read: %u fw_over %u"
+
 # ot_otp.c
 
 ot_otp_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64

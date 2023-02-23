@@ -6,5 +6,8 @@ config OT_ALERT
 config OT_AST
     bool
 
+config OT_ENTROPY_SRC
+    bool
+
 config OT_OTP
     bool
