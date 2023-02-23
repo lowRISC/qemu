@@ -34,6 +34,7 @@
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_ast.h"
+#include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
@@ -468,11 +469,19 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_ENTROPY_SRC] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-entropy_src",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_ENTROPY_SRC,
         .memmap = MEMMAPENTRIES(
             { 0x41160000u, 0x100u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 177),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 178),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 179),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 180)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("ast", AST),
+            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
     },
     [OT_EARLGREY_SOC_DEV_EDN0] = {
