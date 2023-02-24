@@ -20,10 +20,26 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef HW_RISCV_OT_COMMON_H
-#define HW_RISCV_OT_COMMON_H
+#ifndef HW_OPENTITAN_OT_COMMON_H
+#define HW_OPENTITAN_OT_COMMON_H
 
 #include "qemu/osdep.h"
+
+/* ------------------------------------------------------------------------ */
+/* Multi-bit boolean values */
+/* ------------------------------------------------------------------------ */
+
+#define OT_MULTIBITBOOL4_TRUE  0x6u
+#define OT_MULTIBITBOOL4_FALSE 0x9u
+
+#define OT_MULTIBITBOOL8_TRUE  0x96u
+#define OT_MULTIBITBOOL8_FALSE 0x69u
+
+#define OT_MULTIBITBOOL12_TRUE  0x696u
+#define OT_MULTIBITBOOL12_FALSE 0x969u
+
+#define OT_MULTIBITBOOL16_TRUE  0x9696u
+#define OT_MULTIBITBOOL16_FALSE 0x6969u
 
 /* ------------------------------------------------------------------------ */
 /* Shadow Registers */
@@ -100,4 +116,4 @@ static inline uint32_t ot_shadow_reg_read(OtShadowReg *sreg)
     return sreg->committed;
 }
 
-#endif /* HW_RISCV_OT_COMMON_H */
+#endif /* HW_OPENTITAN_OT_COMMON_H */
