@@ -627,6 +627,8 @@ struct OtEarlGreyBoardState {
 
 struct OtEarlGreyMachineState {
     MachineState parent_obj;
+
+    bool no_epmp_cfg;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -636,6 +638,12 @@ struct OtEarlGreyMachineState {
 static void ot_earlgrey_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
+    OtEarlGreyMachineState *ms = RISCV_OT_EARLGREY_MACHINE(qdev_get_machine());
+    if (ms->no_epmp_cfg) {
+        /* skip default PMP config */
+        return;
+    }
+
     qdev_prop_set_uint32(dev, PROP_ARRAY_LEN_PREFIX "pmp_cfg",
                          ARRAY_SIZE(ot_earlgrey_pmp_cfgs));
     for (unsigned ix = 0; ix < ARRAY_SIZE(ot_earlgrey_pmp_cfgs); ix++) {
@@ -788,12 +796,31 @@ type_init(ot_earlgrey_board_register_types);
 /* Machine */
 /* ------------------------------------------------------------------------ */
 
+static bool ot_earlgrey_machine_get_no_epmp_cfg(Object *obj, Error **errp)
+{
+    OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
+
+    return s->no_epmp_cfg;
+}
+
+static void
+ot_earlgrey_machine_set_no_epmp_cfg(Object *obj, bool value, Error **errp)
+{
+    OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
+
+    s->no_epmp_cfg = value;
+}
+
 static void ot_earlgrey_machine_instance_init(Object *obj)
 {
     OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
 
-    /* nothing here */
-    (void)s;
+    s->no_epmp_cfg = false;
+    object_property_add_bool(obj, "no-epmp-cfg",
+                             &ot_earlgrey_machine_get_no_epmp_cfg,
+                             &ot_earlgrey_machine_set_no_epmp_cfg);
+    object_property_set_description(obj, "no-epmp-cfg",
+                                    "Skip default ePMP configuration");
 }
 
 static void ot_earlgrey_machine_init(MachineState *state)
