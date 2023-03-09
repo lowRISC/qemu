@@ -30,6 +30,9 @@ config OT_OTP
 config OT_PINMUX
     bool
 
+config OT_PRNG
+    bool
+
 config OT_PWRMGR
     bool
 
