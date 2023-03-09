@@ -74,6 +74,16 @@ ot_entropy_src_is_fips_capable(bool en, bool es_route, bool es_type, bool rng_bi
 ot_entropy_src_no_entropy(unsigned count) "only %u words available"
 ot_entropy_src_otp_conf(bool fw_read, bool fw_over) "fw_read: %u fw_over %u"
 
+# ot_flash.c
+
+ot_flash_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
+ot_flash_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_flash_mem_read_out(unsigned addr, unsigned size, uint32_t val, uint64_t pc) "addr=0x%02x (%u), val=0x%08x, pc=0x%" PRIx64
+ot_flash_op_start(int op) "%d"
+ot_flash_op_complete(int op, bool success) "%d: %u"
+ot_flash_error(const char *func, int line, const char *err) "%s:%d %s"
+ot_flash_info(const char *func, int line, const char *msg, uint32_t value) "%s:%d %s: 0x%08x"
+
 # ot_lifecycle.c
 
 ot_lifecycle_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
