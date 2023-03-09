@@ -14,5 +14,6 @@ softmmu_ss.add(when: 'CONFIG_OT_IBEX_WRAPPER', if_true: files('ot_ibex_wrapper.c
 softmmu_ss.add(when: 'CONFIG_OT_LIFECYCLE', if_true: files('ot_lifecycle.c'))
 softmmu_ss.add(when: 'CONFIG_OT_OTP', if_true: files('ot_otp.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PINMUX', if_true: files('ot_pinmux.c'))
+softmmu_ss.add(when: 'CONFIG_OT_PRNG', if_true: files('ot_prng.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PWRMGR', if_true: files('ot_pwrmgr.c'))
 softmmu_ss.add(when: 'CONFIG_OT_SENSOR', if_true: files('ot_sensor.c'))
