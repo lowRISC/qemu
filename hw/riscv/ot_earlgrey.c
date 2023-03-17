@@ -285,6 +285,12 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 129),
             OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 130)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("edn-ep", 4u)
+        ),
     },
     [OT_EARLGREY_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
