@@ -83,12 +83,42 @@ static RISCVException any(CPURISCVState *env, int csrno)
     return RISCV_EXCP_NONE;
 }
 
+static RISCVException read_mtvec(CPURISCVState *env, int csrno,
+                                 target_ulong *val)
+{
+    *val = env->mtvec;
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_mtvec(CPURISCVState *env, int csrno,
+                                  target_ulong val)
+{
+    /* bits [1:0] encode mode; Ibex only supports 1 = vectored */
+    if ((val & 3u) != 1u) {
+        qemu_log_mask(LOG_UNIMP,
+            "CSR_MTVEC: reserved mode not supported 0x" TARGET_FMT_lx "\n",
+            val);
+        /* WARL */
+        return RISCV_EXCP_NONE;
+    }
+
+    /* bits [7:2] are always 0, address should be aligned in 256 bytes */
+    env->mtvec = val & ~0xFCu;
+
+    return RISCV_EXCP_NONE;
+}
+
 typedef struct {
     unsigned csrno;
     riscv_csr_operations ops;
 } riscv_custom_csr_operations;
 
 static riscv_custom_csr_operations csr_ibex_ops[] = {
+    {
+        .csrno = CSR_MTVEC,
+        .ops = { "mtvec", any, &read_mtvec, &write_mtvec },
+    },
     {
         .csrno = CSR_CPUCTRLSTS,
         .ops = { "cpuctrlsts", any, &read_cpuctrlsts, &write_cpuctrlsts },
