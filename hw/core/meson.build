@@ -46,6 +46,7 @@ softmmu_ss.add(files(
   'null-machine.c',
   'qdev-fw.c',
   'qdev-properties-system.c',
+  'rust_demangle.c',
   'sysbus.c',
   'vm-change-state-handler.c',
   'clock-vmstate.c',
