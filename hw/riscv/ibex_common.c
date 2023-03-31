@@ -24,6 +24,7 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "cpu.h"
+#include "disas/disas.h"
 #include "elf.h"
 #include "exec/hwaddr.h"
 #include "hw/boards.h"
@@ -33,6 +34,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/sysbus.h"
+#include "monitor/monitor.h"
 
 
 static void ibex_mmio_map_device(SysBusDevice *dev, MemoryRegion *mr,
@@ -293,3 +295,32 @@ void ibex_log_vcpu_registers(uint64_t regbm)
         }
     }
 }
+
+/*
+ * Note: this is not specific to Ibex, and might apply to any vCPU.
+ */
+static void hmp_info_ibex(Monitor *mon, const QDict *qdict)
+{
+    CPUState *cpu;
+
+    CPU_FOREACH(cpu) {
+        vaddr pc;
+        const char *symbol;
+        if (cpu->cc->get_pc) {
+            pc = cpu->cc->get_pc(cpu);
+            symbol = lookup_symbol(pc);
+        } else {
+            pc = -1;
+            symbol = "?";
+        }
+        monitor_printf(mon, "* CPU #%d: 0x%" PRIx64 " in '%s'\n",
+                       cpu->cpu_index, (uint64_t)pc, symbol);
+    }
+}
+
+static void ibex_register_types(void)
+{
+    monitor_register_hmp("ibex", true, &hmp_info_ibex);
+}
+
+type_init(ibex_register_types)

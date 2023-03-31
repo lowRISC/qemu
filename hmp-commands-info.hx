@@ -1007,3 +1007,15 @@ SRST
   ``info cryptodev``
     Show the crypto devices.
 ERST
+
+    {
+        .name       = "ibex",
+        .args_type  = "",
+        .params     = "",
+        .help       = "Show Ibex vCPU info",
+    },
+
+SRST
+  ``info ibex``
+    Show Ibex vCPU information.
+ERST
