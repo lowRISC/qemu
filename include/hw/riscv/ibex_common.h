@@ -287,4 +287,46 @@ void ibex_load_kernel(AddressSpace *as);
  */
 uint64_t ibex_get_current_pc(void);
 
+enum {
+    RV_GPR_PC = (1u << 0u),
+    RV_GPR_RA = (1u << 1u),
+    RV_GPR_SP = (1u << 2u),
+    RV_GPR_GP = (1u << 3u),
+    RV_GPR_TP = (1u << 4u),
+    RV_GPR_T0 = (1u << 5u),
+    RV_GPR_T1 = (1u << 6u),
+    RV_GPR_T2 = (1u << 7u),
+    RV_GPR_S0 = (1u << 8u),
+    RV_GPR_S1 = (1u << 9u),
+    RV_GPR_A0 = (1u << 10u),
+    RV_GPR_A1 = (1u << 11u),
+    RV_GPR_A2 = (1u << 12u),
+    RV_GPR_A3 = (1u << 13u),
+    RV_GPR_A4 = (1u << 14u),
+    RV_GPR_A5 = (1u << 15u),
+    RV_GPR_A6 = (1u << 16u),
+    RV_GPR_A7 = (1u << 17u),
+    RV_GPR_S2 = (1u << 18u),
+    RV_GPR_S3 = (1u << 19u),
+    RV_GPR_S4 = (1u << 20u),
+    RV_GPR_S5 = (1u << 21u),
+    RV_GPR_S6 = (1u << 22u),
+    RV_GPR_S7 = (1u << 23u),
+    RV_GPR_S8 = (1u << 24u),
+    RV_GPR_S9 = (1u << 25u),
+    RV_GPR_S10 = (1u << 26u),
+    RV_GPR_S11 = (1u << 27u),
+    RV_GPR_T3 = (1u << 28u),
+    RV_GPR_T4 = (1u << 29u),
+    RV_GPR_T5 = (1u << 30u),
+    RV_GPR_T6 = (1u << 31u),
+};
+
+/**
+ * Log current vCPU registers.
+ *
+ * @regbm is a bitmap of registers to be dumped [x1..t6], pc replace x0
+ */
+void ibex_log_vcpu_registers(uint64_t regbm);
+
 #endif /* HW_RISCV_IBEX_COMMON_H */
