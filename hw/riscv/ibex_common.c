@@ -22,6 +22,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
+#include "qemu/log.h"
 #include "cpu.h"
 #include "elf.h"
 #include "exec/hwaddr.h"
@@ -267,4 +268,28 @@ uint64_t ibex_get_current_pc(void)
     CPUState *cs = current_cpu;
 
     return cs && cs->cc->get_pc ? cs->cc->get_pc(cs) : 0u;
+}
+
+/* x0 is replaced with PC */
+static const char ibex_ireg_names[32u][4u] = {
+    "pc", "ra", "sp", "gp", "tp",  "t0",  "t1", "t2", "s0", "s1", "a0",
+    "a1", "a2", "a3", "a4", "a5",  "a6",  "a7", "s2", "s3", "s4", "s5",
+    "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
+};
+
+void ibex_log_vcpu_registers(uint64_t regbm)
+{
+    CPURISCVState *env = &RISCV_CPU(current_cpu)->env;
+    qemu_log_mask(CPU_LOG_TB_IN_ASM, "\n....\n");
+    if (regbm & 0x1u) {
+        qemu_log_mask(CPU_LOG_TB_IN_ASM, "%4s: 0x" TARGET_FMT_lx "\n",
+                      ibex_ireg_names[0], env->pc);
+    }
+    for (unsigned gix = 1u; gix < 32u; gix++) {
+        uint64_t mask = 1u << gix;
+        if (regbm & mask) {
+            qemu_log_mask(CPU_LOG_TB_IN_ASM, "%4s: 0x" TARGET_FMT_lx "\n",
+                          ibex_ireg_names[gix], env->gpr[gix]);
+        }
+    }
 }
