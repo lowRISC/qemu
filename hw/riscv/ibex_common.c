@@ -28,6 +28,7 @@
 #include "elf.h"
 #include "exec/hwaddr.h"
 #include "hw/boards.h"
+#include "hw/core/rust_demangle.h"
 #include "hw/loader.h"
 #include "hw/misc/unimp.h"
 #include "hw/qdev-core.h"
@@ -36,6 +37,8 @@
 #include "hw/sysbus.h"
 #include "monitor/monitor.h"
 
+static void rust_demangle_fn(const char *st_name, int st_info,
+                             uint64_t st_value, uint64_t st_size);
 
 static void ibex_mmio_map_device(SysBusDevice *dev, MemoryRegion *mr,
                                  unsigned nr, hwaddr addr)
@@ -250,7 +253,7 @@ void ibex_load_kernel(AddressSpace *as)
         uint64_t kernel_entry;
         if (load_elf_ram_sym(ms->kernel_filename, NULL, NULL, NULL,
                              &kernel_entry, NULL, NULL, NULL, 0, EM_RISCV, 1, 0,
-                             as, true, NULL) <= 0) {
+                             as, true, &rust_demangle_fn) <= 0) {
             error_report("Cannot load ELF kernel %s", ms->kernel_filename);
             exit(EXIT_FAILURE);
         }
@@ -294,6 +297,19 @@ void ibex_log_vcpu_registers(uint64_t regbm)
                           ibex_ireg_names[gix], env->gpr[gix]);
         }
     }
+}
+
+static void rust_demangle_fn(const char *st_name, int st_info,
+                             uint64_t st_value, uint64_t st_size)
+{
+    (void)st_info;
+    (void)st_value;
+
+    if (!st_size) {
+        return;
+    }
+
+    rust_demangle_replace((char *)st_name);
 }
 
 /*

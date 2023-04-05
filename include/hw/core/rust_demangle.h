@@ -53,5 +53,6 @@ int rust_demangle_callback(const char *mangled, int options,
                           demangle_callbackref callback, void *opaque);
 
 char * rust_demangle(const char *mangled, int options);
+void rust_demangle_replace(char *mangled);
 
 #endif // QEMU_RUST_DEMANGLE_H
