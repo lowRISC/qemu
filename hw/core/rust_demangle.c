@@ -1722,3 +1722,30 @@ rust_demangle (const char *mangled, int options)
   str_buf_append (&out, "\0", 1);
   return out.ptr;
 }
+
+void
+rust_demangle_replace (char *mangled)
+{
+  struct str_buf out;
+  int success;
+
+  out.ptr = NULL;
+  out.len = 0;
+  out.cap = 0;
+  out.errored = 0;
+
+  success = rust_demangle_callback(mangled, 0, str_buf_demangle_callback, &out);
+
+  if (!success) {
+    free (out.ptr);
+    return;
+  }
+
+  str_buf_append (&out, "\0", 1);
+
+  size_t len = strlen(mangled);
+  if (len > out.len) {
+    memcpy(mangled, out.ptr, out.len);
+    free(out.ptr);
+  }
+}
