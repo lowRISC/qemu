@@ -935,6 +935,14 @@ typedef enum {
     rv_op_vsetvli = 766,
     rv_op_vsetivli = 767,
     rv_op_vsetvl = 768,
+    rv_op_crc32_b = 769,
+    rv_op_crc32_h = 770,
+    rv_op_crc32_w = 771,
+    rv_op_crc32_d = 772,
+    rv_op_crc32c_b = 773,
+    rv_op_crc32c_h = 774,
+    rv_op_crc32c_w = 775,
+    rv_op_crc32c_d = 776,
 } rv_op;
 
 /* structures */
@@ -2066,7 +2074,15 @@ const rv_opcode_data opcode_data[] = {
     { "vsext.vf8", rv_codec_v_r, rv_fmt_vd_vs2_vm, NULL, rv_op_vsext_vf8, rv_op_vsext_vf8, 0 },
     { "vsetvli", rv_codec_vsetvli, rv_fmt_vsetvli, NULL, rv_op_vsetvli, rv_op_vsetvli, 0 },
     { "vsetivli", rv_codec_vsetivli, rv_fmt_vsetivli, NULL, rv_op_vsetivli, rv_op_vsetivli, 0 },
-    { "vsetvl", rv_codec_r, rv_fmt_rd_rs1_rs2, NULL, rv_op_vsetvl, rv_op_vsetvl, 0 }
+    { "vsetvl", rv_codec_r, rv_fmt_rd_rs1_rs2, NULL, rv_op_vsetvl, rv_op_vsetvl, 0 },
+    { "crc32.b", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32.h", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32.w", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32.d", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.b", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.h", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.w", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.d", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 }
 };
 
 /* CSR names */
@@ -2586,6 +2602,12 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
                       /* 0b0000011 */
                     case 0b0000100: op = rv_op_sext_b; break;
                     case 0b0000101: op = rv_op_sext_h; break;
+                    case 0b0010000: op = rv_op_crc32_b; break;
+                    case 0b0010001: op = rv_op_crc32_h; break;
+                    case 0b0010010: op = rv_op_crc32_w; break;
+                    case 0b0011000: op = rv_op_crc32c_b; break;
+                    case 0b0011001: op = rv_op_crc32c_h; break;
+                    case 0b0011010: op = rv_op_crc32c_w; break;
                     }
                     break;
                 }
