@@ -45,7 +45,6 @@ static inline uint8_t pmp_get_a_field(uint8_t cfg)
  */
 static inline int pmp_is_locked(CPURISCVState *env, uint32_t pmp_index)
 {
-
     if (env->pmp_state.pmp[pmp_index].cfg_reg & PMP_LOCK) {
         return 1;
     }
@@ -77,7 +76,6 @@ static inline uint8_t pmp_read_cfg(CPURISCVState *env, uint32_t pmp_index)
 
     return 0;
 }
-
 
 /*
  * Accessor to set the cfg reg for a specific PMP/HART
@@ -132,15 +130,15 @@ static void pmp_write_cfg(CPURISCVState *env, uint32_t pmp_index, uint8_t val)
 static void pmp_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea)
 {
     /*
-       aaaa...aaa0   8-byte NAPOT range
-       aaaa...aa01   16-byte NAPOT range
-       aaaa...a011   32-byte NAPOT range
-       ...
-       aa01...1111   2^XLEN-byte NAPOT range
-       a011...1111   2^(XLEN+1)-byte NAPOT range
-       0111...1111   2^(XLEN+2)-byte NAPOT range
-       1111...1111   Reserved
-    */
+     * aaaa...aaa0   8-byte NAPOT range
+     * aaaa...aa01   16-byte NAPOT range
+     * aaaa...a011   32-byte NAPOT range
+     * ...
+     * aa01...1111   2^XLEN-byte NAPOT range
+     * a011...1111   2^(XLEN+1)-byte NAPOT range
+     * 0111...1111   2^(XLEN+2)-byte NAPOT range
+     * 1111...1111   Reserved
+     */
     a = (a << 2) | 0x3;
     *sa = a & (a + 1);
     *ea = a | (a + 1);
@@ -205,10 +203,11 @@ void pmp_update_rule_nums(CPURISCVState *env)
     }
 }
 
-/* Convert cfg/addr reg values here into simple 'sa' --> start address and 'ea'
- *   end address values.
- *   This function is called relatively infrequently whereas the check that
- *   an address is within a pmp rule is called often, so optimise that one
+/*
+ * Convert cfg/addr reg values here into simple 'sa' --> start address and 'ea'
+ * end address values.
+ * This function is called relatively infrequently whereas the check that
+ * an address is within a PMP rule is called often, so optimise that one
  */
 static void pmp_update_rule(CPURISCVState *env, uint32_t pmp_index)
 {
@@ -285,16 +284,15 @@ static bool pmp_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
     return ret;
 }
 
-
 /*
  * Public Interface
  */
 
 /*
  * Check if the address has required RWX privs to complete desired operation
- * Return PMP rule index if a pmp rule match
+ * Return PMP rule index if a PMP rule match
  * Return MAX_RISCV_PMPS if default match
- * Return negtive value if no match
+ * Return negative value if no match
  */
 int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong size, pmp_priv_t privs, pmp_priv_t *allowed_privs,
@@ -307,7 +305,7 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong e = 0;
 
     /* Short cut if no rules */
-    if (0 == pmp_get_num_rules(env)) {
+    if (pmp_get_num_rules(env) == 0) {
         if (pmp_hart_has_privs_default(env, addr, size, privs,
                                        allowed_privs, mode)) {
             ret = MAX_RISCV_PMPS;
@@ -328,8 +326,10 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
         pmp_size = size;
     }
 
-    /* 1.10 draft priv spec states there is an implicit order
-         from low to high */
+    /*
+     * 1.10 draft priv spec states there is an implicit order
+     * from low to high
+     */
     for (i = 0; i < MAX_RISCV_PMPS; i++) {
         s = pmp_is_in_range(env, i, addr);
         e = pmp_is_in_range(env, i, addr + pmp_size - 1);
@@ -337,7 +337,7 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
         /* partially inside */
         if ((s + e) == 1) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "pmp violation - access is partially inside\n");
+                          "PMP violation - access is partially inside\n");
             ret = -1;
             break;
         }
@@ -363,7 +363,7 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
              */
             if (!MSECCFG_MML_ISSET(env)) {
                 /*
-                 * If mseccfg.MML Bit is not set, do pmp priv check
+                 * If mseccfg.MML Bit is not set, do PMP priv check
                  * This will always apply to regular PMP.
                  */
                 *allowed_privs = PMP_READ | PMP_WRITE | PMP_EXEC;
@@ -372,7 +372,7 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 }
             } else {
                 /*
-                 * If mseccfg.MML Bit set, do the enhanced pmp priv check
+                 * If mseccfg.MML Bit set, do the enhanced PMP priv check
                  */
                 if (mode == PRV_M) {
                     switch (epmp_operation) {
@@ -483,7 +483,6 @@ void pmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
     tlb_flush(env_cpu(env));
 }
 
-
 /*
  * Handle a read from a pmpcfg CSR
  */
@@ -503,7 +502,6 @@ target_ulong pmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index)
     return cfg_val;
 }
 
-
 /*
  * Handle a write to a pmpaddr CSR
  */
@@ -514,7 +512,7 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
 
     if (addr_index < MAX_RISCV_PMPS) {
         /*
-         * In TOR mode, need to check the lock bit of the next pmp
+         * In TOR mode, need to check the lock bit of the next PMP
          * (if there is a next).
          */
         if (addr_index + 1 < MAX_RISCV_PMPS) {
@@ -540,7 +538,6 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
                       "ignoring pmpaddr write - out of bounds\n");
     }
 }
-
 
 /*
  * Handle a read from a pmpaddr CSR
@@ -608,13 +605,13 @@ target_ulong pmp_get_tlb_size(CPURISCVState *env, int pmp_index,
         return TARGET_PAGE_SIZE;
     } else {
         /*
-        * At this point we have a tlb_size that is the smallest possible size
-        * That fits within a TARGET_PAGE_SIZE and the PMP region.
-        *
-        * If the size is less then TARGET_PAGE_SIZE we drop the size to 1.
-        * This means the result isn't cached in the TLB and is only used for
-        * a single translation.
-        */
+         * At this point we have a tlb_size that is the smallest possible size
+         * That fits within a TARGET_PAGE_SIZE and the PMP region.
+         *
+         * If the size is less then TARGET_PAGE_SIZE we drop the size to 1.
+         * This means the result isn't cached in the TLB and is only used for
+         * a single translation.
+         */
         return 1;
     }
 }
