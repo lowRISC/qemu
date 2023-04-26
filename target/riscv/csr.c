@@ -3821,7 +3821,7 @@ static inline RISCVException riscv_csrrw_check(CPURISCVState *env,
     int csr_min_priv = csr_ops[csrno].min_priv_ver;
 
     /* ensure the CSR extension is enabled */
-    if (!cpu->cfg.ext_icsr) {
+    if (!cpu->cfg.ext_zicsr) {
         return RISCV_EXCP_ILLEGAL_INST;
     }
 
