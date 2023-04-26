@@ -32,6 +32,16 @@ static uint8_t pmp_read_cfg(CPURISCVState *env, uint32_t addr_index);
 static void pmp_update_rule(CPURISCVState *env, uint32_t pmp_index);
 
 /*
+ * Convert the PMP permissions to match the truth table in the
+ * ePMP spec.
+ */
+static inline uint8_t pmp_get_epmp_operation(uint8_t cfg)
+{
+    return ((cfg & PMP_LOCK) >> 4) | ((cfg & PMP_READ) << 2) |
+           (cfg & PMP_WRITE) | ((cfg & PMP_EXEC) >> 2);
+}
+
+/*
  * Accessor method to extract address matching type 'a field' from cfg reg
  */
 static inline uint8_t pmp_get_a_field(uint8_t cfg)
@@ -338,16 +348,6 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
         const uint8_t a_field =
             pmp_get_a_field(env->pmp_state.pmp[i].cfg_reg);
 
-        /*
-         * Convert the PMP permissions to match the truth table in the
-         * ePMP spec.
-         */
-        const uint8_t epmp_operation =
-            ((env->pmp_state.pmp[i].cfg_reg & PMP_LOCK) >> 4) |
-            ((env->pmp_state.pmp[i].cfg_reg & PMP_READ) << 2) |
-            (env->pmp_state.pmp[i].cfg_reg & PMP_WRITE) |
-            ((env->pmp_state.pmp[i].cfg_reg & PMP_EXEC) >> 2);
-
         if (((s + e) == 2) && (PMP_AMATCH_OFF != a_field)) {
             /*
              * If the PMP entry is not off and the address is in range,
@@ -366,6 +366,9 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 /*
                  * If mseccfg.MML Bit set, do the enhanced PMP priv check
                  */
+                const uint8_t epmp_operation =
+                    pmp_get_epmp_operation(env->pmp_state.pmp[i].cfg_reg);
+
                 if (mode == PRV_M) {
                     switch (epmp_operation) {
                     case 0:
