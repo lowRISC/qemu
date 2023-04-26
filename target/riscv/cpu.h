@@ -450,8 +450,8 @@ struct RISCVCPUConfig {
     bool ext_zkt;
     bool ext_ifencei;
     bool ext_icsr;
-    bool ext_icbom;
-    bool ext_icboz;
+    bool ext_zicbom;
+    bool ext_zicboz;
     bool ext_zicond;
     bool ext_zihintpause;
     bool ext_smstateen;

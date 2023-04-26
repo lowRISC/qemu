@@ -17,13 +17,13 @@
  */
 
 #define REQUIRE_ZICBOM(ctx) do {    \
-    if (!ctx->cfg_ptr->ext_icbom) { \
+    if (!ctx->cfg_ptr->ext_zicbom) { \
         return false;               \
     }                               \
 } while (0)
 
 #define REQUIRE_ZICBOZ(ctx) do {    \
-    if (!ctx->cfg_ptr->ext_icboz) { \
+    if (!ctx->cfg_ptr->ext_zicboz) { \
         return false;               \
     }                               \
 } while (0)
