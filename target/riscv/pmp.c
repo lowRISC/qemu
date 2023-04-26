@@ -63,6 +63,61 @@ static inline int pmp_is_locked(CPURISCVState *env, uint32_t pmp_index)
 }
 
 /*
+ * Check whether a PMP is writable or not.
+ */
+static bool pmp_is_writable(CPURISCVState *env, uint32_t pmp_index)
+{
+    /*
+     * If the ePMP feature is enabled, the RLB bit allows writing to any PMP,
+     * regardless of PMP_LOCK bit
+     */
+    if (riscv_cpu_cfg(env)->epmp && MSECCFG_RLB_ISSET(env)) {
+        return true;
+    }
+
+    /* Standard PMP, just check if it is locked */
+    return !pmp_is_locked(env, pmp_index);
+}
+
+/*
+ * Check whether `val` is a valid ePMP config value
+ */
+static bool pmp_is_valid_epmp_cfg(CPURISCVState *env, uint8_t val)
+{
+    /* No check if MML is not set or if RLB is set */
+    if (!MSECCFG_MML_ISSET(env) || MSECCFG_RLB_ISSET(env)) {
+        return true;
+    }
+
+    /*
+     * Adding a rule with executable privileges that either is M-mode-only
+     * or a locked Shared-Region is not possible
+     */
+    switch (pmp_get_epmp_operation(val)) {
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+    case 8:
+    case 12:
+    case 14:
+    case 15:
+        return true;
+    case 9:
+    case 10:
+    case 11:
+    case 13:
+        return false;
+    default:
+        g_assert_not_reached();
+    }
+}
+
+/*
  * Count the number of active rules.
  */
 uint32_t pmp_get_num_rules(CPURISCVState *env)
@@ -89,43 +144,17 @@ static inline uint8_t pmp_read_cfg(CPURISCVState *env, uint32_t pmp_index)
 static void pmp_write_cfg(CPURISCVState *env, uint32_t pmp_index, uint8_t val)
 {
     if (pmp_index < MAX_RISCV_PMPS) {
-        bool locked = true;
-
-        if (riscv_cpu_cfg(env)->epmp) {
-            /* mseccfg.RLB is set */
-            if (MSECCFG_RLB_ISSET(env)) {
-                locked = false;
-            }
-
-            /* mseccfg.MML is not set */
-            if (!MSECCFG_MML_ISSET(env) && !pmp_is_locked(env, pmp_index)) {
-                locked = false;
-            }
-
-            /* mseccfg.MML is set */
-            if (MSECCFG_MML_ISSET(env)) {
-                /* not adding execute bit */
-                if ((val & PMP_LOCK) != 0 && (val & PMP_EXEC) != PMP_EXEC) {
-                    locked = false;
-                }
-                /* shared region and not adding X bit */
-                if ((val & PMP_LOCK) != PMP_LOCK &&
-                    (val & 0x7) != (PMP_WRITE | PMP_EXEC)) {
-                    locked = false;
-                }
-            }
-        } else {
-            if (!pmp_is_locked(env, pmp_index)) {
-                locked = false;
-            }
-        }
-
-        if (locked) {
+        if (!pmp_is_writable(env, pmp_index)) {
             qemu_log_mask(LOG_GUEST_ERROR, "ignoring pmpcfg write - locked\n");
-        } else {
-            env->pmp_state.pmp[pmp_index].cfg_reg = val;
-            pmp_update_rule(env, pmp_index);
+            return;
         }
+        /* do additional check for ePMP */
+        if (riscv_cpu_cfg(env)->epmp && !pmp_is_valid_epmp_cfg(env, val)) {
+            qemu_log_mask(LOG_GUEST_ERROR, "ignoring pmpcfg write - invalid\n");
+            return;
+        }
+        env->pmp_state.pmp[pmp_index].cfg_reg = val;
+        pmp_update_rule(env, pmp_index);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "ignoring pmpcfg write - out of bounds\n");
@@ -514,7 +543,7 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
         if (addr_index + 1 < MAX_RISCV_PMPS) {
             uint8_t pmp_cfg = env->pmp_state.pmp[addr_index + 1].cfg_reg;
 
-            if (pmp_cfg & PMP_LOCK &&
+            if (!pmp_is_writable(env, addr_index + 1) &&
                 PMP_AMATCH_TOR == pmp_get_a_field(pmp_cfg)) {
                 qemu_log_mask(LOG_GUEST_ERROR,
                               "ignoring pmpaddr write - pmpcfg + 1 locked\n");
@@ -522,7 +551,7 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
             }
         }
 
-        if (!pmp_is_locked(env, addr_index)) {
+        if (pmp_is_writable(env, addr_index)) {
             env->pmp_state.pmp[addr_index].addr_reg = val;
             pmp_update_rule(env, addr_index);
         } else {
