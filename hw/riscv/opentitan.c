@@ -113,7 +113,7 @@ static void opentitan_machine_init(MachineClass *mc)
     mc->desc = "RISC-V Board compatible with OpenTitan";
     mc->init = opentitan_board_init;
     mc->max_cpus = 1;
-    mc->default_cpu_type = TYPE_RISCV_CPU_IBEX;
+    mc->default_cpu_type = TYPE_RISCV_CPU_LOWRISC_IBEX;
     mc->default_ram_id = "riscv.lowrisc.ibex.ram";
     mc->default_ram_size = ibex_memmap[IBEX_DEV_RAM].size;
 }

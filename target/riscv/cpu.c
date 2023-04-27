@@ -481,7 +481,7 @@ static void rv32_sifive_e_cpu_init(Object *obj)
 #endif
 }
 
-static void rv32_ibex_cpu_init(Object *obj)
+static void rv32_lowrisc_ibex_cpu_init(Object *obj)
 {
     CPURISCVState *env = &RISCV_CPU(obj)->env;
     RISCVCPU *cpu = RISCV_CPU(obj);
@@ -1749,7 +1749,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
 #endif
 #if defined(TARGET_RISCV32)
     DEFINE_CPU(TYPE_RISCV_CPU_BASE32,           rv32_base_cpu_init),
-    DEFINE_CPU(TYPE_RISCV_CPU_IBEX,             rv32_ibex_cpu_init),
+    DEFINE_CPU(TYPE_RISCV_CPU_LOWRISC_IBEX,     rv32_lowrisc_ibex_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E31,       rv32_sifive_e_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E34,       rv32_imafcu_nommu_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_U34,       rv32_sifive_u_cpu_init),
