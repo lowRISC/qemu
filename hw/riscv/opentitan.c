@@ -100,12 +100,6 @@ static void opentitan_board_init(MachineState *machine)
     if (machine->firmware) {
         riscv_load_firmware(machine->firmware, memmap[IBEX_DEV_RAM].base, NULL);
     }
-
-    if (machine->kernel_filename) {
-        riscv_load_kernel(machine, &s->soc.cpus,
-                          memmap[IBEX_DEV_RAM].base,
-                          false, NULL);
-    }
 }
 
 static void opentitan_machine_init(MachineClass *mc)
@@ -124,7 +118,7 @@ static void lowrisc_ibex_soc_init(Object *obj)
 {
     LowRISCIbexSoCState *s = RISCV_IBEX_SOC(obj);
 
-    object_initialize_child(obj, "cpus", &s->cpus, TYPE_RISCV_HART_ARRAY);
+    object_initialize_child(obj, "cpu", &s->cpu, TYPE_RISCV_CPU_LOWRISC_IBEX);
 
     object_initialize_child(obj, "plic", &s->plic, TYPE_SIFIVE_PLIC);
 
@@ -148,13 +142,17 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
     MemoryRegion *sys_mem = get_system_memory();
     int i;
 
-    object_property_set_str(OBJECT(&s->cpus), "cpu-type", ms->cpu_type,
-                            &error_abort);
-    object_property_set_int(OBJECT(&s->cpus), "num-harts", ms->smp.cpus,
-                            &error_abort);
-    object_property_set_int(OBJECT(&s->cpus), "resetvec", s->resetvec,
-                            &error_abort);
-    sysbus_realize(SYS_BUS_DEVICE(&s->cpus), &error_fatal);
+    Object *cpu = OBJECT(&s->cpu);
+    object_property_set_int(cpu, "resetvec", s->resetvec,
+                            &error_fatal);
+    object_property_set_bool(cpu, "m", true, &error_fatal);
+    object_property_set_bool(cpu, "pmp", true, &error_fatal);
+    object_property_set_bool(cpu, "epmp", true, &error_fatal);
+    object_property_set_bool(cpu, "zba", true, &error_fatal);
+    object_property_set_bool(cpu, "zbb", true, &error_fatal);
+    object_property_set_bool(cpu, "zbc", true, &error_fatal);
+    object_property_set_bool(cpu, "zbs", true, &error_fatal);
+    qdev_realize(DEVICE(&s->cpu), NULL, &error_fatal);
 
     /* Boot ROM */
     memory_region_init_rom(&s->rom, OBJECT(dev_soc), "riscv.lowrisc.ibex.rom",
