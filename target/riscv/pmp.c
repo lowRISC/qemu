@@ -301,10 +301,7 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
 
     /* Short cut if no rules */
     if (pmp_get_num_rules(env) == 0) {
-        if (pmp_hart_has_privs_default(env, addr, size, privs,
-                                       allowed_privs, mode)) {
-            ret = MAX_RISCV_PMPS;
-        }
+        goto no_rule_matched;
     }
 
     if (size == 0) {
@@ -448,6 +445,7 @@ int pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
 
     /* No rule matched */
     if (ret == -1) {
+no_rule_matched:
         if (pmp_hart_has_privs_default(env, addr, size, privs,
                                        allowed_privs, mode)) {
             ret = MAX_RISCV_PMPS;
