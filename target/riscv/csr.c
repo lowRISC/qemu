@@ -1098,6 +1098,8 @@ static RISCVException write_stimecmph(CPURISCVState *env, int csrno,
                                       MIP_LCOFIP))
 #define VS_MODE_INTERRUPTS ((uint64_t)(MIP_VSSIP | MIP_VSTIP | MIP_VSEIP))
 #define HS_MODE_INTERRUPTS ((uint64_t)(MIP_SGEIP | VS_MODE_INTERRUPTS))
+#define LOCAL_INTERRUPTS   ((((uint64_t)1 << IRQ_LOCAL_GUEST_MAX) - 1) & \
+                            ~(((uint64_t)1 << IRQ_LOCAL_MAX) - 1))
 
 #define VSTOPI_NUM_SRCS 5
 
@@ -1469,7 +1471,10 @@ static RISCVException rmw_mie64(CPURISCVState *env, int csrno,
                                 uint64_t *ret_val,
                                 uint64_t new_val, uint64_t wr_mask)
 {
-    uint64_t mask = wr_mask & all_ints;
+    uint64_t mask;
+
+    mask = wr_mask & (riscv_has_ext(env, RVH) ?
+            all_ints : (all_ints | LOCAL_INTERRUPTS));
 
     if (ret_val) {
         *ret_val = env->mie;
