@@ -384,6 +384,7 @@ struct CPUArchState {
     bool debug_dm; /* Debug module is available */
     unsigned debug_cause; /* Reason for entering debug */
     uint64_t dmhaltvec; /* Address of halt handler */
+    uint64_t dmexcpvec; /* Address of exception handler */
 
     /*
      * CSRs for PointerMasking extension

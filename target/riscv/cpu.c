@@ -1603,6 +1603,7 @@ static Property riscv_cpu_properties[] = {
     DEFINE_PROP_ARRAY("pmp_addr", RISCVCPU, cfg.pmp_addr_count, cfg.pmp_addr,
                       qdev_prop_uint64, uint64_t),
     DEFINE_PROP_UINT64("dmhaltvec", RISCVCPU, env.dmhaltvec, 0),
+    DEFINE_PROP_UINT64("dmexcpvec", RISCVCPU, env.dmexcpvec, 0),
 #endif
 
     DEFINE_PROP_BOOL("short-isa-string", RISCVCPU, cfg.short_isa_string, false),

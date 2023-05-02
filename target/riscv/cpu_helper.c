@@ -1238,6 +1238,30 @@ static bool riscv_cpu_handle_breakpoint(CPUState *cs)
     return true;
 }
 
+static bool riscv_cpu_handle_debug_exception(CPUState *cs, target_ulong cause)
+{
+    /*
+     * Note: RISCV_EXCP_BREAKPOINT && RISCV_EXCP_SEMIHOST already handled
+     *
+     * Exceptions don’t update any registers. That includes cause, epc, tval,
+     * dpc, and mstatus.
+     * To resume execution, the debug module sets a flag which causes the hart
+     * to execute a dret. When dret is executed, pc is restored from dpc and
+     * normal execution resumes at the privilege set by prv.
+     */
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    if (env->debug_dm) {
+        env->pc = env->dmexcpvec;
+        /* clear current exception */
+        cs->exception_index = -1;
+        return true;
+    }
+
+    return false;
+}
+
 void riscv_cpu_store_debug_cause(CPUState *cs, unsigned cause)
 {
     /*
@@ -1798,6 +1822,12 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                 cause = RISCV_EXCP_S_ECALL;
             } else if (env->priv == PRV_U) {
                 cause = RISCV_EXCP_U_ECALL;
+            }
+        }
+
+        if (env->debug_dm && env->debugger) {
+            if (riscv_cpu_handle_debug_exception(cs, cause)) {
+                return;
             }
         }
     }
