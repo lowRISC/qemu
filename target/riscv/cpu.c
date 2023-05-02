@@ -1099,6 +1099,37 @@ void riscv_cpu_finalize_features(RISCVCPU *cpu, Error **errp)
 #endif
 }
 
+static bool riscv_cpu_debug_request(CPUState *cs)
+{
+#ifndef CONFIG_USER_ONLY
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    if (!env->debug_dm) {
+        return false;
+    }
+
+    if (!get_field(env->dcsr, DCSR_STEP)) {
+        return false;
+    }
+
+    if (!env->debugger) {
+        env->dcsr = set_field(env->dcsr, DCSR_CAUSE, DCSR_CAUSE_STEP);
+        env->dcsr = set_field(env->dcsr, DCSR_PRV, env->priv);
+        env->dpc = env->pc;
+        env->debugger = true;
+        env->priv = PRV_M;
+        env->pc = env->dmhaltvec;
+        cs->singlestep_enabled = 0;
+        cs->exception_index = -1;
+    }
+
+    return true;
+#else
+    return false;
+#endif
+}
+
 static void riscv_cpu_realize(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
@@ -1552,6 +1583,7 @@ static Property riscv_cpu_properties[] = {
                       qdev_prop_uint8, uint8_t),
     DEFINE_PROP_ARRAY("pmp_addr", RISCVCPU, cfg.pmp_addr_count, cfg.pmp_addr,
                       qdev_prop_uint64, uint64_t),
+    DEFINE_PROP_UINT64("dmhaltvec", RISCVCPU, env.dmhaltvec, 0),
 #endif
 
     DEFINE_PROP_BOOL("short-isa-string", RISCVCPU, cfg.short_isa_string, false),
@@ -1745,6 +1777,7 @@ static void riscv_cpu_class_init(ObjectClass *c, void *data)
     cc->gdb_write_register = riscv_cpu_gdb_write_register;
     cc->gdb_num_core_regs = 33;
     cc->gdb_stop_before_watchpoint = true;
+    cc->debug_request = riscv_cpu_debug_request;
     cc->disas_set_info = riscv_cpu_disas_set_info;
 #ifndef CONFIG_USER_ONLY
     cc->sysemu_ops = &riscv_sysemu_ops;

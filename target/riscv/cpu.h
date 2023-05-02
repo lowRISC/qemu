@@ -383,6 +383,7 @@ struct CPUArchState {
     bool debug_cs; /* Debugger critical section w/o HW IRQ nor WFI */
     bool debug_dm; /* Debug module is available */
     unsigned debug_cause; /* Reason for entering debug */
+    uint64_t dmhaltvec; /* Address of halt handler */
 
     /*
      * CSRs for PointerMasking extension
