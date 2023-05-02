@@ -773,6 +773,40 @@ void riscv_cpu_debug_excp_handler(CPUState *cs)
     RISCVCPU *cpu = RISCV_CPU(cs);
     CPURISCVState *env = &cpu->env;
 
+    if (env->debug_dm) {
+        switch (env->debug_cause) {
+            case DCSR_CAUSE_EBREAK:        /* 1 */
+            case DCSR_CAUSE_BREAKPOINT:    /* 2 */
+            case DCSR_CAUSE_HALTREQ:       /* 3 */
+            case DCSR_CAUSE_STEP:          /* 4 */
+            case DCSR_CAUSE_RESETHALTREQ:  /* 5 */
+                /*
+                 * When ebreak is executed in Debug Mode, ebreak halts the hart
+                 * again but without updating dpc or dcsr (otherwise the debugged
+                 * program return address is lost)
+                 */
+                if (!env->debugger) {
+                    env->dcsr = set_field(env->dcsr, DCSR_CAUSE, env->debug_cause);
+                    env->dcsr = set_field(env->dcsr, DCSR_PRV, env->priv);
+                    env->dpc = env->pc;
+                    env->debugger = true;
+                }
+                env->priv = PRV_M;
+                env->pc = env->dmhaltvec;
+                env->debug_cause = DCSR_CAUSE_NONE;
+                /*
+                 * clear out the exception, otherwise it would be handled over
+                 * to the debug system which in turn stops the VM, while we need to
+                 * execute the halt handler
+                 */
+                cs->exception_index = -1;
+                return;
+            case DCSR_CAUSE_NONE:          /* 0 */
+            default:
+                break;
+        }
+    }
+
     if (cs->watchpoint_hit) {
         if (cs->watchpoint_hit->flags & BP_CPU) {
             do_trigger_action(env, DBG_ACTION_BP);
