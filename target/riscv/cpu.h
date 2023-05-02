@@ -381,6 +381,7 @@ struct CPUArchState {
      */
     bool debugger; /* True if in debugger mode.  */
     bool debug_dm; /* Debug module is available */
+    unsigned debug_cause; /* Reason for entering debug */
 
     /*
      * CSRs for PointerMasking extension

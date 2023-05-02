@@ -360,6 +360,35 @@ target_ulong helper_mret(CPURISCVState *env)
     return retpc;
 }
 
+target_ulong helper_dret(CPURISCVState *env)
+{
+    if (!(env->priv >= PRV_M) || !(env->debugger)) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    target_ulong retpc = env->dpc;
+    if (!riscv_has_ext(env, RVC) && (retpc & 0x3)) {
+        riscv_raise_exception(env, RISCV_EXCP_INST_ADDR_MIS, GETPC());
+    }
+
+    /* there is likely more to do here */
+    target_ulong prev_priv = get_field(env->dcsr, DCSR_PRV);
+    riscv_cpu_set_mode(env, prev_priv);
+
+    CPUState *cs = env_cpu(env);
+    if (get_field(env->dcsr, DCSR_STEP)) {
+        cs->cflags_next_tb = curr_cflags(cs) | CF_NO_GOTO_TB |
+                             CF_NO_GOTO_PTR | CF_SINGLE_STEP | 1;
+    } else {
+        cs->singlestep_enabled = 0;
+    }
+
+    env->debugger = false;
+    env->debug_cause = DCSR_CAUSE_NONE;
+
+    return retpc;
+}
+
 void helper_wfi(CPURISCVState *env)
 {
     CPUState *cs = env_cpu(env);
