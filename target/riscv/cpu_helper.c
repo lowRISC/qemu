@@ -46,7 +46,9 @@ int riscv_cpu_mmu_index(CPURISCVState *env, bool ifetch)
         uint64_t status = env->mstatus;
 
         if (mode == PRV_M && get_field(status, MSTATUS_MPRV)) {
-            mode = get_field(env->mstatus, MSTATUS_MPP);
+            if (!env->debugger || get_field(env->dcsr, DCSR_MPRVEN)) {
+                mode = get_field(env->mstatus, MSTATUS_MPP);
+            }
             virt = get_field(env->mstatus, MSTATUS_MPV) &&
                    (mode != PRV_M);
             if (virt) {
