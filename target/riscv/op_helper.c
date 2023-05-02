@@ -403,9 +403,11 @@ void helper_wfi(CPURISCVState *env)
                (prv_u || (prv_s && get_field(env->hstatus, HSTATUS_VTW)))) {
         riscv_raise_exception(env, RISCV_EXCP_VIRT_INSTRUCTION_FAULT, GETPC());
     } else {
-        cs->halted = 1;
-        cs->exception_index = EXCP_HLT;
-        cpu_loop_exit(cs);
+        if (!unlikely(env->debugger || env->debug_cs)) {
+            cs->halted = 1;
+            cs->exception_index = EXCP_HLT;
+            cpu_loop_exit(cs);
+        }
     }
 }
 
