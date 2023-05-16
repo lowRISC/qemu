@@ -25,3 +25,6 @@ subprojects/*-*/
 subprojects/libtomcrypt/
 subprojects/packagecache/
 !subprojects/packagefiles/**/*.patch
+*.raw
+*.raw.bak
+*.log
