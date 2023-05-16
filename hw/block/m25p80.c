@@ -627,6 +627,7 @@ static void flash_erase(Flash *s, int offset, FlashCMD cmd)
         return;
     }
     memset(s->storage + offset, 0xff, len);
+    s->write_enable = false;
     flash_sync_area(s, offset, len);
 }
 
