@@ -720,7 +720,7 @@ static target_ulong get_ticks(bool shift)
 
 #if !defined(CONFIG_USER_ONLY)
     if (icount_enabled()) {
-        val = icount_get();
+        val = icount_get_raw();
     } else {
         val = cpu_get_host_ticks();
     }
