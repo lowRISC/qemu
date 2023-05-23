@@ -350,6 +350,8 @@ static void sifive_plic_irq_request(void *opaque, int irq, int level)
 {
     SiFivePLICState *s = opaque;
 
+    assert(irq < s->num_sources);
+
     sifive_plic_set_pending(s, irq, level > 0);
     sifive_plic_update(s);
 }
