@@ -18,6 +18,7 @@ config OT_EARLGREY
     select OT_CSRNG
     select OT_EDN
     select OT_ENTROPY_SRC
+    select OT_FLASH
     select OT_LIFECYCLE
     select OT_OTP
     select OT_PINMUX

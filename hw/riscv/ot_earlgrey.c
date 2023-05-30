@@ -37,6 +37,7 @@
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
+#include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_pinmux.h"
@@ -51,6 +52,8 @@
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
 
+static void ot_earlgrey_soc_flash_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_earlgrey_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_earlgrey_soc_otp_ctrl_configure(
@@ -65,13 +68,11 @@ static void ot_earlgrey_soc_otp_ctrl_configure(
 enum OtEarlgreySocMemory {
     OT_EARLGREY_SOC_MEM_ROM,
     OT_EARLGREY_SOC_MEM_RAM,
-    OT_EARLGREY_SOC_MEM_FLASH,
 };
 
 static const MemMapEntry ot_earlgrey_soc_memories[] = {
     [OT_EARLGREY_SOC_MEM_ROM] = { 0x00008000u, 0x8000u },
     [OT_EARLGREY_SOC_MEM_RAM] = { 0x10000000u, 0x20000u },
-    [OT_EARLGREY_SOC_MEM_FLASH] = { 0x20000000u, 0x100000u },
 };
 
 enum OtEarlgreySocDevice {
@@ -86,7 +87,6 @@ enum OtEarlgreySocDevice {
     OT_EARLGREY_SOC_DEV_EDN1,
     OT_EARLGREY_SOC_DEV_ENTROPY_SRC,
     OT_EARLGREY_SOC_DEV_FLASH_CTRL,
-    OT_EARLGREY_SOC_DEV_FLASH_CTRL_PRIM,
     OT_EARLGREY_SOC_DEV_GPIO,
     OT_EARLGREY_SOC_DEV_HART,
     OT_EARLGREY_SOC_DEV_HMAC,
@@ -418,19 +418,20 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_FLASH_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-flash_ctrl",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_FLASH,
+        .cfg = &ot_earlgrey_soc_flash_ctrl_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x41000000u, 0x200u }
+            { 0x41000000u, 0x1000u },
+            { 0x41008000u, 0x1000u },
+            { 0x20000000u, 0x100000u }
         ),
-    },
-    [OT_EARLGREY_SOC_DEV_FLASH_CTRL_PRIM] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-flash_ctrl_prim",
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x41008000u, 0x80u }
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 159),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 160),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 161),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 162),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 163),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 164)
         ),
     },
     [OT_EARLGREY_SOC_DEV_AES] = {
@@ -683,6 +684,16 @@ struct OtEarlGreyMachineState {
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
 
+static void ot_earlgrey_soc_flash_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    DriveInfo *dinfo = drive_get(IF_MTD, 1, 0);
+    if (dinfo) {
+        qdev_prop_set_drive_err(dev, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
+    }
+}
+
 static void ot_earlgrey_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
@@ -750,13 +761,6 @@ static void ot_earlgrey_soc_realize(DeviceState *dev, Error **errp)
                            &error_fatal);
     memory_region_add_subregion(sys_mem, memmap[OT_EARLGREY_SOC_MEM_ROM].base,
                                 &s->memories[OT_EARLGREY_SOC_MEM_ROM]);
-
-    /* Flash memory */
-    memory_region_init_rom(&s->memories[OT_EARLGREY_SOC_MEM_FLASH], OBJECT(dev),
-                           "ot-flash", memmap[OT_EARLGREY_SOC_MEM_FLASH].size,
-                           &error_fatal);
-    memory_region_add_subregion(sys_mem, memmap[OT_EARLGREY_SOC_MEM_FLASH].base,
-                                &s->memories[OT_EARLGREY_SOC_MEM_FLASH]);
 
     /* Link, define properties and realize devices, then connect GPIOs */
     ibex_link_devices(s->devices, ot_earlgrey_soc_devices,
