@@ -10,6 +10,13 @@ ot_alert_io_write(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, va
 ot_ast_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_ast_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_clkmgr.c
+
+ot_clkmgr_clock_hint(const char *name, unsigned clock, bool active) "%s(%u): %u"
+ot_clkmgr_get_clock_hints(uint32_t req, uint32_t status, uint32_t hint) "req:0x%02x clk:0x%02x hint:0x%02x"
+ot_clkmgr_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_clkmgr_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+
 # ot_csrng.c
 
 ot_csrng_change_state(int line, const char *old, int nold, const char *new, int nnew) "@ %d [%s:%d] -> [%s:%d]"
