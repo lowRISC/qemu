@@ -34,6 +34,7 @@
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_ast.h"
+#include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
@@ -133,6 +134,23 @@ enum OtEarlgreySocDevice {
 
 #define OT_EARLGREY_SOC_DEVLINK(_pname_, _target_) \
     IBEX_DEVLINK(_pname_, OT_EARLGREY_SOC_DEV_##_target_)
+
+#define OT_EARLGREY_SOC_SIGNAL(_sname_, _snum_, _tgt_, _tname_, _tnum_) \
+    { \
+        .out = { \
+            .name = (_sname_), \
+            .num = (_snum_), \
+        }, \
+        .in = { \
+            .name = (_tname_), \
+            .index = (OT_EARLGREY_SOC_DEV_ ## _tgt_), \
+            .num = (_tnum_), \
+        } \
+    }
+
+#define OT_EARLGREY_SOC_CLKMGR_HINT(_num_) \
+    OT_EARLGREY_SOC_SIGNAL(OPENTITAN_CLOCK_ACTIVE, 0, CLKMGR, \
+                           OPENTITAN_CLKMGR_HINT, _num_)
 
 /*
  * MMIO/interrupt mapping as per:
@@ -345,9 +363,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_CLKMGR] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-clkmgr",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_CLKMGR,
         .memmap = MEMMAPENTRIES(
             { 0x40420000u, 0x80u }
         ),
