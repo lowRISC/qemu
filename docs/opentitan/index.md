@@ -19,7 +19,7 @@ ninja qemu-img
 ````
 
 * `--enable-gtk` and `--enable-cococa` are only useful when using a graphical display, such as the
-  IbexDemo platform.
+  IbexDemo platform. It is mosly useless with the OpenTitan platform.
 
     * `--enable-gtk` should be used on Linux hosts
     * `--enable-cocoa` should be used on macOS hosts
@@ -32,3 +32,4 @@ ninja qemu-img
 ## Supported platforms
 
  * [IbexDemo](ibexdemo.md) built for Digilent Arty7 board
+ * [Earlgrey](earlgrey.md) build for CW310 "Bergen" board
