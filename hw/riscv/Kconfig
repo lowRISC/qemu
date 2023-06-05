@@ -18,6 +18,7 @@ config IBEXDEMO
     select IBEXDEMO_SPI
     select IBEXDEMO_TIMER
     select IBEXDEMO_UART
+    select ST7735
     select UNIMP
 
 config MICROCHIP_PFSOC
