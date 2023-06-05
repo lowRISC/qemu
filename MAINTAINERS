@@ -1499,9 +1499,13 @@ M: Alistair Francis <Alistair.Francis@wdc.com>
 L: qemu-riscv@nongnu.org
 S: Supported
 F: hw/riscv/opentitan.c
-F: hw/*/ibex_*.c
+F: hw/ssi/ibex_spi_host.c
+F: hw/timer/ibex_timer.c
+F: hw/char/ibex_uart.c
 F: include/hw/riscv/opentitan.h
-F: include/hw/*/ibex_*.h
+F: include/hw/ssi/ibex_spi_host.h
+F: include/hw/timer/ibex_timer.h
+F: include/hw/char/ibex_uart.h
 
 Microchip PolarFire SoC Icicle Kit
 M: Bin Meng <bin.meng@windriver.com>
@@ -3797,6 +3801,13 @@ S: Maintained
 F: ebpf/*
 F: tools/ebpf/*
 
+Ibex
+M: Emmanuel Blot <eblot@rivosinc.com>
+M: Loïc Lefort <loic@rivosinc.com>
+S: Supported
+F: hw/riscv/ibex_common.c
+F: include/hw/riscv/ibex_common.h
+F: include/hw/riscv/ibex_irq.h
 Build and test automation
 -------------------------
 Build and test automation, general continuous integration
