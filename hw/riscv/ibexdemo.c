@@ -15,8 +15,8 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Notes: GPIO output, SIMCTRL, SPI, TIMER and UART devices are supported. PWM
- *        is only a dummy device, GPIO inputs are not supported.
+ * Notes: GPIO output, SIMCTRL, SPI, TIMER, UART and ST7735 devices are
+ *        supported. PWM is only a dummy device, GPIO inputs are not supported.
  */
 
 #include "qemu/osdep.h"
@@ -27,6 +27,7 @@
 #include "elf.h"
 #include "exec/address-spaces.h"
 #include "hw/boards.h"
+#include "hw/display/st7735.h"
 #include "hw/ibexdemo/ibexdemo_gpio.h"
 #include "hw/ibexdemo/ibexdemo_simctrl.h"
 #include "hw/ibexdemo/ibexdemo_spi.h"
@@ -85,10 +86,9 @@ enum IbexDemoSocDevice {
 };
 
 enum IbexDemoBoardDevice {
-    /* clang-format off */
     IBEXDEMO_BOARD_DEV_SOC,
+    IBEXDEMO_BOARD_DEV_DISPLAY,
     _IBEXDEMO_BOARD_DEV_COUNT
-    /* clang-format on */
 };
 
 static const IbexDeviceDef ibexdemo_soc_devices[] = {
@@ -296,6 +296,25 @@ static void ibexdemo_board_realize(DeviceState *dev, Error **errp)
         RISCV_IBEXDEMO_SOC(board->devices[IBEXDEMO_BOARD_DEV_SOC]);
 
     sysbus_realize_and_unref(SYS_BUS_DEVICE(soc), &error_fatal);
+
+    BusState *spibus =
+        qdev_get_child_bus(DEVICE(soc->devices[IBEXDEMO_SOC_DEV_SPI]), "spi0");
+    assert(spibus);
+
+    board->devices[IBEXDEMO_BOARD_DEV_DISPLAY] =
+        DEVICE(ST7735(ssi_create_peripheral(SSI_BUS(spibus), TYPE_ST7735)));
+
+    qemu_irq cs, dc, rst;
+
+    dev = board->devices[IBEXDEMO_BOARD_DEV_DISPLAY];
+    cs = qdev_get_gpio_in_named(dev, SSI_GPIO_CS, 0);
+    dc = qdev_get_gpio_in_named(dev, ST7735_IO_LINES, ST7735_IO_D_C);
+    rst = qdev_get_gpio_in_named(dev, ST7735_IO_LINES, ST7735_IO_RESET);
+
+    dev = soc->devices[IBEXDEMO_SOC_DEV_GPIO];
+    qdev_connect_gpio_out_named(dev, IBEXDEMO_GPIO_OUT_LINES, 0, cs);
+    qdev_connect_gpio_out_named(dev, IBEXDEMO_GPIO_OUT_LINES, 1, rst);
+    qdev_connect_gpio_out_named(dev, IBEXDEMO_GPIO_OUT_LINES, 2, dc);
 }
 
 static void ibexdemo_board_instance_init(Object *obj)
