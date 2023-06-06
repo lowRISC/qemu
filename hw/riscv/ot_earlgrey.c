@@ -50,6 +50,7 @@
 #include "hw/opentitan/ot_pinmux.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
+#include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_sensor.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
@@ -425,16 +426,24 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x40400000u, 0x80u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 152)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("num-rom", 1u)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("rstmgr", RSTMGR)
+        ),
     },
     [OT_EARLGREY_SOC_DEV_RSTMGR] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-rstmgr",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_RSTMGR,
         .memmap = MEMMAPENTRIES(
             { 0x40410000u, 0x80u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_SIGNAL(OPENTITAN_RSTMGR_SW_RST, 0, PWRMGR, \
+                                   OPENTITAN_PWRMGR_SW_RST_REQ, 0)
         ),
     },
     [OT_EARLGREY_SOC_DEV_CLKMGR] = {
@@ -480,7 +489,13 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 156)
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 156),
+            OT_EARLGREY_SOC_SIGNAL(OPENTITAN_AON_TIMER_WKUP, 0, PWRMGR, \
+                                   OPENTITAN_PWRMGR_WKUP_REQ, \
+                                   OT_PWRMGR_WAKEUP_AON_TIMER),
+            OT_EARLGREY_SOC_SIGNAL(OPENTITAN_AON_TIMER_BITE, 0, PWRMGR, \
+                                   OPENTITAN_PWRMGR_RST_REQ,
+                                   OT_PWRMGR_RST_REQ_AON_TIMER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_AON_CLK_HZ)
