@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_pwrmgr.h"
+#include "hw/opentitan/ot_rstmgr.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -48,22 +49,13 @@
 #include "hw/sysbus.h"
 #include "trace.h"
 
-
-#define PARAM_NUM_WKUPS                    6u
-#define PARAM_SYSRST_CTRL_AON_WKUP_REQ_IDX 0u
-#define PARAM_ADC_CTRL_AON_WKUP_REQ_IDX    1u
-#define PARAM_PINMUX_AON_PIN_WKUP_REQ_IDX  2u
-#define PARAM_PINMUX_AON_USB_WKUP_REQ_IDX  3u
-#define PARAM_AON_TIMER_AON_WKUP_REQ_IDX   4u
-#define PARAM_SENSOR_CTRL_WKUP_REQ_IDX     5u
-#define PARAM_NUM_RST_REQS                 2u
-#define PARAM_NUM_INT_RST_REQS             2u
-#define PARAM_NUM_DEBUG_RST_REQS           1u
-#define PARAM_RESET_MAIN_PWR_IDX           2u
-#define PARAM_RESET_ESC_IDX                3u
-#define PARAM_RESET_NDM_IDX                4u
-#define PARAM_NUM_ALERTS                   1u
-#define INTR_COMMON_WAKEUP_BIT             0u
+#define PARAM_NUM_RST_REQS       2u
+#define PARAM_NUM_INT_RST_REQS   2u
+#define PARAM_NUM_DEBUG_RST_REQS 1u
+#define PARAM_RESET_MAIN_PWR_IDX 2u
+#define PARAM_RESET_ESC_IDX      3u
+#define PARAM_RESET_NDM_IDX      4u
+#define PARAM_NUM_ALERTS         1u
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
@@ -127,6 +119,13 @@ REG32(FAULT_STATUS, 0x40u)
 
 #define CDC_SYNC_PULSE_DURATION_NS 100000u /* 100us */
 
+/* Verbatim definitions from RTL */
+#define NUM_SW_RST_REQ 1u
+#define HW_RESET_WIDTH \
+    (PARAM_NUM_RST_REQS + PARAM_NUM_INT_RST_REQS + PARAM_NUM_DEBUG_RST_REQS)
+#define TOTAL_RESET_WIDTH (HW_RESET_WIDTH + NUM_SW_RST_REQ)
+#define RESET_SW_REQ_IDX  (TOTAL_RESET_WIDTH - 1u)
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_LAST_REG (R_FAULT_STATUS)
@@ -162,19 +161,47 @@ typedef struct {
     bool done;
 } OtPwrMgrRomStatus;
 
+typedef struct {
+    OtRstMgrResetReq req;
+    bool domain;
+} OtPwrMgrResetReq;
+
 struct OtPwrMgrState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
     QEMUTimer *cdc_sync;
-    IbexIRQ irq;
+    IbexIRQ irq; /* wake from low power */
     IbexIRQ alert;
 
     uint8_t num_rom;
     OtPwrMgrRomStatus *roms;
 
+    QEMUBH *reset_bh;
+
+    OtRstMgrState *rstmgr;
+
     uint32_t *regs;
+    OtPwrMgrResetReq reset_req;
 };
+
+static const char *WAKEUP_NAMES[OT_PWRMGR_WAKEUP_COUNT] = {
+    [OT_PWRMGR_WAKEUP_SYSRST] = "SYSRST",
+    [OT_PWRMGR_WAKEUP_ADC_CTRL] = "ADC_CTRL",
+    [OT_PWRMGR_WAKEUP_PINMUX] = "PINMUX",
+    [OT_PWRMGR_WAKEUP_USBDEV] = "USBDEV",
+    [OT_PWRMGR_WAKEUP_AON_TIMER] = "AON_TIMER",
+    [OT_PWRMGR_WAKEUP_SENSOR] = "SENSOR",
+};
+#define WAKEUP_NAME(_clk_) \
+    ((_clk_) < ARRAY_SIZE(WAKEUP_NAMES) ? WAKEUP_NAMES[(_clk_)] : "?")
+
+static const char *RST_REQ_NAMES[OT_PWRMGR_RST_REQ_COUNT] = {
+    [OT_PWRMGR_RST_REQ_SYSRST] = "SYSRST",
+    [OT_PWRMGR_RST_REQ_AON_TIMER] = "AON_TIMER",
+};
+#define RST_REQ_NAME(_clk_) \
+    ((_clk_) < ARRAY_SIZE(RST_REQ_NAMES) ? RST_REQ_NAMES[(_clk_)] : "?")
 
 static void ot_pwrmgr_update_irq(OtPwrMgrState *s)
 {
@@ -233,6 +260,86 @@ static void ot_pwrmgr_rom_done(void *opaque, int irq, int level)
                 "will not start vCPU");
         }
     }
+}
+
+static void ot_pwrmgr_wkup(void *opaque, int irq, int level)
+{
+    /* not implemented yet */
+    unsigned src = (unsigned)irq;
+
+    assert(src < OT_PWRMGR_WAKEUP_COUNT);
+
+    trace_ot_pwrmgr_wkup(WAKEUP_NAME(src), src, (bool)level);
+}
+
+static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
+{
+    OtPwrMgrState *s = opaque;
+
+    unsigned src = (unsigned)irq;
+
+    trace_ot_pwrmgr_rst_req(RST_REQ_NAME(src), src, (bool)level);
+
+    switch (irq) {
+    case OT_PWRMGR_RST_REQ_SYSRST:
+        s->reset_req.req = OT_RSTMGR_RESET_SYSCTRL, s->reset_req.domain = false;
+        break;
+    case OT_PWRMGR_RST_REQ_AON_TIMER:
+        s->reset_req.req = OT_RSTMGR_RESET_AON_TIMER,
+        s->reset_req.domain = false;
+        break;
+    default:
+        g_assert_not_reached();
+        break;
+    }
+
+    uint32_t rstmask = 1u << src; /*rst_req are stored in the LSBs */
+    s->regs[R_RESET_STATUS] |= rstmask;
+
+    /*
+     * for now, there is no FSM in PWRMGR implementation.
+     * simply forward the request to the RSTMGR
+     */
+    qemu_bh_schedule(s->reset_bh);
+    trace_ot_pwrmgr_reset_req("scheduling reset", src);
+}
+
+static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
+{
+    OtPwrMgrState *s = opaque;
+
+    unsigned src = (unsigned)irq;
+    assert(src < NUM_SW_RST_REQ);
+
+    trace_ot_pwrmgr_sw_rst_req(src, (bool)level);
+    if (!level) {
+        return;
+    }
+
+    uint32_t rstmask = 1u << (NUM_SW_RST_REQ + src);
+    if (!(s->regs[R_RESET_EN] & rstmask)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: SW reset %u not enabled\n",
+                      __func__, src);
+        return;
+    }
+
+    s->regs[R_RESET_STATUS] |= rstmask;
+
+    /*
+     * for now, there is no FSM in PWRMGR implementation.
+     * simply forward the request to the RSTMGR
+     */
+    s->reset_req.req = OT_RSTMGR_RESET_SW;
+    s->reset_req.domain = true;
+    qemu_bh_schedule(s->reset_bh);
+    trace_ot_pwrmgr_reset_req("scheduling SW reset", 0);
+}
+
+static void ot_pwrmgr_trigger_reset(void *opaque)
+{
+    OtPwrMgrState *s = opaque;
+
+    ot_rstmgr_reset_req(s->rstmgr, s->reset_req.domain, s->reset_req.req);
 }
 
 static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -370,6 +477,8 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 
 static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
+    DEFINE_PROP_LINK("rstmgr", OtPwrMgrState, rstmgr, TYPE_OT_RSTMGR,
+                     OtRstMgrState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -384,6 +493,8 @@ static const MemoryRegionOps ot_pwrmgr_regs_ops = {
 static void ot_pwrmgr_reset(DeviceState *dev)
 {
     OtPwrMgrState *s = OT_PWRMGR(dev);
+
+    assert(s->rstmgr);
 
     timer_del(s->cdc_sync);
     memset(s->regs, 0, REGS_SIZE);
@@ -425,6 +536,15 @@ static void ot_pwrmgr_init(Object *obj)
     ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->alert, OPENTITAN_DEVICE_ALERT);
     s->cdc_sync = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_pwrmgr_cdc_sync, s);
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_wkup,
+                            OPENTITAN_PWRMGR_WKUP_REQ, OT_PWRMGR_WAKEUP_COUNT);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rst_req,
+                            OPENTITAN_PWRMGR_RST_REQ, OT_PWRMGR_RST_REQ_COUNT);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_sw_rst_req,
+                            OPENTITAN_PWRMGR_SW_RST_REQ, NUM_SW_RST_REQ);
+
+    s->reset_bh = qemu_bh_new(&ot_pwrmgr_trigger_reset, s);
 }
 
 static void ot_pwrmgr_class_init(ObjectClass *klass, void *data)

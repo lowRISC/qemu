@@ -188,6 +188,10 @@ ot_pinmux_io_write(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, v
 # ot_pwrmgr.c
 
 ot_pwrmgr_rom_done(int irq, bool good, bool done) "rom #%u good=%u done=%u"
+ot_pwrmgr_wkup(const char *name, unsigned src, bool active) "%s(%u): %u"
+ot_pwrmgr_rst_req(const char *name, unsigned src, bool active) "%s(%u): %u"
+ot_pwrmgr_sw_rst_req(unsigned src, bool active) "%u: %u"
+ot_pwrmgr_reset_req(const char *name, unsigned val) "%s: %u"
 ot_pwrmgr_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_pwrmgr_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
