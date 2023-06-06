@@ -203,6 +203,13 @@ ot_rom_ctrl_mem_read_out(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%
 ot_rom_ctrl_mem_write(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%04x, val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_rom_ctrl_mem_accepts(unsigned int addr, bool is_write, uint64_t pc) "addr=0x%04x, is_write=%u, pc=0x%" PRIx64
 
+# ot_rstmgr.c
+
+ot_rstmgr_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_rstmgr_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_rstmgr_reset_req(const char *req, unsigned reqix, bool fastclk) "%s(%u) @%u"
+ot_rstmgr_sw_rst(const char *path, bool reset) "%s: reset:%u"
+
 # ot_sensor.c
 
 ot_sensor_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64

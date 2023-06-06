@@ -67,6 +67,9 @@ config OT_ROM_CTRL
     bool
     select OT_COMMON
 
+config OT_RSTMGR
+    bool
+
 config OT_SENSOR
     bool
 
