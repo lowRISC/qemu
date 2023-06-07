@@ -184,7 +184,7 @@ in reset.
     {
         MyDevClass *myclass = MYDEV_CLASS(class);
         ResettableClass *rc = RESETTABLE_CLASS(class);
-        resettable_class_set_parent_reset_phases(rc,
+        resettable_class_set_parent_phases(rc,
                                                  mydev_reset_enter,
                                                  mydev_reset_hold,
                                                  mydev_reset_exit,
@@ -193,10 +193,10 @@ in reset.
 
 In the above example, we override all three phases. It is possible to override
 only some of them by passing NULL instead of a function pointer to
-``resettable_class_set_parent_reset_phases()``. For example, the following will
+``resettable_class_set_parent_phases()``. For example, the following will
 only override the *enter* phase and leave *hold* and *exit* untouched::
 
-    resettable_class_set_parent_reset_phases(rc, mydev_reset_enter,
+    resettable_class_set_parent_phases(rc, mydev_reset_enter,
                                              NULL, NULL,
                                              &myclass->parent_phases);
 
