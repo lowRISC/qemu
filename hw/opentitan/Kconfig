@@ -60,6 +60,9 @@ config OT_SPI_HOST
     bool
     select SSI
 
+config OT_SRAM_CTRL
+    bool
+
 config OT_TIMER
     bool
 
