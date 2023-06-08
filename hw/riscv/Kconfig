@@ -31,6 +31,7 @@ config OT_EARLGREY
     select OT_PWRMGR
     select OT_SENSOR
     select OT_SPI_HOST
+    select OT_SRAM_CTRL
     select OT_TIMER
     select OT_UART
     select SIFIVE_PLIC

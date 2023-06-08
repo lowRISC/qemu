@@ -50,6 +50,7 @@
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_sensor.h"
 #include "hw/opentitan/ot_spi_host.h"
+#include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
@@ -82,14 +83,10 @@ static void ot_earlgrey_soc_uart_configure(
 /* EarlGrey/CW310 AON clock is 250 kHz */
 #define OT_EARLGREY_AON_CLK_HZ 250000u
 
-enum OtEarlgreySocMemory {
-    OT_EARLGREY_SOC_MEM_ROM,
-    OT_EARLGREY_SOC_MEM_RAM,
-};
+enum OtEarlgreySocMemory { OT_EARLGREY_SOC_MEM_ROM };
 
 static const MemMapEntry ot_earlgrey_soc_memories[] = {
     [OT_EARLGREY_SOC_MEM_ROM] = { 0x00008000u, 0x8000u },
-    [OT_EARLGREY_SOC_MEM_RAM] = { 0x10000000u, 0x20000u },
 };
 
 enum OtEarlgreySocDevice {
@@ -121,7 +118,7 @@ enum OtEarlgreySocDevice {
     OT_EARLGREY_SOC_DEV_PLIC,
     OT_EARLGREY_SOC_DEV_PWM,
     OT_EARLGREY_SOC_DEV_PWRMGR,
-    OT_EARLGREY_SOC_DEV_RAM_RET,
+    OT_EARLGREY_SOC_DEV_SRAM_RET_CTRL,
     OT_EARLGREY_SOC_DEV_ROM_CTRL,
     OT_EARLGREY_SOC_DEV_RSTMGR,
     OT_EARLGREY_SOC_DEV_RV_DM,
@@ -130,8 +127,7 @@ enum OtEarlgreySocDevice {
     OT_EARLGREY_SOC_DEV_SPI_DEVICE,
     OT_EARLGREY_SOC_DEV_SPI_HOST0,
     OT_EARLGREY_SOC_DEV_SPI_HOST1,
-    OT_EARLGREY_SOC_DEV_SRAM_CTRL,
-    OT_EARLGREY_SOC_DEV_SRAM_CTRL_MAIN,
+    OT_EARLGREY_SOC_DEV_SRAM_MAIN_CTRL,
     OT_EARLGREY_SOC_DEV_SYSRST_CTRL,
     OT_EARLGREY_SOC_DEV_TIMER,
     OT_EARLGREY_SOC_DEV_UART0,
@@ -501,20 +497,18 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40490000u, 0x40u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SRAM_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-sram_ctrl",
-        .cfg = &ibex_unimp_configure,
+    [OT_EARLGREY_SOC_DEV_SRAM_RET_CTRL] = {
+        .type = TYPE_OT_SRAM_CTRL,
+        .instance = 0,
         .memmap = MEMMAPENTRIES(
-            { 0x40500000u, 0x20u }
-        ),
-    },
-    [OT_EARLGREY_SOC_DEV_RAM_RET] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-ram_ret",
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
+            { 0x40500000u, 0x20u },
             { 0x40600000u, 0x1000u }
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("size", 0x1000u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_FLASH_CTRL] = {
@@ -661,12 +655,18 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             IBEX_DEV_INT_PROP("csrng-app", 1u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SRAM_CTRL_MAIN] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-sram_ctrl_main",
-        .cfg = &ibex_unimp_configure,
+    [OT_EARLGREY_SOC_DEV_SRAM_MAIN_CTRL] = {
+        .type = TYPE_OT_SRAM_CTRL,
+        .instance = 1,
         .memmap = MEMMAPENTRIES(
-            { 0x411c0000u, 0x20u }
+            { 0x411c0000u, 0x20u },
+            { 0x10000000u, 0x20000u }
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("size", 0x20000u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_ROM_CTRL] = {
@@ -880,12 +880,7 @@ static void ot_earlgrey_soc_realize(DeviceState *dev, Error **errp)
     OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(dev);
     const MemMapEntry *memmap = &ot_earlgrey_soc_memories[0];
 
-    MachineState *ms = MACHINE(qdev_get_machine());
     MemoryRegion *sys_mem = get_system_memory();
-
-    /* RAM */
-    memory_region_add_subregion(sys_mem, memmap[OT_EARLGREY_SOC_MEM_RAM].base,
-                                ms->ram);
 
     /* Boot ROM */
     memory_region_init_rom(&s->memories[OT_EARLGREY_SOC_MEM_ROM], OBJECT(dev),
@@ -1052,9 +1047,10 @@ static void ot_earlgrey_machine_class_init(ObjectClass *oc, void *data)
     mc->max_cpus = 1u;
     mc->default_cpu_type =
         ot_earlgrey_soc_devices[OT_EARLGREY_SOC_DEV_HART].type;
-    mc->default_ram_id = "ot-ram";
-    mc->default_ram_size =
-        ot_earlgrey_soc_memories[OT_EARLGREY_SOC_MEM_RAM].size;
+    const IbexDeviceDef *sram =
+        &ot_earlgrey_soc_devices[OT_EARLGREY_SOC_DEV_SRAM_MAIN_CTRL];
+    mc->default_ram_id = sram->type;
+    mc->default_ram_size = sram->memmap[1].size;
 }
 
 static const TypeInfo ot_earlgrey_machine_type_info = {
