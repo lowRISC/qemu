@@ -176,7 +176,7 @@ class FlashGen:
         self._ffp.seek(0, SEEK_END)
         vsize = self._ffp.tell()
         if vsize < self._image_size:
-            if mode.startswith('r'):
+            if vsize and mode.startswith('r'):
                 self._log.info('File image too short, expanding')
             else:
                 self._log.info('Creating new image file')
@@ -197,6 +197,10 @@ class FlashGen:
             self._ffp = None
             if pos != self._image_size:
                 self._log.error('Invalid image size (%d bytes)', pos)
+
+    @property
+    def logger(self):
+        return self._log
 
     @classmethod
     def info_part_size(cls) -> int:
@@ -443,7 +447,7 @@ class FlashGen:
                     val = hexlify(val).decode()
             elif isinstance(val, int):
                 val = hex(val)
-            self._log.info(' %s = %s', name, val)
+            self._log.debug(' %s = %s', name, val)
 
     @classmethod
     def _check_manifest_size(cls):
@@ -477,11 +481,12 @@ def main():
                                metavar='flash', help='virtual flash file')
         argparser.add_argument('-D', '--discard', action='store_true',
                                help='Discard any previous flash file content')
-        argparser.add_argument('-x', '--rom-ext', type=FileType('rb'),
-                               metavar='file', help='rom extension file')
-        argparser.add_argument('-l', '--bootloader', type=FileType('rb'),
+        argparser.add_argument('-x', '--exec', type=FileType('rb'),
+                               metavar='file',
+                               help='rom extension or application')
+        argparser.add_argument('-b', '--bootloader', type=FileType('rb'),
                                metavar='file', help='bootloader 0 file')
-        argparser.add_argument('-b', '--bank', type=int, choices=banks,
+        argparser.add_argument('-B', '--bank', type=int, choices=banks,
                                default=banks[0],
                                help=f'flash bank for data (default: '
                                     f'{banks[0]})')
@@ -514,8 +519,8 @@ def main():
                     backup_filename = f'{flash_pathname}.bak'
                     rename(flash_pathname, backup_filename)
             gen.open(args.flash[0])
-            if args.rom_ext:
-                gen.store_rom_ext(args.bank, args.rom_ext)
+            if args.exec:
+                gen.store_rom_ext(args.bank, args.exec)
             if args.bootloader:
                 gen.store_bootloader(args.bank, args.bootloader)
             backup_filename = None

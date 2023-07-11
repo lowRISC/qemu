@@ -212,7 +212,7 @@ ${SCRIPT_DIR}/otpconv.py -i "${OT_OTP_VMEM}" -o otp.raw
 # files have been generated from. If flashgen.py locates the matching ELF file,
 # the ROM_EXT and BL0 symbols can be automatically loaded by QEMU, which helps
 # debugging
-${SCRIPT_DIR}/flashgen.py -D -x "${OT_ROM_EXT_BIN}" -l "${OT_BL0_TEST_BIN}" \
+${SCRIPT_DIR}/flashgen.py -D -x "${OT_ROM_EXT_BIN}" -b "${OT_BL0_TEST_BIN}" \
     flash.raw
 
 echo "Use [Ctrl-A] + x to quit QEMU"
