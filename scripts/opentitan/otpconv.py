@@ -258,6 +258,10 @@ class OtpConverter:
         """
         getattr(self, f'_save_{out_type}')(filename)
 
+    @property
+    def logger(self):
+        return self._log
+
     def _save_raw(self, filename: str):
         """Save OTP content into as QEMU RAW file.
 
