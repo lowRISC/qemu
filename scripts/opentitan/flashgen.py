@@ -87,26 +87,42 @@ class FlashGen:
     }
 
     MANIFEST_FORMAT = {
-        'signature': '384s',
+        # SigverifyRsaBuffer
+        'signature': '384s',  # 96u32
+        # ManifestUsageConstraints
         'selector_bits': 'I',
-        'device_id': '32s',
+        'device_id': '32s',  # 8u32
         'manuf_state_creator': 'I',
         'manuf_state_owner': 'I',
         'life_cycle_state': 'I',
+        # SigverifyRsaBuffer
         'modulus': '384s',
         'address_translation': 'I',
         'identifier': '4s',
+        # ManifestVersion
+        'manifest_version_minor': 'H',
+        'manifest_version_major': 'H',
+        'signed_region_end': 'I',
         'length': 'I',
         'version_major': 'I',
         'version_minor': 'I',
         'security_version': 'I',
-        'timestamp': '2I',  # cannot use 'Q', no longer aligned on 64-bit type
-        'binding_value': '32s',
+        # Timestamp
+        'timestamp': '8s',  # cannot use 'Q', no longer aligned on 64-bit type
+        # KeymgrBindingValue
+        'binding_value': '32s',  # 8u32
         'max_key_version': 'I',
         'code_start': 'I',
         'code_end': 'I',
         'entry_point': 'I',
+        # ManifestExtTable
+        'entries': '120s'  # 15*(2u32)
     }
+
+    MANIFEST_SIZE = 1024
+    MANIFEST_VERSION_MINOR1 = 0x6c47
+    MANIFEST_VERSION_MAJOR1 = 0x71c3
+    MANIFEST_EXT_TABLE_COUNT = 15
 
     MANIFEST_TRUE =  0x739  # 'true' value for address_translation field
     MANIFEST_FALSE = 0x1d4  # 'false' value for address_translation field
@@ -132,6 +148,7 @@ class FlashGen:
 
     def __init__(self, bl_offset: Optional[int] = None):
         self._log = getLogger('flashgen')
+        self._check_manifest_size()
         self._bl_offset = bl_offset if bl_offset is not None \
             else self.CHIP_ROM_EXT_SIZE_MAX
         hfmt = ''.join(self.HEADER_FORMAT.values())
@@ -390,7 +407,7 @@ class FlashGen:
         self._check_manifest(data, 'rom_ext', max_size)
 
     def _check_bootloader(self, data: bytes) -> None:
-        assert(self._bl_offset)
+        assert self._bl_offset
         max_size =  self.BYTES_PER_BANK - self._bl_offset
         self._check_manifest(data, 'bl0', max_size)
 
@@ -403,6 +420,12 @@ class FlashGen:
             raise ValueError(f'{kind} too short')
         manifest = dict(zip(self.MANIFEST_FORMAT,
                             sunpack(f'<{mfmt}', data[:slen])))
+        self._log_manifest(manifest)
+        if (manifest['manifest_version_major'] !=
+                self.MANIFEST_VERSION_MAJOR1
+            or manifest['manifest_version_minor'] !=
+                self.MANIFEST_VERSION_MINOR1):
+            raise ValueError('Unsupported manifest version')
         self._log.info('%s code start 0x%05x, end 0x%05x, exec 0x%05x',
             kind, manifest['code_start'], manifest['code_end'],
             manifest['entry_point'])
@@ -421,6 +444,22 @@ class FlashGen:
             elif isinstance(val, int):
                 val = hex(val)
             self._log.info(' %s = %s', name, val)
+
+    @classmethod
+    def _check_manifest_size(cls):
+        slen = scalc(''.join(cls.MANIFEST_FORMAT.values()))
+        assert cls.MANIFEST_SIZE == slen, 'Invalid Manifest size'
+
+    def _log_manifest(self, manifest):
+        for item, value in manifest.items():
+            if isinstance(value, int):
+                self._log.debug('%s: 0x%08x', item, value)
+            elif isinstance(value, bytes):
+                self._log.debug('%s: (%d) %s', item, len(value),
+                               hexlify(value).decode())
+            else:
+                self._log.debug('%s: (%d) %s', item, len(value), value)
+
 
 def hexint(val: str) -> int:
     return int(val, val.startswith('0x') and 16 or 10)
@@ -486,7 +525,8 @@ def main():
                 print('Restoring previous file after error', file=stderr)
                 rename(backup_filename, flash_pathname)
 
-    except (IOError, ValueError, ImportError) as exc:
+    #pylint: disable=broad-except
+    except Exception as exc:
         print(f'\nError: {exc}', file=stderr)
         if debug:
             print(format_exc(chain=False), file=stderr)

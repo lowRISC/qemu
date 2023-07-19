@@ -1,5 +1,5 @@
 # This implementation is based on the following OpenTitan RTL version:
 GIT_REPOS="https://github.com/lowRISC/opentitan"
 
-# This is Earlgrey-M2.5.1-RC1
-GIT_COMMIT="02fd38a036eb88f0e1068c83667b928d11e1f648"
+# This is Earlgrey-M2.5.2-RC0
+GIT_COMMIT="21ce4e9761abdf5c919b46e5ae64a5a8e24992f7"
