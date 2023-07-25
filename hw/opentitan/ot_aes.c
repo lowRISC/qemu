@@ -215,11 +215,11 @@ typedef struct OtAESContext {
     uint64_t iv[OT_AES_IV_SIZE / sizeof(uint64_t)];
     uint8_t src[OT_AES_DATA_SIZE];
     uint8_t dst[OT_AES_DATA_SIZE];
-    bool key_ready;
-    bool iv_ready;
-    bool di_full;
-    bool do_full;
-    int aes_cipher;
+    bool key_ready; /* Key has been fully loaded */
+    bool iv_ready; /* IV has been fully loaded */
+    bool di_full; /* Input DATA FIFO fully filled */
+    bool do_full; /* Output DATA FIFO not empty */
+    int aes_cipher; /* AES context for tomcrypt */
 } OtAESContext;
 
 typedef struct OtAESEDN {
@@ -581,13 +581,19 @@ static inline bool ot_aes_can_process(const OtAESState *s)
         /* auto mode */
         if (c->do_full) {
             /* cannot schedule a round if output FIFO has not been emptied */
+            xtrace_ot_aes_debug("DO full");
             return false;
         }
     } else {
         if (!(r->trigger & R_TRIGGER_START_MASK)) {
             /* cannot execute in manual mode w/o an explicit trigger */
+            xtrace_ot_aes_debug("manual not triggered");
             return false;
         }
+    }
+
+    if (!c->di_full) {
+        xtrace_ot_aes_debug("DI not filled");
     }
 
     /* TODO: not sure if this also applies in manual mode */
@@ -1227,6 +1233,7 @@ static void ot_aes_reset(DeviceState *dev)
 
     s->prng = ot_prng_allocate();
 
+    memset(s->ctx, 0, sizeof(*s->ctx));
     memset(r, 0, sizeof(*r));
 
     ot_shadow_reg_init(&r->ctrl, 0x1181u);
@@ -1254,7 +1261,7 @@ static void ot_aes_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regs = g_new0(OtAESRegisters, 1u);
-    s->ctx = g_new(OtAESContext, 1u);
+    s->ctx = g_new0(OtAESContext, 1u);
 
     s->ctx->aes_cipher =
         register_cipher(&aes_desc); /* aes_desc is defined in libtomcrypt */
