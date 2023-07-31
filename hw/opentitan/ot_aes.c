@@ -219,7 +219,7 @@ typedef struct OtAESContext {
     bool iv_ready; /* IV has been fully loaded */
     bool di_full; /* Input DATA FIFO fully filled */
     bool do_full; /* Output DATA FIFO not empty */
-    int aes_cipher; /* AES context for tomcrypt */
+    int aes_cipher; /* AES handle for tomcrypt */
 } OtAESContext;
 
 typedef struct OtAESEDN {
@@ -265,7 +265,7 @@ static const char *ot_aes_hexdump(OtAESState *s, const uint8_t *buf,
         size = AES_DEBUG_HEXBUF_SIZE / 2u - 2u;
     }
 
-    for (unsigned int ix = 0u; ix < size; ix++) {
+    for (unsigned ix = 0u; ix < size; ix++) {
         hexstr[(ix * 2u)] = _hex[(buf[ix] >> 4u) & 0xfu];
         hexstr[(ix * 2u) + 1u] = _hex[buf[ix] & 0xfu];
     }
@@ -304,11 +304,11 @@ static inline size_t ot_aes_get_key_length(OtAESRegisters *r)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&r->ctrl);
     switch (FIELD_EX32(ctrl, CTRL_SHADOWED, KEY_LEN)) {
-    case 0x01:
+    case 0x01u:
         return 16u; /* 128 bits */
-    case 0x02:
+    case 0x02u:
         return 24u; /* 192 bits */
-    case 0x04:
+    case 0x04u:
     default:
         return 32u; /* 256bits */
     }
@@ -318,11 +318,11 @@ static inline uint32_t ot_aes_get_key_mask(OtAESRegisters *r)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&r->ctrl);
     switch (FIELD_EX32(ctrl, CTRL_SHADOWED, KEY_LEN)) {
-    case 0x01:
+    case 0x01u:
         return 0x0fu; /* 128 bits, 16 bytes, 4 words */
-    case 0x02:
+    case 0x02u:
         return 0x3fu; /* 192 bits, 24 bytes, 6 words */
-    case 0x04:
+    case 0x04u:
     default:
         return 0xffu; /* 256bits, 32 bytes, 8 words */
     }
@@ -331,8 +331,8 @@ static inline uint32_t ot_aes_get_key_mask(OtAESRegisters *r)
 static void ot_aes_update_alert(OtAESState *s)
 {
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        bool level = s->regs->status & (1u << ix);
-        ibex_irq_set(&s->alerts[ix], level);
+        bool level = (bool)(s->regs->status & (1u << ix));
+        ibex_irq_set(&s->alerts[ix], (int)level);
     }
 }
 
@@ -359,17 +359,17 @@ static inline enum OtAESMode ot_aes_get_mode(OtAESRegisters *r)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&r->ctrl);
     switch (FIELD_EX32(ctrl, CTRL_SHADOWED, MODE)) {
-    case 0x01:
+    case 0x01u:
         return AES_ECB;
-    case 0x02:
+    case 0x02u:
         return AES_CBC;
-    case 0x04:
+    case 0x04u:
         return AES_CFB;
-    case 0x08:
+    case 0x08u:
         return AES_OFB;
-    case 0x10:
+    case 0x10u:
         return AES_CTR;
-    case 0x20:
+    case 0x20u:
     default:
         return AES_NONE;
     }
@@ -608,7 +608,7 @@ static void ot_aes_handle_trigger(OtAESState *s)
      */
     OtAESRegisters *r = s->regs;
 
-    ibex_irq_set(&s->clkmgr, true);
+    ibex_irq_set(&s->clkmgr, (int)true);
 
     if (r->trigger & R_TRIGGER_PRNG_RESEED_MASK) {
         trace_ot_aes_reseed("trigger write");
@@ -646,7 +646,7 @@ static void ot_aes_handle_trigger(OtAESState *s)
     }
 
     xtrace_ot_aes_debug(ot_aes_is_idle(s) ? "IDLE" : "NOT IDLE");
-    ibex_irq_set(&s->clkmgr, !ot_aes_is_idle(s));
+    ibex_irq_set(&s->clkmgr, (int)!ot_aes_is_idle(s));
 }
 
 static void ot_aes_update_config(OtAESState *s)
@@ -1129,7 +1129,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
         r->data_in[reg - R_DATA_IN_0] = val32;
         set_bit(reg - R_DATA_IN_0, r->data_in_bm);
         if (ot_aes_is_data_in_ready(r)) {
-            ibex_irq_set(&s->clkmgr, true);
+            ibex_irq_set(&s->clkmgr, (int)true);
             ot_aes_pop(s);
         }
         if (!ot_aes_is_manual(r)) {
@@ -1263,8 +1263,8 @@ static void ot_aes_init(Object *obj)
     s->regs = g_new0(OtAESRegisters, 1u);
     s->ctx = g_new0(OtAESContext, 1u);
 
-    s->ctx->aes_cipher =
-        register_cipher(&aes_desc); /* aes_desc is defined in libtomcrypt */
+    /* aes_desc is defined in libtomcrypt */
+    s->ctx->aes_cipher = register_cipher(&aes_desc);
     if (s->ctx->aes_cipher < 0) {
         error_report("OpenTitan AES: Unable to use libtomcrypt AES API");
     }
