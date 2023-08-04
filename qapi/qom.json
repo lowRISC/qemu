@@ -861,6 +861,19 @@
   'data': { '*cpu-affinity': ['uint16'],
             '*node-affinity': ['uint16'] } }
 
+##
+# @OtRomImgProperties:
+#
+# Properties for OpenTitan ROM image objects.
+#
+# @file: the filename for the ROM ELF image
+#
+# @digest: the ROM image digest (32-bytes digest as hex string or "fake" to
+#          simulate it)
+##
+{ 'struct': 'OtRomImgProperties',
+  'data': { 'file': 'str',
+            'digest': 'str' } }
 
 ##
 # @ObjectType:
@@ -903,6 +916,7 @@
     { 'name': 'memory-backend-memfd',
       'if': 'CONFIG_LINUX' },
     'memory-backend-ram',
+    'ot-rom-img',
     'pef-guest',
     { 'name': 'pr-manager-helper',
       'if': 'CONFIG_LINUX' },
@@ -972,6 +986,7 @@
       'memory-backend-memfd':       { 'type': 'MemoryBackendMemfdProperties',
                                       'if': 'CONFIG_LINUX' },
       'memory-backend-ram':         'MemoryBackendProperties',
+      'ot-rom-img':                 'OtRomImgProperties',
       'pr-manager-helper':          { 'type': 'PrManagerHelperProperties',
                                       'if': 'CONFIG_LINUX' },
       'qtest':                      'QtestProperties',

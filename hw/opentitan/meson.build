@@ -24,6 +24,7 @@ softmmu_ss.add(when: 'CONFIG_OT_OTP_EARLGREY', if_true: files('ot_otp_earlgrey.c
 softmmu_ss.add(when: 'CONFIG_OT_PINMUX', if_true: files('ot_pinmux.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PRNG', if_true: files('ot_prng.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PWRMGR', if_true: files('ot_pwrmgr.c'))
+softmmu_ss.add(when: 'CONFIG_OT_ROM_CTRL', if_true: files('ot_rom_ctrl.c', 'ot_rom_ctrl_img.c'))
 softmmu_ss.add(when: 'CONFIG_OT_SENSOR', if_true: files('ot_sensor.c'))
 softmmu_ss.add(when: 'CONFIG_OT_SPI_HOST', if_true: files('ot_spi_host.c'))
 softmmu_ss.add(when: 'CONFIG_OT_SRAM_CTRL', if_true: files('ot_sram_ctrl.c'))

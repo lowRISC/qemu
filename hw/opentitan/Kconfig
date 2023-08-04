@@ -63,6 +63,10 @@ config OT_PRNG
 config OT_PWRMGR
     bool
 
+config OT_ROM_CTRL
+    bool
+    select OT_COMMON
+
 config OT_SENSOR
     bool
 
