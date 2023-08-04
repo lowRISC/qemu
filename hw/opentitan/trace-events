@@ -58,8 +58,10 @@ ot_csrng_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint
 ot_csrng_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_csrng_irqs(uint32_t active, uint32_t mask, uint32_t eff) "act:0x%08x msk:0x%08x eff:0x%08x"
 ot_csrng_push_command(unsigned slot, const char *cmd, unsigned acmd, char code, unsigned len) "#%u: %s(%u) %clen: %u"
+ot_csrng_read_state_db(unsigned slot, unsigned pos, uint32_t val) "#%u [%u] = 0x%08x"
 ot_csrng_retry_es_init(unsigned retry_count) "rescheduling initial ES request: %u to go"
 ot_csrng_schedule(unsigned slot, const char *kind) "#%u: %s"
+ot_csrng_show_buffer(const char *func, int line, unsigned appid, const char *msg, const char *hexstr) "%s:%u #%u %s: %s"
 ot_csrng_show_command(const char *msg, unsigned slot, const char *cmd, unsigned acmd) "%s slot #%u, acmd: %s(%u)"
 ot_csrng_swapp_fill(unsigned count) "%u to go"
 ot_csrng_try_schedule_genbits(unsigned slot, bool ready, bool queued, unsigned rem) "? #%u rdy:%u q:%u rem:%u"

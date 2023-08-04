@@ -24,10 +24,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *
- * Note: for now, only a minimalist subset of CSRNG device is implemented in
- *       order to enable OpenTitan's ROM boot to progress.
- *
- *       ** It is by NO MEANS cryptographically secure! **
+ * Note: ** It is by NO MEANS cryptographically secure! **
  */
 
 #include "qemu/osdep.h"
@@ -50,6 +47,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "tomcrypt.h"
 #include "trace.h"
 
 
@@ -153,6 +151,12 @@ REG32(MAIN_SM_STATE, 0x40u)
      R_RECOV_ALERT_STS_CS_MAIN_SM_ALERT_MASK)
 #define ERR_CODE_MASK 0x77e0ffffu
 
+#define OT_CSRNG_AES_KEY_SIZE   32u /* 256 bits */
+#define OT_CSRNG_AES_BLOCK_SIZE 16u /* 128 bits */
+
+#define OT_CSRNG_AES_BLOCK_WORD  (OT_CSRNG_AES_BLOCK_SIZE / sizeof(uint32_t))
+#define OT_CSRNG_AES_BLOCK_DWORD (OT_CSRNG_AES_BLOCK_SIZE / sizeof(uint64_t))
+
 #define ALERT_STATUS_BIT(_x_) R_RECOV_ALERT_STS_##_x_##_FIELD_ALERT_MASK
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
@@ -189,18 +193,19 @@ static const char *CMD_NAMES[] = {
 #define CMD_NAME(_cmd_) \
     (((size_t)(_cmd_)) < ARRAY_SIZE(CMD_NAMES) ? CMD_NAMES[(_cmd_)] : "?")
 
-#define OT_ENTROPY_SRC_WORD_COUNT \
-    (OT_ENTROPY_SRC_PACKET_SIZE_BITS / sizeof(uint32_t))
-
 static_assert(OT_CSRNG_PACKET_WORD_COUNT <= OT_ENTROPY_SRC_WORD_COUNT,
               "CSRNG packet cannot be larger than entropy_src packet");
 static_assert((OT_ENTROPY_SRC_WORD_COUNT % OT_CSRNG_PACKET_WORD_COUNT) == 0,
               "CSRNG packet should be a multiple of entropy_src packet");
+static_assert(OT_CSRNG_AES_BLOCK_SIZE + OT_CSRNG_AES_KEY_SIZE ==
+              OT_CSRNG_SEED_BYTE_COUNT, "Invalid seed size");
 
 #define xtrace_ot_csrng_error(_msg_) \
     trace_ot_csrng_error(__func__, __LINE__, _msg_)
 #define xtrace_ot_csrng_info(_msg_, _val_) \
     trace_ot_csrng_info(__func__, __LINE__, _msg_, _val_)
+#define xtrace_ot_csrng_show_buffer(_id_, _msg_, _buf_, _len_) \
+    ot_csrng_show_buffer(__func__, __LINE__, _id_, _msg_, _buf_, _len_)
 
 #define SW_INSTANCE_ID OT_CSRNG_HW_APP_MAX
 
@@ -244,14 +249,19 @@ typedef enum {
 } OtCSRNGFsmState;
 
 typedef struct {
-    uint64_t value[OT_ENTROPY_SRC_DWORD_COUNT];
-    unsigned rem_count;
+    symmetric_ECB ecb; /* AES ECB context for tomcrypt */
+    uint8_t v_counter[OT_CSRNG_AES_BLOCK_SIZE]; /* V a.k.a. the counter */
+    uint8_t key[OT_CSRNG_AES_KEY_SIZE];
+    uint32_t material[OT_CSRNG_SEED_WORD_COUNT];
+    unsigned material_len; /* in word count */
+    /* See https://github.com/lowRISC/opentitan/issues/16499 */
+    unsigned reseed_counter;
+    unsigned rem_packet_count; /* remaining packets to generate */
     bool instantiated;
     bool fips;
 } OtCSRNGDrng;
 
 typedef struct OtCSRNGInstance {
-    OtCSRNGDrng drng;
     OtFifo32 cmd_fifo;
     union {
         struct {
@@ -266,6 +276,7 @@ typedef struct OtCSRNGInstance {
             bool genbits_ready;
         } hw;
     };
+    OtCSRNGDrng drng;
     bool defer_completion;
     QSIMPLEQ_ENTRY(OtCSRNGInstance) cmd_request;
     OtCSRNGState *parent;
@@ -289,6 +300,8 @@ struct OtCSRNGState {
     bool read_int_granted;
     uint32_t scheduled_cmd;
     unsigned es_retry_count;
+    unsigned state_db_ix;
+    int aes_cipher; /* AES handle for tomcrypt */
     OtCSRNGFsmState state;
     OtCSRNGInstance *instances;
     OtCSRNGQueue cmd_requests;
@@ -336,6 +349,9 @@ static const char *STATE_NAMES[] = {
                                 ALERT_STATUS_BIT(_b_));
 #define CHANGE_STATE(_s_, _st_) ot_csrng_change_state_line(_s_, _st_, __LINE__)
 
+#define OT_CSRNG_HEXBUF_SIZE \
+    ((8u * 2u + 1u) * OT_CSRNG_SEED_WORD_COUNT + 4u)
+
 static bool ot_csrng_check_multibitboot(OtCSRNGState *s, uint8_t mbbool,
                                         uint32_t alert_bit);
 static void ot_csrng_command_schedule(OtCSRNGState *s, OtCSRNGInstance *inst);
@@ -343,6 +359,9 @@ static bool ot_csrng_instance_is_command_ready(OtCSRNGInstance *inst);
 static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res);
 static void ot_csrng_change_state_line(OtCSRNGState *s, OtCSRNGFsmState state,
                                        int line);
+static unsigned ot_csrng_get_slot(OtCSRNGInstance *inst);
+static OtCSRNDCmdResult ot_csrng_drng_reseed(
+    OtCSRNGInstance *inst, OtEntropySrcState *entropy_src, bool flag0);
 
 /* -------------------------------------------------------------------------- */
 /* Public API */
@@ -410,113 +429,108 @@ int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
 }
 
 /* -------------------------------------------------------------------------- */
-/* DBRG (Deterministic Random Number Generator) */
-/* For now, use a wwek PRNG that should be replaced with a NIST SP 800-90A */
-/* compliant DBRG once the CSRNG implementation is "complete" */
+/* DRBG (Deterministic Random Bit Generator) */
 /* -------------------------------------------------------------------------- */
 
-/*
- * Written in 2019 by David Blackman and Sebastiano Vigna (vigna@acm.org)
- *  This is xoroshiro128++ 1.0, one of our all-purpose, rock-solid,
- *  small-state generators. It is extremely (sub-ns) fast and it passes all
- *  tests we are aware of, but its state space is large enough only for
- *  mild parallelism.
- *
- *  For generating just floating-point numbers, xoroshiro128+ is even
- *  faster (but it has a very mild bias, see notes in the comments).
- *
- *  The state must be seeded so that it is not everywhere zero. If you have
- *  a 64-bit seed, we suggest to seed a splitmix64 generator and use its
- *  output to fill s.
- */
-static inline uint64_t
-ot_csrng_drng_xoroshiro128pp_rotl(const uint64_t x, int k)
+static void ot_csrng_show_buffer(const char *func, int line, unsigned int appid,
+                                 const char *msg, const void *buf,
+                                 unsigned size)
 {
-    return (x << k) | (x >> (64 - k));
-}
-
-static uint64_t ot_csrng_drng_xoroshiro128pp_next(OtCSRNGDrng *drng)
-{
-    uint64_t *s = drng->value; /* only use the first 128 bits for now */
-
-    const uint64_t s0 = s[0];
-    uint64_t s1 = s[1];
-    const uint64_t result = ot_csrng_drng_xoroshiro128pp_rotl(s0 + s1, 17) + s0;
-
-    s1 ^= s0;
-    s[0] = ot_csrng_drng_xoroshiro128pp_rotl(s0, 49) ^ s1 ^ (s1 << 21);
-    s[1] = ot_csrng_drng_xoroshiro128pp_rotl(s1, 28);
-
-    return result;
-}
-
-static OtCSRNDCmdResult ot_csrng_drng_reseed(
-    OtCSRNGDrng *drng, OtEntropySrcState *entropy_src,
-    const uint32_t *additional_data, unsigned data_len, bool flag0)
-{
-    assert(drng->instantiated);
-
-    uint64_t buffer[OT_ENTROPY_SRC_DWORD_COUNT];
-    memset(buffer, 0, sizeof(buffer));
-    data_len *= sizeof(uint32_t); /* data_len is specified in 32-bit slots */
-    memcpy(buffer, additional_data, MIN(data_len, sizeof(buffer)));
-
-    if (!flag0) {
-        bool fips;
-        uint64_t entropy[OT_ENTROPY_SRC_DWORD_COUNT];
-        int res;
-        res = ot_entropy_src_get_random(entropy_src, entropy, &fips);
-        if (res) {
-            /* either -1 on failure or 1 when still initializing */
-            return res < 0 ? CSRNG_CMD_ERROR : CSRNG_CMD_RETRY;
+    if (trace_event_get_state(TRACE_OT_CSRNG_SHOW_BUFFER) &&
+        qemu_loglevel_mask(LOG_TRACE)) {
+        static const char _hex[] = "0123456789ABCDEF";
+        char hexstr[OT_CSRNG_HEXBUF_SIZE];
+        unsigned len = MIN(size, OT_CSRNG_HEXBUF_SIZE / 2u - 4u);
+        const uint8_t *pbuf = (const uint8_t *)buf;
+        memset(hexstr, 0, sizeof(hexstr));
+        unsigned hix = 0;
+        for (unsigned ix = 0u; ix < len; ix++) {
+            if (ix && !(ix & 0x3u)) {
+                hexstr[hix++] = '-';
+            }
+            hexstr[hix++] = _hex[(pbuf[ix] >> 4u) & 0xfu];
+            hexstr[hix++] = _hex[pbuf[ix] & 0xfu];
         }
-        /* always perform XOR which is a no-op if data_len is zero */
-        for (unsigned ix = 0; ix < OT_ENTROPY_SRC_DWORD_COUNT; ix++) {
-            drng->value[ix] = entropy[ix] ^ buffer[ix];
+        if (len < size) {
+            hexstr[hix++] = '.';
+            hexstr[hix++] = '.';
+            hexstr[hix++] = '.';
         }
-        drng->fips = fips;
-    } else {
-        memcpy(drng->value, buffer, sizeof(buffer));
-        drng->fips = false;
 
-        /* xoroshiro128pp++ workaround */
-        if (!drng->value[0u] && !drng->value[1u]) {
-            drng->value[0u] = 0x360fd5f2cf8d5d99u;
-        }
+        trace_ot_csrng_show_buffer(func, line, appid, msg, hexstr);
     }
-
-    return CSRNG_CMD_OK;
 }
 
-static void ot_csrng_drng_update(
-    OtCSRNGDrng *drng, const uint32_t *additional_data, unsigned data_len)
+static void ot_csrng_drng_store_material(OtCSRNGInstance *inst,
+                                         const uint32_t *buf, unsigned len)
 {
-    assert(drng->instantiated);
+    OtCSRNGDrng *drng = &inst->drng;
 
-    uint64_t buffer[OT_ENTROPY_SRC_DWORD_COUNT];
-    memset(buffer, 0, sizeof(buffer));
-    data_len *= sizeof(uint32_t); /* data_len is specified in 32-bit slots */
-    memcpy(buffer, additional_data, MIN(data_len, sizeof(buffer)));
+    /* convert OpenTitan order into natural order */
+    for (unsigned ix = 0; ix < len; ix++) {
+        drng->material[ix] = bswap32(buf[len - ix - 1]);
+    }
+    drng->material_len = len;
+}
 
-    for (unsigned ix = 0; ix < data_len; ix++) {
-        drng->value[ix] ^= buffer[ix];
+static void ot_csrng_drng_clear_material(OtCSRNGInstance *inst)
+{
+    OtCSRNGDrng *drng = &inst->drng;
+
+    memset(drng->material, 0, sizeof(drng->material));
+    drng->material_len = 0;
+}
+
+static unsigned ot_csrng_drng_remaining_count(OtCSRNGInstance *inst)
+{
+    return inst->drng.rem_packet_count;
+}
+
+static void ot_csrng_drng_set_count(OtCSRNGInstance *inst,
+                                    unsigned packet_count)
+{
+    inst->drng.rem_packet_count = packet_count;
+}
+
+static bool ot_csrng_drng_is_instantiated(OtCSRNGInstance *inst)
+{
+    return inst->drng.instantiated;
+}
+
+static void ot_csrng_drng_increment(OtCSRNGDrng *drng)
+{
+    unsigned pos = OT_CSRNG_AES_BLOCK_SIZE - 1u;
+    while (pos) {
+        if (++drng->v_counter[pos] != 0) {
+            break;
+        }
+        pos -= 1u;
     }
 }
 
 static OtCSRNDCmdResult ot_csrng_drng_instanciate(
-    OtCSRNGDrng *drng, OtEntropySrcState *entropy_src,
-    const uint32_t *additional_data, unsigned data_len, bool flag0)
+    OtCSRNGInstance *inst, OtEntropySrcState *entropy_src, bool flag0)
 {
+    OtCSRNGDrng *drng = &inst->drng;
     if (drng->instantiated) {
         return CSRNG_CMD_ERROR;
     }
 
-    drng->instantiated = true;
+    memset(drng->v_counter, 0, sizeof(drng->v_counter));
+    drng->fips = false;
+
+    uint8_t key[OT_CSRNG_AES_KEY_SIZE];
+    memset(key, 0, sizeof(key));
 
     int res;
+    res = ecb_start(inst->parent->aes_cipher, key, (int)sizeof(key), 0,
+                    &drng->ecb);
+    assert(res == CRYPT_OK);
 
-    res = ot_csrng_drng_reseed(drng, entropy_src, additional_data, data_len,
-                               flag0);
+    memcpy(drng->key, key, OT_CSRNG_AES_KEY_SIZE);
+    drng->instantiated = true;
+
+    res = ot_csrng_drng_reseed(inst, entropy_src, flag0);
     if (res) {
         drng->instantiated = false;
     }
@@ -524,41 +538,133 @@ static OtCSRNDCmdResult ot_csrng_drng_instanciate(
     return res;
 }
 
-static void ot_csrng_drng_uninstantiate(OtCSRNGDrng *drng)
+static void ot_csrng_drng_uninstantiate(OtCSRNGInstance *inst)
 {
+    OtCSRNGDrng *drng = &inst->drng;
+
+    if (drng->instantiated) {
+        ecb_done(&drng->ecb);
+    }
+
     drng->instantiated = false;
     drng->fips = false;
-    drng->rem_count = 0;
+    drng->rem_packet_count = 0;
+
     /* only to help debugging */
-    memset(drng->value, 0, sizeof(drng->value));
+    memset(drng->v_counter, 0, sizeof(drng->v_counter));
 }
 
-static void ot_csrng_drng_get_next(OtCSRNGDrng *drng, uint32_t *bits,
+static int ot_csrng_drng_update(OtCSRNGInstance *inst)
+{
+    OtCSRNGDrng *drng = &inst->drng;
+
+    uint32_t tmp[OT_CSRNG_SEED_WORD_COUNT];
+
+    memset(tmp, 0, sizeof(tmp));
+
+    unsigned appid = ot_csrng_get_slot(inst);
+    xtrace_ot_csrng_show_buffer(appid, "vcount", drng->v_counter,
+                                OT_CSRNG_AES_BLOCK_SIZE);
+
+    int res;
+    uint8_t *ptmp = (uint8_t *)tmp;
+    for (unsigned ix = 0; ix < OT_CSRNG_SEED_BYTE_COUNT;
+         ix += OT_CSRNG_AES_BLOCK_SIZE) {
+        ot_csrng_drng_increment(drng);
+
+        res = ecb_encrypt(drng->v_counter, ptmp, OT_CSRNG_AES_BLOCK_SIZE,
+                          &drng->ecb);
+        assert(res == CRYPT_OK);
+        ptmp += OT_CSRNG_AES_BLOCK_SIZE;
+    }
+
+    for (unsigned ix = 0; ix < drng->material_len; ix++) {
+        tmp[ix] ^= drng->material[ix];
+    }
+
+    res = ecb_done(&drng->ecb);
+    assert(res == CRYPT_OK);
+
+    xtrace_ot_csrng_show_buffer(appid, "seed-u", drng->material,
+                                drng->material_len * sizeof(uint32_t));
+    xtrace_ot_csrng_show_buffer(appid, "key", tmp, OT_CSRNG_AES_KEY_SIZE);
+
+    ptmp = (uint8_t *)tmp;
+    res = ecb_start(inst->parent->aes_cipher, ptmp, (int)OT_CSRNG_AES_KEY_SIZE,
+                    0, &drng->ecb);
+    assert(res == CRYPT_OK);
+
+    memcpy(drng->key, ptmp, OT_CSRNG_AES_KEY_SIZE);
+    memcpy(drng->v_counter, &ptmp[OT_CSRNG_AES_KEY_SIZE],
+           OT_CSRNG_AES_BLOCK_SIZE);
+
+    xtrace_ot_csrng_show_buffer(appid, "vcntr", drng->v_counter,
+                                OT_CSRNG_AES_BLOCK_SIZE);
+
+    return 0;
+}
+
+static OtCSRNDCmdResult ot_csrng_drng_reseed(
+    OtCSRNGInstance *inst, OtEntropySrcState *entropy_src, bool flag0)
+{
+    OtCSRNGDrng *drng = &inst->drng;
+    assert(drng->instantiated);
+
+    if (!flag0) {
+        uint64_t buffer[OT_ENTROPY_SRC_DWORD_COUNT];
+        memset(buffer, 0, sizeof(buffer));
+        unsigned len = drng->material_len * sizeof(uint32_t);
+        memcpy(buffer, drng->material, MIN(len, sizeof(buffer)));
+
+        uint64_t entropy[OT_ENTROPY_SRC_DWORD_COUNT];
+        int res;
+        bool fips;
+        res = ot_entropy_src_get_random(entropy_src, entropy, &fips);
+        if (res) {
+            /* either -1 on failure or 1 when still initializing */
+            return res < 0 ? CSRNG_CMD_ERROR : CSRNG_CMD_RETRY;
+        }
+        /* always perform XOR which is a no-op if material_len is zero */
+        for (unsigned ix = 0; ix < OT_ENTROPY_SRC_DWORD_COUNT; ix++) {
+            buffer[ix] ^= entropy[ix];
+        }
+        memcpy(drng->material, buffer, sizeof(entropy));
+        drng->material_len = sizeof(entropy) / (sizeof(uint32_t));
+        ot_csrng_drng_update(inst);
+        drng->fips = fips;
+    } else {
+        ot_csrng_drng_update(inst);
+        drng->fips = false;
+    }
+
+    drng->reseed_counter = 1u;
+
+    return CSRNG_CMD_OK;
+}
+
+static void ot_csrng_drng_generate(OtCSRNGInstance *inst, uint32_t *out,
                                    bool *fips)
 {
-    static_assert(sizeof(uint32_t) * OT_CSRNG_PACKET_WORD_COUNT ==
-                      2u * sizeof(uint64_t),
-                  "invalid size");
-    uint64_t entropy;
-    entropy = ot_csrng_drng_xoroshiro128pp_next(drng);
-    bits[0u] = (uint32_t)entropy;
-    bits[1u] = (uint32_t)(entropy >> 32u);
-    entropy = ot_csrng_drng_xoroshiro128pp_next(drng);
-    bits[2u] = (uint32_t)entropy;
-    bits[3u] = (uint32_t)(entropy >> 32u);
+    OtCSRNGDrng *drng = &inst->drng;
 
-    drng->rem_count -= 1u;
+    ot_csrng_drng_increment(drng);
+    drng->rem_packet_count -= 1u;
+
+    int res;
+
+    res = ecb_encrypt(drng->v_counter, (uint8_t *)out, OT_CSRNG_AES_BLOCK_SIZE,
+                      &drng->ecb);
+    assert(res == CRYPT_OK);
+
+    xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "out", out,
+                                OT_CSRNG_AES_BLOCK_SIZE);
+
     *fips = drng->fips;
-}
 
-static unsigned ot_csrng_drng_remaining_count(OtCSRNGDrng *drng)
-{
-    return drng->rem_count;
-}
-
-static bool ot_csrng_drng_is_instantiated(OtCSRNGDrng *drng)
-{
-    return drng->instantiated;
+    if (!ot_csrng_drng_remaining_count(inst)) {
+        ot_csrng_drng_update(inst);
+        drng->reseed_counter += 1u;
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -676,7 +782,7 @@ static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
     }
 
     trace_ot_csrng_instanciate(slot, false);
-    ot_csrng_drng_uninstantiate(&inst->drng);
+    ot_csrng_drng_uninstantiate(inst);
     ot_csrng_complete_command(inst, 0);
 
     return true;
@@ -710,7 +816,7 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
         /* skip SW instance */
         for (unsigned ix = 0u; ix < OT_CSRNG_HW_APP_MAX; ix++) {
             OtCSRNGInstance *inst = &s->instances[ix];
-            if (ot_csrng_drng_is_instantiated(&inst->drng)) {
+            if (ot_csrng_drng_is_instantiated(inst)) {
                 /*
                  * the instance may have received an unistantiation command
                  * that has not been dequeued yet. If this is the case, proceed
@@ -761,7 +867,7 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
         /* reset all instances */
         for (unsigned ix = 0u; ix < OT_CSRNG_HW_APP_MAX + 1u; ix++) {
             OtCSRNGInstance *inst = &s->instances[ix];
-            ot_csrng_drng_uninstantiate(&inst->drng);
+            ot_csrng_drng_uninstantiate(inst);
             ot_fifo32_reset(&inst->cmd_fifo);
             if (ix == SW_INSTANCE_ID) {
                 ot_fifo32_reset(&inst->sw.bits_fifo);
@@ -809,7 +915,7 @@ static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res)
 
     if (num > 1u) {
         CHANGE_STATE(s, CSRNG_CLR_A_DATA);
-        buffer += 1;
+        buffer += 1u;
         memset((uint32_t *)buffer, 0, sizeof(uint32_t) * (num - 1u));
     }
 
@@ -828,7 +934,12 @@ static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res)
         ot_csrng_complete_hw_command(inst, res);
     }
 
-    CHANGE_STATE(s, res == 0 ? CSRNG_IDLE : CSRNG_ERROR);
+    if (res == 0) {
+        CHANGE_STATE(s, CSRNG_IDLE);
+    } else {
+        CHANGE_STATE(s, CSRNG_ERROR);
+        ot_csrng_report_alert(s);
+    }
 }
 
 static OtCSRNDCmdResult
@@ -849,17 +960,23 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
         ot_fifo32_peek_buf(&inst->cmd_fifo, ot_fifo32_num_used(&inst->cmd_fifo),
                            &num);
     assert(num - 1u == clen);
-    buffer += 1;
+    buffer += 1u;
+
+    xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
+                                clen * sizeof(uint32_t));
+
+    ot_csrng_drng_store_material(inst, buffer, clen);
 
     int res;
 
-    res = ot_csrng_drng_instanciate(&inst->drng, s->entropy_src, buffer, clen,
-                                    flag0);
+    res = ot_csrng_drng_instanciate(inst, s->entropy_src, flag0);
     if ((res == CSRNG_CMD_OK) && !flag0) {
         /* if flag0 is set, entropy source is not used for reseeding */
         s->regs[R_INTR_STATE] |= INTR_CS_ENTROPY_REQ_MASK;
         ot_csrng_update_irqs(s);
     }
+
+    ot_csrng_drng_clear_material(inst);
 
     return res;
 }
@@ -871,9 +988,44 @@ ot_csrng_handle_uninstantiate(OtCSRNGState *s, unsigned slot)
 
     trace_ot_csrng_instanciate(slot, false);
 
-    ot_csrng_drng_uninstantiate(&inst->drng);
+    ot_csrng_drng_uninstantiate(inst);
 
     return CSRNG_CMD_OK;
+}
+
+static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
+{
+    OtCSRNGInstance *inst = &s->instances[slot];
+
+    uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
+    uint32_t packet_count = FIELD_EX32(command, OT_CSNRG_CMD, GLEN);
+
+    if (!packet_count) {
+        xtrace_ot_csrng_error("generation for no packet");
+        CHANGE_STATE(s, CSRNG_ERROR);
+        ot_csrng_report_alert(s);
+        return -1;
+    }
+
+    trace_ot_csrng_generate(ot_csrng_get_slot(inst), packet_count);
+
+    OtCSRNGDrng *drng = &inst->drng;
+    assert(drng->instantiated);
+
+    if (ot_csrng_drng_remaining_count(inst)) {
+        xtrace_ot_csrng_info("remaining packets to generate",
+                             ot_csrng_drng_remaining_count(inst));
+        xtrace_ot_csrng_error("New generate request before completion");
+        /* should we resume? */
+    }
+
+    ot_csrng_drng_set_count(inst, packet_count);
+
+    /*
+     * do not ack command yet,
+     * should only be completed once remamining packets reach zero
+     */
+    return CSRNG_CMD_DEFERRED;
 }
 
 static OtCSRNDCmdResult ot_csrng_handle_reseed(OtCSRNGState *s, unsigned slot)
@@ -893,10 +1045,15 @@ static OtCSRNDCmdResult ot_csrng_handle_reseed(OtCSRNGState *s, unsigned slot)
         ot_fifo32_peek_buf(&inst->cmd_fifo, ot_fifo32_num_used(&inst->cmd_fifo),
                            &num);
     assert(num - 1u == clen);
-    buffer += 1;
+    buffer += 1u;
 
-    int res =
-        ot_csrng_drng_reseed(&inst->drng, s->entropy_src, buffer, clen, flag0);
+    xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
+                                clen * sizeof(uint32_t));
+
+    ot_csrng_drng_store_material(inst, buffer, clen);
+
+    int res;
+    res = ot_csrng_drng_reseed(inst, s->entropy_src, flag0);
     if ((res == CSRNG_CMD_OK) && !flag0) {
         /* if flag0 is set, entropy source is not used for reseeding */
         s->regs[R_INTR_STATE] |= INTR_CS_ENTROPY_REQ_MASK;
@@ -920,9 +1077,14 @@ static OtCSRNDCmdResult ot_csrng_handle_update(OtCSRNGState *s, unsigned slot)
         ot_fifo32_peek_buf(&inst->cmd_fifo, ot_fifo32_num_used(&inst->cmd_fifo),
                            &num);
     assert(num - 1u == clen);
-    buffer += 1;
+    buffer += 1u;
 
-    ot_csrng_drng_update(&inst->drng, buffer, clen);
+    xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
+                                clen * sizeof(uint32_t));
+
+    ot_csrng_drng_store_material(inst, buffer, clen);
+
+    ot_csrng_drng_update(inst);
 
     return CSRNG_CMD_OK;
 }
@@ -939,7 +1101,8 @@ static void ot_csrng_hwapp_ready_irq(void *opaque, int n, int level)
     OtCSRNGInstance *inst = &s->instances[slot];
     inst->hw.genbits_ready = ready;
 
-    trace_ot_csrng_hwapp_ready(slot, ready, inst->drng.rem_count);
+    trace_ot_csrng_hwapp_ready(slot, ready,
+                               ot_csrng_drng_remaining_count(inst));
 
     if (ready) {
         qemu_bh_schedule(inst->hw.filler_bh);
@@ -950,16 +1113,15 @@ static void ot_csrng_hwapp_filler_bh(void *opaque)
 {
     /* scheduled following a CSRNG HW APP client ready to receive entropy */
     OtCSRNGInstance *inst = opaque;
-    OtCSRNGDrng *drng = &inst->drng;
 
     /*
      * client may have updated its readiness status since this BH has been
      * scheduled, readiness should always be tested
      */
-    if (inst->hw.genbits_ready && ot_csrng_drng_remaining_count(drng)) {
+    if (inst->hw.genbits_ready && ot_csrng_drng_remaining_count(inst)) {
         uint32_t bits[OT_CSRNG_PACKET_WORD_COUNT];
         bool fips;
-        ot_csrng_drng_get_next(drng, bits, &fips);
+        ot_csrng_drng_generate(inst, bits, &fips);
 
         /*
          * client callback may trigger ot_csrng_hwapp_ready_irq to update its
@@ -972,7 +1134,7 @@ static void ot_csrng_hwapp_filler_bh(void *opaque)
          * reschedule self if the client does not update its readiness, it
          * expects more entropy from this instance.
          */
-        if (ot_csrng_drng_remaining_count(drng)) {
+        if (ot_csrng_drng_remaining_count(inst)) {
             qemu_bh_schedule(inst->hw.filler_bh);
         }
     }
@@ -984,7 +1146,7 @@ static void ot_csrng_hwapp_filler_bh(void *opaque)
          * command signal the command completion to the client, whatever
          * its readiness status (only generate commands complete async.)
          */
-        if (!ot_csrng_drng_remaining_count(drng)) {
+        if (!ot_csrng_drng_remaining_count(inst)) {
             unsigned slot = ot_csrng_get_slot(inst);
             xtrace_ot_csrng_info("complete deferred generation", slot);
             ot_csrng_complete_command(inst, 0);
@@ -994,15 +1156,17 @@ static void ot_csrng_hwapp_filler_bh(void *opaque)
 
 static void ot_csrng_swapp_fill(OtCSRNGInstance *inst)
 {
-    unsigned count = ot_csrng_drng_remaining_count(&inst->drng);
+    unsigned count = ot_csrng_drng_remaining_count(inst);
 
     if (count > 0) {
         /* refill SW FIFO */
         trace_ot_csrng_swapp_fill(count);
         uint32_t bits[OT_CSRNG_PACKET_WORD_COUNT];
-        ot_csrng_drng_get_next(&inst->drng, bits, &inst->sw.fips);
+        ot_csrng_drng_generate(inst, bits, &inst->sw.fips);
         for (unsigned ix = 0; ix < OT_CSRNG_PACKET_WORD_COUNT; ix++) {
-            ot_fifo32_push(&inst->sw.bits_fifo, bits[ix]);
+            /* reverse all bytes to fit OpenTitan order */
+            ot_fifo32_push(&inst->sw.bits_fifo,
+                           bswap32(bits[OT_CSRNG_PACKET_WORD_COUNT - ix - 1u]));
         }
         xtrace_ot_csrng_info("swfifo empty",
                              ot_fifo32_is_empty(&inst->sw.bits_fifo));
@@ -1014,40 +1178,6 @@ static void ot_csrng_swapp_fill(OtCSRNGInstance *inst)
             ot_csrng_complete_command(inst, 0);
         }
     }
-}
-
-static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
-{
-    OtCSRNGInstance *inst = &s->instances[slot];
-
-    uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
-    uint32_t packet_count = FIELD_EX32(command, OT_CSNRG_CMD, GLEN);
-
-    if (!packet_count) {
-        xtrace_ot_csrng_error("generation for no packet");
-        CHANGE_STATE(s, CSRNG_ERROR);
-        ot_csrng_report_alert(s);
-        return -1;
-    }
-
-    trace_ot_csrng_generate(ot_csrng_get_slot(inst), packet_count);
-
-    OtCSRNGDrng *drng = &inst->drng;
-    assert(drng->instantiated);
-
-    if (drng->rem_count) {
-        xtrace_ot_csrng_info("remaining packets to generate", drng->rem_count);
-        xtrace_ot_csrng_error("New generate request before completion");
-        /* should we resume? */
-    }
-
-    drng->rem_count = packet_count;
-
-    /*
-     * do not ack command yet,
-     * should only be completed once drng->rem_count packets reach zero
-     */
-    return CSRNG_CMD_DEFERRED;
 }
 
 static bool ot_csrng_instance_is_command_ready(OtCSRNGInstance *inst)
@@ -1087,8 +1217,8 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "Unknown command: %u\n", acmd);
         s->regs[R_RECOV_ALERT_STS] |= R_RECOV_ALERT_STS_CS_MAIN_SM_ALERT_MASK;
-        ot_csrng_report_alert(s);
         CHANGE_STATE(s, CSRNG_ERROR);
+        ot_csrng_report_alert(s);
         return -1;
     }
 
@@ -1099,7 +1229,7 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
 
     switch (acmd) {
     case OT_CSRNG_CMD_INSTANTIATE:
-        if (ot_csrng_drng_is_instantiated(&inst->drng)) {
+        if (ot_csrng_drng_is_instantiated(inst)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: instance %u already active\n",
                           __func__, slot);
             return -1;
@@ -1108,12 +1238,7 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
     case OT_CSRNG_CMD_UNINSTANTIATE:
         break;
     default:
-        if (!ot_csrng_drng_is_instantiated(&inst->drng)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: instance %u not active\n",
-                          __func__, slot);
-            return -1;
-        }
-        if (!ot_csrng_drng_is_instantiated(&inst->drng)) {
+        if (!ot_csrng_drng_is_instantiated(inst)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: instance %u not instantiated\n",
                           __func__, slot);
             CHANGE_STATE(s, CSRNG_ERROR);
@@ -1121,7 +1246,6 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
             return -1;
         }
     }
-
 
     int res;
 
@@ -1138,8 +1262,7 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
         CHANGE_STATE(s, CSRNG_GENERATE_REQ);
         res = ot_csrng_handle_generate(s, slot);
         if (res == CSRNG_CMD_DEFERRED) {
-            OtCSRNGDrng *drng = &inst->drng;
-            if (ot_csrng_drng_remaining_count(drng)) {
+            if (ot_csrng_drng_remaining_count(inst)) {
                 if (slot != SW_INSTANCE_ID) {
                     /* HW instance */
                     if (inst->hw.genbits_ready) {
@@ -1216,6 +1339,12 @@ static void ot_csrng_command_scheduler(void *opaque)
 
     if (!ot_csrng_instance_is_command_ready(inst)) {
         xtrace_ot_csrng_error("cannot execute an incomplete command");
+        uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
+        uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
+        qemu_log_mask(LOG_GUEST_ERROR, "empty: %u, length %u, exp: %u\n",
+                      ot_fifo32_is_empty(&inst->cmd_fifo),
+                      ot_fifo32_num_used(&inst->cmd_fifo), length);
+
         g_assert_not_reached();
     }
 
@@ -1256,10 +1385,59 @@ static void ot_csrng_command_scheduler(void *opaque)
     }
 
     if (!QSIMPLEQ_EMPTY(&s->cmd_requests)) {
-        xtrace_ot_csrng_info("scheduling new command", 0);
-        uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-        timer_mod(s->cmd_scheduler, now + CMD_EXECUTE_DELAY_NS);
+        if (s->state != CSRNG_CMD_ERROR) {
+            xtrace_ot_csrng_info("scheduling new command", 0);
+            uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+            timer_mod(s->cmd_scheduler, now + CMD_EXECUTE_DELAY_NS);
+        } else {
+            xtrace_ot_csrng_error("cannot schedule new command on error");
+        }
     }
+}
+
+static uint32_t ot_csrng_read_state_db(OtCSRNGState *s)
+{
+    unsigned appid = s->regs[R_INT_STATE_NUM];
+    if (appid > OT_CSRNG_HW_APP_MAX) {
+        return 0;
+    }
+
+    OtCSRNGInstance *inst = &s->instances[appid];
+    OtCSRNGDrng *drng = &inst->drng;
+    uint32_t val32;
+    unsigned base;
+    switch (s->state_db_ix) {
+    case 0: /* Reseed counter */
+        val32 = drng->reseed_counter;
+        break;
+    case 1u ... 4u: /* V (counter) */
+        /* use big endian and reverse order to match OpenTitan order */
+        base = 4u - s->state_db_ix;
+        val32 = ldl_be_p(&drng->v_counter[base * sizeof(uint32_t)]);
+        break;
+    case 5u ... 12u: /* Key */
+        /* use big endian and reverse order to match OpenTitan order */
+        base = 12 - s->state_db_ix;
+        val32 = ldl_be_p(&drng->key[base * sizeof(uint32_t)]);
+        break;
+    case 13u: /* Status + Compliance, only 8 LSBs matter */
+        val32 = (uint32_t)((((uint8_t)drng->instantiated) << 0u) |
+                           (((uint8_t)drng->fips) << 1u));
+        break;
+    default:
+        val32 = 0;
+        break;
+    }
+
+    trace_ot_csrng_read_state_db(ot_csrng_get_slot(inst), s->state_db_ix,
+                                 val32);
+
+    s->state_db_ix += 1u;
+    if (s->state_db_ix >= 14u) {
+        s->state_db_ix = 0;
+    }
+
+    return val32;
 }
 
 static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -1284,8 +1462,7 @@ static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = s->regs[reg];
         break;
     case R_INT_STATE_VAL:
-        /* to be implemented */
-        val32 = s->sw_app_granted ? 0xffffffffu : 0u;
+        val32 = s->read_int_granted ? ot_csrng_read_state_db(s) : 0u;
         break;
     case R_MAIN_SM_STATE:
         switch (s->state) {
@@ -1304,7 +1481,7 @@ static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
             val32 = FIELD_DP32(0, GENBITS_VLD, GENBITS_VLD, (uint32_t)avail);
             val32 = FIELD_DP32(val32, GENBITS_VLD, GENBITS_FIPS, inst->sw.fips);
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "SW APP not enabled");
+            qemu_log_mask(LOG_GUEST_ERROR, "SW APP not enabled\n");
             val32 = 0;
         }
         break;
@@ -1320,7 +1497,7 @@ static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
                 }
             } else {
                 /* TBC: need to check if some error is signaled in ERR_CODE */
-                qemu_log_mask(LOG_GUEST_ERROR, "FIFO read w/ entropy bits");
+                qemu_log_mask(LOG_GUEST_ERROR, "FIFO read w/ entropy bits\n");
                 val32 = 0;
             }
         } else {
@@ -1437,8 +1614,15 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         break;
     case R_INT_STATE_NUM:
-        val32 &= R_INT_STATE_NUM_VAL_MASK;
-        s->regs[reg] = s->read_int_granted ? val32 : 0;
+        if (s->read_int_granted) {
+            val32 &= R_INT_STATE_NUM_VAL_MASK;
+            s->regs[reg] = val32;
+            s->state_db_ix = 0;
+            if (val32 > OT_CSRNG_HW_APP_MAX) {
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid INT_STATE_NUM %u\n",
+                              __func__, val32);
+            }
+        }
         break;
     case R_HW_EXC_STS:
         val32 &= R_HW_EXC_STS_VAL_MASK;
@@ -1537,6 +1721,12 @@ static void ot_csrng_init(Object *obj)
     memory_region_init_io(&s->mmio, obj, &ot_csrng_regs_ops, s, TYPE_OT_CSRNG,
                           REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
+
+    /* aes_desc is defined in libtomcrypt */
+    s->aes_cipher = register_cipher(&aes_desc);
+    if (s->aes_cipher < 0) {
+        error_report("OpenTitan AES: Unable to use libtomcrypt AES API");
+    }
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
