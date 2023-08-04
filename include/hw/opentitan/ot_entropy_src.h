@@ -34,8 +34,11 @@
 OBJECT_DECLARE_SIMPLE_TYPE(OtEntropySrcState, OT_ENTROPY_SRC)
 
 #define OT_ENTROPY_SRC_PACKET_SIZE_BITS 384u
+#define OT_ENTROPY_SRC_BYTE_COUNT       (OT_ENTROPY_SRC_PACKET_SIZE_BITS / 8u)
+#define OT_ENTROPY_SRC_WORD_COUNT \
+    (OT_ENTROPY_SRC_BYTE_COUNT / sizeof(uint32_t))
 #define OT_ENTROPY_SRC_DWORD_COUNT \
-    ((unsigned)(OT_ENTROPY_SRC_PACKET_SIZE_BITS / (8u * sizeof(uint64_t))))
+    ((unsigned)(OT_ENTROPY_SRC_BYTE_COUNT / sizeof(uint64_t)))
 
 /* see hw/ip/edn/doc/#multiple-edns-in-boot-time-request-mode */
 #define OT_ENTROPY_SRC_BOOT_DELAY_NS 2000000u /* 2 ms */
