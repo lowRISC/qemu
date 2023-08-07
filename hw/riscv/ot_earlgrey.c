@@ -43,6 +43,7 @@
 #include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
+#include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp.h"
@@ -556,11 +557,20 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_KMAC] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-kmac",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_KMAC,
         .memmap = MEMMAPENTRIES(
             { 0x41120000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 168),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 169),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 170)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_INT_PROP("edn-ep", 3u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_OTBN] = {
