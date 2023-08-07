@@ -1,5 +1,5 @@
 diff --git a/src/headers/tomcrypt_custom.h b/src/headers/tomcrypt_custom.h
-index 2d5cfec..c7316db 100644
+index 2d5cfec..cb9fbf8 100644
 --- a/src/headers/tomcrypt_custom.h
 +++ b/src/headers/tomcrypt_custom.h
 @@ -10,6 +10,10 @@
@@ -45,11 +45,10 @@ index 2d5cfec..c7316db 100644
  
     #define LTC_NO_HASHES
 -   #define LTC_SHA1
--   #define LTC_SHA3
++   #undef  LTC_SHA1
+    #define LTC_SHA3
 -   #define LTC_SHA512
 -   #define LTC_SHA384
-+   #undef  LTC_SHA1
-+   #undef  LTC_SHA3
 +   #undef  LTC_SHA512
 +   #undef  LTC_SHA384
     #define LTC_SHA256
