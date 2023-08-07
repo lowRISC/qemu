@@ -1,9 +1,9 @@
 diff --git a/meson.build b/meson.build
 new file mode 100644
-index 00000000..b7115e4f
+index 0000000..06b3a07
 --- /dev/null
 +++ b/meson.build
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,65 @@
 +project('libtomcrypt', 'c')
 +
 +libtomcrypt = static_library('tomcrypt',
@@ -28,6 +28,8 @@ index 00000000..b7115e4f
 +                                   'src/encauth/gcm/gcm_reset.c',
 +                                   'src/encauth/gcm/gcm_test.c',
 +                                   'src/hashes/sha2/sha256.c',
++                                   'src/hashes/sha3.c',
++                                   'src/hashes/sha3_test.c',
 +                                   'src/misc/crypt/crypt_argchk.c',
 +                                   'src/misc/crypt/crypt_cipher_descriptor.c',
 +                                   'src/misc/crypt/crypt_cipher_is_valid.c',
