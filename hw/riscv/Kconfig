@@ -30,6 +30,7 @@ config OT_EARLGREY
     select OT_OTP_EARLGREY
     select OT_PINMUX
     select OT_PWRMGR
+    select OT_ROM_CTRL
     select OT_SENSOR
     select OT_SPI_HOST
     select OT_SRAM_CTRL

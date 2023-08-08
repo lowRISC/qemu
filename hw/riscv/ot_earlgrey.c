@@ -49,6 +49,7 @@
 #include "hw/opentitan/ot_otp_earlgrey.h"
 #include "hw/opentitan/ot_pinmux.h"
 #include "hw/opentitan/ot_pwrmgr.h"
+#include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_sensor.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
@@ -83,12 +84,6 @@ static void ot_earlgrey_soc_uart_configure(
 
 /* EarlGrey/CW310 AON clock is 250 kHz */
 #define OT_EARLGREY_AON_CLK_HZ 250000u
-
-enum OtEarlgreySocMemory { OT_EARLGREY_SOC_MEM_ROM };
-
-static const MemMapEntry ot_earlgrey_soc_memories[] = {
-    [OT_EARLGREY_SOC_MEM_ROM] = { 0x00008000u, 0x8000u },
-};
 
 enum OtEarlgreySocDevice {
     OT_EARLGREY_SOC_DEV_ADC_CTRL,
@@ -682,11 +677,19 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_ROM_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
+        .type = TYPE_OT_ROM_CTRL,
         .name = "ot-rom_ctrl",
-        .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x411e0000u, 0x80u }
+            { 0x411e0000u, 0x80u },
+            { 0x00008000u, 0x8000u }
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EARLGREY_SOC_DEVLINK("kmac", KMAC)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("rom_id", "rom"),
+            IBEX_DEV_INT_PROP("size", 0x8000u),
+            IBEX_DEV_INT_PROP("kmac-app", 2u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_IBEX_WRAPPER] = {
@@ -809,7 +812,6 @@ struct OtEarlGreySoCState {
     SysBusDevice parent_obj;
 
     DeviceState **devices;
-    MemoryRegion *memories;
 };
 
 struct OtEarlGreyBoardState {
@@ -919,16 +921,6 @@ static void ot_earlgrey_soc_reset_exit(Object *obj)
 static void ot_earlgrey_soc_realize(DeviceState *dev, Error **errp)
 {
     OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(dev);
-    const MemMapEntry *memmap = &ot_earlgrey_soc_memories[0];
-
-    MemoryRegion *sys_mem = get_system_memory();
-
-    /* Boot ROM */
-    memory_region_init_rom(&s->memories[OT_EARLGREY_SOC_MEM_ROM], OBJECT(dev),
-                           "ot-rom", memmap[OT_EARLGREY_SOC_MEM_ROM].size,
-                           &error_fatal);
-    memory_region_add_subregion(sys_mem, memmap[OT_EARLGREY_SOC_MEM_ROM].base,
-                                &s->memories[OT_EARLGREY_SOC_MEM_ROM]);
 
     /* Link, define properties and realize devices, then connect GPIOs */
     ibex_link_devices(s->devices, ot_earlgrey_soc_devices,
@@ -951,7 +943,6 @@ static void ot_earlgrey_soc_init(Object *obj)
     s->devices =
         ibex_create_devices(ot_earlgrey_soc_devices,
                             ARRAY_SIZE(ot_earlgrey_soc_devices), DEVICE(s));
-    s->memories = g_new0(MemoryRegion, ARRAY_SIZE(ot_earlgrey_soc_memories));
 }
 
 static void ot_earlgrey_soc_class_init(ObjectClass *oc, void *data)
