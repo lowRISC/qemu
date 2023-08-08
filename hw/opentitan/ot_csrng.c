@@ -198,7 +198,8 @@ static_assert(OT_CSRNG_PACKET_WORD_COUNT <= OT_ENTROPY_SRC_WORD_COUNT,
 static_assert((OT_ENTROPY_SRC_WORD_COUNT % OT_CSRNG_PACKET_WORD_COUNT) == 0,
               "CSRNG packet should be a multiple of entropy_src packet");
 static_assert(OT_CSRNG_AES_BLOCK_SIZE + OT_CSRNG_AES_KEY_SIZE ==
-              OT_CSRNG_SEED_BYTE_COUNT, "Invalid seed size");
+                  OT_CSRNG_SEED_BYTE_COUNT,
+              "Invalid seed size");
 
 #define xtrace_ot_csrng_error(_msg_) \
     trace_ot_csrng_error(__func__, __LINE__, _msg_)
@@ -349,8 +350,7 @@ static const char *STATE_NAMES[] = {
                                 ALERT_STATUS_BIT(_b_));
 #define CHANGE_STATE(_s_, _st_) ot_csrng_change_state_line(_s_, _st_, __LINE__)
 
-#define OT_CSRNG_HEXBUF_SIZE \
-    ((8u * 2u + 1u) * OT_CSRNG_SEED_WORD_COUNT + 4u)
+#define OT_CSRNG_HEXBUF_SIZE ((8u * 2u + 1u) * OT_CSRNG_SEED_WORD_COUNT + 4u)
 
 static bool ot_csrng_check_multibitboot(OtCSRNGState *s, uint8_t mbbool,
                                         uint32_t alert_bit);
@@ -1385,7 +1385,7 @@ static void ot_csrng_command_scheduler(void *opaque)
     }
 
     if (!QSIMPLEQ_EMPTY(&s->cmd_requests)) {
-        if (s->state != CSRNG_CMD_ERROR) {
+        if (s->state != CSRNG_ERROR) {
             xtrace_ot_csrng_info("scheduling new command", 0);
             uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
             timer_mod(s->cmd_scheduler, now + CMD_EXECUTE_DELAY_NS);
