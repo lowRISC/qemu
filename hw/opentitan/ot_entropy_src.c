@@ -435,10 +435,22 @@ int ot_entropy_src_get_generation(OtEntropySrcState *s)
     return ot_entropy_src_is_module_enabled(s) ? (int)s->gennum : 0;
 }
 
-int ot_entropy_src_get_random(OtEntropySrcState *s,
+int ot_entropy_src_get_random(OtEntropySrcState *s, int genid,
                               uint64_t random[OT_ENTROPY_SRC_DWORD_COUNT],
                               bool *fips)
 {
+    if (!ot_entropy_src_is_module_enabled(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: entropy_src is down\n", __func__);
+        return -2;
+    }
+
+    if (genid != (int)s->gennum) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: entropy_src gennum mismatch req:%d cur:%u\n",
+                      __func__, genid, s->gennum);
+        return -2;
+    }
+
     bool fips_compliant;
 
     switch (s->state) {

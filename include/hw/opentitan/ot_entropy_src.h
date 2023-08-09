@@ -49,20 +49,28 @@ OBJECT_DECLARE_SIMPLE_TYPE(OtEntropySrcState, OT_ENTROPY_SRC)
  *
  * @return 0 is the entropy_src is disabled, or a positive, monotonic increase
  *         generation number which indicates the number of time the entropy_src
- *         has been cycled (enabled from a disable state)
+ *         has been cycled (enabled from a disable state). This generation
+ *         identifier should be passed on any subsequent
+ *         #ot_entropy_src_get_random request
  */
 int ot_entropy_src_get_generation(OtEntropySrcState *s);
 
 /*
  * Fill up a buffer with random values
  *
+ * @s the entropy state instance
+ * @genid the generation identifier, from #ot_entropy_src_get_generation
+ * @random the buffer to fill in with entropy data
+ * @fips on success, updated to @true if entropy data are FIPS-compliant
  * @return 0 on success,
  *         -1 if the entropy source is not available, i.e. if the module is not
  *            enabled or if the selected route is not the HW one,
+ *         -2 if the generation ID does not match and execution cannot process
+ *            any further,
  *         1 if the entropy source is still initializing or not enough entropy
  *           is available to fill the output buffer.
  */
-int ot_entropy_src_get_random(OtEntropySrcState *s,
+int ot_entropy_src_get_random(OtEntropySrcState *s, int genid,
                               uint64_t random[OT_ENTROPY_SRC_DWORD_COUNT],
                               bool *fips);
 

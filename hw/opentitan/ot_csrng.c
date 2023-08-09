@@ -225,6 +225,7 @@ enum {
 };
 
 typedef enum {
+    CSRNG_CMD_STALLED = -2, /* entropy stack is stalled */
     CSRNG_CMD_ERROR = -1, /* command error, not recoverable */
     CSRNG_CMD_OK = 0, /* command completed ok */
     CSRNG_CMD_RETRY = 1, /* command cannot be executed at the moment */
@@ -296,12 +297,12 @@ struct OtCSRNGState {
 
     uint32_t *regs;
     bool enabled;
-    bool entropy_gennum;
     bool sw_app_granted;
     bool read_int_granted;
     uint32_t scheduled_cmd;
     unsigned es_retry_count;
     unsigned state_db_ix;
+    int entropy_gennum;
     int aes_cipher; /* AES handle for tomcrypt */
     OtCSRNGFsmState state;
     OtCSRNGInstance *instances;
@@ -616,13 +617,17 @@ static OtCSRNDCmdResult ot_csrng_drng_reseed(
         unsigned len = drng->material_len * sizeof(uint32_t);
         memcpy(buffer, drng->material, MIN(len, sizeof(buffer)));
 
+        OtCSRNGState *s = inst->parent;
         uint64_t entropy[OT_ENTROPY_SRC_DWORD_COUNT];
         int res;
         bool fips;
-        res = ot_entropy_src_get_random(entropy_src, entropy, &fips);
+        xtrace_ot_csrng_info("request ES entropy w/ generation",
+                             s->entropy_gennum);
+        res = ot_entropy_src_get_random(entropy_src, s->entropy_gennum, entropy,
+                                        &fips);
         if (res) {
-            /* either -1 on failure or 1 when still initializing */
-            return res < 0 ? CSRNG_CMD_ERROR : CSRNG_CMD_RETRY;
+            return res < 0 ? (res == -2 ? CSRNG_CMD_STALLED : CSRNG_CMD_ERROR) :
+                             CSRNG_CMD_RETRY;
         }
         /* always perform XOR which is a no-op if material_len is zero */
         for (unsigned ix = 0; ix < OT_ENTROPY_SRC_DWORD_COUNT; ix++) {
@@ -805,10 +810,10 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
                 __func__);
             return;
         }
-        xtrace_ot_csrng_info("entropy_src gen", gennum);
         s->enabled = true;
         s->es_retry_count = ENTROPY_SRC_INITIAL_REQUEST_COUNT;
         s->entropy_gennum = gennum;
+        xtrace_ot_csrng_info("enable: new ES generation", gennum);
     }
 
     if (ot_csrng_is_ctrl_disabled(s)) {
@@ -832,9 +837,10 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
                 }
             }
         }
-        s->entropy_gennum = ot_entropy_src_get_generation(s->entropy_src);
         s->enabled = false;
         s->es_retry_count = 0;
+        s->entropy_gennum = ot_entropy_src_get_generation(s->entropy_src);
+        xtrace_ot_csrng_info("disable: new ES generation", s->entropy_gennum);
 
         /* cancel any outstanding asynchronous request */
         timer_del(s->cmd_scheduler);
@@ -1376,6 +1382,14 @@ static void ot_csrng_command_scheduler(void *opaque)
     case CSRNG_CMD_DEFERRED:
         inst->defer_completion = true;
         CHANGE_STATE(s, CSRNG_IDLE);
+        break;
+    case CSRNG_CMD_STALLED:
+        xtrace_ot_csrng_error("entropy stack stalled");
+        /* discard any remaining requests, nothing can be done any further */
+        while (!QSIMPLEQ_EMPTY(&s->cmd_requests)) {
+            QSIMPLEQ_REMOVE_HEAD(&s->cmd_requests, cmd_request);
+        }
+        /* do not complete command either */
         break;
     case CSRNG_CMD_ERROR:
     case CSRNG_CMD_OK:
