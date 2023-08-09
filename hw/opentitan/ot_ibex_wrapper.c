@@ -285,11 +285,12 @@ ot_ibex_wrapper_regs_read(void *opaque, hwaddr addr, unsigned size)
 
     switch (reg) {
     case R_RND_DATA:
-        if (!(s->regs[R_RND_STATUS] & R_RND_STATUS_RND_DATA_VALID_MASK)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: Read invalid entropy data\n",
-                          __func__);
-        }
         val32 = s->regs[reg];
+        if (!(s->regs[R_RND_STATUS] & R_RND_STATUS_RND_DATA_VALID_MASK)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Read invalid entropy data 0x%08x\n", __func__,
+                          val32);
+        }
         s->regs[reg] = 0;
         s->regs[R_RND_STATUS] = 0;
         ot_ibex_wrapper_request_entropy(s);
