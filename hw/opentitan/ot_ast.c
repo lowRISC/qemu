@@ -139,10 +139,18 @@ struct OtASTState {
     uint32_t *regsb;
 };
 
+/* -------------------------------------------------------------------------- */
+/* Public API */
+/* -------------------------------------------------------------------------- */
+
 void ot_ast_getrandom(void *buf, size_t len)
 {
     qemu_guest_getrandom_nofail(buf, len);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Private implementation */
+/* -------------------------------------------------------------------------- */
 
 static uint64_t ot_ast_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
