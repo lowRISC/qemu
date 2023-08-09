@@ -299,6 +299,7 @@ struct OtCSRNGState {
     bool enabled;
     bool sw_app_granted;
     bool read_int_granted;
+    bool es_available;
     uint32_t scheduled_cmd;
     unsigned es_retry_count;
     unsigned state_db_ix;
@@ -361,6 +362,7 @@ static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res);
 static void ot_csrng_change_state_line(OtCSRNGState *s, OtCSRNGFsmState state,
                                        int line);
 static unsigned ot_csrng_get_slot(OtCSRNGInstance *inst);
+static bool ot_csrng_drng_is_instantiated(OtCSRNGInstance *inst);
 static OtCSRNDCmdResult ot_csrng_drng_reseed(
     OtCSRNGInstance *inst, OtEntropySrcState *entropy_src, bool flag0);
 
@@ -420,6 +422,31 @@ int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
         xtrace_ot_csrng_error("Invalid command length");
         return -1;
     }
+    if (acmd == OT_CSRNG_CMD_UNINSTANTIATE) {
+        if (!ot_csrng_drng_is_instantiated(inst)) {
+            /*
+             * Very special hacky case:
+             *
+             * Uninstanciation is requested before instanciation has been
+             * completed (instantiation command in still in the command queue).
+             * Flush the command queue to discard the instantiation command,
+             * which stays uncompleted on the client side, and resume (the
+             * uninstanciation request should complete this new command).
+             *
+             * It might be useful to implement a "cancel outstanding request"
+             * API so that the EDN can tell CSRNG its last command needs to be
+             * cancelled before completion - and remove this workaround.
+             */
+            OtCSRNGState *s = inst->parent;
+            QSIMPLEQ_REMOVE(&s->cmd_requests, inst, OtCSRNGInstance,
+                            cmd_request);
+
+            if (QSIMPLEQ_EMPTY(&s->cmd_requests)) {
+                timer_del(s->cmd_scheduler);
+            }
+        }
+    }
+
     while (length--) {
         ot_fifo32_push(&inst->cmd_fifo, *command++);
     }
@@ -559,15 +586,15 @@ static int ot_csrng_drng_update(OtCSRNGInstance *inst)
 {
     OtCSRNGDrng *drng = &inst->drng;
 
-    uint32_t tmp[OT_CSRNG_SEED_WORD_COUNT];
-
-    memset(tmp, 0, sizeof(tmp));
-
     unsigned appid = ot_csrng_get_slot(inst);
-    xtrace_ot_csrng_show_buffer(appid, "vcount", drng->v_counter,
+    xtrace_ot_csrng_show_buffer(appid, "seed", drng->material,
+                                drng->material_len * sizeof(uint32_t));
+    xtrace_ot_csrng_show_buffer(appid, "c-V", drng->v_counter,
                                 OT_CSRNG_AES_BLOCK_SIZE);
 
+    uint32_t tmp[OT_CSRNG_SEED_WORD_COUNT];
     int res;
+    memset(tmp, 0, sizeof(tmp));
     uint8_t *ptmp = (uint8_t *)tmp;
     for (unsigned ix = 0; ix < OT_CSRNG_SEED_BYTE_COUNT;
          ix += OT_CSRNG_AES_BLOCK_SIZE) {
@@ -583,12 +610,10 @@ static int ot_csrng_drng_update(OtCSRNGInstance *inst)
         tmp[ix] ^= drng->material[ix];
     }
 
+    ot_csrng_drng_clear_material(inst);
+
     res = ecb_done(&drng->ecb);
     assert(res == CRYPT_OK);
-
-    xtrace_ot_csrng_show_buffer(appid, "seed-u", drng->material,
-                                drng->material_len * sizeof(uint32_t));
-    xtrace_ot_csrng_show_buffer(appid, "key", tmp, OT_CSRNG_AES_KEY_SIZE);
 
     ptmp = (uint8_t *)tmp;
     res = ecb_start(inst->parent->aes_cipher, ptmp, (int)OT_CSRNG_AES_KEY_SIZE,
@@ -599,7 +624,9 @@ static int ot_csrng_drng_update(OtCSRNGInstance *inst)
     memcpy(drng->v_counter, &ptmp[OT_CSRNG_AES_KEY_SIZE],
            OT_CSRNG_AES_BLOCK_SIZE);
 
-    xtrace_ot_csrng_show_buffer(appid, "vcntr", drng->v_counter,
+    xtrace_ot_csrng_show_buffer(appid, "n-key", drng->key,
+                                OT_CSRNG_AES_KEY_SIZE);
+    xtrace_ot_csrng_show_buffer(appid, "n-V", drng->v_counter,
                                 OT_CSRNG_AES_BLOCK_SIZE);
 
     return 0;
@@ -612,6 +639,13 @@ static OtCSRNDCmdResult ot_csrng_drng_reseed(
     assert(drng->instantiated);
 
     if (!flag0) {
+        if (!inst->parent->es_available) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Cannot request entropy w/o power cycling ES\n",
+                          __func__);
+            return CSRNG_CMD_ERROR;
+        }
+
         uint64_t buffer[OT_ENTROPY_SRC_DWORD_COUNT];
         memset(buffer, 0, sizeof(buffer));
         unsigned len = drng->material_len * sizeof(uint32_t);
@@ -796,20 +830,22 @@ static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
 static void ot_csrng_handle_enable(OtCSRNGState *s)
 {
     /*
+     * As per Earlgrey 2.5.2-rc0:
      * "CSRNG may only be enabled if ENTROPY_SRC is enabled. CSRNG may only be
      *  disabled if all EDNs are disabled. Once disabled, CSRNG may only be
      *  re-enabled after ENTROPY_SRC has been disabled and re-enabled."
+     * ...
      */
     if (ot_csrng_is_ctrl_enabled(s)) {
         xtrace_ot_csrng_info("enabling CSRNG", 0);
         int gennum = ot_entropy_src_get_generation(s->entropy_src);
-        if (!(gennum > s->entropy_gennum)) {
-            qemu_log_mask(
-                LOG_GUEST_ERROR,
-                "%s: Cannot re-enable CSRNG w/o cycling entropy src\n",
-                __func__);
-            return;
-        }
+        /*
+         * ... however it is not re-enabling CSRNG w/o cycling the entropy_src
+         * that is prohibited, but to request entropy from it. The check is
+         * therefore deferred to the reseed handling which makes use of the
+         * entropy_src only if flag0 is not set.
+         */
+        s->es_available = gennum > s->entropy_gennum;
         s->enabled = true;
         s->es_retry_count = ENTROPY_SRC_INITIAL_REQUEST_COUNT;
         s->entropy_gennum = gennum;
@@ -840,7 +876,7 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
         s->enabled = false;
         s->es_retry_count = 0;
         s->entropy_gennum = ot_entropy_src_get_generation(s->entropy_src);
-        xtrace_ot_csrng_info("disable: new ES generation", s->entropy_gennum);
+        xtrace_ot_csrng_info("disable: last ES generation", s->entropy_gennum);
 
         /* cancel any outstanding asynchronous request */
         timer_del(s->cmd_scheduler);
@@ -968,8 +1004,10 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
     assert(num - 1u == clen);
     buffer += 1u;
 
-    xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
-                                clen * sizeof(uint32_t));
+    if (clen) {
+        xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
+                                    clen * sizeof(uint32_t));
+    }
 
     ot_csrng_drng_store_material(inst, buffer, clen);
 
@@ -981,8 +1019,6 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
         s->regs[R_INTR_STATE] |= INTR_CS_ENTROPY_REQ_MASK;
         ot_csrng_update_irqs(s);
     }
-
-    ot_csrng_drng_clear_material(inst);
 
     return res;
 }
@@ -1013,6 +1049,19 @@ static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
         return -1;
     }
 
+    uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
+    if (clen) {
+        uint32_t num;
+        const uint32_t *buffer =
+            ot_fifo32_peek_buf(&inst->cmd_fifo,
+                               ot_fifo32_num_used(&inst->cmd_fifo), &num);
+        assert(num - 1u == clen);
+        buffer += 1u;
+        xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
+                                    clen * sizeof(uint32_t));
+        ot_csrng_drng_store_material(inst, buffer, clen);
+    }
+
     trace_ot_csrng_generate(ot_csrng_get_slot(inst), packet_count);
 
     OtCSRNGDrng *drng = &inst->drng;
@@ -1039,24 +1088,26 @@ static OtCSRNDCmdResult ot_csrng_handle_reseed(OtCSRNGState *s, unsigned slot)
     OtCSRNGInstance *inst = &s->instances[slot];
 
     uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
-    uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
     bool flag0 =
         ot_csrng_check_multibitboot(s, FIELD_EX32(command, OT_CSNRG_CMD, FLAG0),
                                     ALERT_STATUS_BIT(FLAG0));
 
     xtrace_ot_csrng_info("reseed", flag0);
 
-    uint32_t num;
-    const uint32_t *buffer =
-        ot_fifo32_peek_buf(&inst->cmd_fifo, ot_fifo32_num_used(&inst->cmd_fifo),
-                           &num);
-    assert(num - 1u == clen);
-    buffer += 1u;
+    uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
+    if (clen) {
+        uint32_t num;
+        const uint32_t *buffer =
+            ot_fifo32_peek_buf(&inst->cmd_fifo,
+                               ot_fifo32_num_used(&inst->cmd_fifo), &num);
+        assert(num - 1u == clen);
+        buffer += 1u;
 
-    xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
-                                clen * sizeof(uint32_t));
+        xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
+                                    clen * sizeof(uint32_t));
 
-    ot_csrng_drng_store_material(inst, buffer, clen);
+        ot_csrng_drng_store_material(inst, buffer, clen);
+    }
 
     int res;
     res = ot_csrng_drng_reseed(inst, s->entropy_src, flag0);
@@ -1078,17 +1129,19 @@ static OtCSRNDCmdResult ot_csrng_handle_update(OtCSRNGState *s, unsigned slot)
     uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
     uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
 
-    uint32_t num;
-    const uint32_t *buffer =
-        ot_fifo32_peek_buf(&inst->cmd_fifo, ot_fifo32_num_used(&inst->cmd_fifo),
-                           &num);
-    assert(num - 1u == clen);
-    buffer += 1u;
+    if (clen) {
+        uint32_t num;
+        const uint32_t *buffer =
+            ot_fifo32_peek_buf(&inst->cmd_fifo,
+                               ot_fifo32_num_used(&inst->cmd_fifo), &num);
+        assert(num - 1u == clen);
+        buffer += 1u;
 
-    xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
-                                clen * sizeof(uint32_t));
+        xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
+                                    clen * sizeof(uint32_t));
 
-    ot_csrng_drng_store_material(inst, buffer, clen);
+        ot_csrng_drng_store_material(inst, buffer, clen);
+    }
 
     ot_csrng_drng_update(inst);
 
@@ -1701,6 +1754,7 @@ static void ot_csrng_reset(DeviceState *dev)
     s->regs[R_SW_CMD_STS] = 0x1u;
     s->regs[R_MAIN_SM_STATE] = 0x4eu;
     s->enabled = false;
+    s->es_available = false;
     s->entropy_gennum = 0;
     s->sw_app_granted = false;
     s->read_int_granted = false;
