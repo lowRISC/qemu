@@ -20,7 +20,7 @@ except ImportError:
     from json import load as jload
 from logging import (Formatter, StreamHandler, CRITICAL, DEBUG, INFO, ERROR,
                      WARNING, getLogger)
-from os import close, curdir, environ, isatty, linesep, sep, unlink
+from os import close, curdir, environ, isatty, linesep, pardir, sep, unlink
 from os.path import (basename, dirname, isdir, isfile, join as joinpath,
                      normpath, relpath)
 from re import Match, compile as re_compile, sub as re_sub
@@ -218,6 +218,9 @@ class QEMUWrapper:
                             self._qlog.error(qline)
                     else:
                         self._qlog.info(qline)
+                if ctx.check_error():
+                    ret = 126
+                    raise OSError()
                 xret = proc.poll()
                 if xret is not None:
                     if xend is None:
@@ -291,9 +294,10 @@ class QEMUWrapper:
                 if ret is None:
                     ret = proc.returncode
                 # retrieve the remaining log messages
-                for sfp, logger in zip(proc.communicate(timeout=0.1),
-                                       (self._qlog.debug, self._qlog.error)):
-                    for line in sfp.split('\n'):
+                stdlog = self._qlog.info if ret else self._qlog.debug
+                for msg, logger in zip(proc.communicate(timeout=0.1),
+                                       (stdlog, self._qlog.error)):
+                    for line in msg.split('\n'):
                         line = line.strip()
                         if line:
                             logger(line)
@@ -621,6 +625,13 @@ class QEMUContextWorker:
         self._thread.join()
         return self._ret
 
+    def exit_code(self) -> Optional[int]:
+        """Return the exit code of the worker.
+
+           :return: the exit code or None if the worked has not yet completed.
+        """
+        return self._ret
+
     @property
     def command(self) -> str:
         """Return the executed command name.
@@ -653,7 +664,7 @@ class QEMUContextWorker:
                 self._resume = False
                 self._ret = xret
                 self._log.debug('"%s" completed with %d', self.command, xret)
-                return
+                break
         if self._ret is None:
             proc.terminate()
             try:
@@ -664,13 +675,14 @@ class QEMUContextWorker:
                 self._log.error('Force-killing command "%s"', self.command)
                 proc.kill()
             self._ret = proc.returncode
-            # retrieve the remaining log messages
-            for sfp, logger in zip(proc.communicate(timeout=0.1),
-                                   (self._log.debug, self._log.error)):
-                for line in sfp.split('\n'):
-                    line = line.strip()
-                    if line:
-                        logger(line)
+        # retrieve the remaining log messages
+        stdlog = self._log.info if self._ret else self._log.debug
+        for sfp, logger in zip(proc.communicate(timeout=0.1),
+                               (stdlog, self._log.error)):
+            for line in sfp.split('\n'):
+                line = line.strip()
+                if line:
+                    logger(line)
 
     def _logger(self, proc: Popen, err: bool):
         # worker thread, blocking on VM stdout/stderr
@@ -764,6 +776,19 @@ class QEMUContext:
         if ctx_name == 'post':
             self._qfm.delete_default_dir(self._test_name)
 
+    def check_error(self) -> bool:
+        """Check if any background worker exited in error.
+
+           :return: True if any worker has failed
+        """
+        for w in self._workers:
+            ret = w.exit_code()
+            if not ret:
+                continue
+            self._clog.error("%s exited with %d", w.command, ret)
+            return True
+        return False
+
     def finalize(self) -> None:
         """Terminate any running background command, in reverse order.
         """
@@ -791,6 +816,7 @@ class QEMUExecuter:
         QEMUWrapper.GUEST_ERROR_OFFSET + 1: 'FAIL',
         124: 'TIMEOUT',
         125: 'DEADLOCK',
+        126: 'CONTEXT',
         QEMUWrapper.NO_MATCH_RETURN_CODE: 'UNKNOWN',
     }
 
