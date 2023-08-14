@@ -262,14 +262,14 @@ if [ ${VERBOSE} -gt 0 ];then
     set -x
 fi
 
-${SCRIPT_DIR}/otpconv.py -i "${OT_OTP_VMEM}" -o otp.raw || \
+${SCRIPT_DIR}/otpconv.py -v -i "${OT_OTP_VMEM}" -o otp.raw || \
     die "Cannot generate OTP image"
 
 # note: it is recommended to place the original ELF file from which the binary
 # files have been generated from. If flashgen.py locates the matching ELF file,
 # the ROM_EXT and BL0 symbols can be automatically loaded by QEMU, which helps
 # debugging
-${SCRIPT_DIR}/flashgen.py -D -x "${OT_TEST_BIN}" flash.raw || \
+${SCRIPT_DIR}/flashgen.py -v -D -x "${OT_TEST_BIN}" flash.raw || \
     die "Cannot generate flash image"
 
 ${QEMU_TIMEOUT} ${QEMU_BUILD_DIR}/qemu-system-riscv32 \
