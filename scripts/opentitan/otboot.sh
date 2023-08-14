@@ -38,6 +38,7 @@ $NAME [-b] [-r] [-f] <ot_dir> [-- [QEMU_options ...]]
         -b   Build QEMU
         -f   Use a flat tree (files are stored in the same dir)
         -r   Load ROM binary rather than ROM ELF file
+        -U   Run flashgen.py in unsafe mode (no ELF checks)
         -v   Verbose mode, show executed commands
         --   All following options are forwarded to QEMU
 
@@ -47,6 +48,7 @@ EOT
 
 OT_DIR=""
 BUILD_QEMU=0
+FLASHGEN_OPTS=""
 FLAT_TREE=0
 LOAD_ELF=1
 VERBOSE=0
@@ -69,6 +71,9 @@ while [ $# -gt 0 ]; do
            ;;
         -v)
            VERBOSE=1
+           ;;
+        -U)
+           FLASHGEN_OPTS="${FLASHGEN_OPTS} -U"
            ;;
         --)
            shift
@@ -104,8 +109,8 @@ if [ ${FLAT_TREE} -gt 0 ]; then
     fi
     OT_OTP_VMEM="${OT_DIR}/img_rma.24.vmem"
     OT_ROM_BIN="${OT_DIR}/rom_with_fake_keys_fpga_cw310.bin"
-    OT_ROM_EXT_BIN="${OT_DIR}/rom_ext_slot_virtual_fpga_cw310.rsa_fake_test_key_0.signed.bin"
-    OT_BL0_TEST_BIN="${OT_DIR}/bare_metal_slot_virtual_fpga_cw310.rsa_fake_rom_ext_test_key_0.signed.bin"
+    OT_ROM_EXT_BIN="${OT_DIR}/rom_ext_slot_virtual_fpga_cw310.fake_rsa_test_key_0.signed.bin"
+    OT_BL0_TEST_BIN="${OT_DIR}/bare_metal_slot_virtual_fpga_cw310.fake_rsa_rom_ext_test_key_0.signed.bin"
 else
     [ -x "${OT_DIR}/bazelisk.sh" ] || \
         die "${OT_DIR} is not a top-level OpenTitan directory"
@@ -125,6 +130,7 @@ else
     # Bazel setup is out of scope of this script, please refer to OpenTitan
     # official installation instructions first
     # Do not forget to run this script from your OT venv if you use one.
+    # Note: no idea on how to retrieve ELF files in this case (prefer flatdir option)
     OT_OTP_VMEM=$(cd "${OT_DIR}" && \
             ./bazelisk.sh outquery //hw/ip/otp_ctrl/data:img_rma) || \
         die "Bazel in trouble"
@@ -142,29 +148,29 @@ else
         die "Cannot build $(basename ${OT_ROM_BIN})"
     OT_ROM_EXT_BIN=$(cd "${OT_DIR}" && \
         ./bazelisk.sh outquery \
-            //sw/device/silicon_creator/rom_ext:rom_ext_slot_virtual_fpga_cw310_bin_signed_rsa_fake_test_key_0) || \
+            //sw/device/silicon_creator/rom_ext:rom_ext_slot_virtual_fpga_cw310_bin_signed_fake_rsa_test_key_0) || \
         die "Bazel in trouble"
     OT_ROM_EXT_BIN="$(realpath ${OT_DIR}/${OT_ROM_EXT_BIN})"
     [ -f "${OT_ROM_EXT_BIN}" ] || \
         (cd "${OT_DIR}" && ./bazelisk.sh build \
-            //sw/device/silicon_creator/rom_ext:rom_ext_slot_virtual_fpga_cw310_bin_signed_rsa_fake_test_key_0) || \
+            //sw/device/silicon_creator/rom_ext:rom_ext_slot_virtual_fpga_cw310_bin_signed_fake_rsa_test_key_0) || \
         die "Cannot build $(basename ${OT_ROM_EXT_BIN})"
     OT_BL0_TEST_BIN=$(cd "${OT_DIR}" && \
         ./bazelisk.sh outquery \
-            //sw/device/silicon_owner/bare_metal:bare_metal_slot_virtual_fpga_cw310_bin_signed_rsa_fake_rom_ext_test_key_0) || \
+            //sw/device/silicon_owner/bare_metal:bare_metal_slot_virtual_fpga_cw310_bin_signed_fake_rsa_rom_ext_test_key_0) || \
         die "Bazel in trouble"
     OT_BL0_TEST_BIN="$(realpath ${OT_DIR}/${OT_BL0_TEST_BIN})"
     [ -f "${OT_BL0_TEST_BIN}" ] || \
         (cd "${OT_DIR}" && ./bazelisk.sh build \
-        //sw/device/silicon_owner/bare_metal:bare_metal_slot_virtual_fpga_cw310_bin_signed_rsa_fake_rom_ext_test_key_0) || \
+        //sw/device/silicon_owner/bare_metal:bare_metal_slot_virtual_fpga_cw310_bin_signed_fake_rsa_rom_ext_test_key_0) || \
         die "Cannot build $(basename ${OT_BL0_TEST_BIN})"
 fi
 
 # sanity checks
-[ -f "${OT_OTP_VMEM}" ] || die "Unable to find OTP image"
-[ -f "${OT_ROM_BIN}" ] || die "Unable to find ROM binary"
-[ -f "${OT_ROM_EXT_BIN}" ] || die "Unable to find ROM_EXT binary"
-[ -f "${OT_BL0_TEST_BIN}" ] || die "Unable to find BL0 test binary"
+[ -f "${OT_OTP_VMEM}" ] || die "Unable to find OTP image $(basename ${OT_OTP_VMEM})"
+[ -f "${OT_ROM_BIN}" ] || die "Unable to find ROM binary $(basename ${OT_ROM_BIN})"
+[ -f "${OT_ROM_EXT_BIN}" ] || die "Unable to find ROM_EXT binary $(basename ${OT_ROM_EXT_BIN})"
+[ -f "${OT_BL0_TEST_BIN}" ] || die "Unable to find BL0 test binary $(basename ${OT_BL0_TEST_BIN})"
 
 if [ ${BUILD_QEMU} -gt 0 ]; then
     if [ ! -d ${QEMU_BUILD_DIR} ]; then
@@ -192,7 +198,7 @@ if [ ${LOAD_ELF} -gt 0 ]; then
     # in this mode, QEMU loads the ROM image using the ELF information to locate
     # and execute the ROM. This is useful to get debugging symbols
     OT_ROM_ELF="${OT_ROM_BIN%.*}.elf"
-    [ -f "${OT_ROM_ELF}" ] || die "Unable to find ROM ELF file"
+    [ -f "${OT_ROM_ELF}" ] || die "Unable to find ROM ELF file for $(basename ${OT_ROM_BIN})"
     QEMU_GUEST_OPT="-kernel ${OT_ROM_ELF}"
 else
     # in this mode, ROM image is force-loaded to the expected memory location
@@ -206,14 +212,14 @@ if [ ${VERBOSE} -gt 0 ];then
     set -x
 fi
 
-${SCRIPT_DIR}/otpconv.py -i "${OT_OTP_VMEM}" -o otp.raw
+${SCRIPT_DIR}/otpconv.py -v -i "${OT_OTP_VMEM}" -o otp.raw || die "optconv.py failed"
 
 # note: it is recommended to place the original ELF file from which the binary
 # files have been generated from. If flashgen.py locates the matching ELF file,
 # the ROM_EXT and BL0 symbols can be automatically loaded by QEMU, which helps
 # debugging
-${SCRIPT_DIR}/flashgen.py -D -x "${OT_ROM_EXT_BIN}" -b "${OT_BL0_TEST_BIN}" \
-    flash.raw
+${SCRIPT_DIR}/flashgen.py -v -D -x "${OT_ROM_EXT_BIN}" -b "${OT_BL0_TEST_BIN}" \
+    flash.raw ${FLASHGEN_OPTS} || die "flashgen.py failed"
 
 echo "Use [Ctrl-A] + x to quit QEMU"
 ${QEMU_BUILD_DIR}/qemu-system-riscv32 \
