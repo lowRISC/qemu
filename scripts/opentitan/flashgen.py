@@ -27,16 +27,28 @@ from argparse import ArgumentParser, FileType
 from binascii import hexlify
 from hashlib import sha256
 from itertools import repeat
+from io import BytesIO
 from logging import DEBUG, ERROR, getLogger, Formatter, StreamHandler
-from os import SEEK_END, SEEK_SET, rename
-from os.path import abspath, basename, exists
+from os import SEEK_END, SEEK_SET, rename, stat
+from os.path import abspath, basename, exists, isfile
 from re import sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import exit as sysexit, modules, stderr, version_info
 from traceback import format_exc
-from typing import Any, BinaryIO, Dict, NamedTuple, Optional, Tuple, Union
+from typing import (Any, BinaryIO, Dict, Iterator, NamedTuple, Optional, Tuple,
+                    Union)
 
-#pylint: disable-msg=missing-function-docstring
+try:
+    from elftools.common.exceptions import ELFError
+    from elftools.elf.constants import SH_FLAGS
+    from elftools.elf.elffile import ELFFile
+    from elftools.elf.sections import Section
+    from elftools.elf.segments import Segment
+except ImportError:
+    ELFError = BaseException
+    ELFFile = None
+
+#pylint: disable=missing-function-docstring
 
 
 class BootLocation(NamedTuple):
@@ -45,6 +57,189 @@ class BootLocation(NamedTuple):
     bank: int
     page: int
     seq: int
+
+
+class ElfBlob:
+    """Load ELF application."""
+
+    def __init__(self):
+        self._log = getLogger('flashgen.elf')
+        self._elf: Optional[ELFFile] = None
+        self._payload_address: int = 0
+        self._payload_size: int = 0
+        self._payload: bytes = b''
+
+    def load(self, efp: BinaryIO) -> None:
+        """Load the content of an ELF file.
+
+           The ELF file stream is no longer accessed once this method
+           completes.
+
+           :param efp: a File-like (binary read access)
+        """
+        # use a copy of the stream to release the file pointer.
+        try:
+            self._elf = ELFFile(BytesIO(efp.read()))
+        except ELFError as exc:
+            raise ValueError(f'Invalid ELF file: {exc}') from exc
+        if self._elf['e_machine'] != 'EM_RISCV':
+            raise ValueError('Not an RISC-V ELF file')
+        if self._elf['e_type'] != 'ET_EXEC':
+            raise ValueError('Not an executable ELF file')
+        self._log.debug('entry point: 0x%X', self.entry_point)
+        self._log.debug('data size: %d', self.raw_size)
+
+    @property
+    def address_size(self) -> int:
+        """Provide the width of address value used in the ELFFile.
+
+           :return: the address width in bits (not bytes!)
+        """
+        return self._elf.elfclass if self._elf else 0
+
+    @property
+    def entry_point(self) -> Optional[int]:
+        """Provide the entry point of the application, if any.
+
+           :return: the entry point address
+        """
+        return self._elf and self._elf.header.get('e_entry', None)
+
+    @property
+    def raw_size(self) -> int:
+        """Provide the size of the Secure Boot Header section, if any.
+
+           :return: the data/payload size in bytes
+        """
+        if not self._payload_size:
+            self._payload_address, self._payload_size = self._parse_segments()
+        return self._payload_size
+
+    @property
+    def load_address(self) -> int:
+        """Provide the first destination address on target to copy the
+           application blob.
+
+           :return: the load address
+        """
+        if not self._payload_address:
+            self._payload_address, self._payload_size = self._parse_segments()
+        return self._payload_address
+
+    @property
+    def blob(self) -> bytes:
+        """Provide the application blob, i.e. the whole loadable binary.
+
+           :return: the raw application binary.
+        """
+        if not self._payload:
+            self._payload = self._build_payload()
+        if len(self._payload) != self.raw_size:
+            raise RuntimeError('Internal error: size mismatch')
+        return self._payload
+
+    @property
+    def code_span(self) -> Tuple[int, int]:
+        """Report the extent of the executable portion of the ELF file.
+
+           :return: (start address, end address)
+        """
+        loadable_segments = list(self._loadable_segments())
+        base_addr = None
+        last_addr = None
+        for section in self._elf.iter_sections():
+            if not self.is_section_executable(section):
+                continue
+            for segment in loadable_segments:
+                if segment.section_in_segment(section):
+                    break
+            else:
+                continue
+            addr = section.header['sh_addr']
+            size = section.header['sh_size']
+            if base_addr is None or base_addr > addr:
+                base_addr = addr
+            last = addr + size
+            if last_addr is None or last_addr < last:
+                last_addr = last
+            self._log.debug('Code section @ 0x%08x 0x%08x bytes', addr, size)
+        return base_addr, last_addr
+
+    def is_section_executable(self, section: 'Section') -> bool:
+        """Report whether the section is flagged as executable.
+
+           :return: True is section is executable
+        """
+        return bool(section.header['sh_flags'] & SH_FLAGS.SHF_EXECINSTR)
+
+    def _loadable_segments(self) -> Iterator['Segment']:
+        """Provide an iterator on segments that should be loaded into the final
+           binary.
+        """
+        if not self._elf:
+            raise RuntimeError('No ELF file loaded')
+        for segment in sorted(self._elf.iter_segments(),
+                              key=lambda seg: seg['p_paddr']):
+            if segment['p_type'] not in ('PT_LOAD', ):
+                continue
+            if not segment['p_filesz']:
+                continue
+            yield segment
+
+    def _parse_segments(self) -> Tuple[int, int]:
+        """Parse ELF segments and extract physical location and size.
+
+           :return: the location of the first byte and the overall payload size
+                    in bytes
+        """
+        size = 0
+        phy_start = None
+        for segment in self._loadable_segments():
+            seg_size = segment['p_filesz']
+            if not seg_size:
+                continue
+            phy_addr = segment['p_paddr']
+            if phy_start is None:
+                phy_start = phy_addr
+            else:
+                if phy_addr > phy_start+size:
+                    self._log.debug('fill gap with previous segment')
+                    size = phy_addr-phy_start
+            size += seg_size
+        if phy_start is None:
+            raise ValueError('No loadable segment found')
+        return phy_start, size
+
+    def _build_payload(self) -> bytes:
+        """Extract the loadable payload from the ELF file and generate a
+           unique, contiguous binary buffer.
+
+           :return: the payload to store as the application blob
+        """
+        buf = BytesIO()
+        phy_start = None
+        for segment in self._loadable_segments():
+            phy_addr = segment['p_paddr']
+            if phy_start is None:
+                phy_start = phy_addr
+            else:
+                current_addr = phy_start+buf.tell()
+                if phy_addr > current_addr:
+                    fill_size = phy_addr-current_addr
+                    buf.write(bytes(fill_size))
+            buf.write(segment.data())
+        data = buf.getvalue()
+        buf.close()
+        return data
+
+
+class RuntimeDescriptor(NamedTuple):
+    """Description of an executable binary.
+    """
+    code_start: int
+    code_end: int
+    raw_size: int
+    entry_point: int
 
 
 class FlashGen:
@@ -146,11 +341,13 @@ class FlashGen:
     BOOT_BANK = 1
     BOOT_PARTS = 2
 
-    def __init__(self, bl_offset: Optional[int] = None):
+    def __init__(self, bl_offset: Optional[int] = None,
+                 discard_elf_check: Optional[bool] = False):
         self._log = getLogger('flashgen')
         self._check_manifest_size()
         self._bl_offset = bl_offset if bl_offset is not None \
             else self.CHIP_ROM_EXT_SIZE_MAX
+        self._check_elf = not bool(discard_elf_check)
         hfmt = ''.join(self.HEADER_FORMAT.values())
         header_size = scalc(hfmt)
         assert header_size == 32
@@ -171,7 +368,7 @@ class FlashGen:
         """
         mode = 'r+b' if exists(path) else 'w+b'
         # cannot use a context manager here
-        #pylint: disable-msg=consider-using-with
+        #pylint: disable=consider-using-with
         self._ffp = open(path, mode)
         self._ffp.seek(0, SEEK_END)
         vsize = self._ffp.tell()
@@ -238,14 +435,17 @@ class FlashGen:
         self._ffp.seek(pos)
         return data
 
-    def store_rom_ext(self, bank: int, dfp: BinaryIO):
-        #pylint: disable-msg=too-many-locals
+    def store_rom_ext(self, bank: int, dfp: BinaryIO, elfpath: Optional[str]) \
+            -> None:
+        #pylint: disable=too-many-locals
+        #pylint: disable=too-many-branches
+        #pylint: disable=too-many-statements
         if not 0 <= bank < self.NUM_BANKS:
             raise ValueError(f'Invalid bank {bank}')
         data = dfp.read()
         if len(data) > self.BYTES_PER_BANK:
             raise ValueError('Data too large')
-        self._check_rom_ext(data)
+        bindesc = self._check_rom_ext(data)
         boot_entries = self.read_boot_info()
         if not boot_entries:
             next_loc = BootLocation(self.BOOT_BANK, 0, 0)
@@ -293,21 +493,81 @@ class FlashGen:
                 offset += field_offset
                 self._write(offset, field_data)
         ename = f'otre{bank}'
-        self._store_debug_info(ename, dfp.name)
+        if not elfpath:
+            elfpath = self._get_elf_filename(dfp.name)
+        if elfpath:
+            elftime = stat(elfpath).st_mtime
+            bintime = stat(dfp.name).st_mtime
+            if bintime < elftime:
+                msg = 'Application binary file is older than ELF file'
+                if self._check_elf:
+                    raise RuntimeError(msg)
+                self._log.warning(msg)
+            if not self._compare_bin_elf(bindesc, elfpath):
+                msg = 'Application ELF file does not match binary file'
+                if self._check_elf:
+                    raise RuntimeError(msg)
+                self._log.warning(msg)
+        self._store_debug_info(ename, elfpath)
 
-    def store_bootloader(self, bank: int, dfp: BinaryIO):
-        #pylint: disable-msg=too-many-locals
+    def store_bootloader(self, bank: int, dfp: BinaryIO,
+                         elfpath: Optional[str]) -> None:
+        #pylint: disable=too-many-locals
         if self._bl_offset == 0:
-            raise ValueError(f'Bootloader cannot be used')
+            raise ValueError('Bootloader cannot be used')
         if not 0 <= bank < self.NUM_BANKS:
             raise ValueError(f'Invalid bank {bank}')
         data = dfp.read()
         if len(data) > self.BYTES_PER_BANK:
             raise ValueError('Data too large')
-        self._check_bootloader(data)
+        bindesc = self._check_bootloader(data)
         self._write(self._header_size + self._bl_offset, data)
         ename = f'otb0{bank}'
-        self._store_debug_info(ename, dfp.name)
+        if not elfpath:
+            elfpath = self._get_elf_filename(dfp.name)
+        if elfpath:
+            elftime = stat(elfpath).st_mtime
+            bintime = stat(dfp.name).st_mtime
+            if bintime < elftime:
+                msg = 'Boot binary file is older than ELF file'
+                if self._check_elf:
+                    raise RuntimeError(msg)
+                self._log.warning(msg)
+            if not self._compare_bin_elf(bindesc, elfpath):
+                msg = 'Boot ELF file does not match binary file'
+                if self._check_elf:
+                    raise RuntimeError(msg)
+                self._log.warning(msg)
+        self._store_debug_info(ename, elfpath)
+
+    def _compare_bin_elf(self, bindesc: RuntimeDescriptor, elfpath: str) \
+            -> bool:
+        with open(elfpath, 'rb') as efp:
+            elfdesc = self._load_elf_info(efp)
+        if not elfdesc:
+            return False
+        binep = bindesc.entry_point & (self.CHIP_ROM_EXT_SIZE_MAX - 1)
+        elfep = elfdesc.entry_point & (self.CHIP_ROM_EXT_SIZE_MAX - 1)
+        if binep != elfep:
+            self._log.warning('Cannot compare bin vs. elf files')
+            return False
+        offset = elfdesc.entry_point - bindesc.entry_point
+        self._log.debug('ELF base offset 0x%08x', offset)
+        relfdesc = RuntimeDescriptor(elfdesc.code_start - offset,
+                                     elfdesc.code_end - offset,
+                                     elfdesc.raw_size,
+                                     elfdesc.entry_point - offset)
+        match = bindesc == relfdesc
+        logfunc = self._log.debug if match else self._log.warning
+        logfunc('start bin %08x / elf %08x',
+                bindesc.code_start, relfdesc.code_start)
+        logfunc('end   bin %08x / elf %08x',
+                bindesc.code_end, relfdesc.code_end)
+        logfunc('size  bin %08x / elf %08x',
+                bindesc.raw_size, relfdesc.raw_size)
+        logfunc('entry bin %08x / elf %08x',
+                bindesc.entry_point, relfdesc.entry_point)
+        return match
 
     def _write(self, offset: Optional[int], data: bytes) -> None:
         pos = self._ffp.tell()
@@ -372,19 +632,34 @@ class FlashGen:
         header = b''.join((sha, payload))
         return header
 
-    def _store_debug_info(self, entryname: str, filename: str) -> None:
+    def _get_elf_filename(self, filename: str) -> str:
         pathname = abspath(filename)
-        # dirty bit: assumes the ELF file with the same radix as the binary
-        # file match the same executable file. This is ugly and should be fixed
-        # (use a command line option, ...)
         radix = re_sub(r'.[a-z_]+_0.signed.bin$', '', pathname)
         elfname = f'{radix}.elf'
-        fnp = elfname.encode() if exists(elfname) else b''
-        if not fnp:
+        if not exists(elfname):
             self._log.warning('No ELF debug info found')
-        else:
-            self._log.info('Using ELF %s for %s',
-                           basename(elfname), basename(filename))
+            return ''
+        self._log.info('Using ELF %s for %s',
+                       basename(elfname), basename(filename))
+        return elfname
+
+    def _load_elf_info(self, efp: BinaryIO) \
+            -> Optional[RuntimeDescriptor]:
+        if not ELFFile:
+            # ELF tools are not available
+            self._log.warning('ELF file cannot be verified')
+            return None
+        elf = ElfBlob()
+        elf.load(efp)
+        if elf.address_size != 32:
+            raise ValueError('Spefified ELF file {} is not an ELF32 file')
+        elfstart, elfend = elf.code_span
+        return RuntimeDescriptor(elfstart, elfend, elf.raw_size,
+                                 elf.entry_point)
+
+    def _store_debug_info(self, entryname: str, filename: Optional[str]) \
+            -> None:
+        fnp = filename.encode('utf8') if filename else b''
         lfnp = len(fnp)
         tfmt = ''.join(self.DEBUG_TRAILER_FORMAT.values())
         trailer_size = scalc(tfmt)
@@ -406,16 +681,17 @@ class FlashGen:
             self._log.warning('Unable to find a matching debug entry: %s',
                               entryname)
 
-    def _check_rom_ext(self, data: bytes) -> None:
+    def _check_rom_ext(self, data: bytes) -> RuntimeDescriptor:
         max_size = self._bl_offset or self.BYTES_PER_BANK
-        self._check_manifest(data, 'rom_ext', max_size)
+        return self._check_manifest(data, 'rom_ext', max_size)
 
-    def _check_bootloader(self, data: bytes) -> None:
+    def _check_bootloader(self, data: bytes) -> RuntimeDescriptor:
         assert self._bl_offset
         max_size =  self.BYTES_PER_BANK - self._bl_offset
-        self._check_manifest(data, 'bl0', max_size)
+        return self._check_manifest(data, 'bl0', max_size)
 
-    def _check_manifest(self, data: bytes, kind: str, max_size: int) -> None:
+    def _check_manifest(self, data: bytes, kind: str, max_size: int) \
+            -> RuntimeDescriptor:
         if len(data) > max_size:
             raise ValueError(f'{kind} too large')
         mfmt = ''.join(self.MANIFEST_FORMAT.values())
@@ -439,15 +715,8 @@ class FlashGen:
                 raise ValueError(f'Specified file is not a {kind} file: '
                                  f'{manifest_str}')
             self._log.warning('Empty %s manifest, cannot verify', kind)
-        for name, val in manifest.items():
-            if isinstance(val, bytes):
-                if val.count(0) == len(val):
-                    val = f'0\'{len(val)}'
-                else:
-                    val = hexlify(val).decode()
-            elif isinstance(val, int):
-                val = hex(val)
-            self._log.debug(' %s = %s', name, val)
+        return RuntimeDescriptor(manifest['code_start'], manifest['code_end'],
+                                 manifest['length'], manifest['entry_point'])
 
     @classmethod
     def _check_manifest_size(cls):
@@ -472,47 +741,72 @@ def hexint(val: str) -> int:
 def main():
     """Main routine"""
     #pylint: disable=too-many-statements
+    #pylint: disable=too-many-locals
+    #pylint: disable=too-many-branches
     debug = False
     banks = list(range(FlashGen.NUM_BANKS))
     try:
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
-        argparser.add_argument('flash', nargs=1,
-                               metavar='flash', help='virtual flash file')
-        argparser.add_argument('-D', '--discard', action='store_true',
+        img = argparser.add_argument_group(title='Image')
+        img.add_argument('flash', nargs=1, metavar='flash',
+                         help='virtual flash file')
+        img.add_argument('-D', '--discard', action='store_true',
                                help='Discard any previous flash file content')
-        argparser.add_argument('-x', '--exec', type=FileType('rb'),
-                               metavar='file',
-                               help='rom extension or application')
-        argparser.add_argument('-b', '--bootloader', type=FileType('rb'),
-                               metavar='file', help='bootloader 0 file')
-        argparser.add_argument('-B', '--bank', type=int, choices=banks,
-                               default=banks[0],
-                               help=f'flash bank for data (default: '
-                                    f'{banks[0]})')
-        argparser.add_argument('-s', '--offset', type=hexint,
-                               default=FlashGen.CHIP_ROM_EXT_SIZE_MAX,
-                               help=f'offset of the BL0 file (default: '
-                                    f'0x{FlashGen.CHIP_ROM_EXT_SIZE_MAX:x})')
-        argparser.add_argument('-v', '--verbose', action='count',
-                               help='increase verbosity')
-        argparser.add_argument('-d', '--debug', action='store_true',
-                               help='enable debug mode')
+        img.add_argument('-a', '--bank', type=int, choices=banks,
+                         default=banks[0],
+                         help=f'flash bank for data (default: {banks[0]})')
+        img.add_argument('-s', '--offset', type=hexint,
+                         default=FlashGen.CHIP_ROM_EXT_SIZE_MAX,
+                         help=f'offset of the BL0 file (default: '
+                              f'0x{FlashGen.CHIP_ROM_EXT_SIZE_MAX:x})')
+        files = argparser.add_argument_group(title='Files')
+        files.add_argument('-x', '--exec', type=FileType('rb'), metavar='file',
+                           help='rom extension or application')
+        files.add_argument('-X', '--exec-elf', metavar='elf',
+                           help='ELF file for rom extension or application, for'
+                                ' symbol tracking (default: auto)')
+        files.add_argument('-b', '--boot', type=FileType('rb'),
+                          metavar='file', help='bootloader 0 file')
+        files.add_argument('-B', '--boot-elf', metavar='elf',
+                           help='ELF file for bootloader, for symbol tracking'
+                                ' (default: auto)')
+        extra = argparser.add_argument_group(title='Extra')
+        extra.add_argument('-v', '--verbose', action='count',
+                           help='increase verbosity')
+        extra.add_argument('-d', '--debug', action='store_true',
+                           help='enable debug mode')
+        extra.add_argument('-U', '--unsafe-elf', action='store_true',
+                           help='Discard sanity checking on ELF files')
         args = argparser.parse_args()
         debug = args.debug
 
         loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
         loglevel = min(ERROR, loglevel)
-        formatter = Formatter('%(levelname)8s %(name)-20s %(message)s')
+        formatter = Formatter('%(levelname)8s [%(lineno)d] %(name)-12s '
+                              '%(message)s')
         log = getLogger('flashgen')
         logh = StreamHandler(stderr)
         logh.setFormatter(formatter)
         log.setLevel(loglevel)
         log.addHandler(logh)
 
-        gen = FlashGen(args.offset if bool(args.bootloader) else 0)
+        gen = FlashGen(args.offset if bool(args.boot) else 0,
+                       bool(args.unsafe_elf))
         flash_pathname = args.flash[0]
         backup_filename = None
+        if args.boot_elf:
+            if not args.boot:
+                argparser.error('Bootloader ELF option requires bootloader '
+                                'binary')
+            if not isfile(args.boot_elf):
+                argparser.error('No such Bootloader ELF file')
+        if args.exec_elf:
+            if not args.exec:
+                argparser.error('Application ELF option requires application '
+                                'binary')
+            if not isfile(args.exec_elf):
+                argparser.error('No such Bootloader ELF file')
         try:
             if args.discard:
                 if exists(flash_pathname):
@@ -520,9 +814,9 @@ def main():
                     rename(flash_pathname, backup_filename)
             gen.open(args.flash[0])
             if args.exec:
-                gen.store_rom_ext(args.bank, args.exec)
-            if args.bootloader:
-                gen.store_bootloader(args.bank, args.bootloader)
+                gen.store_rom_ext(args.bank, args.exec, args.exec_elf)
+            if args.boot:
+                gen.store_bootloader(args.bank, args.boot, args.boot_elf)
             backup_filename = None
         finally:
             gen.close()
