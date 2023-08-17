@@ -35,8 +35,8 @@ from re import sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import exit as sysexit, modules, stderr, version_info
 from traceback import format_exc
-from typing import (Any, BinaryIO, Dict, Iterator, NamedTuple, Optional, Tuple,
-                    Union)
+from typing import (Any, BinaryIO, Dict, Iterator, List, NamedTuple, Optional,
+                    Tuple, Union)
 
 try:
     from elftools.common.exceptions import ELFError
@@ -540,6 +540,34 @@ class FlashGen:
                 self._log.warning(msg)
         self._store_debug_info(ename, elfpath)
 
+    def store_ot_files(self, otdescs: List[str]) -> None:
+        for dpos, otdesc in enumerate(otdescs, start=1):
+            parts = otdesc.rsplit(':', 1)
+            if len(parts) > 1:
+                otdesc = parts[0]
+                elf_filename = parts[1]
+            else:
+                elf_filename = None
+            parts = otdesc.split('@', 1)
+            if len(parts) < 2:
+                raise ValueError('Missing address in OT descriptor')
+            bin_filename = parts[0]
+            if not isfile(bin_filename):
+                raise ValueError(f'No such file {bin_filename}')
+            try:
+                address = int(parts[1], 16)
+            except ValueError as exc:
+                raise ValueError('Invalid address in OT descriptor') from exc
+            bank = address // self.BYTES_PER_BANK
+            kind = 'rom_ext' if address < self.CHIP_ROM_EXT_SIZE_MAX else \
+                'bootloader'
+            self._log.info(
+                'Handling file #%d as %s @ 0x%x in bank %d with%s ELF',
+                dpos, kind, address, bank, '' if elf_filename else 'out')
+            with open(bin_filename, 'rb') as bfp:
+                # func decode should never fail, so no error handling here
+                getattr(self, f'store_{kind}')(bank, bfp, elf_filename)
+
     def _compare_bin_elf(self, bindesc: RuntimeDescriptor, elfpath: str) \
             -> bool:
         with open(elfpath, 'rb') as efp:
@@ -743,7 +771,7 @@ def main():
     #pylint: disable=too-many-statements
     #pylint: disable=too-many-locals
     #pylint: disable=too-many-branches
-    debug = False
+    debug = True
     banks = list(range(FlashGen.NUM_BANKS))
     try:
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
@@ -771,6 +799,9 @@ def main():
         files.add_argument('-B', '--boot-elf', metavar='elf',
                            help='ELF file for bootloader, for symbol tracking'
                                 ' (default: auto)')
+        files.add_argument('-t', '--otdesc', action='append', default=[],
+                           help='OpenTitan style file descriptor, '
+                                'may be repeated')
         extra = argparser.add_argument_group(title='Extra')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -791,10 +822,15 @@ def main():
         log.setLevel(loglevel)
         log.addHandler(logh)
 
-        gen = FlashGen(args.offset if bool(args.boot) else 0,
-                       bool(args.unsafe_elf))
+        use_bl0 = bool(args.boot) or len(args.otdesc) > 1
+        gen = FlashGen(args.offset if use_bl0 else 0, bool(args.unsafe_elf))
         flash_pathname = args.flash[0]
         backup_filename = None
+        if args.otdesc and any(filter(None, (args.bank,
+                                             args.boot, args.boot_elf,
+                                             args.exec, args.exec_elf))):
+            argparser.error('OT file descriptor mode is mutually exclusive with'
+                            'boot and exec options')
         if args.boot_elf:
             if not args.boot:
                 argparser.error('Bootloader ELF option requires bootloader '
@@ -817,6 +853,8 @@ def main():
                 gen.store_rom_ext(args.bank, args.exec, args.exec_elf)
             if args.boot:
                 gen.store_bootloader(args.bank, args.boot, args.boot_elf)
+            if args.otdesc:
+                gen.store_ot_files(args.otdesc)
             backup_filename = None
         finally:
             gen.close()

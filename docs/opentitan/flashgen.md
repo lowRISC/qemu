@@ -6,7 +6,8 @@ flash controller virtual device.
 ## Usage
 
 ````text
-usage: flashgen.py [-h] [-D] [-a {0,1}] [-s OFFSET] [-x file] [-X elf] [-b file] [-B elf] [-v] [-d] [-U] flash
+usage: flashgen.py [-h] [-D] [-a {0,1}] [-s OFFSET] [-x file] [-X elf] [-b file] [-B elf]
+                   [-t OTDESC] [-v] [-d] [-U] flash
 
 Create/update an OpenTitan backend flash file.
 
@@ -28,6 +29,8 @@ Files:
   -b file, --boot file  bootloader 0 file
   -B elf, --boot-elf elf
                         ELF file for bootloader, for symbol tracking (default: auto)
+  -t OTDESC, --otdesc OTDESC
+                        OpenTitan style file descriptor, may be repeated
 
 Extra:
   -v, --verbose         increase verbosity
@@ -52,15 +55,15 @@ matching signed binary files to help with debugging.
 
 ### Arguments
 
-* `-a bank` specify the data partition to store the binary file into.
+* `-a bank` specify the data partition to store the binary file into, mutually exclusive with `-t`.
 
 * `-B elf` specify an alternative path to the BL0 ELF file. If not specified, the ELF path file is
   recontructed from the specified binary file (from the same directory). The ELF file is only used
-  as a hint for QEMU loader. Requires option `-b`.
+  as a hint for QEMU loader. Requires option `-b`, mutually exclusive with `-t`.
 
 * `-b file` specify the BL0 (signed) binary file to store in the data partition of the flash
   image file. The Boot Loader 0 binary file is stored in the data partition at the offset
-  specified with the -s option.
+  specified with the -s option, mutually exclusive with `-t`.
 
 * `-D discard` discard any flash content that may exist in the QEMU RAW image file.
 
@@ -70,14 +73,23 @@ matching signed binary files to help with debugging.
   may also be hardcoded in the ROM_EXT application. Changing the default offset may cause the
   ROM_EXT to fail to load the BL0 application.
 
+* `-t binfile@address[:elfile]` specify a binary file to store into the data partition of the flash.
+  This is a compatibility option introduced to support the original `opentitantool image assemble`
+  syntax. In this mode, the file kind and the destination flash bank are guessed from the specified
+  address. The address should be specified in hexadecimal format. It is possible to specify an
+  matching ELF file by appending its path after a column separator following the address value. This
+  option may be repeated to specify multiple files such as the ROM EXT and a bootloader for example.
+  This option is mutually exclusive with `-b`, `-B`, `-x`, `-X` and `-a`.
+
 * `-X elf` specify an alternative path to the ROM_EXT ELF file. If not specified, the ELF path file
   is recontructed from the specified binary file (from the same directory). The ELF file is only
-  used as a hint for QEMU loader. Requires option `-x`.
+  used as a hint for QEMU loader. Requires option `-x`, mutually exclusive with `-t`.
 
 * `-x file` specify the ROM_EXT (signed) binary file or the application to store into the data
   partition of the flash image file. Alternatively this file can be any (signed) binary file such as
   an OpenTitan test application. Note that if a BL0 binary file is used, the ROM_EXT/test binary
-  file should be smaller than the selected offset for the bootloader location.
+  file should be smaller than the selected offset for the bootloader location, mutually exclusive
+  with `-t`.
 
 * `-U` tell the script to ignore any discrepancies found between a binary file and an ELF file. If
   the path to an ELF file is stored in the flash image file, the ELF content is validated against
