@@ -250,6 +250,7 @@ class FlashGen:
        :param bl_offset: offset of the BL0 storage within the data partition.
                          if forced to 0, do not reserve any space for BL0, i.e.
                          dedicated all storage space to ROM_EXT section.
+       :discard_elf_check: whether to ignore mismatching binary/elf files.
     """
 
     NUM_BANKS = 2
@@ -437,8 +438,8 @@ class FlashGen:
         self._ffp.seek(pos)
         return data
 
-    def store_rom_ext(self, bank: int, dfp: BinaryIO, elfpath: Optional[str]) \
-            -> None:
+    def store_rom_ext(self, bank: int, dfp: BinaryIO,
+                      elfpath: Optional[str] = None) -> None:
         #pylint: disable=too-many-locals
         #pylint: disable=too-many-branches
         #pylint: disable=too-many-statements
@@ -517,7 +518,7 @@ class FlashGen:
         self._store_debug_info(ename, elfpath)
 
     def store_bootloader(self, bank: int, dfp: BinaryIO,
-                         elfpath: Optional[str]) -> None:
+                         elfpath: Optional[str] = None) -> None:
         #pylint: disable=too-many-locals
         if self._bl_offset == 0:
             raise ValueError('Bootloader cannot be used')
