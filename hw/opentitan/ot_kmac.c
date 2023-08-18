@@ -85,9 +85,11 @@
 /* Max size of cSHAKE customization string */
 #define MAX_CUSTOM_LEN 32u
 
-/* function prefix for KMAC operations */
-#define KMAC_PREFIX     "KMAC"
-#define KMAC_PREFIX_LEN 4u
+/* function prefix for KMAC operations (first 6 bytes of PREFIX_*) */
+#define KMAC_PREFIX_0      0x4d4b2001u
+#define KMAC_PREFIX_0_MASK 0xffffffffu
+#define KMAC_PREFIX_1      0x00004341u
+#define KMAC_PREFIX_1_MASK 0x0000ffffu
 
 /* clang-format off */
 REG32(INTR_STATE, 0x00u)
@@ -517,8 +519,10 @@ static void ot_kmac_process(void *opaque)
                              ot_kmac_get_keccak_rate_bytes(kstrength));
             break;
         default:
-            /* should never happen: mode was validated when going from state IDLE
-             * to START */
+            /*
+             * should never happen: mode was validated when going from state
+             * IDLE to START
+             */
             g_assert_not_reached();
         }
 
@@ -677,13 +681,13 @@ static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t keylen)
     }
 }
 
-static bool ot_kmac_check_kmac_prefix(struct OtKMACPrefix *prefix)
+static bool ot_kmac_check_kmac_prefix(OtKMACState *s)
 {
-    return prefix->funcname_len == KMAC_PREFIX_LEN &&
-           !memcmp(prefix->funcname, KMAC_PREFIX, KMAC_PREFIX_LEN);
+    return ((s->regs[R_PREFIX_0] & KMAC_PREFIX_0_MASK) == KMAC_PREFIX_0) &&
+           ((s->regs[R_PREFIX_1] & KMAC_PREFIX_1_MASK) == KMAC_PREFIX_1);
 }
 
-static void ot_kmac_command_start(OtKMACState *s, struct OtKMACPrefix *prefix)
+static void ot_kmac_command_start(OtKMACState *s)
 {
     uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
     enum OtKMACMode mode = ot_kmac_get_mode(cfg);
@@ -705,7 +709,7 @@ static void ot_kmac_command_start(OtKMACState *s, struct OtKMACPrefix *prefix)
             sha3_512_init(&s->ltc_state);
             break;
         default:
-            /* should never happen: strength was already validated at this point */
+            /* should never happen: strength was already validated earlier */
             g_assert_not_reached();
         }
         break;
@@ -716,7 +720,7 @@ static void ot_kmac_command_start(OtKMACState *s, struct OtKMACPrefix *prefix)
             sha3_shake_init(&s->ltc_state, kstrength);
             break;
         default:
-            /* should never happen: strength was already validated at this point */
+            /* should never happen: strength was already validated earlier */
             g_assert_not_reached();
         }
         break;
@@ -724,11 +728,19 @@ static void ot_kmac_command_start(OtKMACState *s, struct OtKMACPrefix *prefix)
         switch (kstrength) {
         case 128u:
         case 256u: {
-            bool kmac_en = FIELD_EX32(cfg, CFG_SHADOWED, KMAC_EN) != 0;
-            sha3_cshake_init(&s->ltc_state, kstrength, prefix->funcname,
-                             prefix->funcname_len, prefix->custom,
-                             prefix->custom_len);
-            if (kmac_en) {
+            struct OtKMACPrefix prefix;
+            if (!ot_kmac_decode_prefix(s, &prefix)) {
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "%s: Could not decode cSHAKE prefix, digest "
+                              "result will be wrong!\n",
+                              __func__);
+                memset(&prefix, 0, sizeof(prefix));
+            }
+            sha3_cshake_init(&s->ltc_state, kstrength, prefix.funcname,
+                             prefix.funcname_len, prefix.custom,
+                             prefix.custom_len);
+            /* if KMAC mode is enabled, process key */
+            if (FIELD_EX32(cfg, CFG_SHADOWED, KMAC_EN) != 0) {
                 uint8_t key[NUM_KEY_REGS * sizeof(uint32_t)];
                 size_t keylen = ot_kmac_get_key_length(s) / 8u;
                 ot_kmac_get_key(s, key, keylen);
@@ -737,12 +749,12 @@ static void ot_kmac_command_start(OtKMACState *s, struct OtKMACPrefix *prefix)
             break;
         }
         default:
-            /* should never happen: strength was already validated at this point */
+            /* should never happen: strength was already validated earlier */
             g_assert_not_reached();
         }
         break;
     default:
-        /* should never happen: mode was already validated at this point */
+        /* should never happen: mode was already validated earlier */
         g_assert_not_reached();
     }
 }
@@ -760,19 +772,13 @@ static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd)
         if (cmd == OT_KMAC_CMD_NONE) {
             /* nothing to do */
         } else if (cmd == OT_KMAC_CMD_START) {
-            struct OtKMACPrefix prefix;
             if (!ot_kmac_check_mode_and_strength(cfg)) {
                 err_modestrength = true;
                 break;
             }
-            /* decode prefix from registers */
-            if (!ot_kmac_decode_prefix(s, &prefix)) {
-                err_prefix = true;
-                break;
-            }
             /* if KMAC mode, check prefix & entropy ready */
             if (FIELD_EX32(cfg, CFG_SHADOWED, KMAC_EN)) {
-                if (!ot_kmac_check_kmac_prefix(&prefix)) {
+                if (!ot_kmac_check_kmac_prefix(s)) {
                     err_prefix = true;
                     break;
                 }
@@ -781,7 +787,7 @@ static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd)
                     break;
                 }
             }
-            ot_kmac_command_start(s, &prefix);
+            ot_kmac_command_start(s);
             s->state = KMAC_ST_MSG_FEED;
         } else {
             err_swsequence = true;
@@ -1202,8 +1208,8 @@ static uint64_t ot_kmac_state_read(void *opaque, hwaddr addr, unsigned size)
             break;
         case 1:
             /*
-             * TODO: implement masking. Current version returns unmasked state in
-             * first share and zeros in second one.
+             * TODO: implement masking. Current version returns unmasked state
+             * in first share and zeros in second one.
              */
             val32 = 0;
             break;
@@ -1353,8 +1359,7 @@ static void ot_kmac_init(Object *obj)
                                 &s->msgfifo_mmio);
 
     /* setup deferred processing trigger */
-    s->deferred_trigger =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_kmac_process, s);
+    s->deferred_trigger = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_kmac_process, s);
 
     /* FIFO sizes as per OT Spec */
     fifo8_create(&s->input_fifo, FIFO_LENGTH);
