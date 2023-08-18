@@ -159,7 +159,7 @@ static void ot_timer_update_irqs(OtTimerState *s)
 
 static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
 {
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
 
     if (reset_origin) {
         s->origin_ns = now;
@@ -209,14 +209,14 @@ static uint64_t ot_timer_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_TIMER_V_LOWER0: {
         int64_t now = ot_timer_is_active(s) ?
-                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) :
+                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT) :
                           s->origin_ns;
         val32 = ot_timer_get_mtime(s, now);
         break;
     }
     case R_TIMER_V_UPPER0: {
         int64_t now = ot_timer_is_active(s) ?
-                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) :
+                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT) :
                           s->origin_ns;
         val32 = ot_timer_get_mtime(s, now) >> 32u;
         break;
@@ -269,7 +269,7 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
                 /* stop timer */
                 timer_del(s->timer);
                 /* save current mtime */
-                int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+                int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
                 uint64_t mtime = ot_timer_get_mtime(s, now);
                 s->regs[R_TIMER_V_LOWER0] = (uint32_t)mtime;
                 s->regs[R_TIMER_V_UPPER0] = (uint32_t)(mtime >> 32u);
@@ -289,7 +289,7 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
          * schedule the timer for the next peripheral clock tick to check again
          * for interrupt condition
          */
-        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
         int64_t next = ot_timer_compute_next_timeout(s, now, 0);
         timer_mod_anticipate(s->timer, next);
         break;
@@ -370,7 +370,7 @@ static void ot_timer_init(Object *obj)
                           0x400u);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 
-    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_timer_cb, s);
+    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_timer_cb, s);
 }
 
 static void ot_timer_class_init(ObjectClass *klass, void *data)
