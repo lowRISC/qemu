@@ -563,7 +563,7 @@ static void ot_edn_try_auto_instantiate(OtEDNState *s)
 
     if (ot_fifo32_is_empty(&c->sw_cmd_fifo)) {
         /* instantiate command not yet loaded into the SW_CMD_REQ */
-        xtrace_ot_edn_error(c->appid, "no SW cmd in FIFO");
+        xtrace_ot_edn_xinfo(c->appid, "no SW cmd in FIFO", 0);
         return;
     }
 
@@ -571,7 +571,7 @@ static void ot_edn_try_auto_instantiate(OtEDNState *s)
     uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
     if (ot_fifo32_num_used(&c->sw_cmd_fifo) < length) {
         /* instantiate command not fully loaded into the SW_CMD_REQ */
-        xtrace_ot_edn_error(c->appid, "SW cmd FIFO incomplete");
+        xtrace_ot_edn_xinfo(c->appid, "SW cmd FIFO incomplete", 0);
         return;
     }
 

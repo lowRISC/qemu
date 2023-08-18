@@ -100,7 +100,7 @@ ot_entropy_src_info(const char *msg) "%s"
 ot_entropy_src_init_ongoing(const char *state, int st) "entropy source still initializing in [%s:%u]"
 ot_entropy_src_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_entropy_src_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
-ot_entropy_src_is_fips_capable(bool en, bool es_route, bool es_type, bool rng_bit_en, bool res) "en:%u rt:%u tp:%u rb:%u => %u"
+ot_entropy_src_is_fips_capable(bool en, bool es_route, bool es_type, bool rng_bit_en, bool res) "en:%u rt:%u tp:%u !rb:%u => %u"
 ot_entropy_src_no_entropy(unsigned count) "only %u words available"
 ot_entropy_src_obs_fifo(unsigned level, unsigned thold) "level %u, threshold %u"
 ot_entropy_src_otp_conf(bool fw_read, bool fw_over) "fw_read %u, fw_over %u"
