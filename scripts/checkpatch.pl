@@ -465,7 +465,7 @@ sub top_of_kernel_tree {
 
 	my @tree_check = (
 		"COPYING", "MAINTAINERS", "Makefile",
-		"README.rst", "docs", "VERSION",
+		"README_QEMU.rst", "docs", "VERSION",
 		"linux-user", "softmmu"
 	);
 
