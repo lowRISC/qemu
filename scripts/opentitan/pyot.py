@@ -456,7 +456,7 @@ class QEMUFileManager:
         #pylint: disable=import-outside-toplevel
         from flashgen import FlashGen
         gen = FlashGen(FlashGen.CHIP_ROM_EXT_SIZE_MAX if bool(bootloader)
-                       else 0)
+                       else 0, True)
         self._configure_logger(gen)
         flash_fd, flash_file = mkstemp(suffix='.raw', prefix='qemu_ot_flash_')
         self._in_fly.add(flash_file)
