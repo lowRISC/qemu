@@ -39,6 +39,8 @@ from typing import (Any, BinaryIO, Dict, Iterator, List, NamedTuple, Optional,
                     Tuple, Union)
 
 try:
+    # note: pyelftools package is an OpenTitan toolchain requirement, see
+    # python-requirements.txt file from OT top directory.
     from elftools.common.exceptions import ELFError
     from elftools.elf.constants import SH_FLAGS
     from elftools.elf.elffile import ELFFile
@@ -503,8 +505,12 @@ class FlashGen:
                 if self._check_elf:
                     raise RuntimeError(msg)
                 self._log.warning(msg)
-            if not self._compare_bin_elf(bindesc, elfpath):
-                msg = 'Application ELF file does not match binary file'
+            be_match = self._compare_bin_elf(bindesc, elfpath)
+            if not be_match:
+                if be_match is None:
+                    msg = 'Cannot verify ELF file (pyelftools not installed)'
+                else:
+                    msg = 'Application ELF file does not match binary file'
                 if self._check_elf:
                     raise RuntimeError(msg)
                 self._log.warning(msg)
@@ -533,8 +539,12 @@ class FlashGen:
                 if self._check_elf:
                     raise RuntimeError(msg)
                 self._log.warning(msg)
-            if not self._compare_bin_elf(bindesc, elfpath):
-                msg = 'Boot ELF file does not match binary file'
+            be_match = self._compare_bin_elf(bindesc, elfpath)
+            if not be_match:
+                if be_match is None:
+                    msg = 'Cannot verify ELF file (pyelftools not installed)'
+                else:
+                    msg = 'Boot ELF file does not match binary file'
                 if self._check_elf:
                     raise RuntimeError(msg)
                 self._log.warning(msg)
@@ -569,7 +579,9 @@ class FlashGen:
                 getattr(self, f'store_{kind}')(bank, bfp, elf_filename)
 
     def _compare_bin_elf(self, bindesc: RuntimeDescriptor, elfpath: str) \
-            -> bool:
+            -> Optional[bool]:
+        if ELFFile is None:
+            return None
         with open(elfpath, 'rb') as efp:
             elfdesc = self._load_elf_info(efp)
         if not elfdesc:
