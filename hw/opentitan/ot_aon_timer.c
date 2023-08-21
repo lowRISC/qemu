@@ -497,7 +497,7 @@ static void ot_aon_timer_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OPENTITAN_DEVICE_ALERT);
 
     memory_region_init_io(&s->mmio, obj, &ot_aon_timer_ops, s,
-                          TYPE_OT_AON_TIMER, 0x400u);
+                          TYPE_OT_AON_TIMER, REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 
     s->wkup_timer =

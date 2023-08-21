@@ -367,7 +367,7 @@ static void ot_timer_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OPENTITAN_DEVICE_ALERT);
 
     memory_region_init_io(&s->mmio, obj, &ot_timer_ops, s, TYPE_OT_TIMER,
-                          0x400u);
+                          REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 
     s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_timer_cb, s);

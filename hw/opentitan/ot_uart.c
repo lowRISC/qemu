@@ -599,7 +599,7 @@ static void ot_uart_init(Object *obj)
     }
 
     memory_region_init_io(&s->mmio, obj, &ot_uart_ops, s, TYPE_OT_UART,
-                          REGS_COUNT * sizeof(uint32_t));
+                          REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 }
 
