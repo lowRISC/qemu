@@ -42,10 +42,10 @@ The (signed) binary files contain no symbols, which can make low-level debugging
 when using the `-d in_asm` and/or `-d exec` option switches.
 
 If an ELF file with the same radix as a binary file is located in the directory of the binary
-file, or its location is specified with on the command line, the path to the ELF file is encoded
-into the flash image into a dedicated debug section.
+file, or its location is specified in the command line, the path to the ELF file is encoded
+into the flash image within a dedicated debug section.
 
-The OT flash controller emulation, when the stored ELF file exists, attemps to load the symbols
+The OT flash controller emulation, when the stored ELF file exists, attempts to load the symbols
 from this ELF file into QEMU disassembler. This enables the QEMU disassembler - used with the
 `in_asm`/`exec` QEMU options - to output the name of each executed function as an addition to the
 guest PC value.
@@ -58,7 +58,7 @@ matching signed binary files to help with debugging.
 * `-a bank` specify the data partition to store the binary file into, mutually exclusive with `-t`.
 
 * `-B elf` specify an alternative path to the BL0 ELF file. If not specified, the ELF path file is
-  recontructed from the specified binary file (from the same directory). The ELF file is only used
+  reconstructed from the specified binary file (from the same directory). The ELF file is only used
   as a hint for QEMU loader. Requires option `-b`, mutually exclusive with `-t`.
 
 * `-b file` specify the BL0 (signed) binary file to store in the data partition of the flash
@@ -82,7 +82,7 @@ matching signed binary files to help with debugging.
   This option is mutually exclusive with `-b`, `-B`, `-x`, `-X` and `-a`.
 
 * `-X elf` specify an alternative path to the ROM_EXT ELF file. If not specified, the ELF path file
-  is recontructed from the specified binary file (from the same directory). The ELF file is only
+  is reconstructed from the specified binary file (from the same directory). The ELF file is only
   used as a hint for QEMU loader. Requires option `-x`, mutually exclusive with `-t`.
 
 * `-x file` specify the ROM_EXT (signed) binary file or the application to store into the data

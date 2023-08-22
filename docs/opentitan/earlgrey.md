@@ -43,7 +43,7 @@ Devices in this group implement subset(s) of the real HW.
 * CSRNG
    * AES CTR not supported (uses xoroshiro128++ reseeded from entropy src)
 
-### Sparsely implemented adevices
+### Sparsely implemented devices
 
 In this group, device CSRs are supported (w/ partial or full access control & masking) but only some
 features are implemented.
@@ -96,7 +96,7 @@ generate the `.raw` image files.
 
 ## Available tools
 
-Launching a QEMU VM with the right option switches may rapidely become complex due to the number
+Launching a QEMU VM with the right option switches may rapidly become complex due to the number
 of options and the available features. Several helper tools are provided in the `scripts/opentitan`
 directory to help with these tasks.
 
@@ -118,7 +118,7 @@ directory to help with these tasks.
 ### vCPU
 
 * `-icount 6` reduces the execution speed of the vCPU (Ibex core) to 1GHz >> 6, _i.e._ ~15MHz,
-  which should roughly match the expected speed of the Ibex core runninng on the CW310 FPGA, which
+  which should roughly match the expected speed of the Ibex core running on the CW310 FPGA, which
   is set to 10 MHz. This option is very useful/mandatory to run many OpenTitan tests that rely on
   time or CPU cycle to validate features. Using `-icount` option slows down execution speed though,
   so it is not recommended to use it when the main goal is to develop SW to run on the virtual
@@ -133,7 +133,7 @@ directory to help with these tasks.
 
 ### AES
 
-* `-global ot-aes.fast-mode=false` can be used to better emulate AES HW IP, as some OT tests expects
+* `-global ot-aes.fast-mode=false` can be used to better emulate AES HW IP, as some OT tests expect
   the Ibex core to execute while the HW is performing AES rounds. Without this option, the virtual
   HW may only give back execution to the vCPU once the AES operation is complete, which make those
   OT tests to fail. Disabling fast mode better emulates the HW to the expense of higher AES latency
@@ -216,7 +216,7 @@ to enumerate these log features, however the most useful ones are enumerated her
 
    * `unimp` reports log messages for unimplemented features, _e.g._ when the vCPU attempts to
      read from or write into a memory mapped device that has not been implemented.
-   * `guest_errors` repots log messages of invalid guest software requests, _e.g._ attempts to
+   * `guest_errors` reports log messages of invalid guest software requests, _e.g._ attempts to
      perform an invalid configuration.
    * `int` reports all interruptions *and* exceptions handled by the vCPU. It may be quite verbose
      but also very useful to track down an invalid memory or I/O access for example. This is the

@@ -3,7 +3,7 @@
 `checkregs.py` checks whether QEMU register definitions for OpenTitan match the generated OpenTitan
 `*_regs.h` files. This enables to spot major differences whenever OpenTitan definitions are updated.
 
-Note that only register addresses are checked for now, the bit assignement in each register is not
+Note that only register addresses are checked for now, the bit assignment in each register is not
 validated.
 
 ## Usage

@@ -43,7 +43,7 @@ This script works in three different modes.
 
 * `-b` byte-swap in input VMEM words (should work Ok w/o this option)
 
-* `-c` specify the register file, which is only useful to decoce OTP content (see `-s` option)
+* `-c` specify the register file, which is only useful to decode OTP content (see `-s` option)
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 

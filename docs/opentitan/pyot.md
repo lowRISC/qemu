@@ -52,7 +52,7 @@ Files:
 
 This tool may be used in two ways, which can be combined:
 
-* From the command line, it is possible to run a QEMU test session for one application,
+* From the command line, it is possible to run a QEMU test session for one application.
 * Using a JSON configuration file, it is possible to run several QEMU test sessions for each
   specified test in the configuration file. This mode is enabled when a JSON config file is
   specified.
@@ -427,7 +427,7 @@ Sample config for running some non-OpenTitan tests:
   This section defines shortcut to further reduce the definition and report of test filenames.
 
   Any test filename ending up with one of the suffixes is automatically stripped. Further test
-  configuration in the the `tests` section should omit this suffix. The generated test report also
+  configuration in the `tests` section should omit this suffix. The generated test report also
   omit these suffixes.
 
 * `tests`
@@ -456,7 +456,7 @@ commands:
     session is over
 
 Regular or 'synchronous' commands are only executed if all the previous commands have been
-succesful. Moreover, commands in the `post` subsection are only executed if the QEMU session has
+successful. Moreover, commands in the `post` subsection are only executed if the QEMU session has
 completed successfully.
 
 Background commands are commands that run in the background till they complete on their own, or
@@ -497,7 +497,7 @@ aes_test,pass,0.044,6,
 
 ## Return value
 
-The script returns the error code of the most occuring error, or success (0)
+The script returns the error code of the most occurring error, or success (0)
 
 ## Examples
 
