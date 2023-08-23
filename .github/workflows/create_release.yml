@@ -15,7 +15,7 @@ jobs:
       BUILD_DIR: build
       BRANCH_NAME: ${{ github.event.repository.default_branch }}
       RELEASE_BIN_ARCHIVE: qemu-ot-earlgrey-${{ inputs.release_tag }}-x86_64-unknown-linux-gnu.tar.gz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 10
     steps:
       - name: Check out repository
