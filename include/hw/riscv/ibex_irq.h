@@ -38,6 +38,16 @@ typedef struct {
     int level;
 } IbexIRQ;
 
+static inline bool ibex_irq_is_connected(const IbexIRQ *ibex_irq)
+{
+    return qemu_irq_is_connected(ibex_irq->irq);
+}
+
+static inline int ibex_irq_get_level(const IbexIRQ *ibex_irq)
+{
+    return ibex_irq->level;
+}
+
 static inline bool ibex_irq_set(IbexIRQ *ibex_irq, int level)
 {
     if (level != ibex_irq->level) {
