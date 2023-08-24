@@ -226,7 +226,9 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
     s->regs[R_EXEC] = 0x9u;
     s->regs[R_CTRL_REGWEN] = 0x1u;
 
-    s->otp_ifetch = ot_otp_ctrl_get_hw_cfg(s->otp_ctrl)->en_sram_ifetch;
+    OtOTPStateClass *oc =
+        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+    s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch;
     s->cfg_ifetch = 0u; /* not used for now */
 }
 

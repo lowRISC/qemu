@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan One Time Programmable (OTP) life cycle values
+ * QEMU OpenTitan Earlgrey One Time Programmable (OTP) life cycle values
  *
  * Copyright (c) 2023 Rivos, Inc.
  *

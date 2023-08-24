@@ -19,6 +19,7 @@ softmmu_ss.add(when: 'CONFIG_OT_KMAC', if_true: [files('ot_kmac.c'), libtomcrypt
 softmmu_ss.add(when: 'CONFIG_OT_LIFECYCLE', if_true: files('ot_lifecycle.c'))
 softmmu_ss.add(when: 'CONFIG_OT_OTBN', if_true: files('ot_otbn.c'))
 softmmu_ss.add(when: 'CONFIG_OT_OTP', if_true: files('ot_otp.c'))
+softmmu_ss.add(when: 'CONFIG_OT_OTP_EARLGREY', if_true: files('ot_otp_earlgrey.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PINMUX', if_true: files('ot_pinmux.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PRNG', if_true: files('ot_prng.c'))
 softmmu_ss.add(when: 'CONFIG_OT_PWRMGR', if_true: files('ot_pwrmgr.c'))

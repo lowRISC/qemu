@@ -25,20 +25,11 @@
 #ifndef HW_OPENTITAN_OT_OTP_H
 #define HW_OPENTITAN_OT_OTP_H
 
-#include "qemu/osdep.h"
 #include "qom/object.h"
+#include "hw/sysbus.h"
 
 #define TYPE_OT_OTP "ot-otp"
-OBJECT_DECLARE_SIMPLE_TYPE(OtOTPState, OT_OTP)
-
-/*
- * Provide OTP lifecycle information.
- *
- * @lc_state if not NULL, updated with the encoded LifeCycle state
- * @tcount if not NULL, updated with the LifeCycle transition count
- */
-void ot_otp_ctrl_get_lc_info(OtOTPState *s, uint32_t *lc_state,
-                             unsigned *tcount);
+OBJECT_DECLARE_TYPE(OtOTPState, OtOTPStateClass, OT_OTP)
 
 /*
  * Hardware configuration (for HW_CFG partition)
@@ -53,7 +44,24 @@ typedef struct {
     uint8_t en_entropy_src_fw_over;
 } OtOTPHWCfg;
 
-/* Retrieve HW configuration partition data */
-const OtOTPHWCfg *ot_otp_ctrl_get_hw_cfg(OtOTPState *s);
+struct OtOTPState {
+    SysBusDevice parent_obj;
+};
+
+struct OtOTPStateClass {
+    SysBusDeviceClass parent_class;
+
+    /*
+     * Provide OTP lifecycle information.
+     *
+     * @lc_state if not NULL, updated with the encoded LifeCycle state
+     * @tcount if not NULL, updated with the LifeCycle transition count
+     */
+    void (*get_lc_info)(const OtOTPState *s, uint32_t *lc_state,
+                        unsigned *tcount);
+
+    /* Retrieve HW configuration partition data */
+    const OtOTPHWCfg *(*get_hw_cfg)(const OtOTPState *s);
+};
 
 #endif /* HW_OPENTITAN_OT_OTP_H */

@@ -47,6 +47,10 @@ config OT_OTBN
 config OT_OTP
     bool
 
+config OT_OTP_EARLGREY
+    select OT_OTP
+    bool
+
 config OT_PINMUX
     bool
 

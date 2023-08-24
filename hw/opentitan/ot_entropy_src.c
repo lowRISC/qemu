@@ -1575,8 +1575,9 @@ static void ot_entropy_src_reset(DeviceState *dev)
         ibex_irq_set(&s->alerts[ix], 0);
     }
 
-    const OtOTPHWCfg *hw_cfg;
-    hw_cfg = ot_otp_ctrl_get_hw_cfg(s->otp_ctrl);
+    OtOTPStateClass *oc =
+        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+    const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(s->otp_ctrl);
 
     s->obs_fifo_en = false;
     s->otp_fw_read = hw_cfg->en_entropy_src_fw_read == OT_MULTIBITBOOL8_TRUE;

@@ -46,7 +46,7 @@
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otbn.h"
-#include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_otp_earlgrey.h"
 #include "hw/opentitan/ot_pinmux.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_sensor.h"
@@ -343,7 +343,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_OTP_CTRL] = {
-        .type = TYPE_OT_OTP,
+        .type = TYPE_OT_OTP_EARLGREY,
         .cfg = &ot_earlgrey_soc_otp_ctrl_configure,
         .memmap = MEMMAPENTRIES(
             { 0x40130000u, 0x2000u },

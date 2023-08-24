@@ -1,10 +1,7 @@
 /*
- * QEMU OpenTitan One Time Programmable (OTP) memory controller
+ * QEMU OpenTitan Earlgrey One Time Programmable (OTP) memory controller
  *
  * Copyright (c) 2023 Rivos, Inc.
- *
- * Author(s):
- *  Emmanuel Blot <eblot@rivosinc.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,13 +22,12 @@
  * THE SOFTWARE.
  */
 
-#include "qemu/osdep.h"
+#ifndef HW_OPENTITAN_OT_OTP_EARLGREY_H
+#define HW_OPENTITAN_OT_OTP_EARLGREY_H
+
 #include "hw/opentitan/ot_otp.h"
 
-OBJECT_DEFINE_ABSTRACT_TYPE(OtOTPState, ot_otp, OT_OTP, SYS_BUS_DEVICE)
+#define TYPE_OT_OTP_EARLGREY "ot-otp-earlgrey"
+OBJECT_DECLARE_TYPE(OtOTPEarlgreyState, OtOTPStateClass, OT_OTP_EARLGREY)
 
-static void ot_otp_class_init(ObjectClass *oc, void *data) {}
-
-static void ot_otp_init(Object *obj) {}
-
-static void ot_otp_finalize(Object *obj) {}
+#endif /* HW_OPENTITAN_OT_OTP_EARLGREY_H */

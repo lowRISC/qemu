@@ -1645,8 +1645,9 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             if (change) {
                 xtrace_ot_csrng_info("handling CTRL change", val32);
                 ot_csrng_handle_enable(s);
-                const OtOTPHWCfg *hw_cfg;
-                hw_cfg = ot_otp_ctrl_get_hw_cfg(s->otp_ctrl);
+                OtOTPStateClass *oc =
+                    OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+                const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(s->otp_ctrl);
                 if (hw_cfg->en_csrng_sw_app_read == OT_MULTIBITBOOL8_TRUE) {
                     uint32_t sw_app_en = FIELD_EX32(val32, CTRL, SW_APP_ENABLE);
                     s->sw_app_granted = sw_app_en == OT_MULTIBITBOOL4_TRUE;
