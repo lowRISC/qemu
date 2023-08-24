@@ -56,7 +56,10 @@ DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
     unsigned unimp_count = 0;
     for (unsigned idx = 0; idx < count; idx++) {
         const IbexDeviceDef *def = &defs[idx];
-        assert(def->type);
+        if (!def->type) {
+            devices[idx] = NULL;
+            continue;
+        }
         devices[idx] = qdev_new(def->type);
 
         char *name;
@@ -83,10 +86,14 @@ void ibex_link_devices(DeviceState **devices, const IbexDeviceDef *defs,
     /* Link devices */
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
+        if (!dev) {
+            continue;
+        }
         const IbexDeviceLinkDef *link = defs[idx].link;
         if (link) {
             while (link->propname) {
                 DeviceState *target = devices[link->index];
+                assert(target);
                 (void)object_property_set_link(OBJECT(dev), link->propname,
                                                OBJECT(target), &error_fatal);
                 link++;
@@ -100,6 +107,9 @@ void ibex_define_device_props(DeviceState **devices, const IbexDeviceDef *defs,
 {
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
+        if (!dev) {
+            continue;
+        }
         const IbexDevicePropDef *prop = defs[idx].prop;
         if (prop) {
             while (prop->propname) {
@@ -148,6 +158,9 @@ void ibex_realize_devices(DeviceState **devices, BusState *bus,
     /* Realize devices */
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
+        if (!dev) {
+            continue;
+        }
         const IbexDeviceDef *def = &defs[idx];
 
         if (def->cfg) {
@@ -176,6 +189,9 @@ void ibex_map_devices(DeviceState **devices, MemoryRegion **mrs,
 {
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
+        if (!dev) {
+            continue;
+        }
         const IbexDeviceDef *def = &defs[idx];
 
         if (def->memmap) {
@@ -207,11 +223,15 @@ void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
     /* Connect GPIOs (in particular, IRQs) */
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
+        if (!dev) {
+            continue;
+        }
         const IbexDeviceDef *def = &defs[idx];
 
         if (def->gpio) {
             const IbexGpioConnDef *conn = def->gpio;
             while (conn->out.num >= 0 && conn->in.num >= 0) {
+                assert(devices[conn->in.index]);
                 qemu_irq in_gpio =
                     qdev_get_gpio_in_named(devices[conn->in.index],
                                            conn->in.name, conn->in.num);

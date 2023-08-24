@@ -120,10 +120,10 @@ struct IbexDeviceDef {
  */
 #define IBEX_MEMMAP_REGIDX_COUNT 4u
 #define IBEX_MEMMAP_REGIDX_MASK \
-    ((IBEX_MEMMAP_REGIDX_COUNT) - 1u) /* address are always word-aligned */
+    ((IBEX_MEMMAP_REGIDX_COUNT)-1u) /* address are always word-aligned */
 #define IBEX_MEMMAP_MAKE_REG(_addr_, _flag_) \
-    ((_addr_) | ((_flag_) & IBEX_MEMMAP_REGIDX_MASK))
-#define IBEX_MEMMAP_GET_REGIDX(_addr_) ((_addr_) & IBEX_MEMMAP_REGIDX_MASK)
+    ((_addr_) | ((_flag_)&IBEX_MEMMAP_REGIDX_MASK))
+#define IBEX_MEMMAP_GET_REGIDX(_addr_)  ((_addr_)&IBEX_MEMMAP_REGIDX_MASK)
 #define IBEX_MEMMAP_GET_ADDRESS(_addr_) ((_addr_) & ~IBEX_MEMMAP_REGIDX_MASK)
 
 /**
