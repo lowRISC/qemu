@@ -28,8 +28,6 @@
 #ifndef HW_OPENTITAN_OT_PRNG_H
 #define HW_OPENTITAN_OT_PRNG_H
 
-#include "qemu/osdep.h"
-
 #define TYPE_OT_PRNG "ot_prng"
 
 typedef struct OtPrngState OtPrngState;

@@ -23,8 +23,6 @@
 #ifndef HW_OPENTITAN_OT_COMMON_H
 #define HW_OPENTITAN_OT_COMMON_H
 
-#include "qemu/osdep.h"
-
 /* ------------------------------------------------------------------------ */
 /* Multi-bit boolean values */
 /* ------------------------------------------------------------------------ */

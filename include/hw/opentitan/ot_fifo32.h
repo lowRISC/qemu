@@ -26,8 +26,6 @@
 #ifndef HW_OPENTITAN_OT_FIFO32_H
 #define HW_OPENTITAN_OT_FIFO32_H
 
-#include "qemu/osdep.h"
-
 typedef struct {
     uint32_t *data;
     uint32_t capacity;

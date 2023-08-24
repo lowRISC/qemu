@@ -22,7 +22,6 @@
 #ifndef HW_OPENTITAN_OTBN_PROXY_H
 #define HW_OPENTITAN_OTBN_PROXY_H
 
-#include "qemu/osdep.h"
 #include "qemu/typedefs.h"
 
 /*
