@@ -30,10 +30,18 @@ from os.path import basename, dirname, join as joinpath, relpath, splitext
 from re import compile as re_compile, sub as re_sub
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
-from typing import Dict, Optional, TextIO, Tuple
+from typing import Dict, NamedTuple, Optional, Set, TextIO, Tuple
 
 
-RegisterDefs = Dict[str, Tuple[int, int]]
+class ValueLocation(NamedTuple):
+    """Location of a defined value."""
+    line: int  # line
+    start: int  # start column
+    end: int  # end column
+
+
+RegisterDefs = Dict[str, Tuple[int, ValueLocation]]
+"""Definition of a register value (name, value, location)."""
 
 #pylint: disable-msg=unspecified-encoding
 #pylint: disable-msg=missing-function-docstring
@@ -43,15 +51,10 @@ class OtRegisters:
     """Simple class to parse and compare register definitions
     """
 
-    REG_CRE = re_compile(r'^#define ([A-Z][\w]+)_REG_OFFSET\s+'
-                         r'((?:0x)?[A-Fa-f0-9]+)(?:\s|$)')
-    REGFIELD_CRE = re_compile(r'^\s*REG32\(([A-Z][\w]+),\s+'
-                              r'((?:0x)?[A-Fa-f0-9]+)u?\)(?:\s|$)')
     DEFMAP = {
         'alert_handler': 'alert',
         'flash_ctrl': 'flash',
         'lc_ctrl': 'lifecycle',
-        'otp_ctrl': 'otp',
         'rv_core_ibex': 'ibex_wrapper',
         'rv_timer': 'timer',
         'sensor_ctrl': 'sensor'
@@ -67,22 +70,28 @@ class OtRegisters:
     def _parse_defs(self, hfp: TextIO) -> RegisterDefs:
         radix = splitext(basename(hfp.name))[0]
         radix = radix.rsplit('_', 1)[0]
-        radix_re = f'^{radix.upper()}_'
         defs = {}
+        rre = f'{radix.upper()}_'
+        # the following RE matches two kinds of definition:
+        #   #define <COMPONENT>_<RADIX>_REG_OFFSET <HEXVAL>
+        #   #define <COMPONENT>_PARAM_<RADIX>_OFFSET <HEXVAL>
+        reg_cre = re_compile(rf'^#define {rre}(?P<param>PARAM_)?'
+                             r'(?P<name>[A-Z][\w]+?)(?(param)|_REG)_OFFSET\s+'
+                             r'(?P<val>(?:0x)?[A-Fa-f0-9]+)(?:\s|$)')
         for lno, line in enumerate(hfp, start=1):
             line = line.strip()
-            rmo = self.REG_CRE.match(line)
+            rmo = reg_cre.match(line)
             if not rmo:
                 continue
-            sregname = rmo.group(1)
-            sregaddr = rmo.group(2)
-            regname = re_sub(radix_re, '', sregname)
+            regname = rmo.group('name')
+            sregaddr = rmo.group('val')
+            vstart, vend = rmo.start('val'), rmo.end('val')
             regaddr = int(sregaddr, 16 if sregaddr.startswith('0x') else 10)
             self._log.debug("%s: 0x%x", regname, regaddr)
             if regname in defs:
                 self._log.error('Redefinition of %s: %x -> %x', regname,
                                defs[regname][0], regaddr)
-            defs[regname] = (regaddr, lno)
+            defs[regname] = (regaddr, ValueLocation(lno, vstart, vend))
         return defs
 
     def find_qemu_impl(self, filename: str, basedir: str, nomap: bool) \
@@ -107,29 +116,36 @@ class OtRegisters:
 
     def _parse_ot_qemu(self, qfp: TextIO) -> RegisterDefs:
         defs = {}
+        regfield_cre = re_compile(r'^\s*REG32\(([A-Z][\w]+),\s+'
+                                  r'((?:0x)?[A-Fa-f0-9]+)u?\)(?:\s|$)')
         for lno, line in enumerate(qfp, start=1):
             line = line.strip()
-            rmo = self.REGFIELD_CRE.match(line)
+            rmo = regfield_cre.match(line)
             if not rmo:
                 continue
             regname = rmo.group(1)
             sregaddr = rmo.group(2)
+            vstart, vend = rmo.start(2), rmo.end(2)
             regaddr = int(sregaddr, 16 if sregaddr.startswith('0x') else 10)
             self._log.debug("%s: 0x%x", regname, regaddr)
             if regname in defs:
                 self._log.error('Redefinition of %s: %x -> %x', regname,
                                defs[regname][0], regaddr)
-            defs[regname] = (regaddr, lno)
+            defs[regname] = (regaddr, ValueLocation(lno, vstart, vend))
         return defs
 
     def compare(self, name: str, hdefs: RegisterDefs,
-                qdefs: RegisterDefs, show_all: bool) -> int:
+                qdefs: RegisterDefs, show_all: bool) \
+            -> Tuple[int, Dict[ValueLocation, int], Set[int]]:
         name = basename(name)
         chdefs = {k: v[0] for k, v in hdefs.items()}
         cqdefs = {k: v[0] for k, v in qdefs.items()}
+        deprecated: Set[int] = set()
+        appendable: Dict[str, int] = {}
+        fixes: Dict[ValueLocation, int] = {}
         if chdefs == cqdefs:
             self._log.info('%s: ok, %d register definitions', name, len(hdefs))
-            return 0
+            return 0, fixes, deprecated, appendable
         if len(hdefs) == len(qdefs):
             self._log.debug('%s: %d register definitions', name, len(hdefs))
         hentries = set(hdefs)
@@ -141,16 +157,18 @@ class OtRegisters:
                 missing = len(hmissing)
                 self._log.warning('QEMU %s contains %s non-existing defs',
                                   name, missing)
-                if show_all:
-                    for miss in sorted(hmissing, key=lambda e: qdefs[e][1]):
+                for miss in sorted(hmissing, key=lambda e: qdefs[e][1]):
+                    deprecated.add(qdefs[miss][1].line)
+                    if show_all:
                         self._log.warning('.. %s (0x%x)', miss, qdefs[miss][0])
                 mismatch_count += missing
             qmissing = hentries - qentries
             if qmissing:
                 missing = len(qmissing)
                 self._log.warning('QEMU %s is missing %d defs', name, missing)
-                if show_all:
-                    for miss in sorted(qmissing, key=lambda e: hdefs[e][1]):
+                for miss in sorted(qmissing, key=lambda e: hdefs[e][1]):
+                    appendable[miss] = hdefs[miss][0]
+                    if show_all:
                         self._log.warning('.. %s (0x%x)', miss, hdefs[miss][0])
                 mismatch_count += missing
         entries = hentries & qentries
@@ -158,12 +176,48 @@ class OtRegisters:
             if hdefs[entry][0] != qdefs[entry][0]:
                 self._log.warning('Mismatched definition for %s: '
                                   'OT: 0x%x @ line %d / QEMU 0x%x @ line %d',
-                                  entry, hdefs[entry][0], hdefs[entry][1],
-                                  qdefs[entry][0], qdefs[entry][1])
+                                  entry, hdefs[entry][0], hdefs[entry][1].line,
+                                  qdefs[entry][0], qdefs[entry][1].line)
+                fixes[qdefs[entry][1]] = hdefs[entry][0]
                 mismatch_count += 1
         self._log.error('%s: %d discrepancies', name, mismatch_count)
-        return mismatch_count
+        return mismatch_count, fixes, deprecated, appendable
 
+    def fix(self, filename: str, suffix: str, fixes: Dict[ValueLocation, int],
+            deprecated: Set[int], newvalues: Dict[str, int]) \
+            -> None:
+        fix_lines = {loc.line: (loc.start, loc.end, val)
+                     for loc, val in fixes.items()}
+        parts = splitext(filename)
+        outfilename = f'{parts[0]}_{suffix}{parts[1]}'
+        with open(filename, 'rt') as ifp:
+            with open(outfilename, 'wt') as ofp:
+                for lno, line in enumerate(ifp, start=1):
+                    if lno in deprecated:
+                        # use a C++ comment to stress on this line, since QEMU
+                        # prohibit the use of this comment style, the output
+                        # file should be rejected by checkpatch.pl
+                        line = f'// {line.rstrip()} [deprecated]\n'
+                    elif lno in fix_lines:
+                        start, end, val = fix_lines[lno]
+                        lhs = line[:start]
+                        rhs = line[end:]
+                        hexfmt = line[start:].startswith('0x')
+                        if hexfmt:
+                            line = f'{lhs}0x{val:x}{rhs}'
+                        else:
+                            line = f'{lhs}{val}{rhs}'
+                    print(line, file=ofp, end='')
+                if newvalues:
+                    print('', file=ofp)
+                    print('// New registers', file=ofp)
+                    print('#ifdef USE_DECIMAL_VALUES', file=ofp)
+                    for name, val in newvalues.items():
+                        print(f'REG32({name}, {val}u)', file=ofp)
+                    print('#else // USE_DECIMAL_VALUES', file=ofp)
+                    for name, val in newvalues.items():
+                        print(f'REG32({name}, 0x{val:x}u)', file=ofp)
+                    print('#endf // !USE_DECIMAL_VALUES', file=ofp)
 
 def main():
     """Main routine"""
@@ -184,6 +238,9 @@ def main():
         argparser.add_argument('-k', '--keep', action='store_true',
                                default=False,
                                help='keep verifying if QEMU impl. is not found')
+        argparser.add_argument('-f', '--fix', metavar='SUFFIX', default=False,
+                               help='create a file with specified suffix '
+                                    'with possible fixes')
         argparser.add_argument('-M', '--no-map', action='store_true',
                                default=False,
                                help='do not convert regs into QEMU impl. path')
@@ -218,7 +275,11 @@ def main():
                 continue
             hdefs = otr.parse_defs(regfile)
             qdefs = otr.parse_ot_qemu(qemu_impl)
-            mismatch_count += otr.compare(qemu_impl, hdefs, qdefs, args.all)
+            mm_count, fixes, deprecated, newvalues = \
+                otr.compare(qemu_impl, hdefs, qdefs, args.all)
+            if mm_count and args.fix:
+                otr.fix(qemu_impl, args.fix, fixes, deprecated, newvalues)
+            mismatch_count += mm_count
 
         if mismatch_count:
             print(f'{mismatch_count} differences', file=stderr)
