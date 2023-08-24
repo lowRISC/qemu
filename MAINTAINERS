@@ -1494,6 +1494,27 @@ F: pc-bios/vof*
 
 RISC-V Machines
 ---------------
+
+Earlgrey OpenTitan platform
+M: Emmanuel Blot <eblot@rivosinc.com>
+M: Loïc Lefort <loic@rivosinc.com>
+S: Supported
+F: hw/opentitan/*
+F: include/hw/opentitan/*
+F: scripts/opentitan/*
+F: hw/riscv/ot_earlgrey.c
+F: include/hw/riscv/ot_earlgrey.h
+
+Ibex platforms and utilities
+M: Emmanuel Blot <eblot@rivosinc.com>
+M: Loïc Lefort <loic@rivosinc.com>
+S: Supported
+F: hw/riscv/ibex_common.c
+F: include/hw/riscv/ibex_common.h
+F: include/hw/riscv/ibex_irq.h
+F: hw/ibexdemo/*
+F: include/hw/ibexdemo/*
+
 OpenTitan
 M: Alistair Francis <Alistair.Francis@wdc.com>
 L: qemu-riscv@nongnu.org
@@ -3800,24 +3821,6 @@ R: Yuri Benditovich <yuri.benditovich@daynix.com>
 S: Maintained
 F: ebpf/*
 F: tools/ebpf/*
-
-Ibex
-M: Emmanuel Blot <eblot@rivosinc.com>
-M: Loïc Lefort <loic@rivosinc.com>
-S: Supported
-F: hw/riscv/ibex_common.c
-F: include/hw/riscv/ibex_common.h
-F: include/hw/riscv/ibex_irq.h
-F: hw/ibexdemo/*
-F: include/hw/ibexdemo/*
-
-OpenTitan
-M: Emmanuel Blot <eblot@rivosinc.com>
-M: Loïc Lefort <loic@rivosinc.com>
-S: Supported
-F: hw/opentitan/*
-F: include/hw/opentitan/*
-F: scripts/opentitan/*
 
 Build and test automation
 -------------------------
