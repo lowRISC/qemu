@@ -570,7 +570,8 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_INT_PROP("edn-ep", 3u)
+            IBEX_DEV_INT_PROP("edn-ep", 3u),
+            IBEX_DEV_INT_PROP("num-app", 3u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_OTBN] = {

@@ -27,22 +27,21 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *
- * Note: This implementation is missing some features (Side-loading, Application
- * Interface and Masking)
+ * Note: This implementation is missing some features:
+ *   - Side-loading
+ *   - Masking (current implementation does not consume entropy)
  */
 
 #include "qemu/osdep.h"
 #include "qemu/bswap.h"
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
-#include "qemu/module.h"
+#include "qemu/main-loop.h"
 #include "qemu/timer.h"
-#include "hw/irq.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_kmac.h"
-#include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -51,45 +50,7 @@
 #include "trace.h"
 
 
-/* Input FIFO length is 80 bytes (10 x 64 bits) */
-#define FIFO_LENGTH 80u
-
-/* Delay FIFO ingestion and compute by 100ns */
-#define DEFERRED_TRIGGER_DELAY_NS 100u
-
-/* Number of output IRQ lines */
-#define PARAM_NUM_IRQS 3u
-
-/* Number of output Alert lines */
-#define PARAM_NUM_ALERTS 2u
-
-/* Max size of the KECCAK state */
-#define KECCAK_STATE_BITS  1600u
-#define KECCAK_STATE_BYTES (KECCAK_STATE_BITS / 8u)
-
-/*
- * Size of the state window for each share. Each window contains
- * KECCAK_STATE_BYTES of state followed by zeros.
- */
-#define KECCAK_STATE_SHARE_BYTES 256u
-
-/* Number of KEY_* registers */
-#define NUM_KEY_REGS 16u
-
-/* Number of PREFIX_* registers */
-#define NUM_PREFIX_REGS 11u
-
-/* Max size of cSHAKE function name */
-#define MAX_FUNCNAME_LEN 32u
-
-/* Max size of cSHAKE customization string */
-#define MAX_CUSTOM_LEN 32u
-
-/* function prefix for KMAC operations (first 6 bytes of PREFIX_*) */
-#define KMAC_PREFIX_0      0x4d4b2001u
-#define KMAC_PREFIX_0_MASK 0xffffffffu
-#define KMAC_PREFIX_1      0x00004341u
-#define KMAC_PREFIX_1_MASK 0x0000ffffu
+#define KMAC_PARAM_NUM_ALERTS 2u
 
 /* clang-format off */
 REG32(INTR_STATE, 0x00u)
@@ -204,26 +165,60 @@ REG32(ERR_CODE, 0xf0u)
      R_CFG_SHADOWED_ENTROPY_READY_MASK | R_CFG_SHADOWED_ERR_PROCESSED_MASK | \
      R_CFG_SHADOWED_EN_UNSUPPORTED_MODESTRENGTH_MASK)
 
-#define OT_KMAC_CMD_NONE       0
-#define OT_KMAC_CMD_START      0x1du
-#define OT_KMAC_CMD_PROCESS    0x2eu
-#define OT_KMAC_CMD_MANUAL_RUN 0x31u
-#define OT_KMAC_CMD_DONE       0x16u
+enum {
+    OT_KMAC_CMD_NONE = 0,
+    OT_KMAC_CMD_START = 0x1d,
+    OT_KMAC_CMD_PROCESS = 0x2e,
+    OT_KMAC_CMD_MANUAL_RUN = 0x31,
+    OT_KMAC_CMD_DONE = 0x16,
+};
 
-#define OT_KMAC_ERR_NONE                             0
-#define OT_KMAC_ERR_KEY_NOT_VALID                    0x01u
-#define OT_KMAC_ERR_SW_PUSHED_MSG_FIFO               0x02u
-#define OT_KMAC_ERR_SW_ISSUED_CMD_IN_APP_ACTIVE      0x03u
-#define OT_KMAC_ERR_WAIT_TIMER_EXPIRED               0x04u
-#define OT_KMAC_ERR_INCORRECT_ENTROPY_MODE           0x05u
-#define OT_KMAC_ERR_UNEXPECTED_MODE_STRENGTH         0x06u
-#define OT_KMAC_ERR_INCORRECT_FUNCTION_NAME          0x07u
-#define OT_KMAC_ERR_SW_CMD_SEQUENCE                  0x08u
-#define OT_KMAC_ERR_SW_HASHING_WITHOUT_ENTROPY_READY 0x09u
-#define OT_KMAC_ERR_SHADOW_REG_UPDATE                0xc0u
-#define OT_KMAC_ERR_FATAL_ERROR                      0xc1u
-#define OT_KMAC_ERR_PACKER_INTEGRITY                 0xc2u
-#define OT_KMAC_ERR_MSG_FIFO_INTEGRITY               0xc3u
+#define CMD_NAME_ENTRY(_st_) [OT_KMAC_CMD_##_st_] = stringify(_st_)
+static const char *CMD_NAMES[] = {
+    CMD_NAME_ENTRY(NONE),       CMD_NAME_ENTRY(START), CMD_NAME_ENTRY(PROCESS),
+    CMD_NAME_ENTRY(MANUAL_RUN), CMD_NAME_ENTRY(DONE),
+};
+#undef CMD_NAME_ENTRY
+#define CMD_NAME(_st_) \
+    ((_st_) >= 0 && (_st_) < ARRAY_SIZE(CMD_NAMES) ? CMD_NAMES[(_st_)] : "?")
+
+enum {
+    OT_KMAC_ERR_NONE = 0,
+    OT_KMAC_ERR_KEY_NOT_VALID = 0x01,
+    OT_KMAC_ERR_SW_PUSHED_MSG_FIFO = 0x02,
+    OT_KMAC_ERR_SW_ISSUED_CMD_IN_APP_ACTIVE = 0x03,
+    OT_KMAC_ERR_WAIT_TIMER_EXPIRED = 0x04,
+    OT_KMAC_ERR_INCORRECT_ENTROPY_MODE = 0x05,
+    OT_KMAC_ERR_UNEXPECTED_MODE_STRENGTH = 0x06,
+    OT_KMAC_ERR_INCORRECT_FUNCTION_NAME = 0x07,
+    OT_KMAC_ERR_SW_CMD_SEQUENCE = 0x08,
+    OT_KMAC_ERR_SW_HASHING_WITHOUT_ENTROPY_READY = 0x09,
+    OT_KMAC_ERR_SHADOW_REG_UPDATE = 0xc0,
+    OT_KMAC_ERR_FATAL_ERROR = 0xc1,
+    OT_KMAC_ERR_PACKER_INTEGRITY = 0xc2,
+    OT_KMAC_ERR_MSG_FIFO_INTEGRITY = 0xc3,
+};
+
+#define ERR_NAME_ENTRY(_st_) [OT_KMAC_ERR_##_st_] = stringify(_st_)
+static const char *ERR_NAMES[] = {
+    ERR_NAME_ENTRY(NONE),
+    ERR_NAME_ENTRY(KEY_NOT_VALID),
+    ERR_NAME_ENTRY(SW_PUSHED_MSG_FIFO),
+    ERR_NAME_ENTRY(SW_ISSUED_CMD_IN_APP_ACTIVE),
+    ERR_NAME_ENTRY(WAIT_TIMER_EXPIRED),
+    ERR_NAME_ENTRY(INCORRECT_ENTROPY_MODE),
+    ERR_NAME_ENTRY(UNEXPECTED_MODE_STRENGTH),
+    ERR_NAME_ENTRY(INCORRECT_FUNCTION_NAME),
+    ERR_NAME_ENTRY(SW_CMD_SEQUENCE),
+    ERR_NAME_ENTRY(SW_HASHING_WITHOUT_ENTROPY_READY),
+    ERR_NAME_ENTRY(SHADOW_REG_UPDATE),
+    ERR_NAME_ENTRY(FATAL_ERROR),
+    ERR_NAME_ENTRY(PACKER_INTEGRITY),
+    ERR_NAME_ENTRY(MSG_FIFO_INTEGRITY),
+};
+#undef ERR_NAME_ENTRY
+#define ERR_NAME(_st_) \
+    ((_st_) >= 0 && (_st_) < ARRAY_SIZE(ERR_NAMES) ? ERR_NAMES[(_st_)] : "?")
 
 /* base offset for MMIO registers */
 #define OT_KMAC_REGS_BASE 0x00000000u
@@ -312,6 +307,34 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
+/* Input FIFO length is 80 bytes (10 x 64 bits) */
+#define FIFO_LENGTH 80u
+
+/* Delay FIFO ingestion and compute by 100ns */
+#define BH_TRIGGER_DELAY_NS 100u
+
+/* Max size of the KECCAK state */
+#define KECCAK_STATE_BITS  1600u
+#define KECCAK_STATE_BYTES (KECCAK_STATE_BITS / 8u)
+
+/*
+ * Size of the state window for each share. Each window contains
+ * KECCAK_STATE_BYTES of state followed by zeros.
+ */
+#define KECCAK_STATE_SHARE_BYTES 256u
+
+/* Number of KEY_* registers */
+#define NUM_KEY_REGS 16u
+
+/* Number of PREFIX_* registers */
+#define NUM_PREFIX_REGS 11u
+
+/* function prefix for KMAC operations (first 6 bytes of PREFIX_*) */
+#define KMAC_PREFIX_0      0x4d4b2001u
+#define KMAC_PREFIX_0_MASK 0xffffffffu
+#define KMAC_PREFIX_1      0x00004341u
+#define KMAC_PREFIX_1_MASK 0x0000ffffu
+
 enum {
     ALERT_RECOVERABLE = 0,
     ALERT_FATAL = 1,
@@ -328,27 +351,33 @@ typedef enum {
     KMAC_ST_MSG_FEED = 1,
     /* PROCESSING: computes the keccak rounds */
     KMAC_ST_PROCESSING = 2,
-    /* ABSORBED: ? */
+    /* ABSORBED: digest is available */
     KMAC_ST_ABSORBED = 3,
-    /* SQUEEZING: ? */
+    /* SQUEEZING: compute more keccak rounds */
     KMAC_ST_SQUEEZING = 4,
     /* illegal state reached and hang */
     KMAC_ST_TERMINAL_ERROR = 5,
 } OtKMACFsmState;
 
-enum OtKMACMode {
-    KMAC_NONE,
-    KMAC_SHA3,
-    KMAC_SHAKE,
-    KMAC_CSHAKE,
+#define STATE_NAME_ENTRY(_st_) [KMAC_ST_##_st_] = stringify(_st_)
+static const char *STATE_NAMES[] = {
+    STATE_NAME_ENTRY(IDLE),       STATE_NAME_ENTRY(MSG_FEED),
+    STATE_NAME_ENTRY(PROCESSING), STATE_NAME_ENTRY(ABSORBED),
+    STATE_NAME_ENTRY(SQUEEZING),  STATE_NAME_ENTRY(TERMINAL_ERROR),
 };
-
-struct OtKMACPrefix {
-    uint8_t funcname[MAX_FUNCNAME_LEN];
-    size_t funcname_len;
-    uint8_t custom[MAX_CUSTOM_LEN];
-    size_t custom_len;
-};
+#undef STATE_NAME_ENTRY
+#define STATE_NAME(_st_) \
+    ((_st_) >= 0 && (_st_) < ARRAY_SIZE(STATE_NAMES) ? STATE_NAMES[(_st_)] : \
+                                                       "?")
+typedef struct {
+    unsigned index; /* app index */
+    OtKMACAppCfg cfg; /* configuration */
+    OtKMACAppReq req; /* pending request */
+    ot_kmac_response_fn fn; /* response callback */
+    void *opaque; /* opaque parameter to response callback */
+    bool connected; /* app is connected to KMAC */
+    bool req_pending; /* true if pending request */
+} OtKMACApp;
 
 struct OtKMACState {
     SysBusDevice parent_obj;
@@ -357,8 +386,8 @@ struct OtKMACState {
     MemoryRegion regs_mmio;
     MemoryRegion state_mmio;
     MemoryRegion msgfifo_mmio;
-    IbexIRQ irqs[PARAM_NUM_IRQS];
-    IbexIRQ alerts[PARAM_NUM_ALERTS];
+    IbexIRQ irqs[3u];
+    IbexIRQ alerts[KMAC_PARAM_NUM_ALERTS];
 
     uint32_t *regs;
     OtShadowReg cfg;
@@ -369,24 +398,67 @@ struct OtKMACState {
     hash_state ltc_state; /* TomCrypt hash state */
     uint8_t keccak_state[KECCAK_STATE_BYTES];
 
+    OtKMACAppCfg sw_cfg;
+    OtKMACAppCfg *current_cfg;
+
+    OtKMACApp *apps;
+    OtKMACApp *current_app;
+    uint32_t pending_apps;
+
     Fifo8 input_fifo;
-    QEMUTimer *deferred_trigger;
+    QEMUTimer *bh_timer; /* timer to delay bh when triggered from vCPU */
+    QEMUBH *bh;
 
     OtEDNState *edn;
     uint8_t edn_ep;
+    uint8_t num_app;
 };
 
-static void ot_kmac_trigger_deferred_processing(OtKMACState *s)
+static void
+ot_kmac_change_fsm_state_line(OtKMACState *s, OtKMACFsmState state, int line)
 {
-    timer_del(s->deferred_trigger);
-    timer_mod(s->deferred_trigger, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                                       DEFERRED_TRIGGER_DELAY_NS);
+    if (s->state == state) {
+        return;
+    }
+
+    if (s->current_app) {
+        trace_ot_kmac_change_state_app(s->current_app->index, line,
+                                       STATE_NAME(s->state), s->state,
+                                       STATE_NAME(state), state);
+    } else {
+        trace_ot_kmac_change_state_sw(line, STATE_NAME(s->state), s->state,
+                                      STATE_NAME(state), state);
+    }
+
+    s->state = state;
+}
+
+#define ot_kmac_change_fsm_state(_s_, _st_) \
+    ot_kmac_change_fsm_state_line(_s_, _st_, __LINE__)
+
+static void ot_kmac_trigger_deferred_bh(OtKMACState *s)
+{
+    timer_del(s->bh_timer);
+    timer_mod(s->bh_timer,
+              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + BH_TRIGGER_DELAY_NS);
+}
+
+static void ot_kmac_bh_timer_handler(void *opaque)
+{
+    OtKMACState *s = opaque;
+    qemu_bh_schedule(s->bh);
+}
+
+static void ot_kmac_cancel_bh(OtKMACState *s)
+{
+    timer_del(s->bh_timer);
+    qemu_bh_cancel(s->bh);
 }
 
 static void ot_kmac_update_irq(OtKMACState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
-    for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
 }
@@ -402,14 +474,14 @@ static void ot_kmac_update_alert(OtKMACState *s)
         level |= 1u << ALERT_RECOVERABLE;
     }
 
-    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
-static void ot_kmac_report_error(OtKMACState *s, uint8_t code, uint32_t info)
+static void ot_kmac_report_error(OtKMACState *s, int code, uint32_t info)
 {
-    trace_ot_kmac_report_error(code, info);
+    trace_ot_kmac_report_error(code, ERR_NAME(code), info);
 
     uint32_t error = 0;
     error = FIELD_DP32(error, ERR_CODE, CODE, code);
@@ -420,57 +492,84 @@ static void ot_kmac_report_error(OtKMACState *s, uint8_t code, uint32_t info)
     ot_kmac_update_irq(s);
 }
 
-static inline enum OtKMACMode ot_kmac_get_mode(uint32_t cfg)
+static void ot_kmac_get_sw_config(OtKMACState *s)
 {
+    uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
+
     switch (FIELD_EX32(cfg, CFG_SHADOWED, MODE)) {
-    case 0x00:
-        return KMAC_SHA3;
-    case 0x02:
-        return KMAC_SHAKE;
-    case 0x03:
-        return KMAC_CSHAKE;
+    case 0:
+        s->sw_cfg.mode = OT_KMAC_MODE_SHA3;
+        break;
+    case 2u:
+        s->sw_cfg.mode = OT_KMAC_MODE_SHAKE;
+        break;
+    case 3u:
+        if (FIELD_EX32(cfg, CFG_SHADOWED, KMAC_EN) != 0) {
+            s->sw_cfg.mode = OT_KMAC_MODE_KMAC;
+        } else {
+            s->sw_cfg.mode = OT_KMAC_MODE_CSHAKE;
+        }
+        break;
     default:
         /* invalid modes are checked when processing START command */
-        return KMAC_NONE;
+        s->sw_cfg.mode = OT_KMAC_MODE_NONE;
+        break;
     }
-};
 
-static inline size_t ot_kmac_get_key_strength(uint32_t cfg)
-{
     switch (FIELD_EX32(cfg, CFG_SHADOWED, KSTRENGTH)) {
-    case 0x00:
-        return 128u;
-    case 0x01:
-        return 224u;
-    case 0x02:
-        return 256u;
-    case 0x03:
-        return 384u;
-    case 0x04:
-        return 512u;
+    case 0:
+        s->sw_cfg.strength = 128u;
+        break;
+    case 1u:
+        s->sw_cfg.strength = 224u;
+        break;
+    case 2u:
+        s->sw_cfg.strength = 256u;
+        break;
+    case 3u:
+        s->sw_cfg.strength = 384u;
+        break;
+    case 4u:
+        s->sw_cfg.strength = 512u;
+        break;
     default:
         /* invalid key strength are checked when processing START command */
-        return 0;
+        s->sw_cfg.strength = 0;
+        break;
     }
-};
+}
 
 static inline size_t ot_kmac_get_key_length(OtKMACState *s)
 {
     uint32_t key_len = FIELD_EX32(s->regs[R_KEY_LEN], KEY_LEN, LEN);
     switch (key_len) {
-    case 0x00:
+    case 0:
         return 128u;
-    case 0x01:
+    case 1u:
         return 192u;
-    case 0x02:
+    case 2u:
         return 256u;
-    case 0x03:
+    case 3u:
         return 384u;
-    case 0x04:
+    case 4u:
         return 512u;
     default:
         /* invalid key length values are traced at register write */
         return 0;
+    }
+}
+
+static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t keylen)
+{
+    for (size_t ix = 0; ix < keylen && ix < NUM_KEY_REGS * 4u; ix++) {
+        uint8_t reg = ix >> 2u;
+        uint8_t byteoffset = ix & 3u;
+
+        uint8_t share0 =
+            (uint8_t)(s->regs[R_KEY_SHARE0_0 + reg] >> (byteoffset * 8u));
+        uint8_t share1 =
+            (uint8_t)(s->regs[R_KEY_SHARE1_0 + reg] >> (byteoffset * 8u));
+        key[ix] = share0 ^ share1;
     }
 }
 
@@ -484,39 +583,71 @@ static inline size_t ot_kmac_get_keccak_rate_bytes(size_t kstrength)
     return (KECCAK_STATE_BITS - 2u * kstrength) / 8u;
 }
 
+static void ot_kmac_reset_state(OtKMACState *s)
+{
+    memset(s->keccak_state, 0, sizeof(s->keccak_state));
+    memset(&s->ltc_state, 0, sizeof(s->ltc_state));
+    s->current_cfg = NULL;
+}
+
+static void ot_kmac_start_pending_app(OtKMACState *s);
+
+/* BH handler for processing FIFO and compute */
 static void ot_kmac_process(void *opaque)
 {
     OtKMACState *s = opaque;
+    OtKMACAppCfg *cfg = s->current_cfg;
+    OtKMACAppRsp rsp;
 
-    /* process FIFO data */
-    if (!fifo8_is_empty(&s->input_fifo)) {
-        while (!fifo8_is_empty(&s->input_fifo)) {
-            uint8_t value = fifo8_pop(&s->input_fifo);
-            sha3_process(&s->ltc_state, &value, 1);
+    g_assert(cfg);
+
+    if (s->current_app) {
+        /* App mode, FIFO should be empty */
+        g_assert(fifo8_is_empty(&s->input_fifo));
+
+        if (s->current_app->req_pending) {
+            sha3_process(&s->ltc_state, s->current_app->req.msg_data,
+                         s->current_app->req.msg_len);
+            s->current_app->req_pending = false;
+            if (s->current_app->req.last) {
+                /* go to PROCESSING state, response will be sent there */
+                ot_kmac_change_fsm_state(s, KMAC_ST_PROCESSING);
+            } else {
+                /* send empty response as acknowledge */
+                if (s->current_app->fn) {
+                    memset(&rsp, 0, sizeof(rsp));
+                    s->current_app->fn(s->current_app->opaque, &rsp);
+                }
+            }
         }
+    } else {
+        /* SW mode, process FIFO data */
+        if (!fifo8_is_empty(&s->input_fifo)) {
+            while (!fifo8_is_empty(&s->input_fifo)) {
+                uint8_t value = fifo8_pop(&s->input_fifo);
+                sha3_process(&s->ltc_state, &value, 1);
+            }
 
-        /* assert FIFO Empty interrupt */
-        s->regs[R_INTR_STATE] |= INTR_FIFO_EMPTY_MASK;
+            /* assert FIFO Empty interrupt */
+            s->regs[R_INTR_STATE] |= INTR_FIFO_EMPTY_MASK;
+        }
     }
 
     switch (s->state) {
     case KMAC_ST_PROCESSING:
-    case KMAC_ST_SQUEEZING: {
-        uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
-        enum OtKMACMode mode = ot_kmac_get_mode(cfg);
-        size_t kstrength = ot_kmac_get_key_strength(cfg);
-
-        switch (mode) {
-        case KMAC_SHA3:
+    case KMAC_ST_SQUEEZING:
+        switch (cfg->mode) {
+        case OT_KMAC_MODE_SHA3:
             sha3_done(&s->ltc_state, &s->keccak_state[0]);
             break;
-        case KMAC_SHAKE:
+        case OT_KMAC_MODE_SHAKE:
             sha3_shake_done(&s->ltc_state, &s->keccak_state[0],
-                            ot_kmac_get_keccak_rate_bytes(kstrength));
+                            ot_kmac_get_keccak_rate_bytes(cfg->strength));
             break;
-        case KMAC_CSHAKE:
+        case OT_KMAC_MODE_CSHAKE:
+        case OT_KMAC_MODE_KMAC:
             sha3_cshake_done(&s->ltc_state, &s->keccak_state[0],
-                             ot_kmac_get_keccak_rate_bytes(kstrength));
+                             ot_kmac_get_keccak_rate_bytes(cfg->strength));
             break;
         default:
             /*
@@ -526,13 +657,31 @@ static void ot_kmac_process(void *opaque)
             g_assert_not_reached();
         }
 
-        s->state = KMAC_ST_ABSORBED;
+        if (s->current_app) {
+            /* App mode, send response and go back to IDLE state */
+            if (s->current_app->fn) {
+                rsp.done = true;
+                memcpy(&rsp.digest_share0[0], &s->keccak_state[0],
+                       sizeof(rsp.digest_share0));
+                memset(&rsp.digest_share1[0], 0, sizeof(rsp.digest_share1));
+                s->current_app->fn(s->current_app->opaque, &rsp);
+            }
+            ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
+            ot_kmac_reset_state(s);
+            ot_kmac_cancel_bh(s);
+            trace_ot_kmac_app_finished(s->current_app->index);
+            s->current_app = NULL;
+            /* now is a good time to check for pending app requests */
+            ot_kmac_start_pending_app(s);
+        } else {
+            /* SW mode, go to ABSORBED state */
+            ot_kmac_change_fsm_state(s, KMAC_ST_ABSORBED);
 
-        /* assert KMAC Done interrupt */
-        s->regs[R_INTR_STATE] |= INTR_KMAC_DONE_MASK;
+            /* assert KMAC Done interrupt */
+            s->regs[R_INTR_STATE] |= INTR_KMAC_DONE_MASK;
+        }
 
         break;
-    }
     default:
         /* nothing to do for other states */
         break;
@@ -558,14 +707,11 @@ static inline bool ot_kmac_check_reg_write(OtKMACState *s, hwaddr reg)
     return true;
 }
 
-static bool ot_kmac_check_mode_and_strength(uint32_t cfg)
+static bool ot_kmac_check_mode_and_strength(const OtKMACAppCfg *cfg)
 {
-    enum OtKMACMode mode = ot_kmac_get_mode(cfg);
-    size_t kstrength = ot_kmac_get_key_strength(cfg);
-
-    switch (mode) {
-    case KMAC_SHA3:
-        switch (kstrength) {
+    switch (cfg->mode) {
+    case OT_KMAC_MODE_SHA3:
+        switch (cfg->strength) {
         case 224u:
         case 256u:
         case 384u:
@@ -576,14 +722,15 @@ static bool ot_kmac_check_mode_and_strength(uint32_t cfg)
             return false;
         }
         break;
-    case KMAC_SHAKE:
-    case KMAC_CSHAKE:
-        switch (kstrength) {
+    case OT_KMAC_MODE_SHAKE:
+    case OT_KMAC_MODE_CSHAKE:
+    case OT_KMAC_MODE_KMAC:
+        switch (cfg->strength) {
         case 128u:
         case 256u:
             return true;
         default:
-            /* unsupported strength for SHAKE/cSHAKE */
+            /* unsupported strength for SHAKE/cSHAKE/KMAC */
             return false;
         }
         break;
@@ -611,7 +758,7 @@ static inline uint8_t ot_kmac_get_prefix_byte(OtKMACState *s, size_t offset)
 
 static size_t ot_kmac_left_decode(OtKMACState *s, size_t offset, size_t *value)
 {
-    size_t len, idx;
+    size_t len;
     size_t val = 0;
 
     /* first byte is the length in bytes of encoded value */
@@ -621,40 +768,41 @@ static size_t ot_kmac_left_decode(OtKMACState *s, size_t offset, size_t *value)
     }
 
     /* compute value */
-    for (idx = 1u; idx < len + 1u; idx++) {
-        val = (val << 8u) | ot_kmac_get_prefix_byte(s, offset + idx);
+    for (size_t ix = 1u; ix < len + 1u; ix++) {
+        val = (val << 8u) | ot_kmac_get_prefix_byte(s, offset + ix);
     }
 
     *value = val;
     return 1u + len;
 }
 
-static bool ot_kmac_decode_prefix(OtKMACState *s, struct OtKMACPrefix *prefix)
+static bool ot_kmac_decode_sw_prefix(OtKMACState *s)
 {
     size_t offset = 0;
-    size_t used, idx;
+    size_t used;
+    OtKMACPrefix *prefix = &s->sw_cfg.prefix;
 
     used = ot_kmac_left_decode(s, offset, &prefix->funcname_len);
     prefix->funcname_len /= 8u;
     offset += used;
 
-    if (prefix->funcname_len > MAX_FUNCNAME_LEN) {
+    if (prefix->funcname_len > OT_KMAC_PREFIX_FUNCNAME_LEN) {
         goto error;
     }
-    for (idx = 0; idx < prefix->funcname_len; idx++) {
-        prefix->funcname[idx] = ot_kmac_get_prefix_byte(s, offset + idx);
+    for (size_t ix = 0; ix < prefix->funcname_len; ix++) {
+        prefix->funcname[ix] = ot_kmac_get_prefix_byte(s, offset + ix);
     }
     offset += prefix->funcname_len;
 
-    used = ot_kmac_left_decode(s, offset, &prefix->custom_len);
-    prefix->custom_len /= 8u;
+    used = ot_kmac_left_decode(s, offset, &prefix->customstr_len);
+    prefix->customstr_len /= 8u;
     offset += used;
 
-    if (prefix->custom_len > MAX_CUSTOM_LEN) {
+    if (prefix->customstr_len > OT_KMAC_PREFIX_CUSTOMSTR_LEN) {
         goto error;
     }
-    for (idx = 0; idx < prefix->custom_len; idx++) {
-        prefix->custom[idx] = ot_kmac_get_prefix_byte(s, offset + idx);
+    for (size_t ix = 0; ix < prefix->customstr_len; ix++) {
+        prefix->customstr[ix] = ot_kmac_get_prefix_byte(s, offset + ix);
     }
     offset += prefix->funcname_len;
 
@@ -663,39 +811,29 @@ static bool ot_kmac_decode_prefix(OtKMACState *s, struct OtKMACPrefix *prefix)
     }
 
 error:
-    memset(prefix, 0, sizeof(struct OtKMACPrefix));
+    memset(prefix, 0, sizeof(OtKMACPrefix));
     return false;
 }
 
-static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t keylen)
+static bool ot_kmac_check_kmac_sw_prefix(OtKMACState *s)
 {
-    for (size_t idx = 0; idx < keylen && idx < NUM_KEY_REGS * 4u; idx++) {
-        uint8_t reg = idx >> 2u;
-        uint8_t byteoffset = idx & 3u;
-
-        uint8_t share0 =
-            (uint8_t)(s->regs[R_KEY_SHARE0_0 + reg] >> (byteoffset * 8u));
-        uint8_t share1 =
-            (uint8_t)(s->regs[R_KEY_SHARE1_0 + reg] >> (byteoffset * 8u));
-        key[idx] = share0 ^ share1;
-    }
-}
-
-static bool ot_kmac_check_kmac_prefix(OtKMACState *s)
-{
+    /*
+     * check that the encoded prefix in PREFIX_x registers starts with a "KMAC"
+     * function name.
+     */
     return ((s->regs[R_PREFIX_0] & KMAC_PREFIX_0_MASK) == KMAC_PREFIX_0) &&
            ((s->regs[R_PREFIX_1] & KMAC_PREFIX_1_MASK) == KMAC_PREFIX_1);
 }
 
-static void ot_kmac_command_start(OtKMACState *s)
+static void ot_kmac_process_start(OtKMACState *s)
 {
-    uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
-    enum OtKMACMode mode = ot_kmac_get_mode(cfg);
-    size_t kstrength = ot_kmac_get_key_strength(cfg);
+    OtKMACAppCfg *cfg = s->current_cfg;
 
-    switch (mode) {
-    case KMAC_SHA3:
-        switch (kstrength) {
+    g_assert(cfg);
+
+    switch (cfg->mode) {
+    case OT_KMAC_MODE_SHA3:
+        switch (cfg->strength) {
         case 224u:
             sha3_224_init(&s->ltc_state);
             break;
@@ -713,34 +851,27 @@ static void ot_kmac_command_start(OtKMACState *s)
             g_assert_not_reached();
         }
         break;
-    case KMAC_SHAKE:
-        switch (kstrength) {
+    case OT_KMAC_MODE_SHAKE:
+        switch (cfg->strength) {
         case 128u:
         case 256u:
-            sha3_shake_init(&s->ltc_state, kstrength);
+            sha3_shake_init(&s->ltc_state, cfg->strength);
             break;
         default:
             /* should never happen: strength was already validated earlier */
             g_assert_not_reached();
         }
         break;
-    case KMAC_CSHAKE:
-        switch (kstrength) {
+    case OT_KMAC_MODE_CSHAKE:
+    case OT_KMAC_MODE_KMAC:
+        switch (cfg->strength) {
         case 128u:
         case 256u: {
-            struct OtKMACPrefix prefix;
-            if (!ot_kmac_decode_prefix(s, &prefix)) {
-                qemu_log_mask(LOG_GUEST_ERROR,
-                              "%s: Could not decode cSHAKE prefix, digest "
-                              "result will be wrong!\n",
-                              __func__);
-                memset(&prefix, 0, sizeof(prefix));
-            }
-            sha3_cshake_init(&s->ltc_state, kstrength, prefix.funcname,
-                             prefix.funcname_len, prefix.custom,
-                             prefix.custom_len);
+            sha3_cshake_init(&s->ltc_state, cfg->strength, cfg->prefix.funcname,
+                             cfg->prefix.funcname_len, cfg->prefix.customstr,
+                             cfg->prefix.customstr_len);
             /* if KMAC mode is enabled, process key */
-            if (FIELD_EX32(cfg, CFG_SHADOWED, KMAC_EN) != 0) {
+            if (cfg->mode == OT_KMAC_MODE_KMAC) {
                 uint8_t key[NUM_KEY_REGS * sizeof(uint32_t)];
                 size_t keylen = ot_kmac_get_key_length(s) / 8u;
                 ot_kmac_get_key(s, key, keylen);
@@ -759,7 +890,7 @@ static void ot_kmac_command_start(OtKMACState *s)
     }
 }
 
-static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd)
+static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
 {
     uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
     bool err_swsequence = false;
@@ -767,18 +898,29 @@ static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd)
     bool err_prefix = false;
     bool err_entropy_ready = false;
 
+    /* check if an app is active */
+    if (s->current_app) {
+        ot_kmac_report_error(s, OT_KMAC_ERR_SW_ISSUED_CMD_IN_APP_ACTIVE, cmd);
+        return;
+    }
+
+    trace_ot_kmac_process_sw_command(cmd, CMD_NAME(cmd));
+
     switch (s->state) {
     case KMAC_ST_IDLE:
         if (cmd == OT_KMAC_CMD_NONE) {
             /* nothing to do */
         } else if (cmd == OT_KMAC_CMD_START) {
-            if (!ot_kmac_check_mode_and_strength(cfg)) {
+            /* retrieve configuration from CFG_SHADOWED register */
+            ot_kmac_get_sw_config(s);
+
+            if (!ot_kmac_check_mode_and_strength(&s->sw_cfg)) {
                 err_modestrength = true;
                 break;
             }
             /* if KMAC mode, check prefix & entropy ready */
-            if (FIELD_EX32(cfg, CFG_SHADOWED, KMAC_EN)) {
-                if (!ot_kmac_check_kmac_prefix(s)) {
+            if (s->sw_cfg.mode == OT_KMAC_MODE_KMAC) {
+                if (!ot_kmac_check_kmac_sw_prefix(s)) {
                     err_prefix = true;
                     break;
                 }
@@ -787,8 +929,21 @@ static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd)
                     break;
                 }
             }
-            ot_kmac_command_start(s);
-            s->state = KMAC_ST_MSG_FEED;
+            /* if cSHAKE or KMAC modes, decode prefix from PREFIX_x registers */
+            if (s->sw_cfg.mode == OT_KMAC_MODE_CSHAKE ||
+                s->sw_cfg.mode == OT_KMAC_MODE_KMAC) {
+                if (!ot_kmac_decode_sw_prefix(s)) {
+                    qemu_log_mask(LOG_GUEST_ERROR,
+                                  "%s: Could not decode cSHAKE prefix, digest "
+                                  "result will be wrong!\n",
+                                  __func__);
+                    memset(&s->sw_cfg.prefix, 0, sizeof(s->sw_cfg.prefix));
+                }
+            }
+
+            s->current_cfg = &s->sw_cfg;
+            ot_kmac_process_start(s);
+            ot_kmac_change_fsm_state(s, KMAC_ST_MSG_FEED);
         } else {
             err_swsequence = true;
         }
@@ -797,8 +952,8 @@ static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd)
         if (cmd == OT_KMAC_CMD_NONE) {
             /* nothing to do */
         } else if (cmd == OT_KMAC_CMD_PROCESS) {
-            s->state = KMAC_ST_PROCESSING;
-            ot_kmac_trigger_deferred_processing(s);
+            ot_kmac_change_fsm_state(s, KMAC_ST_PROCESSING);
+            ot_kmac_trigger_deferred_bh(s);
         } else {
             err_swsequence = true;
         }
@@ -814,19 +969,24 @@ static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd)
         if (cmd == OT_KMAC_CMD_NONE) {
             /* nothing to do */
         } else if (cmd == OT_KMAC_CMD_MANUAL_RUN) {
-            s->state = KMAC_ST_SQUEEZING;
-            ot_kmac_trigger_deferred_processing(s);
+            ot_kmac_change_fsm_state(s, KMAC_ST_SQUEEZING);
+            ot_kmac_trigger_deferred_bh(s);
         } else if (cmd == OT_KMAC_CMD_DONE) {
             /* flush state */
-            s->state = KMAC_ST_IDLE;
-            memset(s->keccak_state, 0, sizeof(s->keccak_state));
+            ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
+            ot_kmac_reset_state(s);
+            ot_kmac_cancel_bh(s);
+            /* now is a good time to check for pending app requests */
+            ot_kmac_start_pending_app(s);
         } else {
             err_swsequence = true;
         }
         break;
     case KMAC_ST_TERMINAL_ERROR:
     default:
-        s->state = KMAC_ST_TERMINAL_ERROR;
+        ot_kmac_change_fsm_state(s, KMAC_ST_TERMINAL_ERROR);
+        ot_kmac_reset_state(s);
+        ot_kmac_cancel_bh(s);
         s->regs[R_STATUS] |= R_STATUS_ALERT_FATAL_FAULT_MASK;
         ot_kmac_update_alert(s);
         break;
@@ -1034,7 +1194,7 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         }
         break;
     case R_CMD: {
-        uint32_t cmd = FIELD_EX32(val32, CMD, CMD);
+        int cmd = (int)FIELD_EX32(val32, CMD, CMD);
 
         ot_kmac_process_sw_command(s, cmd);
 
@@ -1197,8 +1357,8 @@ static uint64_t ot_kmac_state_read(void *opaque, hwaddr addr, unsigned size)
         case 0:
             if (addr + size <= KECCAK_STATE_BYTES) {
                 val32 = 0;
-                for (unsigned idx = 0; idx < size; idx++) {
-                    size_t byte_offset = byteswap ? idx : size - 1 - idx;
+                for (unsigned ix = 0; ix < size; ix++) {
+                    size_t byte_offset = byteswap ? ix : size - 1 - ix;
                     val32 =
                         (val32 << 8u) + s->keccak_state[offset + byte_offset];
                 }
@@ -1250,6 +1410,14 @@ static void ot_kmac_msgfifo_write(void *opaque, hwaddr addr, uint64_t value,
     uint64_t pc = ibex_get_current_pc();
     trace_ot_kmac_msgfifo_write((unsigned)addr, (uint32_t)value, size, pc);
 
+    /* trigger error if an app is running of not in MSG_FEED state */
+    if (s->current_app || s->state != KMAC_ST_MSG_FEED) {
+        /* info field mux_sel=1 (SW) or 2 (App) */
+        ot_kmac_report_error(s, OT_KMAC_ERR_SW_PUSHED_MSG_FIFO,
+                             s->current_app ? 2 : 1);
+        return;
+    }
+
     uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
     bool byteswap = FIELD_EX32(cfg, CFG_SHADOWED, MSG_ENDIANNESS) != 0;
 
@@ -1262,19 +1430,126 @@ static void ot_kmac_msgfifo_write(void *opaque, hwaddr addr, uint64_t value,
         ot_kmac_process(s);
     }
 
-    for (unsigned idx = 0; idx < size; idx++) {
-        size_t byteoffset = byteswap ? (size - 1u - idx) : idx;
+    for (unsigned ix = 0; ix < size; ix++) {
+        size_t byteoffset = byteswap ? (size - 1u - ix) : ix;
         uint8_t b = (uint8_t)(value >> (byteoffset * 8u));
         fifo8_push(&s->input_fifo, b);
     }
 
     /* trigger delayed processing of FIFO */
-    ot_kmac_trigger_deferred_processing(s);
+    ot_kmac_trigger_deferred_bh(s);
+}
+
+void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
+                         const OtKMACAppCfg *cfg, ot_kmac_response_fn fn,
+                         void *opaque)
+{
+    if (app_idx >= s->num_app) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Ignoring connection to invalid app index %u\n",
+                      __func__, app_idx);
+        return;
+    }
+
+    OtKMACApp *app = &s->apps[app_idx];
+
+    if (app->connected) {
+        if (memcmp(&app->cfg, cfg, sizeof(OtKMACAppCfg)) == 0 &&
+            fn == app->fn && opaque == app->opaque) {
+            /*
+             * silently ignore duplicate connection from the same component with
+             * the same parameters.
+             */
+            return;
+        }
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Ignoring connection to already used app index %u\n",
+                      __func__, app_idx);
+        return;
+    }
+
+    app->index = app_idx;
+    app->cfg = *cfg;
+    if (!ot_kmac_check_mode_and_strength(&app->cfg)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Invalid mode/strength for app index %u\n", __func__,
+                      app_idx);
+        /* force dummy values, digest will be wrong */
+        app->cfg.mode = OT_KMAC_MODE_CSHAKE;
+        app->cfg.strength = 128u;
+    }
+    if (app->cfg.mode == OT_KMAC_MODE_KMAC) {
+        if (memcmp(app->cfg.prefix.funcname, "KMAC", 4u) ||
+            app->cfg.prefix.funcname_len != 4u) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Invalid config for app index %u: invalid prefix"
+                          " for KMAC\n",
+                          __func__, app_idx);
+        }
+    }
+    app->fn = fn;
+    app->opaque = opaque;
+    app->connected = true;
+}
+
+static void ot_kmac_start_pending_app(OtKMACState *s)
+{
+    if (s->state == KMAC_ST_IDLE && s->pending_apps) {
+        /* select pending app */
+        uint8_t app_idx = ctz32(s->pending_apps);
+        g_assert(app_idx < s->num_app);
+        s->current_app = &s->apps[app_idx];
+        s->pending_apps &= ~(1u << app_idx);
+
+        /* process start */
+        trace_ot_kmac_app_start(app_idx);
+        s->current_cfg = &s->current_app->cfg;
+        ot_kmac_process_start(s);
+        ot_kmac_change_fsm_state(s, KMAC_ST_MSG_FEED);
+
+        /* trigger deferred compute */
+        qemu_bh_schedule(s->bh);
+    }
+}
+
+void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
+                         const OtKMACAppReq *req)
+{
+    if (app_idx >= s->num_app) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Ignoring connection to invalid app index %u\n",
+                      __func__, app_idx);
+        return;
+    }
+
+    OtKMACApp *app = &s->apps[app_idx];
+
+    if (app->req_pending) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Dropping request to already busy app index %u\n",
+                      __func__, app_idx);
+        return;
+    }
+
+    /* save request */
+    app->req = *req;
+    app->req_pending = true;
+
+    /* check if app already started */
+    if (s->current_app == app) {
+        /* yes, trigger deferred compute */
+        qemu_bh_schedule(s->bh);
+    } else {
+        /* no, mark as pending and try to start */
+        s->pending_apps |= (1u << app_idx);
+        ot_kmac_start_pending_app(s);
+    }
 }
 
 static Property ot_kmac_properties[] = {
     DEFINE_PROP_LINK("edn", OtKMACState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKMACState, edn_ep, UINT8_MAX),
+    DEFINE_PROP_UINT8("num-app", OtKMACState, num_app, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1312,12 +1587,13 @@ static void ot_kmac_reset(DeviceState *dev)
 {
     OtKMACState *s = OT_KMAC(dev);
 
-    timer_del(s->deferred_trigger);
-
-    s->state = KMAC_ST_IDLE;
+    ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
+    ot_kmac_reset_state(s);
+    ot_kmac_cancel_bh(s);
+    memset(&s->sw_cfg, 0, sizeof(OtKMACAppCfg));
+    s->current_app = NULL;
+    s->pending_apps = 0;
     s->invalid_state_read = false;
-    memset(s->keccak_state, 0, sizeof(s->keccak_state));
-    memset(&s->ltc_state, 0, sizeof(s->ltc_state));
     memset(s->regs, 0, sizeof(*(s->regs)));
     s->regs[R_STATUS] = 0x4001u;
     ot_shadow_reg_init(&s->cfg, 0u);
@@ -1329,16 +1605,26 @@ static void ot_kmac_reset(DeviceState *dev)
     fifo8_reset(&s->input_fifo);
 }
 
+static void ot_kmac_realize(DeviceState *dev, Error **errp)
+{
+    OtKMACState *s = OT_KMAC(dev);
+
+    /* make sure we don't overflow pending_apps bitmask */
+    g_assert(s->num_app < 32);
+
+    s->apps = g_new0(OtKMACApp, s->num_app);
+}
+
 static void ot_kmac_init(Object *obj)
 {
     OtKMACState *s = OT_KMAC(obj);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
 
-    for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
-    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OPENTITAN_DEVICE_ALERT);
     }
 
@@ -1358,8 +1644,10 @@ static void ot_kmac_init(Object *obj)
     memory_region_add_subregion(&s->mmio, OT_KMAC_MSG_FIFO_BASE,
                                 &s->msgfifo_mmio);
 
-    /* setup deferred processing trigger */
-    s->deferred_trigger = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_kmac_process, s);
+    /* setup deferred processing */
+    s->bh_timer =
+        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_kmac_bh_timer_handler, s);
+    s->bh = qemu_bh_new(&ot_kmac_process, s);
 
     /* FIFO sizes as per OT Spec */
     fifo8_create(&s->input_fifo, FIFO_LENGTH);
@@ -1369,6 +1657,7 @@ static void ot_kmac_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
+    dc->realize = &ot_kmac_realize;
     dc->reset = &ot_kmac_reset;
     device_class_set_props(dc, ot_kmac_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
