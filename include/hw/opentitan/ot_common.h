@@ -23,6 +23,9 @@
 #ifndef HW_OPENTITAN_OT_COMMON_H
 #define HW_OPENTITAN_OT_COMMON_H
 
+#include "exec/memory.h"
+#include "hw/core/cpu.h"
+
 /* ------------------------------------------------------------------------ */
 /* Multi-bit boolean values */
 /* ------------------------------------------------------------------------ */
@@ -113,5 +116,25 @@ static inline uint32_t ot_shadow_reg_read(OtShadowReg *sreg)
     sreg->staged_p = false;
     return sreg->committed;
 }
+
+/* ------------------------------------------------------------------------ */
+/* Memory and Devices */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Get the closest CPU for a device, if any.
+ * @return the CPU if found or NULL
+ */
+CPUState *ot_common_get_local_cpu(DeviceState *s);
+
+/**
+ * Get the local address space for a device, if any.
+ * The local address space if the address space the OT CPU uses to access this
+ * device on its local bus.
+ *
+ * @s the device for each to find the local address space
+ * @return the AddressSpace if found or NULL
+ */
+AddressSpace *ot_common_get_local_address_space(DeviceState *s);
 
 #endif /* HW_OPENTITAN_OT_COMMON_H */

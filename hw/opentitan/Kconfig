@@ -16,6 +16,9 @@ config OT_AST
 config OT_CLKMGR
     bool
 
+config OT_COMMON
+    bool
+
 config OT_CSRNG
     bool
 
