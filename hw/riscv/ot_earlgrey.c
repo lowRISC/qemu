@@ -176,6 +176,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         .type = TYPE_RISCV_CPU_LOWRISC_IBEX,
         .cfg = &ot_earlgrey_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("resetvec", 0x8080u),
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_BOOL_PROP("pmp", true),
             IBEX_DEV_BOOL_PROP("zba", true),
