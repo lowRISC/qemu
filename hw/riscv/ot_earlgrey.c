@@ -799,6 +799,12 @@ enum OtEarlgreyBoardDevice {
 /* Type definitions */
 /* ------------------------------------------------------------------------ */
 
+struct OtEarlGreySoCClass {
+    DeviceClass parent_class;
+    DeviceRealize parent_realize;
+    ResettablePhases parent_phases;
+};
+
 struct OtEarlGreySoCState {
     SysBusDevice parent_obj;
 
@@ -880,11 +886,34 @@ static void ot_earlgrey_soc_uart_configure(
 /* SoC */
 /* ------------------------------------------------------------------------ */
 
-static void ot_earlgrey_soc_reset(DeviceState *dev)
+static void ot_earlgrey_soc_reset_hold(Object *obj)
 {
-    OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(dev);
+    OtEarlGreySoCClass *c = RISCV_OT_EARLGREY_SOC_GET_CLASS(obj);
+    OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(obj);
+
+    if (c->parent_phases.hold) {
+        c->parent_phases.hold(obj);
+    }
+
+    /* keep ROM_CTRL in reset, we'll release it last */
+    resettable_assert_reset(OBJECT(s->devices[OT_EARLGREY_SOC_DEV_ROM_CTRL]),
+                            RESET_TYPE_COLD);
 
     cpu_reset(CPU(s->devices[OT_EARLGREY_SOC_DEV_HART]));
+}
+
+static void ot_earlgrey_soc_reset_exit(Object *obj)
+{
+    OtEarlGreySoCClass *c = RISCV_OT_EARLGREY_SOC_GET_CLASS(obj);
+    OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj);
+    }
+
+    /* let ROM_CTRL get out of reset now */
+    resettable_release_reset(OBJECT(s->devices[OT_EARLGREY_SOC_DEV_ROM_CTRL]),
+                             RESET_TYPE_COLD);
 }
 
 static void ot_earlgrey_soc_realize(DeviceState *dev, Error **errp)
@@ -927,9 +956,13 @@ static void ot_earlgrey_soc_init(Object *obj)
 
 static void ot_earlgrey_soc_class_init(ObjectClass *oc, void *data)
 {
+    OtEarlGreySoCClass *sc = RISCV_OT_EARLGREY_SOC_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
+    ResettableClass *rc = RESETTABLE_CLASS(dc);
 
-    dc->reset = &ot_earlgrey_soc_reset;
+    resettable_class_set_parent_phases(rc, NULL, &ot_earlgrey_soc_reset_hold,
+                                       &ot_earlgrey_soc_reset_exit,
+                                       &sc->parent_phases);
     dc->realize = &ot_earlgrey_soc_realize;
     dc->user_creatable = false;
 }
@@ -940,6 +973,7 @@ static const TypeInfo ot_earlgrey_soc_type_info = {
     .instance_size = sizeof(OtEarlGreySoCState),
     .instance_init = &ot_earlgrey_soc_init,
     .class_init = &ot_earlgrey_soc_class_init,
+    .class_size = sizeof(OtEarlGreySoCClass),
 };
 
 static void ot_earlgrey_soc_register_types(void)
