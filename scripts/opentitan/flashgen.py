@@ -570,6 +570,7 @@ class FlashGen:
             except ValueError as exc:
                 raise ValueError('Invalid address in OT descriptor') from exc
             bank = address // self.BYTES_PER_BANK
+            address %= self.BYTES_PER_BANK
             kind = 'rom_ext' if address < self.CHIP_ROM_EXT_SIZE_MAX else \
                 'bootloader'
             self._log.info(
