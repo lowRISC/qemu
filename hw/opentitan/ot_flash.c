@@ -1637,11 +1637,11 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
         info_size = info_pages * header->psize;
         flash_size = header->bank * (data_size + info_size);
 
-        assert(pg_offset == info_size);
+        g_assert(pg_offset == info_size);
 
         flash->storage = blk_blockalign(s->blk, flash_size);
         base = (uintptr_t)flash->storage;
-        assert(!(base & (sizeof(uint64_t) - 1u)));
+        g_assert(!(base & (sizeof(uint64_t) - 1u)));
 
         unsigned offset = offsetof(OtFlashBackendHeader, hlength) +
                           sizeof(header->hlength) + header->hlength;

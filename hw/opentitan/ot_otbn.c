@@ -295,10 +295,10 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
     const uint32_t *buf;
     buf = ot_fifo32_pop_buf(&rnd->packer, OT_OTBN_RANDOM_WORD_COUNT, &num);
     const uint8_t *buf8 = (const uint8_t *)buf;
-    assert(num == OT_OTBN_RANDOM_WORD_COUNT);
+    g_assert(num == OT_OTBN_RANDOM_WORD_COUNT);
     num *= sizeof(uint32_t);
     OtOTBNState *s = rnd->otbn;
-    assert(s != NULL);
+    g_assert(s != NULL);
     unsigned rnd_ix = (unsigned)(rnd - &s->rnds[0]);
     int res;
     switch (rnd_ix) {

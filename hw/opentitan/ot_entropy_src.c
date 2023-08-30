@@ -523,7 +523,7 @@ int ot_entropy_src_get_random(OtEntropySrcState *s, int genid,
     uint32_t *randu32 = (uint32_t *)random;
     size_t pos = 0;
     while (pos < ES_WORD_COUNT) {
-        assert(!ot_fifo32_is_empty(&s->final_fifo));
+        g_assert(!ot_fifo32_is_empty(&s->final_fifo));
         randu32[pos++] = ot_fifo32_pop(&s->final_fifo);
     }
 
@@ -802,10 +802,10 @@ ot_entropy_src_push_entropy_to_conditioner(OtEntropySrcState *s, uint32_t word)
     if (s->cond_word == 0) {
         res = sha3_384_init(&s->sha3_state);
         ot_entropy_src_change_state(s, ENTROPY_SRC_SHA3_PREP);
-        assert(res == CRYPT_OK);
+        g_assert(res == CRYPT_OK);
     }
 
-    assert(!ot_fifo32_is_full(&s->precon_fifo));
+    g_assert(!ot_fifo32_is_full(&s->precon_fifo));
 
     ot_fifo32_push(&s->precon_fifo, word);
 
@@ -818,11 +818,11 @@ ot_entropy_src_push_entropy_to_conditioner(OtEntropySrcState *s, uint32_t word)
     uint32_t size;
     const uint32_t *buf;
     buf = ot_fifo32_peek_buf(&s->precon_fifo, s->precon_fifo.num, &size);
-    assert(size == s->precon_fifo.num);
+    g_assert(size == s->precon_fifo.num);
     xtrace_ot_entropy_src_show_buffer("sha3 in", buf, size * sizeof(uint32_t));
     res = sha3_process(&s->sha3_state, (const uint8_t *)buf,
                        size * sizeof(uint32_t));
-    assert(res == CRYPT_OK);
+    g_assert(res == CRYPT_OK);
     s->cond_word += size;
     ot_fifo32_reset(&s->precon_fifo);
 
@@ -840,7 +840,7 @@ static void ot_entropy_src_perform_hash(OtEntropySrcState *s)
     uint32_t hash[OT_ENTROPY_SRC_WORD_COUNT];
     int res;
     res = sha3_done(&s->sha3_state, (uint8_t *)hash);
-    assert(res == CRYPT_OK);
+    g_assert(res == CRYPT_OK);
     s->cond_word = 0;
 
     xtrace_ot_entropy_src_show_buffer("sha3 md", hash,
@@ -850,7 +850,7 @@ static void ot_entropy_src_perform_hash(OtEntropySrcState *s)
     ot_entropy_src_change_state(s, ENTROPY_SRC_SHA3_MSGDONE);
 
     for (unsigned ix = 0; ix < OT_ENTROPY_SRC_WORD_COUNT; ix++) {
-        assert(!ot_fifo32_is_full(&s->final_fifo));
+        g_assert(!ot_fifo32_is_full(&s->final_fifo));
         ot_fifo32_push(&s->final_fifo, hash[ix]);
     }
     s->packet_count += 1u;
@@ -864,7 +864,7 @@ static void ot_entropy_src_perform_hash(OtEntropySrcState *s)
 static bool
 ot_entropy_src_push_bypass_entropy(OtEntropySrcState *s, uint32_t word)
 {
-    assert(!ot_fifo32_is_full(&s->bypass_fifo));
+    g_assert(!ot_fifo32_is_full(&s->bypass_fifo));
 
     ot_fifo32_push(&s->bypass_fifo, word);
     if (!ot_fifo32_is_full(&s->bypass_fifo)) {
@@ -874,7 +874,7 @@ ot_entropy_src_push_bypass_entropy(OtEntropySrcState *s, uint32_t word)
 
     /* bypass conditioner full/ready, empty it into the final FIFO */
     while (!ot_fifo32_is_empty(&s->bypass_fifo)) {
-        assert(!ot_fifo32_is_full(&s->final_fifo));
+        g_assert(!ot_fifo32_is_full(&s->final_fifo));
         ot_fifo32_push(&s->final_fifo, ot_fifo32_pop(&s->bypass_fifo));
     }
     s->packet_count += 1u;
@@ -1529,8 +1529,8 @@ static void ot_entropy_src_reset(DeviceState *dev)
 {
     OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
 
-    assert(s->ast);
-    assert(s->otp_ctrl);
+    g_assert(s->ast);
+    g_assert(s->otp_ctrl);
 
     timer_del(s->scheduler);
 

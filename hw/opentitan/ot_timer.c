@@ -346,7 +346,7 @@ static void ot_timer_reset(DeviceState *dev)
 {
     OtTimerState *s = OT_TIMER(dev);
 
-    assert(s->pclk > 0);
+    g_assert(s->pclk > 0);
 
     timer_del(s->timer);
 

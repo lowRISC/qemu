@@ -1228,8 +1228,8 @@ static void ot_aes_reset(DeviceState *dev)
 
     timer_del(s->retard_timer);
 
-    assert(e->device);
-    assert(e->ep != UINT8_MAX);
+    g_assert(e->device);
+    g_assert(e->ep != UINT8_MAX);
 
     s->prng = ot_prng_allocate();
 

@@ -1064,7 +1064,7 @@ static uint64_t ot_otp_eg_swcfg_read(void *opaque, hwaddr addr, unsigned size)
     OtOTPEgState *s = OT_OTP_EARLGREY(opaque);
     uint32_t val32;
 
-    assert(addr + size <= SW_CFG_WINDOW_SIZE);
+    g_assert(addr + size <= SW_CFG_WINDOW_SIZE);
 
     hwaddr reg = R32_OFF(addr);
     int partition = ot_otp_eg_swcfg_get_part(addr);
@@ -1099,7 +1099,7 @@ static void ot_otp_eg_swcfg_write(void *opaque, hwaddr addr, uint64_t value,
     (void)opaque;
     (void)value;
 
-    assert(addr + size <= SW_CFG_WINDOW_SIZE);
+    g_assert(addr + size <= SW_CFG_WINDOW_SIZE);
 
     hwaddr reg = R32_OFF(addr);
 
@@ -1328,7 +1328,7 @@ static void ot_otp_eg_load(OtOTPEgState *s, Error **errp)
 
     otp->storage = blk_blockalign(s->blk, otp_size);
     uintptr_t base = (uintptr_t)otp->storage;
-    assert(!(base & (sizeof(uint64_t) - 1u)));
+    g_assert(!(base & (sizeof(uint64_t) - 1u)));
 
     if (s->blk) {
         uint64_t perm = BLK_PERM_CONSISTENT_READ |

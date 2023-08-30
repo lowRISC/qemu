@@ -150,7 +150,7 @@ struct OtIbexWrapperState {
 static void
 ot_ibex_wrapper_remapper_destroy(OtIbexWrapperState *s, unsigned slot)
 {
-    assert(slot < 2u);
+    g_assert(slot < 2u);
     MemoryRegion *mr = &s->remappers[slot];
     if (memory_region_is_mapped(mr)) {
         trace_ot_ibex_wrapper_unmap(slot);
@@ -166,10 +166,10 @@ ot_ibex_wrapper_remapper_destroy(OtIbexWrapperState *s, unsigned slot)
 static void ot_ibex_wrapper_remapper_create(
     OtIbexWrapperState *s, unsigned slot, hwaddr dst, hwaddr src, size_t size)
 {
-    assert(slot < 2u);
+    g_assert(slot < 2u);
     MemoryRegion *mr = &s->remappers[slot];
     trace_ot_ibex_wrapper_map(slot, src, dst, size);
-    assert(!memory_region_is_mapped(mr));
+    g_assert(!memory_region_is_mapped(mr));
 
     int priority = (int)(PARAM_NUM_REGIONS - slot);
 
@@ -235,7 +235,7 @@ static void ot_ibex_wrapper_request_entropy(OtIbexWrapperState *s)
 static void
 ot_ibex_wrapper_update_remap(OtIbexWrapperState *s, bool doi, unsigned slot)
 {
-    assert(slot < 2u);
+    g_assert(slot < 2u);
     /*
      * Warning:
      * for now, QEMU is unable to distinguish instruction or data access.
@@ -408,8 +408,8 @@ static void ot_ibex_wrapper_reset(DeviceState *dev)
 {
     OtIbexWrapperState *s = OT_IBEX_WRAPPER(dev);
 
-    assert(s->edn);
-    assert(s->edn_ep != UINT8_MAX);
+    g_assert(s->edn);
+    g_assert(s->edn_ep != UINT8_MAX);
 
     for (unsigned slot = 0; slot < PARAM_NUM_REGIONS; slot++) {
         ot_ibex_wrapper_remapper_destroy(s, slot);

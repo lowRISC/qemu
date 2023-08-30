@@ -296,12 +296,12 @@ static void ot_edn_csrng_ack_irq(void *opaque, int n, int level);
 void ot_edn_connect_endpoint(OtEDNState *s, unsigned ep_id,
                              ot_edn_push_entropy_fn fn, void *opaque)
 {
-    assert(ep_id < ENDPOINT_COUNT_MAX);
-    assert(fn);
+    g_assert(ep_id < ENDPOINT_COUNT_MAX);
+    g_assert(fn);
 
     OtEDNEndPoint *ep = &s->endpoints[ep_id];
     if (ep->fn) {
-        assert(ep->fn == fn);
+        g_assert(ep->fn == fn);
     } else {
         trace_ot_edn_connect_endpoint(s->rng.appid, ep_id);
     }
@@ -314,7 +314,7 @@ int ot_edn_request_entropy(OtEDNState *s, unsigned ep_id)
 {
     trace_ot_edn_request_entropy(s->rng.appid, ep_id);
 
-    assert(ep_id < ENDPOINT_COUNT_MAX);
+    g_assert(ep_id < ENDPOINT_COUNT_MAX);
     OtEDNEndPoint *ep = &s->endpoints[ep_id];
     if (!ep->fn) {
         xtrace_ot_edn_error(s->rng.appid,
@@ -499,7 +499,7 @@ static int ot_edn_push_csrng_request(OtEDNState *s)
         req_sts = qdev_get_gpio_in_named(DEVICE(s), TYPE_OT_EDN "-req_sts", 0);
         c->genbits_ready = ot_csnrg_connect_hw_app(c->device, c->appid, req_sts,
                                                    &ot_edn_fill_bits, s);
-        assert(c->genbits_ready);
+        g_assert(c->genbits_ready);
     }
     int res = ot_csrng_push_command(c->device, c->appid, c->buffer);
     if (res) {
@@ -577,7 +577,7 @@ static void ot_edn_try_auto_instantiate(OtEDNState *s)
 
     uint32_t num = length;
     const uint32_t *cmd = ot_fifo32_pop_buf(&c->sw_cmd_fifo, num, &num);
-    assert(num == length);
+    g_assert(num == length);
     memcpy(c->buffer, cmd, length * sizeof(uint32_t));
 
     if (ot_edn_push_csrng_request(s)) {
@@ -618,7 +618,7 @@ static void ot_edn_send_reseed_cmd(OtEDNState *s)
 
     uint32_t num = length;
     const uint32_t *cmd = ot_fifo32_peek_buf(&c->cmd_reseed_fifo, num, &num);
-    assert(num == length);
+    g_assert(num == length);
     memcpy(c->buffer, cmd, length * sizeof(uint32_t));
 
     if (ot_edn_push_csrng_request(s)) {
@@ -657,7 +657,7 @@ static void ot_edn_send_generate_cmd(OtEDNState *s)
 
     uint32_t num = length;
     const uint32_t *cmd = ot_fifo32_peek_buf(&c->cmd_gen_fifo, num, &num);
-    assert(num == length);
+    g_assert(num == length);
     memcpy(c->buffer, cmd, length * sizeof(uint32_t));
     c->rem_packet_count = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, GLEN);
     xtrace_ot_edn_dinfo(c->appid, "Generate cmd w/ packets",
@@ -711,7 +711,7 @@ static void ot_edn_try_sw_request(OtEDNState *s)
         return;
     }
 
-    assert(s->state == EDN_SW_PORT_MODE);
+    g_assert(s->state == EDN_SW_PORT_MODE);
 
     uint32_t num = length;
     const uint32_t *cmd = ot_fifo32_peek_buf(&c->sw_cmd_fifo, num, &num);
@@ -744,7 +744,7 @@ static void ot_edn_handle_disable(OtEDNState *s)
 {
     OtEDNCSRNG *c = &s->rng;
 
-    assert(ot_edn_get_last_csrng_command(s) != OT_CSRNG_CMD_UNINSTANTIATE);
+    g_assert(ot_edn_get_last_csrng_command(s) != OT_CSRNG_CMD_UNINSTANTIATE);
 
     c->no_fips = false;
     c->rem_packet_count = 0;
@@ -1284,8 +1284,8 @@ static void ot_edn_reset(DeviceState *dev)
     ot_fifo32_reset(&c->cmd_reseed_fifo);
 
     /* check that properties have been initialized */
-    assert(c->device);
-    assert(c->appid < OT_CSRNG_HW_APP_MAX);
+    g_assert(c->device);
+    g_assert(c->appid < OT_CSRNG_HW_APP_MAX);
 }
 
 static void ot_edn_init(Object *obj)

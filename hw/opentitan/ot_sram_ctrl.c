@@ -236,8 +236,8 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 {
     OtSramCtrlState *s = OT_SRAM_CTRL(dev);
 
-    assert(s->otp_ctrl);
-    assert(s->size);
+    g_assert(s->otp_ctrl);
+    g_assert(s->size);
 
     MemoryRegion *mr = &s->mem;
     memory_region_init_ram_nomigrate(mr, OBJECT(dev), TYPE_OT_SRAM_CTRL "-mem",

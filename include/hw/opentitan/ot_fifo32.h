@@ -43,7 +43,7 @@ static inline void ot_fifo32_create(OtFifo32 *fifo, uint32_t capacity)
 
 static inline void ot_fifo32_push(OtFifo32 *fifo, uint32_t data)
 {
-    assert(fifo->num < fifo->capacity);
+    g_assert(fifo->num < fifo->capacity);
 
     fifo->data[(fifo->head + fifo->num) % fifo->capacity] = data;
     fifo->num++;
@@ -51,7 +51,7 @@ static inline void ot_fifo32_push(OtFifo32 *fifo, uint32_t data)
 
 static inline uint32_t ot_fifo32_pop(OtFifo32 *fifo)
 {
-    assert(fifo->num > 0);
+    g_assert(fifo->num > 0);
 
     uint32_t ret = fifo->data[fifo->head];
 
@@ -64,7 +64,7 @@ static inline uint32_t ot_fifo32_pop(OtFifo32 *fifo)
 
 static inline uint32_t ot_fifo32_peek(OtFifo32 *fifo)
 {
-    assert(fifo->num > 0);
+    g_assert(fifo->num > 0);
 
     uint32_t ret = fifo->data[fifo->head];
 
@@ -76,7 +76,7 @@ ot_fifo32_pop_buf(OtFifo32 *fifo, uint32_t max, uint32_t *num)
 {
     uint32_t *ret;
 
-    assert(max > 0 && max <= fifo->num);
+    g_assert(max > 0 && max <= fifo->num);
     *num = MIN(fifo->capacity - fifo->head, max);
     ret = &fifo->data[fifo->head];
     fifo->head += *num;
@@ -90,7 +90,7 @@ ot_fifo32_peek_buf(OtFifo32 *fifo, uint32_t max, uint32_t *num)
 {
     uint32_t *ret;
 
-    assert(max > 0 && max <= fifo->num);
+    g_assert(max > 0 && max <= fifo->num);
     *num = MIN(fifo->capacity - fifo->head, max);
     ret = &fifo->data[fifo->head];
     return ret;

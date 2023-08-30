@@ -374,17 +374,17 @@ qemu_irq ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id,
                                  qemu_irq req_sts, ot_csrng_genbit_filler_fn fn,
                                  void *opaque)
 {
-    assert(app_id < OT_CSRNG_HW_APP_MAX);
-    assert(req_sts);
-    assert(fn);
+    g_assert(app_id < OT_CSRNG_HW_APP_MAX);
+    g_assert(req_sts);
+    g_assert(fn);
 
     OtCSRNGInstance *inst = &s->instances[app_id];
     /* if connection is invoked many times, there is no reason for changes */
     if (inst->hw.filler) {
-        assert(inst->hw.filler == fn);
+        g_assert(inst->hw.filler == fn);
     }
     if (inst->hw.req_sts) {
-        assert(inst->hw.req_sts == req_sts);
+        g_assert(inst->hw.req_sts == req_sts);
     }
     inst->hw.filler = fn;
     inst->hw.opaque = opaque;
@@ -399,15 +399,15 @@ qemu_irq ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id,
 int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
                           const uint32_t *command)
 {
-    assert(app_id < OT_CSRNG_HW_APP_MAX);
+    g_assert(app_id < OT_CSRNG_HW_APP_MAX);
 
     if (s->state == CSRNG_ERROR) {
         return -1;
     }
 
     OtCSRNGInstance *inst = &s->instances[app_id];
-    assert(inst->hw.filler);
-    assert(inst->hw.req_sts);
+    g_assert(inst->hw.filler);
+    g_assert(inst->hw.req_sts);
 
     ot_fifo32_reset(&inst->cmd_fifo);
     uint32_t acmd = FIELD_EX32(command[0], OT_CSNRG_CMD, ACMD);
@@ -553,7 +553,7 @@ static OtCSRNDCmdResult ot_csrng_drng_instanciate(
     int res;
     res = ecb_start(inst->parent->aes_cipher, key, (int)sizeof(key), 0,
                     &drng->ecb);
-    assert(res == CRYPT_OK);
+    g_assert(res == CRYPT_OK);
 
     memcpy(drng->key, key, OT_CSRNG_AES_KEY_SIZE);
     drng->instantiated = true;
@@ -602,7 +602,7 @@ static int ot_csrng_drng_update(OtCSRNGInstance *inst)
 
         res = ecb_encrypt(drng->v_counter, ptmp, OT_CSRNG_AES_BLOCK_SIZE,
                           &drng->ecb);
-        assert(res == CRYPT_OK);
+        g_assert(res == CRYPT_OK);
         ptmp += OT_CSRNG_AES_BLOCK_SIZE;
     }
 
@@ -613,12 +613,12 @@ static int ot_csrng_drng_update(OtCSRNGInstance *inst)
     ot_csrng_drng_clear_material(inst);
 
     res = ecb_done(&drng->ecb);
-    assert(res == CRYPT_OK);
+    g_assert(res == CRYPT_OK);
 
     ptmp = (uint8_t *)tmp;
     res = ecb_start(inst->parent->aes_cipher, ptmp, (int)OT_CSRNG_AES_KEY_SIZE,
                     0, &drng->ecb);
-    assert(res == CRYPT_OK);
+    g_assert(res == CRYPT_OK);
 
     memcpy(drng->key, ptmp, OT_CSRNG_AES_KEY_SIZE);
     memcpy(drng->v_counter, &ptmp[OT_CSRNG_AES_KEY_SIZE],
@@ -636,7 +636,7 @@ static OtCSRNDCmdResult ot_csrng_drng_reseed(
     OtCSRNGInstance *inst, OtEntropySrcState *entropy_src, bool flag0)
 {
     OtCSRNGDrng *drng = &inst->drng;
-    assert(drng->instantiated);
+    g_assert(drng->instantiated);
 
     if (!flag0) {
         if (!inst->parent->es_available) {
@@ -693,7 +693,7 @@ static void ot_csrng_drng_generate(OtCSRNGInstance *inst, uint32_t *out,
 
     res = ecb_encrypt(drng->v_counter, (uint8_t *)out, OT_CSRNG_AES_BLOCK_SIZE,
                       &drng->ecb);
-    assert(res == CRYPT_OK);
+    g_assert(res == CRYPT_OK);
 
     xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "out", out,
                                 OT_CSRNG_AES_BLOCK_SIZE);
@@ -713,7 +713,7 @@ static void ot_csrng_drng_generate(OtCSRNGInstance *inst, uint32_t *out,
 static unsigned ot_csrng_get_slot(OtCSRNGInstance *inst)
 {
     unsigned slot = (unsigned)(uintptr_t)(inst - &inst->parent->instances[0]);
-    assert(slot <= SW_INSTANCE_ID);
+    g_assert(slot <= SW_INSTANCE_ID);
     return slot;
 }
 
@@ -1001,7 +1001,7 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
     const uint32_t *buffer =
         ot_fifo32_peek_buf(&inst->cmd_fifo, ot_fifo32_num_used(&inst->cmd_fifo),
                            &num);
-    assert(num - 1u == clen);
+    g_assert(num - 1u == clen);
     buffer += 1u;
 
     if (clen) {
@@ -1055,7 +1055,7 @@ static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
         const uint32_t *buffer =
             ot_fifo32_peek_buf(&inst->cmd_fifo,
                                ot_fifo32_num_used(&inst->cmd_fifo), &num);
-        assert(num - 1u == clen);
+        g_assert(num - 1u == clen);
         buffer += 1u;
         xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
                                     clen * sizeof(uint32_t));
@@ -1065,7 +1065,7 @@ static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
     trace_ot_csrng_generate(ot_csrng_get_slot(inst), packet_count);
 
     OtCSRNGDrng *drng = &inst->drng;
-    assert(drng->instantiated);
+    g_assert(drng->instantiated);
 
     if (ot_csrng_drng_remaining_count(inst)) {
         xtrace_ot_csrng_info("remaining packets to generate",
@@ -1100,7 +1100,7 @@ static OtCSRNDCmdResult ot_csrng_handle_reseed(OtCSRNGState *s, unsigned slot)
         const uint32_t *buffer =
             ot_fifo32_peek_buf(&inst->cmd_fifo,
                                ot_fifo32_num_used(&inst->cmd_fifo), &num);
-        assert(num - 1u == clen);
+        g_assert(num - 1u == clen);
         buffer += 1u;
 
         xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
@@ -1134,7 +1134,7 @@ static OtCSRNDCmdResult ot_csrng_handle_update(OtCSRNGState *s, unsigned slot)
         const uint32_t *buffer =
             ot_fifo32_peek_buf(&inst->cmd_fifo,
                                ot_fifo32_num_used(&inst->cmd_fifo), &num);
-        assert(num - 1u == clen);
+        g_assert(num - 1u == clen);
         buffer += 1u;
 
         xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
@@ -1154,7 +1154,7 @@ static void ot_csrng_hwapp_ready_irq(void *opaque, int n, int level)
     OtCSRNGState *s = opaque;
 
     unsigned slot = (unsigned)n;
-    assert(slot < OT_CSRNG_HW_APP_MAX);
+    g_assert(slot < OT_CSRNG_HW_APP_MAX);
     bool ready = (bool)level;
 
     OtCSRNGInstance *inst = &s->instances[slot];
@@ -1267,7 +1267,7 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
     case OT_CSRNG_CMD_RESEED:
         break;
     case OT_CSRNG_CMD_GENERATE:
-        assert(slot == SW_INSTANCE_ID || inst->hw.filler);
+        g_assert(slot == SW_INSTANCE_ID || inst->hw.filler);
         break;
     case OT_CSRNG_CMD_UPDATE:
     case OT_CSRNG_CMD_UNINSTANTIATE:
@@ -1743,8 +1743,8 @@ static void ot_csrng_reset(DeviceState *dev)
 {
     OtCSRNGState *s = OT_CSRNG(dev);
 
-    assert(s->entropy_src);
-    assert(s->otp_ctrl);
+    g_assert(s->entropy_src);
+    g_assert(s->otp_ctrl);
 
     timer_del(s->cmd_scheduler);
 
@@ -1764,7 +1764,7 @@ static void ot_csrng_reset(DeviceState *dev)
 
     for (unsigned ix = 0; ix < OT_CSRNG_HW_APP_MAX + 1u; ix++) {
         OtCSRNGInstance *inst = &s->instances[ix];
-        assert(inst->parent);
+        g_assert(inst->parent);
         ot_fifo32_reset(&inst->cmd_fifo);
         if (ix == SW_INSTANCE_ID) {
             ot_fifo32_reset(&inst->sw.bits_fifo);

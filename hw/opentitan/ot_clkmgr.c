@@ -226,7 +226,7 @@ static void ot_clkmgr_clock_hint(void *opaque, int irq, int level)
 
     unsigned clock = (unsigned)irq;
 
-    assert(clock < OT_CLKMGR_HINT_COUNT);
+    g_assert(clock < OT_CLKMGR_HINT_COUNT);
 
     trace_ot_clkmgr_clock_hint(CLOCK_NAME(clock), clock, (bool)level);
 

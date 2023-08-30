@@ -472,7 +472,7 @@ static void ot_aon_timer_reset(DeviceState *dev)
 {
     OtAonTimerState *s = OT_AON_TIMER(dev);
 
-    assert(s->pclk > 0);
+    g_assert(s->pclk > 0);
 
     timer_del(s->wkup_timer);
     timer_del(s->wdog_timer);

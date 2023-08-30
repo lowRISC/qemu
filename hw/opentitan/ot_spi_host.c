@@ -395,7 +395,7 @@ static void txfifo_create(TxFifo *fifo, uint32_t capacity)
 
 static void txfifo_push(TxFifo *fifo, uint32_t data, uint32_t size)
 {
-    assert(fifo->num < fifo->capacity);
+    g_assert(fifo->num < fifo->capacity);
 
     switch (size) {
     case sizeof(uint32_t):
@@ -416,7 +416,7 @@ static void txfifo_push(TxFifo *fifo, uint32_t data, uint32_t size)
 
 static uint8_t txfifo_pop(TxFifo *fifo, bool last)
 {
-    assert(fifo->num > 0);
+    g_assert(fifo->num > 0);
     TxFifoSlot slot = fifo->data[fifo->head];
     uint8_t ret = (uint8_t)slot.data;
     if (slot.bits > 1u && !last) {
@@ -462,14 +462,14 @@ static void cmdfifo_create(CmdFifo *fifo, uint32_t capacity)
 
 static void cmdfifo_push(CmdFifo *fifo, CmdFifoSlot cmd)
 {
-    assert(fifo->num < fifo->capacity);
+    g_assert(fifo->num < fifo->capacity);
     fifo->data[(fifo->head + fifo->num) % fifo->capacity] = cmd;
     fifo->num++;
 }
 
 static CmdFifoSlot cmdfifo_pop(CmdFifo *fifo)
 {
-    assert(fifo->num > 0u);
+    g_assert(fifo->num > 0u);
     CmdFifoSlot ret = fifo->data[fifo->head++];
     fifo->head %= fifo->capacity;
     fifo->num--;
@@ -478,7 +478,7 @@ static CmdFifoSlot cmdfifo_pop(CmdFifo *fifo)
 
 static CmdFifoSlot *cmdfifo_peek(CmdFifo *fifo)
 {
-    assert(fifo->num > 0u);
+    g_assert(fifo->num > 0u);
     return &fifo->data[fifo->head];
 }
 
