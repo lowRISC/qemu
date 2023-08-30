@@ -43,8 +43,8 @@ static void rust_demangle_fn(const char *st_name, int st_info,
 static void ibex_mmio_map_device(SysBusDevice *dev, MemoryRegion *mr,
                                  unsigned nr, hwaddr addr)
 {
-    assert(nr < dev->num_mmio);
-    assert(dev->mmio[nr].addr == (hwaddr)-1);
+    g_assert(nr < dev->num_mmio);
+    g_assert(dev->mmio[nr].addr == (hwaddr)-1);
     dev->mmio[nr].addr = addr;
     memory_region_add_subregion(mr, addr, dev->mmio[nr].memory);
 }
@@ -93,7 +93,7 @@ void ibex_link_devices(DeviceState **devices, const IbexDeviceDef *defs,
         if (link) {
             while (link->propname) {
                 DeviceState *target = devices[link->index];
-                assert(target);
+                g_assert(target);
                 (void)object_property_set_link(OBJECT(dev), link->propname,
                                                OBJECT(target), &error_fatal);
                 link++;
@@ -231,7 +231,7 @@ void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
         if (def->gpio) {
             const IbexGpioConnDef *conn = def->gpio;
             while (conn->out.num >= 0 && conn->in.num >= 0) {
-                assert(devices[conn->in.index]);
+                g_assert(devices[conn->in.index]);
                 qemu_irq in_gpio =
                     qdev_get_gpio_in_named(devices[conn->in.index],
                                            conn->in.name, conn->in.num);
@@ -259,8 +259,8 @@ void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
     if (def->name) {
         qdev_prop_set_string(dev, "name", def->name);
     }
-    assert(def->memmap != NULL);
-    assert(def->memmap->size != 0);
+    g_assert(def->memmap != NULL);
+    g_assert(def->memmap->size != 0);
     qdev_prop_set_uint64(dev, "size", def->memmap->size);
 }
 

@@ -963,7 +963,7 @@ static void ot_earlgrey_board_realize(DeviceState *dev, Error **errp)
         RISCV_OT_EARLGREY_SOC(soc)->devices[OT_EARLGREY_SOC_DEV_SPI_HOST0];
     DeviceState *flash = board->devices[OT_EARLGREY_BOARD_DEV_FLASH];
     BusState *spibus = qdev_get_child_bus(spihost, "spi0");
-    assert(spibus);
+    g_assert(spibus);
 
     DriveInfo *dinfo = drive_get(IF_MTD, 0, 0);
     if (dinfo) {

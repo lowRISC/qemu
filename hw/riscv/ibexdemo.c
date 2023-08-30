@@ -299,7 +299,7 @@ static void ibexdemo_board_realize(DeviceState *dev, Error **errp)
 
     BusState *spibus =
         qdev_get_child_bus(DEVICE(soc->devices[IBEXDEMO_SOC_DEV_SPI]), "spi0");
-    assert(spibus);
+    g_assert(spibus);
 
     board->devices[IBEXDEMO_BOARD_DEV_DISPLAY] =
         DEVICE(ST7735(ssi_create_peripheral(SSI_BUS(spibus), TYPE_ST7735)));
