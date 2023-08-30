@@ -38,7 +38,6 @@ $NAME [options] <ot_dir> <ot_test> [-- [QEMU_options ...]]
         -b         Build QEMU
         -f         Use a flat tree (files are stored in the same dir)
         -o         Log OTBN execution traces into otbn.log
-        -r         Load ROM binary rather than ROM ELF file
         -S         Redirect guest stdout to stdout.log
         -t second  Maximum time to execute, after which QEMU instance is killed
         -T trace   QEMU trace file, output traces are stored in qemu.log
@@ -54,7 +53,6 @@ OT_DIR=""
 OT_TEST=""
 BUILD_QEMU=0
 FLAT_TREE=0
-LOAD_ELF=1
 OTBN_LOG=0
 VERBOSE=0
 TIMEOUT=0
@@ -79,9 +77,6 @@ while [ $# -gt 0 ]; do
            ;;
         -o)
            OTBN_LOG=1
-           ;;
-        -r)
-           LOAD_ELF=0
            ;;
         -S)
            GUEST_STDOUT="stdout.log"
@@ -182,26 +177,15 @@ else
     [ -f "${OT_OTP_VMEM}" ] || \
         (cd "${OT_DIR}" && ./bazelisk.sh build //hw/ip/otp_ctrl/data:img_rma) || \
         die "Cannot build $(basename ${OT_OTP_VMEM})"
-    if [ ${LOAD_ELF} -gt 0 ]; then
-        OT_TEST_ROM_ELF=$(cd "${OT_DIR}" && \
-            ./bazelisk.sh outquery --config riscv32 \
-                //sw/device/lib/testing/test_rom:test_rom_fpga_cw310.elf) || \
-            die "Bazel in trouble"
-        OT_TEST_ROM_ELF="$(realpath ${OT_DIR}/${OT_TEST_ROM_ELF})"
-        [ -f "${OT_TEST_ROM_ELF}" ] || \
-            (cd "${OT_DIR}" && ./bazelisk.sh build  --config riscv32 \
-                //sw/device/lib/testing/test_rom:test_rom_fpga_cw310.elf) || \
-            die "Cannot build $(basename ${OT_TEST_ROM_BIN})"
-    else
-        OT_TEST_ROM_BIN=$(cd "${OT_DIR}" && \
-            ./bazelisk.sh outquery \
-                //sw/device/lib/testing/test_rom:test_rom_fpga_cw310) || \
-            die "Bazel in trouble"
-        OT_TEST_ROM_BIN="$(realpath ${OT_DIR}/${OT_TEST_ROM_BIN})"
-        [ -f "${OT_TEST_ROM_BIN}" ] || \
-            (cd "${OT_DIR}" && ./bazelisk.sh build //sw/device/lib/testing/test_rom:test_rom_fpga_cw310) || \
-            die "Cannot build $(basename ${OT_TEST_ROM_BIN})"
-    fi
+    OT_TEST_ROM_ELF=$(cd "${OT_DIR}" && \
+        ./bazelisk.sh outquery --config riscv32 \
+            //sw/device/lib/testing/test_rom:test_rom_fpga_cw310.elf) || \
+        die "Bazel in trouble"
+    OT_TEST_ROM_ELF="$(realpath ${OT_DIR}/${OT_TEST_ROM_ELF})"
+    [ -f "${OT_TEST_ROM_ELF}" ] || \
+        (cd "${OT_DIR}" && ./bazelisk.sh build  --config riscv32 \
+            //sw/device/lib/testing/test_rom:test_rom_fpga_cw310.elf) || \
+        die "Cannot build $(basename ${OT_TEST_ROM_BIN})"
     OT_TEST_BIN=$(cd "${OT_DIR}" && \
             ./bazelisk.sh outquery \
                 //sw/device/tests:${OT_TEST}_${BZLSFX} ) || \
@@ -239,18 +223,10 @@ fi
 
 [ -x "${QEMU_BUILD_DIR}/qemu-system-riscv32" ] || die "QEMU has not been build yet"
 
-if [ ${LOAD_ELF} -gt 0 ]; then
-    # in this mode, QEMU loads the ROM image using the ELF information to locate
-    # and execute the ROM. This is useful to get debugging symbols
-    [ -f "${OT_TEST_ROM_ELF}" ] || die "Unable to find ROM ELF file"
-    QEMU_GUEST_OPT="-kernel ${OT_TEST_ROM_ELF}"
-else
-    # in this mode, ROM image is force-loaded to the expected memory location
-    # and the QEMU vCPU reset vector is hardcoded, which better mimics the actual
-    # HW, but provided no debug info
-    QEMU_GUEST_OPT="-device loader,addr=0x8000,file=${OT_TEST_ROM_BIN}" \
-    QEMU_GUEST_OPT="${QEMU_GUEST_OPT} -global driver=lowrisc-ibex-riscv-cpu,property=resetvec,value=0x8180"
-fi
+# QEMU loads the ROM image using the ELF information to locate and execute the
+# ROM. This is useful to get debugging symbols
+[ -f "${OT_TEST_ROM_ELF}" ] || die "Unable to find ROM ELF file"
+QEMU_GUEST_OPT="-object ot-rom-img,id=rom,file=${OT_TEST_ROM_ELF},digest=fake"
 
 if [ ${OTBN_LOG} -gt 0 ]; then
     QEMU_GUEST_OPT="${QEMU_GUEST_OPT} -global ot-otbn.logfile=otbn.log"

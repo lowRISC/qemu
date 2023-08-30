@@ -980,14 +980,15 @@ class QEMUExecuter:
             '-display',
             'none'
         ]
-        if any((args.rom, args.exec, args.boot)):
-            qemu_args.append('-kernel')
         if args.rom:
-            qemu_args.append(args.rom)
+            qemu_args.extend(('-object',
+                              f'ot-rom-img,id=rom,file={args.rom},digest=fake'))
         else:
             if all((args.exec, args.boot)):
                 raise ValueError('Cannot use both a ROM ext/app and a '
                                  'bootloader without a ROM file')
+            if any((args.exec, args.boot)):
+                qemu_args.append('-kernel')
             if args.exec:
                 qemu_args.append(normpath(args.exec))
             if args.boot:

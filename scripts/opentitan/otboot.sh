@@ -37,7 +37,6 @@ $NAME [-b] [-r] [-f] <ot_dir> [-- [QEMU_options ...]]
         -h   Print this help message
         -b   Build QEMU
         -f   Use a flat tree (files are stored in the same dir)
-        -r   Load ROM binary rather than ROM ELF file
         -U   Run flashgen.py in unsafe mode (no ELF checks)
         -v   Verbose mode, show executed commands
         --   All following options are forwarded to QEMU
@@ -50,7 +49,6 @@ OT_DIR=""
 BUILD_QEMU=0
 FLASHGEN_OPTS=""
 FLAT_TREE=0
-LOAD_ELF=1
 VERBOSE=0
 
 # Parse options
@@ -65,9 +63,6 @@ while [ $# -gt 0 ]; do
            ;;
         -f)
            FLAT_TREE=1
-           ;;
-        -r)
-           LOAD_ELF=0
            ;;
         -v)
            VERBOSE=1
@@ -194,19 +189,11 @@ fi
 
 [ -x "${QEMU_BUILD_DIR}/qemu-system-riscv32" ] || die "QEMU has not been build yet"
 
-if [ ${LOAD_ELF} -gt 0 ]; then
-    # in this mode, QEMU loads the ROM image using the ELF information to locate
-    # and execute the ROM. This is useful to get debugging symbols
-    OT_ROM_ELF="${OT_ROM_BIN%.*}.elf"
-    [ -f "${OT_ROM_ELF}" ] || die "Unable to find ROM ELF file for $(basename ${OT_ROM_BIN})"
-    QEMU_GUEST_OPT="-kernel ${OT_ROM_ELF}"
-else
-    # in this mode, ROM image is force-loaded to the expected memory location
-    # and the QEMU vCPU reset vector is hardcoded, which better mimics the actual
-    # HW, but provided no debug info
-    QEMU_GUEST_OPT="-device loader,addr=0x8000,file=${OT_ROM_BIN}" \
-    QEMU_GUEST_OPT="${QEMU_GUEST_OPT} -global driver=lowrisc-ibex-riscv-cpu,property=resetvec,value=0x8180"
-fi
+# QEMU loads the ROM image using the ELF information to locate and execute the
+# ROM. This is useful to get debugging symbols
+OT_ROM_ELF="${OT_ROM_BIN%.*}.elf"
+[ -f "${OT_ROM_ELF}" ] || die "Unable to find ROM ELF file for $(basename ${OT_ROM_BIN})"
+QEMU_GUEST_OPT="-object ot-rom-img,id=rom,file=${OT_ROM_ELF},digest=fake"
 
 if [ ${VERBOSE} -gt 0 ];then
     set -x
