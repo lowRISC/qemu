@@ -5,6 +5,7 @@
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Loïc Lefort <loic@rivosinc.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +36,9 @@
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "hw/core/cpu.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -45,24 +48,24 @@
 #include "hw/sysbus.h"
 #include "trace.h"
 
+
+#define PARAM_NUM_WKUPS                    6u
+#define PARAM_SYSRST_CTRL_AON_WKUP_REQ_IDX 0u
+#define PARAM_ADC_CTRL_AON_WKUP_REQ_IDX    1u
+#define PARAM_PINMUX_AON_PIN_WKUP_REQ_IDX  2u
+#define PARAM_PINMUX_AON_USB_WKUP_REQ_IDX  3u
+#define PARAM_AON_TIMER_AON_WKUP_REQ_IDX   4u
+#define PARAM_SENSOR_CTRL_WKUP_REQ_IDX     5u
+#define PARAM_NUM_RST_REQS                 2u
+#define PARAM_NUM_INT_RST_REQS             2u
+#define PARAM_NUM_DEBUG_RST_REQS           1u
+#define PARAM_RESET_MAIN_PWR_IDX           2u
+#define PARAM_RESET_ESC_IDX                3u
+#define PARAM_RESET_NDM_IDX                4u
+#define PARAM_NUM_ALERTS                   1u
+#define INTR_COMMON_WAKEUP_BIT             0u
+
 /* clang-format off */
-
-#define PARAM_NUM_WKUPS 6
-#define PARAM_SYSRST_CTRL_AON_WKUP_REQ_IDX 0
-#define PARAM_ADC_CTRL_AON_WKUP_REQ_IDX 1
-#define PARAM_PINMUX_AON_PIN_WKUP_REQ_IDX 2
-#define PARAM_PINMUX_AON_USB_WKUP_REQ_IDX 3
-#define PARAM_AON_TIMER_AON_WKUP_REQ_IDX 4
-#define PARAM_SENSOR_CTRL_WKUP_REQ_IDX 5
-#define PARAM_NUM_RST_REQS 2
-#define PARAM_NUM_INT_RST_REQS 2
-#define PARAM_NUM_DEBUG_RST_REQS 1
-#define PARAM_RESET_MAIN_PWR_IDX 2
-#define PARAM_RESET_ESC_IDX 3
-#define PARAM_RESET_NDM_IDX 4
-#define PARAM_NUM_ALERTS 1
-#define INTR_COMMON_WAKEUP_BIT 0
-
 REG32(INTR_STATE, 0x0u)
     SHARED_FIELD(WAKEUP, 0u, 1u)
 REG32(INTR_ENABLE, 0x4u)
@@ -154,6 +157,11 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
+typedef struct {
+    bool good;
+    bool done;
+} OtPwrMgrRomStatus;
+
 struct OtPwrMgrState {
     SysBusDevice parent_obj;
 
@@ -161,6 +169,9 @@ struct OtPwrMgrState {
     QEMUTimer *cdc_sync;
     IbexIRQ irq;
     IbexIRQ alert;
+
+    uint8_t num_rom;
+    OtPwrMgrRomStatus *roms;
 
     uint32_t *regs;
 };
@@ -177,6 +188,51 @@ static void ot_pwrmgr_cdc_sync(void *opaque)
     OtPwrMgrState *s = opaque;
 
     s->regs[R_CFG_CDC_SYNC] &= ~R_CFG_CDC_SYNC_SYNC_MASK;
+}
+
+static void ot_pwrmgr_rom_good(void *opaque, int irq, int level)
+{
+    OtPwrMgrState *s = opaque;
+
+    g_assert(irq < s->num_rom);
+
+    s->roms[irq].good = level;
+}
+
+static void ot_pwrmgr_rom_done(void *opaque, int irq, int level)
+{
+    OtPwrMgrState *s = opaque;
+
+    g_assert(irq < s->num_rom);
+
+    s->roms[irq].done = level;
+
+    trace_ot_pwrmgr_rom_done(irq, s->roms[irq].good, s->roms[irq].done);
+
+    /* compute combined ROM check status */
+    bool good = true;
+    bool done = true;
+    for (unsigned idx = 0; idx < s->num_rom; idx++) {
+        good &= s->roms[idx].good;
+        done &= s->roms[idx].done;
+    }
+
+    /* if all ROM checks are done, start vCPU or report error */
+    if (done) {
+        if (good) {
+            CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));
+            if (cpu) {
+                cpu->halted = 0;
+                cpu_resume(cpu);
+            } else {
+                error_report("ot_pwrmgr: Could not find a vCPU to start!");
+            }
+        } else {
+            warn_report(
+                "ot_pwrmgr: ROM controller reports failed digest check, "
+                "will not start vCPU");
+        }
+    }
 }
 
 static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -313,6 +369,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_pwrmgr_properties[] = {
+    DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -338,6 +395,17 @@ static void ot_pwrmgr_reset(DeviceState *dev)
 
     ot_pwrmgr_update_irq(s);
     ibex_irq_set(&s->alert, 0);
+
+    memset(s->roms, 0, s->num_rom * sizeof(OtPwrMgrRomStatus));
+}
+
+static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
+{
+    OtPwrMgrState *s = OT_PWRMGR(dev);
+
+    g_assert(s->num_rom);
+
+    s->roms = g_new0(OtPwrMgrRomStatus, s->num_rom);
 }
 
 static void ot_pwrmgr_init(Object *obj)
@@ -352,12 +420,18 @@ static void ot_pwrmgr_init(Object *obj)
     ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->alert, OPENTITAN_DEVICE_ALERT);
     s->cdc_sync = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_pwrmgr_cdc_sync, s);
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rom_good,
+                            OPENTITAN_PWRMGR_ROM_GOOD, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rom_done,
+                            OPENTITAN_PWRMGR_ROM_DONE, 1);
 }
 
 static void ot_pwrmgr_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
+    dc->realize = &ot_pwrmgr_realize;
     dc->reset = &ot_pwrmgr_reset;
     device_class_set_props(dc, ot_pwrmgr_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

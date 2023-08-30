@@ -5,6 +5,7 @@
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Loïc Lefort <loic@rivosinc.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,9 +31,10 @@
 
 #include "qom/object.h"
 
-#define OPENTITAN_DEVICE_PWRMGR "ot-pwrmgr"
-
 #define TYPE_OT_PWRMGR "ot-pwrmgr"
 OBJECT_DECLARE_SIMPLE_TYPE(OtPwrMgrState, OT_PWRMGR)
+
+#define OPENTITAN_PWRMGR_ROM_GOOD TYPE_OT_PWRMGR "-rom-good"
+#define OPENTITAN_PWRMGR_ROM_DONE TYPE_OT_PWRMGR "-rom-done"
 
 #endif /* HW_OPENTITAN_OT_PWRMGR_H */
