@@ -426,7 +426,11 @@ class QEMUFileManager:
             if name not in self._dirs:
                 tmp_dir = mkdtemp(prefix='qemu_ot_dir_')
                 self._dirs[name] = tmp_dir
-            return self._dirs[name]
+            else:
+                tmp_dir = self._dirs[name]
+            if not tmp_dir.endswith(sep):
+                tmp_dir = f'{tmp_dir}{sep}'
+            return tmp_dir
         nvalue = re_sub(r'\@\{(\w*)\}/', replace, value)
         if nvalue != value:
             self._log.debug('Interpolate %s with %s', value, nvalue)
@@ -1160,6 +1164,7 @@ class QEMUExecuter:
             if opts and not isinstance(opts, list):
                 raise ValueError('fInvalid QEMU options for {test_name}')
             opts = self.flatten([opt.split(' ') for opt in opts])
+            opts = [self._qfm.interpolate_dirs(opt, test_name) for opt in opts]
         timeout = int(kwargs.get('timeout', DEFAULT_TIMEOUT))
         return Namespace(**kwargs), opts or [], timeout
 
