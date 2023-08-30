@@ -172,6 +172,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         .cfg = &ot_earlgrey_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("resetvec", 0x8080u),
+            IBEX_DEV_BOOL_PROP("start-powered-off", true),
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_BOOL_PROP("pmp", true),
             IBEX_DEV_BOOL_PROP("zba", true),
@@ -423,6 +424,9 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         .type = TYPE_OT_PWRMGR,
         .memmap = MEMMAPENTRIES(
             { 0x40400000u, 0x80u }
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("num-rom", 1u)
         ),
     },
     [OT_EARLGREY_SOC_DEV_RSTMGR] = {
@@ -682,6 +686,12 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x411e0000u, 0x80u },
             { 0x00008000u, 0x8000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_SIGNAL(OPENTITAN_ROM_CTRL_GOOD, 0, PWRMGR, \
+                                   OPENTITAN_PWRMGR_ROM_GOOD, 0),
+            OT_EARLGREY_SOC_SIGNAL(OPENTITAN_ROM_CTRL_DONE, 0, PWRMGR, \
+                                   OPENTITAN_PWRMGR_ROM_DONE, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EARLGREY_SOC_DEVLINK("kmac", KMAC)
