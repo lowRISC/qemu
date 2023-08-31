@@ -85,7 +85,7 @@ See the section "Useful execution options" for documentation about the `no_epmp_
 
 ````sh
 qemu-system-riscv32 -M ot-earlgrey -display none -serial mon:stdio \
-  -kernel rom_with_fake_keys_fpga_cw310.elf \
+  -object ot-rom-img,id=rom,file=rom_with_fake_keys_fpga_cw310.elf,digest=fake \
   -drive if=pflash,file=otp.raw,format=raw \
   -drive if=mtd,bus=1,file=flash.raw,format=raw
 ````
@@ -93,6 +93,8 @@ qemu-system-riscv32 -M ot-earlgrey -display none -serial mon:stdio \
 where `otp.raw` contains the RMA OTP image and `flash.raw` contains the signed binary file of the
 ROM_EXT and the BL0. See [`otpconv.py`](otpconv.md) and [`flashgen.py`](flashgen.md) tools to
 generate the `.raw` image files.
+
+See [`rom_ctrl.md`](rom_ctrl.md) for information on ROM option.
 
 ## Available tools
 
