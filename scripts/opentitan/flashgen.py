@@ -251,6 +251,7 @@ class FlashGen:
                          if forced to 0, do not reserve any space for BL0, i.e.
                          dedicated all storage space to ROM_EXT section.
        :discard_elf_check: whether to ignore mismatching binary/elf files.
+       :accept_invalid: accept invalid input files (fully ignore content)
     """
 
     NUM_BANKS = 2
@@ -345,12 +346,14 @@ class FlashGen:
     BOOT_PARTS = 2
 
     def __init__(self, bl_offset: Optional[int] = None,
-                 discard_elf_check: Optional[bool] = False):
+                 discard_elf_check: Optional[bool] = None,
+                 accept_invalid: Optional[bool] = None):
         self._log = getLogger('flashgen')
         self._check_manifest_size()
         self._bl_offset = bl_offset if bl_offset is not None \
             else self.CHIP_ROM_EXT_SIZE_MAX
-        self._check_elf = not bool(discard_elf_check)
+        self._accept_invalid = bool(accept_invalid)
+        self._check_elf = not (bool(discard_elf_check) or self._accept_invalid)
         hfmt = ''.join(self.HEADER_FORMAT.values())
         header_size = scalc(hfmt)
         assert header_size == 32
@@ -496,8 +499,12 @@ class FlashGen:
                 offset += field_offset
                 self._write(offset, field_data)
         ename = f'otre{bank}'
-        if not elfpath:
-            elfpath = self._get_elf_filename(dfp.name)
+        if bindesc:
+            if not elfpath:
+                elfpath = self._get_elf_filename(dfp.name)
+        elif elfpath:
+            self._log.warning('Discarding ELF as input binary file is invalid')
+            elfpath = None
         if elfpath:
             elftime = stat(elfpath).st_mtime
             bintime = stat(dfp.name).st_mtime
@@ -519,6 +526,7 @@ class FlashGen:
 
     def store_bootloader(self, bank: int, dfp: BinaryIO,
                          elfpath: Optional[str] = None) -> None:
+        #pylint: disable=too-many-branches
         #pylint: disable=too-many-locals
         if self._bl_offset == 0:
             raise ValueError('Bootloader cannot be used')
@@ -530,8 +538,12 @@ class FlashGen:
         bindesc = self._check_bootloader(data)
         self._write(self._header_size + self._bl_offset, data)
         ename = f'otb0{bank}'
-        if not elfpath:
-            elfpath = self._get_elf_filename(dfp.name)
+        if bindesc:
+            if not elfpath:
+                elfpath = self._get_elf_filename(dfp.name)
+        elif elfpath:
+            self._log.warning('Discarding ELF as input binary file is invalid')
+            elfpath = None
         if elfpath:
             elftime = stat(elfpath).st_mtime
             bintime = stat(dfp.name).st_mtime
@@ -723,14 +735,24 @@ class FlashGen:
             self._log.warning('Unable to find a matching debug entry: %s',
                               entryname)
 
-    def _check_rom_ext(self, data: bytes) -> RuntimeDescriptor:
+    def _check_rom_ext(self, data: bytes) -> Optional[RuntimeDescriptor]:
         max_size = self._bl_offset or self.BYTES_PER_BANK
-        return self._check_manifest(data, 'rom_ext', max_size)
+        try:
+            return self._check_manifest(data, 'rom_ext', max_size)
+        except ValueError:
+            if self._accept_invalid:
+                return None
+            raise
 
-    def _check_bootloader(self, data: bytes) -> RuntimeDescriptor:
+    def _check_bootloader(self, data: bytes) -> Optional[RuntimeDescriptor]:
         assert self._bl_offset
         max_size =  self.BYTES_PER_BANK - self._bl_offset
-        return self._check_manifest(data, 'bl0', max_size)
+        try:
+            return self._check_manifest(data, 'bl0', max_size)
+        except ValueError:
+            if self._accept_invalid:
+                return None
+            raise
 
     def _check_manifest(self, data: bytes, kind: str, max_size: int) \
             -> RuntimeDescriptor:
@@ -816,13 +838,15 @@ def main():
         files.add_argument('-t', '--otdesc', action='append', default=[],
                            help='OpenTitan style file descriptor, '
                                 'may be repeated')
+        files.add_argument('-U', '--unsafe-elf', action='store_true',
+                           help='Discard sanity checking on ELF files')
+        files.add_argument('-A', '--accept-invalid', action='store_true',
+                           help='Blindy accept invalid input files')
         extra = argparser.add_argument_group(title='Extra')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
         extra.add_argument('-d', '--debug', action='store_true',
                            help='enable debug mode')
-        extra.add_argument('-U', '--unsafe-elf', action='store_true',
-                           help='Discard sanity checking on ELF files')
         args = argparser.parse_args()
         debug = args.debug
 
@@ -837,7 +861,8 @@ def main():
         log.addHandler(logh)
 
         use_bl0 = bool(args.boot) or len(args.otdesc) > 1
-        gen = FlashGen(args.offset if use_bl0 else 0, bool(args.unsafe_elf))
+        gen = FlashGen(args.offset if use_bl0 else 0, bool(args.unsafe_elf),
+                       bool(args.accept_invalid))
         flash_pathname = args.flash[0]
         backup_filename = None
         if args.otdesc and any(filter(None, (args.bank,

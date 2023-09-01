@@ -6,8 +6,8 @@ flash controller virtual device.
 ## Usage
 
 ````text
-usage: flashgen.py [-h] [-D] [-a {0,1}] [-s OFFSET] [-x file] [-X elf] [-b file] [-B elf]
-                   [-t OTDESC] [-v] [-d] [-U] flash
+usage: flashgen.py [-h] [-D] [-a {0,1}] [-s OFFSET] [-x file] [-X elf]
+                   [-b file] [-B elf] [-t OTDESC] [-U] [-A] [-v] [-d] flash
 
 Create/update an OpenTitan backend flash file.
 
@@ -31,11 +31,12 @@ Files:
                         ELF file for bootloader, for symbol tracking (default: auto)
   -t OTDESC, --otdesc OTDESC
                         OpenTitan style file descriptor, may be repeated
+  -U, --unsafe-elf      Discard sanity checking on ELF files
+  -A, --accept-invalid  Blindy accept invalid input files
 
 Extra:
   -v, --verbose         increase verbosity
   -d, --debug           enable debug mode
-  -U, --unsafe-elf      Discard sanity checking on ELF files
 ````
 
 The (signed) binary files contain no symbols, which can make low-level debugging in QEMU difficult
@@ -55,6 +56,10 @@ matching signed binary files to help with debugging.
 
 ### Arguments
 
+* `-A` accept any kind of input files, discarding all sanity checks. This option should only be used
+  to check the behavior of the VM and guest code when invalid files are stored in the embedded flash
+  device.
+
 * `-a bank` specify the data partition to store the binary file into, mutually exclusive with `-t`.
 
 * `-B elf` specify an alternative path to the BL0 ELF file. If not specified, the ELF path file is
@@ -65,7 +70,7 @@ matching signed binary files to help with debugging.
   image file. The Boot Loader 0 binary file is stored in the data partition at the offset
   specified with the -s option, mutually exclusive with `-t`.
 
-* `-D discard` discard any flash content that may exist in the QEMU RAW image file.
+* `-D` discard any flash content that may exist in the QEMU RAW image file.
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
