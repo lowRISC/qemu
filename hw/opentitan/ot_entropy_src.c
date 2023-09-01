@@ -1212,7 +1212,7 @@ ot_entropy_src_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_ALERT_TEST:
     case R_FW_OV_WR_DATA:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
+                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, REG_NAME(reg));
         val32 = 0;
         break;
@@ -1500,7 +1500,7 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ERR_CODE:
     case R_MAIN_SM_STATE:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
+                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, REG_NAME(reg));
         break;
     default:

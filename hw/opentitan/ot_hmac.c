@@ -350,7 +350,7 @@ static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_KEY_6:
     case R_KEY_7:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "W/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         val32 = 0;
         break;
@@ -501,7 +501,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     case R_MSG_LENGTH_LOWER:
     case R_MSG_LENGTH_UPPER:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "R/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         break;
     default:

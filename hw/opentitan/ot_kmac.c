@@ -1131,7 +1131,7 @@ static uint64_t ot_kmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_KEY_SHARE1_15:
     case R_KEY_LEN:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
+                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, REG_NAME(reg));
         val32 = 0;
         break;
@@ -1311,7 +1311,7 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     case R_ENTROPY_REFRESH_HASH_CNT:
     case R_ERR_CODE:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
+                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, REG_NAME(reg));
         break;
     default:

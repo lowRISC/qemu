@@ -1003,7 +1003,7 @@ static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
     case R_DATA_IN_3:
     case R_TRIGGER:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "W/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         val32 = 0u;
         break;
@@ -1085,7 +1085,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_DATA_OUT_3:
     case R_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "R/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         break;
     case R_KEY_SHARE0_0:

@@ -228,7 +228,7 @@ static uint64_t ot_rom_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "W/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         val32 = 0;
         break;
@@ -282,7 +282,7 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_EXP_DIGEST_6:
     case R_EXP_DIGEST_7:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
+                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, REG_NAME(reg));
         break;
     default:

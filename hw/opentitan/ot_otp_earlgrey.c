@@ -865,7 +865,7 @@ static uint64_t ot_otp_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_TEST:
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "W/O register 0x%03" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         val32 = 0;
         break;
@@ -963,7 +963,7 @@ static void ot_otp_eg_regs_write(void *opaque, hwaddr addr, uint64_t value,
     case R_SECRET2_DIGEST_0:
     case R_SECRET2_DIGEST_1:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "R/O register 0x%03" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         break;
     default:
@@ -1103,7 +1103,7 @@ static void ot_otp_eg_swcfg_write(void *opaque, hwaddr addr, uint64_t value,
 
     hwaddr reg = R32_OFF(addr);
 
-    qemu_log_mask(LOG_GUEST_ERROR, "R/O register 0x02%" HWADDR_PRIx " (%s)\n",
+    qemu_log_mask(LOG_GUEST_ERROR, "R/O register 0x%03" HWADDR_PRIx " (%s)\n",
                   addr, ot_otp_eg_swcfg_reg_name(reg));
 }
 
@@ -1159,7 +1159,7 @@ static void ot_otp_eg_csrs_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_CSR7:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "R/O register 0x%01" HWADDR_PRIx " (%s)\n", addr,
                       CSR_NAME(reg));
         break;
     default:

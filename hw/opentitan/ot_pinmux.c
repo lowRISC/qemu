@@ -269,7 +269,7 @@ static uint64_t ot_pinmux_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = regs->wkup_cause;
         break;
     case CASE_SCALAR(ALERT_TEST):
-        qemu_log_mask(LOG_GUEST_ERROR, "W/O register 0x02%" HWADDR_PRIx "\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "W/O register 0x%03" HWADDR_PRIx "\n",
                       addr);
         val32 = 0;
         break;

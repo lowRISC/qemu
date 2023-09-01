@@ -934,7 +934,7 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     case R_COMMAND:
     case R_TXDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "W/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         val32 = 0u;
         break;
@@ -1144,7 +1144,7 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
     }
     case R_RXDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "R/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         break;
     case R_TXDATA: {

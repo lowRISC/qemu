@@ -178,7 +178,7 @@ static uint64_t ot_sensor_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_TEST:
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "W/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         val32 = 0;
         break;
@@ -235,12 +235,12 @@ static void ot_sensor_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_RECOV_ALERT:
     case R_FATAL_ALERT:
         qemu_log_mask(LOG_UNIMP,
-                      "Unimplemented register 0x02%" HWADDR_PRIx " (%s)\n",
+                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
                       addr, REG_NAME(reg));
         break;
     case R_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x02%" HWADDR_PRIx " (%s)\n", addr,
+                      "R/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
         break;
     default:
