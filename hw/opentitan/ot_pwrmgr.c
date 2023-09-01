@@ -406,6 +406,11 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
     g_assert(s->num_rom);
 
     s->roms = g_new0(OtPwrMgrRomStatus, s->num_rom);
+
+    qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_good, OPENTITAN_PWRMGR_ROM_GOOD,
+                            s->num_rom);
+    qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_done, OPENTITAN_PWRMGR_ROM_DONE,
+                            s->num_rom);
 }
 
 static void ot_pwrmgr_init(Object *obj)
@@ -420,11 +425,6 @@ static void ot_pwrmgr_init(Object *obj)
     ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->alert, OPENTITAN_DEVICE_ALERT);
     s->cdc_sync = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_pwrmgr_cdc_sync, s);
-
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rom_good,
-                            OPENTITAN_PWRMGR_ROM_GOOD, 1);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rom_done,
-                            OPENTITAN_PWRMGR_ROM_DONE, 1);
 }
 
 static void ot_pwrmgr_class_init(ObjectClass *klass, void *data)
