@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Alert handler device
+ * QEMU OpenTitan EarlGrey Alert handler device
  *
  * Copyright (c) 2022-2023 Rivos, Inc.
  *
@@ -26,23 +26,13 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_ALERT_H
-#define HW_OPENTITAN_OT_ALERT_H
+#ifndef HW_OPENTITAN_OT_ALERT_EARLGREY_H
+#define HW_OPENTITAN_OT_ALERT_EARLGREY_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
+#include "hw/opentitan/ot_alert.h"
 
-#define OPENTITAN_DEVICE_ALERT "ot-alert"
+#define TYPE_OT_ALERT_EARLGREY "ot-alert-earlgrey"
+OBJECT_DECLARE_TYPE(OtAlertEarlGreyState, OtAlertStateClass, OT_ALERT_EARLGREY)
 
-#define TYPE_OT_ALERT "ot-alert"
-OBJECT_DECLARE_TYPE(OtAlertState, OtAlertStateClass, OT_ALERT)
-
-struct OtAlertState {
-    SysBusDevice parent_obj;
-};
-
-struct OtAlertStateClass {
-    SysBusDeviceClass parent_class;
-};
-
-#endif /* HW_OPENTITAN_OT_ALERT_H */
+#endif /* HW_OPENTITAN_OT_ALERT_EARLGREY_H */

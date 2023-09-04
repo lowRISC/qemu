@@ -33,7 +33,7 @@
 #include "hw/intc/sifive_plic.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_aes.h"
-#include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_alert_earlgrey.h"
 #include "hw/opentitan/ot_aon_timer.h"
 #include "hw/opentitan/ot_ast.h"
 #include "hw/opentitan/ot_clkmgr.h"
@@ -402,7 +402,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         )
     },
     [OT_EARLGREY_SOC_DEV_ALERT_HANDLER] = {
-        .type = TYPE_OT_ALERT,
+        .type = TYPE_OT_ALERT_EARLGREY,
         .memmap = MEMMAPENTRIES(
             { 0x40150000u, 0x800u }
         ),

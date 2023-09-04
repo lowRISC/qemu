@@ -7,6 +7,10 @@ config OT_AES
 config OT_ALERT
     bool
 
+config OT_ALERT_EARLGREY
+    select OT_ALERT
+    bool
+
 config OT_AON_TIMER
     bool
 
