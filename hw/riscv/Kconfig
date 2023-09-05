@@ -22,6 +22,7 @@ config OT_EARLGREY
     select OT_EDN
     select OT_ENTROPY_SRC
     select OT_FLASH
+    select OT_GPIO
     select OT_HMAC
     select OT_IBEX_WRAPPER
     select OT_KMAC

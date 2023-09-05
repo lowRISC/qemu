@@ -41,6 +41,7 @@
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_flash.h"
+#include "hw/opentitan/ot_gpio.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_kmac.h"
@@ -277,12 +278,45 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_GPIO] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
+        .type = TYPE_OT_GPIO,
         .name = "ot-gpio",
-        .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { 0x40040000u, 0x40u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 33),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 34),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 35),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 36),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 37),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 38),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 49),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 40),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 41),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 42),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 43),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 44),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 45),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 46),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 47),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 48),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 59),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 50),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(18, PLIC, 51),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(19, PLIC, 52),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(20, PLIC, 53),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(21, PLIC, 54),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(22, PLIC, 55),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(23, PLIC, 56),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(24, PLIC, 57),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(25, PLIC, 58),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(26, PLIC, 69),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(27, PLIC, 60),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 61),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 62),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 63),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 64)
+        )
     },
     [OT_EARLGREY_SOC_DEV_SPI_DEVICE] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
