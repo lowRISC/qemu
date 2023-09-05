@@ -171,8 +171,6 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         .type = TYPE_RISCV_CPU_LOWRISC_IBEX,
         .cfg = &ot_earlgrey_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("resetvec", 0x8080u),
-            IBEX_DEV_BOOL_PROP("start-powered-off", true),
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_BOOL_PROP("pmp", true),
             IBEX_DEV_BOOL_PROP("zba", true),
@@ -180,7 +178,9 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("zbc", true),
             IBEX_DEV_BOOL_PROP("zbs", true),
             IBEX_DEV_BOOL_PROP("x-epmp", true),
-            IBEX_DEV_BOOL_PROP("x-zbr", true)
+            IBEX_DEV_BOOL_PROP("x-zbr", true),
+            IBEX_DEV_UINT_PROP("resetvec", 0x8080u),
+            IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
     [OT_EARLGREY_SOC_DEV_RV_DM_MEM] = {
