@@ -33,6 +33,7 @@
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "chardev/char-fe.h"
 #include "hw/hw.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_gpio.h"
@@ -43,6 +44,16 @@
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
 #include "trace.h"
+
+/* 
+ * Unfortunately, there is no QEMU API to properly disable serial control lines
+ */
+#ifndef _WIN32
+#include <termios.h>
+#include "chardev/char-fd.h"
+#include "io/channel-file.h"
+#endif
+
 
 #define PARAM_NUM_ALERTS 1u
 
@@ -113,7 +124,12 @@ struct OtGpioState {
     uint32_t data_oe;
     uint32_t data_in;
 
+    char ibuf[32u]; /* backed input buffer */
+    unsigned ipos;
+
     uint32_t reset_in; /* initial input levels */
+    CharBackend chr; /* communication device */
+    guint watch_tag; /* tracker for comm device change */
 };
 
 static void ot_gpio_update_irqs(OtGpioState *s)
@@ -159,6 +175,30 @@ static void ot_gpio_update_data_in(OtGpioState *s)
     ot_gpio_update_intr_level(s);
     ot_gpio_update_intr_edge(s, prev);
     ot_gpio_update_irqs(s);
+}
+
+static void ot_gpio_update_backend(OtGpioState *s, bool oe)
+{
+    if (!qemu_chr_fe_backend_connected(&s->chr)) {
+        return;
+    }
+
+    char buf[32u];
+    size_t len;
+
+    /*
+     * use the infamous MS DOS CR LF syntax because people can't help using
+     * Windows-style terminal
+     */
+    if (oe) {
+        len = snprintf(&buf[0], sizeof(buf), "D:%08x\r\n", s->data_oe);
+    } else {
+        len = 0;
+    }
+
+    len += snprintf(&buf[len], sizeof(buf), "O:%08x\r\n", s->data_out);
+
+    qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, len);
 }
 
 static uint64_t ot_gpio_read(void *opaque, hwaddr addr, unsigned size)
@@ -246,11 +286,13 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_DIRECT_OUT:
         s->regs[reg] = val32;
         s->data_out = val32;
+        ot_gpio_update_backend(s, false);
         ot_gpio_update_data_in(s);
         break;
     case R_DIRECT_OE:
         s->regs[reg] = val32;
         s->data_oe = val32;
+        ot_gpio_update_backend(s, true);
         ot_gpio_update_data_in(s);
         break;
     case R_MASKED_OUT_LOWER:
@@ -258,6 +300,7 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 >> MASKED_MASK_SHIFT;
         s->data_out &= ~mask;
         s->data_out |= val32 & mask;
+        ot_gpio_update_backend(s, false);
         ot_gpio_update_data_in(s);
         break;
     case R_MASKED_OUT_UPPER:
@@ -265,6 +308,7 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 & MASKED_MASK_MASK;
         s->data_out &= ~mask;
         s->data_out |= (val32 << MASKED_MASK_SHIFT) & mask;
+        ot_gpio_update_backend(s, false);
         ot_gpio_update_data_in(s);
         break;
     case R_MASKED_OE_LOWER:
@@ -272,6 +316,7 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 >> MASKED_MASK_SHIFT;
         s->data_oe &= ~mask;
         s->data_oe |= val32 & mask;
+        ot_gpio_update_backend(s, true);
         ot_gpio_update_data_in(s);
         break;
     case R_MASKED_OE_UPPER:
@@ -279,6 +324,7 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 & MASKED_MASK_MASK;
         s->data_oe &= ~mask;
         s->data_oe |= (val32 << MASKED_MASK_SHIFT) & mask;
+        ot_gpio_update_backend(s, true);
         ot_gpio_update_data_in(s);
         break;
     case R_INTR_CTRL_EN_RISING:
@@ -306,6 +352,124 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
+static int ot_gpio_chr_can_receive(void *opaque)
+{
+    OtGpioState *s = opaque;
+
+    return (int)sizeof(s->ibuf) - (int)s->ipos;
+}
+
+static void ot_gpio_chr_receive(void *opaque, const uint8_t *buf, int size)
+{
+    OtGpioState *s = opaque;
+
+    if (s->ipos + (unsigned)size > sizeof(s->ibuf)) {
+        qemu_log("%s: Incoherent chardev receive\n", __func__);
+        return;
+    }
+
+    memcpy(&s->ibuf[s->ipos], buf, (size_t)size);
+    s->ipos += (unsigned)size;
+
+    for (;;) {
+        const char *eol = memchr(s->ibuf, (int)'\n', s->ipos);
+        if (!eol) {
+            if (s->ipos > 10u) {
+                /* discard any garbage */
+                memset(s->ibuf, 0, sizeof(s->ibuf));
+                s->ipos = 0;
+            }
+            return;
+        }
+        unsigned eolpos = eol - s->ibuf;
+        if (eolpos < 10u) {
+            memmove(s->ibuf, eol + 1u, eolpos + 1u);
+            s->ipos = 0;
+            continue;
+        }
+        uint32_t data_in = 0;
+        char cmd = '\0';
+        int ret = sscanf(s->ibuf, "%c:%08x", &cmd, &data_in);
+        memmove(s->ibuf, eol + 1u, eolpos + 1u);
+        s->ipos = 0;
+
+        if (ret == 2) {
+            if (cmd == 'I') {
+                s->data_in = data_in;
+                ot_gpio_update_data_in(s);
+            } else if (cmd == 'R') {
+                ot_gpio_update_backend(s, true);
+            }
+        }
+    }
+}
+
+static void ot_gpio_chr_ignore_status_lines(OtGpioState *s)
+{
+/* it might be useful to move this to char-serial.c */
+#ifndef _WIN32
+    FDChardev *cd = FD_CHARDEV(s->chr.chr);
+    QIOChannelFile *fioc = QIO_CHANNEL_FILE(cd->ioc_in);
+
+    struct termios tty = { 0 };
+    tcgetattr(fioc->fd, &tty);
+    tty.c_cflag |= CLOCAL; /* ignore modem status lines */
+    tcsetattr(fioc->fd, TCSANOW, &tty);
+#endif
+}
+
+static void ot_gpio_chr_event_hander(void *opaque, QEMUChrEvent event)
+{
+    OtGpioState *s = opaque;
+
+    if (event == CHR_EVENT_OPENED) {
+        if (object_dynamic_cast(OBJECT(s->chr.chr), TYPE_CHARDEV_SERIAL)) {
+            ot_gpio_chr_ignore_status_lines(s);
+        }
+
+        ot_gpio_update_backend(s, true);
+
+        if (!qemu_chr_fe_backend_connected(&s->chr)) {
+            return;
+        }
+
+        /* query backend for current input status */
+        char buf[16u];
+        int len = snprintf(buf, sizeof(buf), "Q:%08x\r\n", s->data_oe);
+        qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, len);
+    }
+}
+
+static gboolean ot_gpio_chr_watch_cb(void *do_not_use, GIOCondition cond,
+                                     void *opaque)
+{
+    OtGpioState *s = opaque;
+
+    s->watch_tag = 0;
+
+    return FALSE;
+}
+
+static int ot_gpio_chr_be_change(void *opaque)
+{
+    OtGpioState *s = opaque;
+
+    qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_chr_can_receive,
+                             &ot_gpio_chr_receive, &ot_gpio_chr_event_hander,
+                             &ot_gpio_chr_be_change, s, NULL, true);
+
+    memset(s->ibuf, 0, sizeof(s->ibuf));
+    s->ipos = 0;
+
+    if (s->watch_tag > 0) {
+        g_source_remove(s->watch_tag);
+        s->watch_tag = qemu_chr_fe_add_watch(&s->chr, G_IO_OUT | G_IO_HUP,
+                                             &ot_gpio_chr_watch_cb, s);
+    }
+
+    return 0;
+}
+
 static const MemoryRegionOps ot_gpio_regs_ops = {
     .read = &ot_gpio_read,
     .write = &ot_gpio_write,
@@ -316,6 +480,7 @@ static const MemoryRegionOps ot_gpio_regs_ops = {
 
 static Property ot_gpio_properties[] = {
     DEFINE_PROP_UINT32("in", OtGpioState, reset_in, 0u),
+    DEFINE_PROP_CHR("chardev", OtGpioState, chr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -331,6 +496,22 @@ static void ot_gpio_reset(DeviceState *dev)
 
     ot_gpio_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
+
+    ot_gpio_update_backend(s, true);
+
+    /*
+     * do not reset the input backed buffer as external GPIO changes is fully
+     * async with OT reset. However, it should be reset when the backend changes
+     */
+}
+
+static void ot_gpio_realize(DeviceState *dev, Error **errp)
+{
+    OtGpioState *s = OT_GPIO(dev);
+
+    qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_chr_can_receive,
+                             &ot_gpio_chr_receive, &ot_gpio_chr_event_hander,
+                             &ot_gpio_chr_be_change, s, NULL, true);
 }
 
 static void ot_gpio_init(Object *obj)
@@ -352,6 +533,7 @@ static void ot_gpio_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = &ot_gpio_reset;
+    dc->realize = &ot_gpio_realize;
     device_class_set_props(dc, ot_gpio_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
