@@ -120,6 +120,14 @@ ot_flash_error(const char *func, int line, const char *err) "%s:%d %s"
 ot_flash_info(const char *func, int line, const char *msg, uint32_t value) "%s:%d %s: 0x%08x"
 ot_flash_info_part(uint32_t op_addr, unsigned bank, unsigned infosel, unsigned addr) "op_addr 0x%06x bank %u infosel %u addr 0x%06x"
 
+# ot_gpio.c
+
+ot_gpio_debug(const char *msg) "%s"
+ot_gpio_io_read(unsigned int addr, const char *regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64
+ot_gpio_io_write(unsigned int addr, const char *regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_gpio_irqs(uint32_t active, uint32_t mask, uint32_t eff) "act:0x%08x msk:0x%08x eff:0x%08x"
+ot_gpio_update_input(uint32_t prev, uint32_t indata, uint32_t mix) "input prev:0x%08x new:0x%08x -> mix:0x%08x"
+
 # ot_hmac.c
 
 ot_hmac_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64", pc=0x%" PRIx64

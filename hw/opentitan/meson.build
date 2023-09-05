@@ -14,6 +14,7 @@ softmmu_ss.add(when: 'CONFIG_OT_CSRNG', if_true: [files('ot_csrng.c'), libtomcry
 softmmu_ss.add(when: 'CONFIG_OT_EDN', if_true: files('ot_edn.c'))
 softmmu_ss.add(when: 'CONFIG_OT_ENTROPY_SRC', if_true: [files('ot_entropy_src.c'), libtomcrypt_dep])
 softmmu_ss.add(when: 'CONFIG_OT_FLASH', if_true: files('ot_flash.c'))
+softmmu_ss.add(when: 'CONFIG_OT_GPIO', if_true: files('ot_gpio.c'))
 softmmu_ss.add(when: 'CONFIG_OT_HMAC', if_true: [files('ot_hmac.c'), libtomcrypt_dep])
 softmmu_ss.add(when: 'CONFIG_OT_IBEX_WRAPPER', if_true: files('ot_ibex_wrapper.c'))
 softmmu_ss.add(when: 'CONFIG_OT_KMAC', if_true: [files('ot_kmac.c'), libtomcrypt_dep])

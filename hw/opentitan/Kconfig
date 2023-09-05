@@ -31,6 +31,9 @@ config OT_ENTROPY_SRC
 config OT_FLASH
     bool
 
+config OT_GPIO
+    bool
+
 config OT_HMAC
     bool
 
