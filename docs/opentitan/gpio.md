@@ -77,3 +77,20 @@ a `I` frame whenever its own input lines change.
 `Q` and `R` are only emitted when a host connects to QEMU or when one side resets its internal
 state.
 
+### Example
+
+The `scripts/opentitan/trellis` directory contains two Python files that may be copied to an
+an Adafruit NeoTrellis M4 Express card initialized with Circuit Python 8.0+
+
+These scripts provide a physical, visual interface to the virtual GPIO pins, which is connected to
+the QEMU machine over a serial port (a USB CDC VCP in this case).
+
+To connect to the NeoTrellis board, use a configuration such as:
+
+```
+-chardev serial,id=gpio,path=/dev/ttyACM1 -global ot-gpio.chardev=gpio
+```
+
+where /dev/ttyACM1 is the data serial port of the Neotreillis board.
+
+Note: the first serial port of the board is reserved to its debug console.
