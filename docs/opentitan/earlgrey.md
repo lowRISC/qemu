@@ -1,4 +1,4 @@
-# Earlgrey CW310
+# EarlGrey CW310
 
 ## Supported version
 

@@ -98,8 +98,9 @@ static RISCVException write_mtvec(CPURISCVState *env, int csrno,
     /* bits [1:0] encode mode; Ibex only supports 1 = vectored */
     if ((val & 3u) != 1u) {
         qemu_log_mask(LOG_UNIMP,
-            "CSR_MTVEC: reserved mode not supported 0x" TARGET_FMT_lx "\n",
-            val);
+                      "CSR_MTVEC: reserved mode not supported 0x" TARGET_FMT_lx
+                      "\n",
+                      val);
         /* WARL */
         return RISCV_EXCP_NONE;
     }
@@ -141,7 +142,7 @@ void riscv_add_ibex_csr_ops(RISCVCPU *cpu)
     /*
      * Since the CSR operations table is global, we only need to do
      * this once, regardless of where it's called from. Currently, the
-     * call is coming from the Ibex/Earlgrey CPU instance init function,
+     * call is coming from the Ibex/EarlGrey CPU instance init function,
      * which happens before all CPU properties are set. Therefore all
      * Ibex extension CSRs are added unconditionally, and the
      * predicate functions will filter out illegal requests based on

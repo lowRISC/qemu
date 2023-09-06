@@ -42,7 +42,7 @@ options:
 
 ### Examples
 
-* All Earlgrey register files have been copied into `opentitan/regs-251rc1`
+* All EarlGrey register files have been copied into `opentitan/regs-251rc1`
 
   ````sh
   scripts/opentitan/checkregs.py -k -q hw/opentitan ~/opentitan/regs-251rc1/*.h

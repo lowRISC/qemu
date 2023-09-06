@@ -1495,7 +1495,7 @@ F: pc-bios/vof*
 RISC-V Machines
 ---------------
 
-Earlgrey OpenTitan platform
+EarlGrey OpenTitan platform
 M: Emmanuel Blot <eblot@rivosinc.com>
 M: Loïc Lefort <loic@rivosinc.com>
 S: Supported

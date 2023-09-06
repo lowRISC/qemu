@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Earlgrey One Time Programmable (OTP) memory controller
+ * QEMU OpenTitan EarlGrey One Time Programmable (OTP) memory controller
  *
  * Copyright (c) 2023 Rivos, Inc.
  *
@@ -401,7 +401,7 @@ typedef struct {
     unsigned ecc_granule; /* size of a granule in bytes */
 } OtOTPStorage;
 
-#define OtOTPEgState OtOTPEarlgreyState
+#define OtOTPEgState OtOTPEarlGreyState
 
 struct OtOTPEgState {
     OtOTPState parent_obj;

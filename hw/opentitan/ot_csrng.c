@@ -830,7 +830,7 @@ static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
 static void ot_csrng_handle_enable(OtCSRNGState *s)
 {
     /*
-     * As per Earlgrey 2.5.2-rc0:
+     * As per EarlGrey 2.5.2-rc0:
      * "CSRNG may only be enabled if ENTROPY_SRC is enabled. CSRNG may only be
      *  disabled if all EDNs are disabled. Once disabled, CSRNG may only be
      *  re-enabled after ENTROPY_SRC has been disabled and re-enabled."

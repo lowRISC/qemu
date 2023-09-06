@@ -87,7 +87,7 @@ static void ot_earlgrey_soc_uart_configure(
 /* EarlGrey/CW310 AON clock is 250 kHz */
 #define OT_EARLGREY_AON_CLK_HZ 250000u
 
-enum OtEarlgreySocDevice {
+enum OtEarlGreySocDevice {
     OT_EARLGREY_SOC_DEV_ADC_CTRL,
     OT_EARLGREY_SOC_DEV_AES,
     OT_EARLGREY_SOC_DEV_ALERT_HANDLER,
@@ -851,7 +851,7 @@ static const uint32_t ot_earlgrey_pmp_addrs[] = {
 
 #define OT_EARLGREY_MSECCFG MSECCFG(1, 1, 0)
 
-enum OtEarlgreyBoardDevice {
+enum OtEarlGreyBoardDevice {
     OT_EARLGREY_BOARD_DEV_SOC,
     OT_EARLGREY_BOARD_DEV_FLASH,
     _OT_EARLGREY_BOARD_DEV_COUNT,
