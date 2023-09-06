@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Ibex Wrapper device
+ * QEMU OpenTitan EarlGrey Ibex Wrapper device
  *
  * Copyright (c) 2022-2023 Rivos, Inc.
  *
@@ -26,22 +26,14 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_IBEX_WRAPPER_H
-#define HW_OPENTITAN_OT_IBEX_WRAPPER_H
+#ifndef HW_OPENTITAN_OT_IBEX_WRAPPER_EARLGREY_H
+#define HW_OPENTITAN_OT_IBEX_WRAPPER_EARLGREY_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
+#include "hw/opentitan/ot_ibex_wrapper.h"
 
-#define TYPE_OT_IBEX_WRAPPER "ot-ibex_wrapper"
-OBJECT_DECLARE_TYPE(OtIbexWrapperState, OtIbexWrapperStateClass,
-                    OT_IBEX_WRAPPER)
+#define TYPE_OT_IBEX_WRAPPER_EARLGREY "ot-ibex_wrapper-earlgrey"
+OBJECT_DECLARE_TYPE(OtIbexWrapperEarlGreyState, OtIbexWrapperStateClass,
+                    OT_IBEX_WRAPPER_EARLGREY)
 
-struct OtIbexWrapperState {
-    SysBusDevice parent_obj;
-};
-
-struct OtIbexWrapperStateClass {
-    SysBusDeviceClass parent_class;
-};
-
-#endif /* HW_OPENTITAN_OT_IBEX_WRAPPER_H */
+#endif /* HW_OPENTITAN_OT_IBEX_WRAPPER_EARLGREY_H */

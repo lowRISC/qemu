@@ -43,7 +43,7 @@
 #include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_gpio.h"
 #include "hw/opentitan/ot_hmac.h"
-#include "hw/opentitan/ot_ibex_wrapper.h"
+#include "hw/opentitan/ot_ibex_wrapper_earlgrey.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lifecycle.h"
 #include "hw/opentitan/ot_otbn.h"
@@ -752,7 +752,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_IBEX_WRAPPER] = {
-        .type = TYPE_OT_IBEX_WRAPPER,
+        .type = TYPE_OT_IBEX_WRAPPER_EARLGREY,
         .memmap = MEMMAPENTRIES(
             { 0x411f0000u, 0x100u }
         ),

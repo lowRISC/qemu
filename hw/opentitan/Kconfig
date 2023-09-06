@@ -44,6 +44,10 @@ config OT_HMAC
 config OT_IBEX_WRAPPER
     bool
 
+config OT_IBEX_WRAPPER_EARLGREY
+    select OT_IBEX_WRAPPER
+    bool
+
 config OT_KMAC
     bool
 
