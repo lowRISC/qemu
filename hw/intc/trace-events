@@ -309,3 +309,10 @@ loongarch_msi_set_irq(int irq_num) "set msi irq %d"
 loongarch_extioi_setirq(int irq, int level) "set extirq irq %d level %d"
 loongarch_extioi_readw(uint64_t addr, uint64_t val) "addr: 0x%"PRIx64 "val: 0x%" PRIx64
 loongarch_extioi_writew(uint64_t addr, uint64_t val) "addr: 0x%"PRIx64 "val: 0x%" PRIx64
+
+# sifive_plic.c
+
+sifive_plic_set_claimed(int irq, bool level) "irq %d: %u"
+sifive_plic_set_priority(uint32_t irq, uint32_t prio) "irq %u: %u"
+sifive_plic_set_pending(int irq, bool level) "irq %d: %u"
+sifive_plic_update(uint32_t hartid, int mode, bool level) "hart %u %c: %u"

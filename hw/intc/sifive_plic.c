@@ -31,6 +31,7 @@
 #include "migration/vmstate.h"
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
+#include "trace.h"
 
 static bool addr_between(uint32_t addr, uint32_t base, uint32_t num)
 {
@@ -64,12 +65,20 @@ static uint32_t atomic_set_masked(uint32_t *a, uint32_t mask, uint32_t value)
 
 static void sifive_plic_set_pending(SiFivePLICState *plic, int irq, bool level)
 {
-    atomic_set_masked(&plic->pending[irq >> 5], 1 << (irq & 31), -!!level);
+    uint32_t old;
+    old = atomic_set_masked(&plic->pending[irq >> 5], 1 << (irq & 31), -level);
+    if ((old >> (irq & 31)) ^ level) {
+        trace_sifive_plic_set_pending(irq, level);
+    }
 }
 
 static void sifive_plic_set_claimed(SiFivePLICState *plic, int irq, bool level)
 {
-    atomic_set_masked(&plic->claimed[irq >> 5], 1 << (irq & 31), -!!level);
+    uint32_t old;
+    old = atomic_set_masked(&plic->claimed[irq >> 5], 1 << (irq & 31), -level);
+    if ((old >> (irq & 31)) ^ level) {
+        trace_sifive_plic_set_claimed(irq, level);
+    }
 }
 
 static uint32_t sifive_plic_claimed(SiFivePLICState *plic, uint32_t addrid)
@@ -124,9 +133,11 @@ static void sifive_plic_update(SiFivePLICState *plic)
 
         switch (mode) {
         case PLICMode_M:
+            trace_sifive_plic_update(hartid, 'M', level);
             qemu_set_irq(plic->m_external_irqs[hartid - plic->hartid_base], level);
             break;
         case PLICMode_S:
+            trace_sifive_plic_update(hartid, 'S', level);
             qemu_set_irq(plic->s_external_irqs[hartid - plic->hartid_base], level);
             break;
         default:
@@ -197,9 +208,11 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
              * out the access to unsupported priority bits.
              */
             plic->source_priority[irq] = value % (plic->num_priorities + 1);
+            trace_sifive_plic_set_priority(irq, plic->source_priority[irq]);
             sifive_plic_update(plic);
         } else if (value <= plic->num_priorities) {
             plic->source_priority[irq] = value;
+            trace_sifive_plic_set_priority(irq, plic->source_priority[irq]);
             sifive_plic_update(plic);
         }
     } else if (addr_between(addr, plic->pending_base,
