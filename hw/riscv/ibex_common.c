@@ -80,10 +80,13 @@ DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
     return devices;
 }
 
-void ibex_link_devices(DeviceState **devices, const IbexDeviceDef *defs,
-                       unsigned count)
+void ibex_link_remote_devices(DeviceState **devices, const IbexDeviceDef *defs,
+                              unsigned count, DeviceState ***remotes)
 {
     /* Link devices */
+    if (!remotes) {
+        remotes = &devices;
+    }
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
         if (!dev) {
@@ -92,10 +95,14 @@ void ibex_link_devices(DeviceState **devices, const IbexDeviceDef *defs,
         const IbexDeviceLinkDef *link = defs[idx].link;
         if (link) {
             while (link->propname) {
-                DeviceState *target = devices[link->index];
+                unsigned rix = IBEX_DEVLINK_REMOTE(link->index);
+                unsigned dix = IBEX_DEVLINK_DEVICE(link->index);
+                DeviceState **tdevices = remotes[rix];
+                g_assert(tdevices);
+                DeviceState *target = tdevices[dix];
                 g_assert(target);
-                (void)object_property_set_link(OBJECT(dev), link->propname,
-                                               OBJECT(target), &error_fatal);
+                object_property_set_link(OBJECT(dev), link->propname,
+                                         OBJECT(target), &error_fatal);
                 link++;
             }
         }
@@ -184,8 +191,9 @@ void ibex_realize_devices(DeviceState **devices, BusState *bus,
     }
 }
 
-void ibex_map_devices(DeviceState **devices, MemoryRegion **mrs,
-                      const IbexDeviceDef *defs, unsigned count)
+void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
+                           const IbexDeviceDef *defs, unsigned count,
+                           uint32_t region_mask)
 {
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
@@ -203,11 +211,13 @@ void ibex_map_devices(DeviceState **devices, MemoryRegion **mrs,
                 unsigned mem = 0;
                 while (memmap->size) {
                     unsigned region = IBEX_MEMMAP_GET_REGIDX(memmap->base);
-                    MemoryRegion *mr = mrs[region];
-                    if (mr) {
-                        ibex_mmio_map_device(busdev, mr, mem,
-                                             IBEX_MEMMAP_GET_ADDRESS(
-                                                 memmap->base));
+                    if (region_mask & (1u << region)) {
+                        MemoryRegion *mr = mrs[region];
+                        if (mr) {
+                            ibex_mmio_map_device(busdev, mr, mem,
+                                                 IBEX_MEMMAP_GET_ADDRESS(
+                                                     memmap->base));
+                        }
                     }
                     mem++;
                     memmap++;
@@ -231,14 +241,122 @@ void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
         if (def->gpio) {
             const IbexGpioConnDef *conn = def->gpio;
             while (conn->out.num >= 0 && conn->in.num >= 0) {
-                g_assert(devices[conn->in.index]);
-                qemu_irq in_gpio =
-                    qdev_get_gpio_in_named(devices[conn->in.index],
-                                           conn->in.name, conn->in.num);
-
-                qdev_connect_gpio_out_named(dev, conn->out.name, conn->out.num,
-                                            in_gpio);
+                if (conn->in.index >= 0) {
+                    unsigned in_ix = IBEX_GPIO_GET_IDX(conn->in.index);
+                    g_assert(devices[in_ix]);
+                    qemu_irq in_gpio =
+                        qdev_get_gpio_in_named(devices[in_ix], conn->in.name,
+                                               conn->in.num);
+                    qdev_connect_gpio_out_named(dev, conn->out.name,
+                                                conn->out.num, in_gpio);
+                }
                 conn++;
+            }
+        }
+    }
+}
+
+/* List of exported GPIOs */
+typedef QLIST_HEAD(, NamedGPIOList) IbexXGPIOList;
+
+static NamedGPIOList *ibex_xgpio_list(IbexXGPIOList *xgpios, const char *name)
+{
+    /*
+     * qdev_get_named_gpio_list is not a public API.
+     * Use a clone implementation to manage a list of GPIOs
+     */
+    NamedGPIOList *ngl;
+
+    QLIST_FOREACH(ngl, xgpios, node) {
+        /* NULL is a valid and matchable name. */
+        if (g_strcmp0(name, ngl->name) == 0) {
+            return ngl;
+        }
+    }
+
+    ngl = g_malloc0(sizeof(*ngl));
+    ngl->name = g_strdup(name);
+    QLIST_INSERT_HEAD(xgpios, ngl, node);
+    return ngl;
+}
+
+void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
+                       const IbexDeviceDef *defs, unsigned count)
+{
+    /*
+     * Use IbexXGPIOList as a circomvoluted way to obtain IRQ information that
+     * may not be exposed through public APIs.
+     */
+    IbexXGPIOList pgpios = { 0 };
+
+    for (unsigned idx = 0; idx < count; idx++) {
+        DeviceState *dev = devices[idx];
+        if (!dev) {
+            continue;
+        }
+        const IbexDeviceDef *def = &defs[idx];
+
+        if (def->gpio_export) {
+            const IbexGpioExportDef *export = def->gpio_export;
+
+            /* loop once to compute how the number of GPIO for each GPIO list */
+            while (export->device.num >= 0 && export->parent.num >= 0) {
+                const char *pname = export->parent.name;
+                NamedGPIOList *pngl = ibex_xgpio_list(&pgpios, pname);
+
+                pngl->num_in = MAX(pngl->num_in, export->parent.num);
+
+                export ++;
+            }
+
+            NamedGPIOList *ngl;
+            QLIST_FOREACH(ngl, &pgpios, node) {
+                NamedGPIOList *pngl;
+                QLIST_FOREACH(pngl, &parent->gpios, node) {
+                    if (!g_strcmp0(ngl->name, pngl->name)) {
+                        qemu_log("%s: duplicate GPIO export list %s for %s\n",
+                                 __func__, ngl->name,
+                                 object_get_typename(OBJECT(parent)));
+                        g_assert_not_reached();
+                    }
+                }
+                if (ngl->num_in) {
+                    /* num_in is the max index, i.e. n-1 */
+                    ngl->num_in += 1u;
+                    ngl->in = g_new(qemu_irq, ngl->num_in);
+                }
+                QLIST_REMOVE(ngl, node);
+                QLIST_INSERT_HEAD(&parent->gpios, ngl, node);
+            }
+
+            /*
+             * Now the count of IRQ slots per IRQ name is known.
+             * Allocate the required slots to store IRQs
+             * Create alias from parent to devices
+             * Shallow copy device IRQ into parent's slots, as we do not want
+             * to alter the device IRQ list.
+             */
+            while (export->device.num >= 0 && export->parent.num >= 0) {
+                const char *defname = "unnamed-gpio-in";
+                const char *dname = export->device.name;
+                const char *dm = dname ? dname : defname;
+                char *dpname =
+                    g_strdup_printf("%s[%d]", dm, export->device.num);
+                const char *pname = export->parent.name;
+                const char *pm = pname ? pname : defname;
+                char *ppname =
+                    g_strdup_printf("%s[%d]", pm, export->parent.num);
+                qemu_irq devirq;
+                devirq = qdev_get_gpio_in_named(dev, export->device.name,
+                                                export->device.num);
+
+                ngl->in[export->parent.num] = devirq;
+                (void)object_ref(OBJECT(devirq));
+                object_property_add_alias(OBJECT(parent), ppname, OBJECT(dev),
+                                          dpname);
+                g_free(ppname);
+                g_free(dpname);
+                export ++;
             }
         }
     }

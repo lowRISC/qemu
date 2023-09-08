@@ -89,6 +89,27 @@ typedef struct {
     } in;
 } IbexGpioConnDef;
 
+/**
+ * Structure defining the export of a device GPIO connection to the parent level
+ */
+typedef struct {
+    /** Device GPIO */
+    struct {
+        /** Name of device GPIO array or NULL for unnamed */
+        const char *name;
+        /** Index of device GPIO */
+        int num;
+    } device;
+
+    /** Parent GPIO */
+    struct {
+        /** Name of parent GPIO array or NULL for unnamed */
+        const char *name;
+        /** Index of parent GPIO */
+        int num;
+    } parent;
+} IbexGpioExportDef;
+
 typedef struct {
     /** Name of the property to assign the linked device to */
     const char *propname;
@@ -135,6 +156,8 @@ struct IbexDeviceDef {
     const IbexDeviceLinkDef *link;
     /** Array of properties */
     const IbexDevicePropDef *prop;
+    /** Array of GPIO export */
+    const IbexGpioExportDef *gpio_export;
 };
 
 /*
@@ -146,9 +169,34 @@ struct IbexDeviceDef {
 #define IBEX_MEMMAP_REGIDX_MASK \
     ((IBEX_MEMMAP_REGIDX_COUNT)-1u) /* address are always word-aligned */
 #define IBEX_MEMMAP_MAKE_REG(_addr_, _flag_) \
-    ((_addr_) | (((uint32_t)_flag_)&IBEX_MEMMAP_REGIDX_MASK))
-#define IBEX_MEMMAP_GET_REGIDX(_addr_)  ((_addr_)&IBEX_MEMMAP_REGIDX_MASK)
-#define IBEX_MEMMAP_GET_ADDRESS(_addr_) ((_addr_) & ~IBEX_MEMMAP_REGIDX_MASK)
+    ((_addr_) | (((uint32_t)_flag_) & IBEX_MEMMAP_REGIDX_MASK))
+#define IBEX_MEMMAP_MAKE_REG_MASK(_flag_) (1u << (_flag_))
+#define IBEX_MEMMAP_DEFAULT_REG_MASK      (1u << 0u)
+#define IBEX_MEMMAP_GET_REGIDX(_addr_)    ((_addr_)&IBEX_MEMMAP_REGIDX_MASK)
+#define IBEX_MEMMAP_GET_ADDRESS(_addr_)   ((_addr_) & ~IBEX_MEMMAP_REGIDX_MASK)
+
+#define IBEX_GPIO_GRP_BITS       5u
+#define IBEX_GPIO_GRP_COUNT      (1u << (IBEX_GPIO_GRP_BITS))
+#define IBEX_GPIO_GRP_SHIFT      (32u - IBEX_GPIO_GRP_BITS)
+#define IBEX_GPIO_GRP_MASK       ((IBEX_GPIO_GRP_COUNT)-1u) << (IBEX_GPIO_GRP_SHIFT)
+#define IBEX_GPIO_IDX_MASK       (~(IBEX_GPIO_GRP_MASK))
+#define IBEX_GPIO_GET_IDX(_idx_) ((_idx_)&IBEX_GPIO_IDX_MASK)
+#define IBEX_GPIO_GET_GRP(_idx_) \
+    (((_idx_) & (IBEX_GPIO_GRP_MASK)) >> IBEX_GPIO_GRP_SHIFT)
+#define IBEX_GPIO_MAKE_GRPIDX(_grp_, _ix_) \
+    (((_grp_) << IBEX_GPIO_GRP_SHIFT) | ((_ix_)&IBEX_GPIO_IDX_MASK))
+
+#define IBEX_DEVLINK_RMT_BITS  8u
+#define IBEX_DEVLINK_RMT_COUNT (1u << (IBEX_DEVLINK_RMT_BITS))
+#define IBEX_DEVLINK_RMT_SHIFT (32u - IBEX_DEVLINK_RMT_BITS)
+#define IBEX_DEVLINK_RMT_MASK \
+    ((IBEX_DEVLINK_RMT_COUNT)-1u) << (IBEX_DEVLINK_RMT_SHIFT)
+#define IBEX_DEVLINK_IDX_MASK      (~(IBEX_DEVLINK_RMT_MASK))
+#define IBEX_DEVLINK_DEVICE(_idx_) ((_idx_)&IBEX_DEVLINK_IDX_MASK)
+#define IBEX_DEVLINK_REMOTE(_idx_) \
+    (((_idx_) & (IBEX_DEVLINK_RMT_MASK)) >> IBEX_DEVLINK_RMT_SHIFT)
+#define IBEX_DEVLINK_MAKE_RMTDEV(_par_, _ix_) \
+    (((_par_) << IBEX_DEVLINK_RMT_SHIFT) | ((_ix_)&IBEX_DEVLINK_IDX_MASK))
 
 /**
  * Create memory map entries, each arg is MemMapEntry definition
@@ -199,6 +247,19 @@ struct IbexDeviceDef {
     }
 
 /**
+ * Create device gpio export property entries, each arg is IbexGpioExportDef
+ * definition
+ */
+#define IBEXGPIOEXPORTDEFS(...) \
+    (const IbexGpioExportDef[]) \
+    { \
+        __VA_ARGS__, \
+        { \
+            .device = { .num = -1 }, .parent = { .num = -1 }, \
+        } \
+    }
+
+/**
  * Create a IbexGpioConnDef to connect two unnamed GPIOs
  */
 #define IBEX_GPIO(_irq_, _in_idx_, _num_) \
@@ -236,6 +297,27 @@ struct IbexDeviceDef {
     }
 
 /**
+ * Create a IbexGpioExportDef to export a GPIO
+ */
+#define IBEX_EXPORT_GPIO(_dname_, _dnum_, _pname_, _pnum_) \
+    { \
+        .device = { \
+            .name = (_dname_), \
+            .num = (_dnum_), \
+        }, \
+        .parent = { \
+            .name = (_pname_), \
+            .num = (_pnum_), \
+        }, \
+    }
+
+/**
+ * Create a IbexGpioExportDef to export a SysBus IRQ
+ */
+#define IBEX_EXPORT_SYSBUS_IRQ(_dnum_, _pname_, _pnum_) \
+    IBEX_EXPORT_GPIO(NULL, _dnum_, _pname_, _pnum_)
+
+/**
  * Create a boolean device property
  */
 #define IBEX_DEV_BOOL_PROP(_pname_, _b_) \
@@ -269,8 +351,10 @@ struct IbexDeviceDef {
 
 DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
                                   DeviceState *parent);
-void ibex_link_devices(DeviceState **devices, const IbexDeviceDef *defs,
-                       unsigned count);
+#define ibex_link_devices(_devs_, _defs_, _cnt_) \
+    ibex_link_remote_devices(_devs_, _defs_, _cnt_, NULL)
+void ibex_link_remote_devices(DeviceState **devices, const IbexDeviceDef *defs,
+                              unsigned count, DeviceState ***remotes);
 void ibex_define_device_props(DeviceState **devices, const IbexDeviceDef *defs,
                               unsigned count);
 void ibex_realize_system_devices(DeviceState **devices,
@@ -279,10 +363,16 @@ void ibex_realize_devices(DeviceState **devices, BusState *bus,
                           const IbexDeviceDef *defs, unsigned count);
 void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
                           unsigned count);
-void ibex_map_devices(DeviceState **devices, MemoryRegion **mrs,
-                      const IbexDeviceDef *defs, unsigned count);
+#define ibex_map_devices(_devs_, _mrs_, _defs_, _cnt_) \
+    ibex_map_devices_mask(_devs_, _mrs_, _defs_, _cnt_, \
+                          IBEX_MEMMAP_DEFAULT_REG_MASK);
+void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
+                           const IbexDeviceDef *defs, unsigned count,
+                           uint32_t region_mask);
 void ibex_configure_devices(DeviceState **devices, BusState *bus,
                             const IbexDeviceDef *defs, unsigned count);
+void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
+                       const IbexDeviceDef *defs, unsigned count);
 
 /**
  * Utility function to configure unimplemented device.
