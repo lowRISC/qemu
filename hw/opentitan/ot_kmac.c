@@ -1444,12 +1444,7 @@ void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
                          const OtKMACAppCfg *cfg, ot_kmac_response_fn fn,
                          void *opaque)
 {
-    if (app_idx >= s->num_app) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Ignoring connection to invalid app index %u\n",
-                      __func__, app_idx);
-        return;
-    }
+    g_assert(app_idx < s->num_app);
 
     OtKMACApp *app = &s->apps[app_idx];
 
@@ -1515,12 +1510,7 @@ static void ot_kmac_start_pending_app(OtKMACState *s)
 void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
                          const OtKMACAppReq *req)
 {
-    if (app_idx >= s->num_app) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Ignoring connection to invalid app index %u\n",
-                      __func__, app_idx);
-        return;
-    }
+    g_assert(app_idx < s->num_app);
 
     OtKMACApp *app = &s->apps[app_idx];
 
@@ -1609,8 +1599,11 @@ static void ot_kmac_realize(DeviceState *dev, Error **errp)
 {
     OtKMACState *s = OT_KMAC(dev);
 
+    /* make sure num-app property is set */
+    g_assert(s->num_app > 0);
+
     /* make sure we don't overflow pending_apps bitmask */
-    g_assert(s->num_app < 32);
+    g_assert(s->num_app <= 32);
 
     s->apps = g_new0(OtKMACApp, s->num_app);
 }
