@@ -297,6 +297,16 @@ REG32(RD_FIFO, 0x1b4u)
      BANK_INFO_PAGE_CFG_SCRAMBLE_EN_MASK | \
      BANK_INFO_PAGE_CFG_ECC_EN_MASK | \
      BANK_INFO_PAGE_CFG_HE_EN_MASK)
+#define MP_REGION_CFG_MASK \
+    (MP_REGION_CFG_RD_EN_MASK | \
+     MP_REGION_CFG_PROG_EN_MASK | \
+     MP_REGION_CFG_ERASE_EN_MASK | \
+     MP_REGION_CFG_SCRAMBLE_EN_MASK | \
+     MP_REGION_CFG_ECC_EN_MASK | \
+     MP_REGION_CFG_HE_EN_MASK)
+#define MP_REGION_MASK \
+     (MP_REGION_BASE_MASK | \
+      MP_REGION_SIZE_MASK)
 #define CONTROL_MASK \
     (R_CONTROL_START_MASK | \
      R_CONTROL_OP_MASK | \
@@ -1157,7 +1167,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_MP_REGION_CFG_7:
         if (ot_flash_regs_is_wr_enabled(s, reg - R_MP_REGION_CFG_0 +
                                                R_REGION_CFG_REGWEN_0)) {
-            val32 &= BANK_INFO_PAGE_CFG_MASK;
+            val32 &= MP_REGION_CFG_MASK;
             s->regs[reg] = val32;
         }
         break;
@@ -1171,12 +1181,12 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_MP_REGION_7:
         if (ot_flash_regs_is_wr_enabled(s, reg - R_MP_REGION_0 +
                                                R_REGION_CFG_REGWEN_0)) {
-            val32 &= BANK_INFO_PAGE_CFG_MASK;
+            val32 &= MP_REGION_MASK;
             s->regs[reg] = val32;
         }
         break;
     case R_DEFAULT_REGION:
-        val32 &= BANK_INFO_PAGE_CFG_MASK;
+        val32 &= MP_REGION_CFG_MASK;
         s->regs[reg] = val32;
         break;
     case R_BANK0_INFO0_PAGE_CFG_0:
