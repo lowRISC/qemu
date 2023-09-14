@@ -282,10 +282,11 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
 
     switch (irq) {
     case OT_PWRMGR_RST_REQ_SYSRST:
-        s->reset_req.req = OT_RSTMGR_RESET_SYSCTRL, s->reset_req.domain = false;
+        s->reset_req.req = OT_RSTMGR_RESET_SYSCTRL;
+        s->reset_req.domain = false;
         break;
     case OT_PWRMGR_RST_REQ_AON_TIMER:
-        s->reset_req.req = OT_RSTMGR_RESET_AON_TIMER,
+        s->reset_req.req = OT_RSTMGR_RESET_AON_TIMER;
         s->reset_req.domain = false;
         break;
     default:
