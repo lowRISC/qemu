@@ -515,14 +515,16 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
 {
     OtPwrMgrState *s = OT_PWRMGR(dev);
 
-    g_assert(s->num_rom);
+    if (s->num_rom) {
+        s->roms = g_new0(OtPwrMgrRomStatus, s->num_rom);
 
-    s->roms = g_new0(OtPwrMgrRomStatus, s->num_rom);
-
-    qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_good, OPENTITAN_PWRMGR_ROM_GOOD,
-                            s->num_rom);
-    qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_done, OPENTITAN_PWRMGR_ROM_DONE,
-                            s->num_rom);
+        qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_good,
+                                OPENTITAN_PWRMGR_ROM_GOOD, s->num_rom);
+        qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_done,
+                                OPENTITAN_PWRMGR_ROM_DONE, s->num_rom);
+    } else {
+        s->roms = NULL;
+    }
 }
 
 static void ot_pwrmgr_init(Object *obj)
