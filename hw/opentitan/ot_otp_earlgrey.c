@@ -124,7 +124,9 @@ REG32(SECRET1_DIGEST_0, 0x80u)
 REG32(SECRET1_DIGEST_1, 0x84u)
 REG32(SECRET2_DIGEST_0, 0x88u)
 REG32(SECRET2_DIGEST_1, 0x8cu)
-/* Software Config Window registers (at offset +0x1000) */
+/* Software Config Window registers (at offset SW_CFG_WINDOW = +0x1000) */
+REG32(SCRATCH, 0u)
+REG32(VENDOR_TEST_DIGEST, 56u)
 REG32(CREATOR_SW_CFG_AST_CFG, 64u)
 REG32(CREATOR_SW_CFG_AST_INIT_EN, 220u)
 REG32(CREATOR_SW_CFG_ROM_EXT_SKU, 224u)
@@ -175,7 +177,7 @@ REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_RMA, 1372u)
 REG32(OWNER_SW_CFG_ROM_WATCHDOG_BITE_THRESHOLD_CYCLES, 1376u)
 REG32(OWNER_SW_CFG_ROM_KEYMGR_ROM_EXT_MEAS_EN, 1380u)
 REG32(OWNER_SW_CFG_MANUF_STATE, 1384u)
-REG32(OWNER_SW_CFG_ROM_RSTMGR_INFO_EN_OFFSET, 1388u)
+REG32(OWNER_SW_CFG_ROM_RSTMGR_INFO_EN, 1388u)
 REG32(OWNER_SW_CFG_DIGEST, 1656u)
 REG32(DEVICE_ID, 1664u)
 REG32(MANUF_STATE, 1696u)
@@ -185,21 +187,23 @@ REG32(HW_CFG_ENABLE, 1728u)
     FIELD(HW_CFG_ENABLE, EN_ENTROPY_SRC_FW_READ, 16u, 8u)
     FIELD(HW_CFG_ENABLE, EN_ENTROPY_SRC_FW_OVER, 24u, 8u)
 REG32(HW_CFG_DIGEST, 1736u)
-REG32(SECRET0_TEST_UNLOCK_TOKEN, 1744u)
-REG32(SECRET0_TEST_EXIT_TOKEN, 1760u)
+REG32(TEST_UNLOCK_TOKEN, 1744u)
+REG32(TEST_EXIT_TOKEN, 1760u)
 REG32(SECRET0_DIGEST, 1776u)
-REG32(SECRET1_FLASH_ADDR_KEY_SEED, 1784u)
-REG32(SECRET1_FLASH_DATA_KEY_SEED, 1816u)
-REG32(SECRET1_SRAM_DATA_KEY_SEED, 1848u)
+REG32(FLASH_ADDR_KEY_SEED, 1784u)
+REG32(FLASH_DATA_KEY_SEED, 1816u)
+REG32(SRAM_DATA_KEY_SEED, 1848u)
 REG32(SECRET1_DIGEST, 1864u)
-REG32(SECRET2_RMA_TOKEN, 1872u)
-REG32(SECRET2_CREATOR_ROOT_KEY_SHARE0, 1888u)
-REG32(SECRET2_CREATOR_ROOT_KEY_SHARE1, 1920u)
+REG32(RMA_TOKEN, 1872u)
+REG32(CREATOR_ROOT_KEY_SHARE0, 1888u)
+REG32(CREATOR_ROOT_KEY_SHARE1, 1920u)
 REG32(SECRET2_DIGEST, 1952u)
 REG32(LC_TRANSITION_CNT, 1960u)
 REG32(LC_STATE, 2008u)
 /* clang-format on */
 
+#define SCRATCH_SIZE                                     56u
+#define VENDOR_TEST_DIGEST_SIZE                          8u
 #define CREATOR_SW_CFG_AST_CFG_SIZE                      156u
 #define CREATOR_SW_CFG_SIGVERIFY_RSA_KEY_EN_SIZE         8u
 #define CREATOR_SW_CFG_SIGVERIFY_SPX_KEY_EN_SIZE         8u
@@ -210,20 +214,19 @@ REG32(LC_STATE, 2008u)
 #define OWNER_SW_CFG_ROM_ALERT_TIMEOUT_CYCLES_SIZE       16u
 #define OWNER_SW_CFG_ROM_ALERT_PHASE_CYCLES_SIZE         64u
 #define OWNER_SW_CFG_DIGEST_SIZE                         8u
-#define OWNER_SW_CFG_DIGEST_SIZE                         8u
 #define DEVICE_ID_SIZE                                   32u
 #define MANUF_STATE_SIZE                                 32u
 #define HW_CFG_DIGEST_SIZE                               8u
-#define SECRET0_TEST_UNLOCK_TOKEN_SIZE                   16u
-#define SECRET0_TEST_EXIT_TOKEN_SIZE                     16u
+#define TEST_UNLOCK_TOKEN_SIZE                           16u
+#define TEST_EXIT_TOKEN_SIZE                             16u
 #define SECRET0_DIGEST_SIZE                              8u
-#define SECRET1_FLASH_ADDR_KEY_SEED_SIZE                 32u
-#define SECRET1_FLASH_DATA_KEY_SEED_SIZE                 32u
-#define SECRET1_SRAM_DATA_KEY_SEED_SIZE                  16u
+#define FLASH_ADDR_KEY_SEED_SIZE                         32u
+#define FLASH_DATA_KEY_SEED_SIZE                         32u
+#define SRAM_DATA_KEY_SEED_SIZE                          16u
 #define SECRET1_DIGEST_SIZE                              8u
-#define SECRET2_RMA_TOKEN_SIZE                           16u
-#define SECRET2_CREATOR_ROOT_KEY_SHARE0_SIZE             32u
-#define SECRET2_CREATOR_ROOT_KEY_SHARE1_SIZE             32u
+#define RMA_TOKEN_SIZE                                   16u
+#define CREATOR_ROOT_KEY_SHARE0_SIZE                     32u
+#define CREATOR_ROOT_KEY_SHARE1_SIZE                     32u
 #define SECRET2_DIGEST_SIZE                              8u
 #define LC_TRANSITION_CNT_SIZE                           48u
 #define LC_STATE_SIZE                                    40u
@@ -672,16 +675,9 @@ static bool ot_otp_eg_is_readable(OtOTPEgState *s, int partition, unsigned addr)
                                         READ_LOCK);
             break;
         case OTP_PART_SECRET0:
-            rdaccess =
-                ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_SECRET0) == 0u;
-            break;
         case OTP_PART_SECRET1:
-            rdaccess =
-                ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_SECRET1) == 0u;
-            break;
         case OTP_PART_SECRET2:
-            rdaccess =
-                ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_SECRET2) == 0u;
+            rdaccess = ot_otp_eg_swcfg_get_part_digest(s, partition) == 0u;
             break;
         default:
             break;
@@ -1033,21 +1029,21 @@ static const char *ot_otp_eg_swcfg_reg_name(unsigned swreg)
         CASE_SCALAR(OWNER_SW_CFG_ROM_WATCHDOG_BITE_THRESHOLD_CYCLES);
         CASE_SCALAR(OWNER_SW_CFG_ROM_KEYMGR_ROM_EXT_MEAS_EN);
         CASE_SCALAR(OWNER_SW_CFG_MANUF_STATE);
-        CASE_SCALAR(OWNER_SW_CFG_ROM_RSTMGR_INFO_EN_OFFSET);
+        CASE_SCALAR(OWNER_SW_CFG_ROM_RSTMGR_INFO_EN);
         CASE_RANGE(OWNER_SW_CFG_DIGEST);
         CASE_RANGE(DEVICE_ID);
         CASE_RANGE(MANUF_STATE);
         CASE_RANGE(HW_CFG_DIGEST);
-        CASE_RANGE(SECRET0_TEST_UNLOCK_TOKEN);
-        CASE_RANGE(SECRET0_TEST_EXIT_TOKEN);
+        CASE_RANGE(TEST_UNLOCK_TOKEN);
+        CASE_RANGE(TEST_EXIT_TOKEN);
         CASE_RANGE(SECRET0_DIGEST);
-        CASE_RANGE(SECRET1_FLASH_ADDR_KEY_SEED);
-        CASE_RANGE(SECRET1_FLASH_DATA_KEY_SEED);
-        CASE_RANGE(SECRET1_SRAM_DATA_KEY_SEED);
+        CASE_RANGE(FLASH_ADDR_KEY_SEED);
+        CASE_RANGE(FLASH_DATA_KEY_SEED);
+        CASE_RANGE(SRAM_DATA_KEY_SEED);
         CASE_RANGE(SECRET1_DIGEST);
-        CASE_RANGE(SECRET2_RMA_TOKEN);
-        CASE_RANGE(SECRET2_CREATOR_ROOT_KEY_SHARE0);
-        CASE_RANGE(SECRET2_CREATOR_ROOT_KEY_SHARE1);
+        CASE_RANGE(RMA_TOKEN);
+        CASE_RANGE(CREATOR_ROOT_KEY_SHARE0);
+        CASE_RANGE(CREATOR_ROOT_KEY_SHARE1);
         CASE_RANGE(SECRET2_DIGEST);
         CASE_RANGE(LC_TRANSITION_CNT);
         CASE_RANGE(LC_STATE);
