@@ -100,8 +100,9 @@ struct OtSramCtrlState {
     bool otp_ifetch;
     bool cfg_ifetch;
 
-    OtOTPState *otp_ctrl;
+    OtOTPState *otp_ctrl; /* optional */
     uint32_t size;
+    bool ifetch; /* only used when no otp_ctrl is defined */
 };
 
 static uint64_t ot_sram_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -203,6 +204,7 @@ static Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_LINK("otp_ctrl", OtSramCtrlState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_UINT32("size", OtSramCtrlState, size, 0u),
+    DEFINE_PROP_BOOL("ifetch", OtSramCtrlState, ifetch, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -226,9 +228,13 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
     s->regs[R_EXEC] = 0x9u;
     s->regs[R_CTRL_REGWEN] = 0x1u;
 
-    OtOTPStateClass *oc =
-        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
-    s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch;
+    if (s->otp_ctrl) {
+        OtOTPStateClass *oc =
+            OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+        s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch;
+    } else {
+        s->otp_ifetch = s->ifetch;
+    }
     s->cfg_ifetch = 0u; /* not used for now */
 }
 
@@ -236,7 +242,6 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 {
     OtSramCtrlState *s = OT_SRAM_CTRL(dev);
 
-    g_assert(s->otp_ctrl);
     g_assert(s->size);
 
     MemoryRegion *mr = &s->mem;
