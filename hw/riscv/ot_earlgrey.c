@@ -797,59 +797,49 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
     /* clang-format on */
 };
 
-#define PMP_CFG(_l_, _a_, _x_, _w_, _r_) \
-    ((uint8_t)(((_l_) << 7u) | ((_a_) << 3u) | ((_x_) << 2u) | ((_w_) << 1u) | \
-               ((_r_))))
-#define PMP_ADDR(_a_) ((_a_) >> 2u)
-
-#define MSECCFG(_rlb_, _mmwp_, _mml_) \
-    (((_rlb_) << 2u) | ((_mmwp_) << 1u) | ((_mml_)))
-
-enum { PMP_MODE_OFF, PMP_MODE_TOR, PMP_MODE_NA4, PMP_MODE_NAPOT };
-
 static const uint8_t ot_earlgrey_pmp_cfgs[] = {
     /* clang-format off */
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(1, PMP_MODE_NAPOT, 1, 0, 1), /* rgn 2  [ROM: LRX]      */
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(1, PMP_MODE_TOR, 0, 1, 1), /* rgn 11 [MMIO: LRW] */
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(1, PMP_MODE_NAPOT, 1, 1, 1), /* rgn 13 [DV_ROM: LRWX]  */
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0),
-    PMP_CFG(0, PMP_MODE_OFF, 0, 0, 0)
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(1, IBEX_PMP_MODE_NAPOT, 1, 0, 1), /* rgn 2  [ROM: LRX] */
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(1, IBEX_PMP_MODE_TOR, 0, 1, 1), /* rgn 11 [MMIO: LRW] */
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(1, IBEX_PMP_MODE_NAPOT, 1, 1, 1), /* rgn 13 [DV_ROM: LRWX] */
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
+    IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0)
     /* clang-format on */
 };
 
 static const uint32_t ot_earlgrey_pmp_addrs[] = {
     /* clang-format off */
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x000083fc), /* rgn 2 [ROM: base=0x0000_8000 size (2KiB)]      */
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x40000000), /* rgn 10 [MMIO: lo=0x4000_0000]                  */
-    PMP_ADDR(0x42010000), /* rgn 11 [MMIO: hi=0x4201_0000]                  */
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x000107fc), /* rgn 13 [DV_ROM: base=0x0001_0000 size (4KiB)]  */
-    PMP_ADDR(0x00000000),
-    PMP_ADDR(0x00000000)
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x000083fc), /* rgn 2 [ROM: base=0x0000_8000 sz (2KiB)] */
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x40000000), /* rgn 10 [MMIO: lo=0x4000_0000] */
+    IBEX_PMP_ADDR(0x42010000), /* rgn 11 [MMIO: hi=0x4201_0000] */
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x000107fc), /* rgn 13 [DV_ROM: base=0x0001_0000 sz (4KiB)] */
+    IBEX_PMP_ADDR(0x00000000),
+    IBEX_PMP_ADDR(0x00000000)
     /* clang-format on */
 };
 
-#define OT_EARLGREY_MSECCFG MSECCFG(1, 1, 0)
+#define OT_EARLGREY_MSECCFG IBEX_MSECCFG(1, 1, 0)
 
 enum OtEarlGreyBoardDevice {
     OT_EARLGREY_BOARD_DEV_SOC,
