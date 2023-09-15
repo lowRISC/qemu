@@ -789,6 +789,9 @@ static uint64_t ot_otp_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_DIRECT_ACCESS_RDATA_0:
     case R_DIRECT_ACCESS_RDATA_1:
     case R_DIRECT_ACCESS_ADDRESS:
+    case R_VENDOR_TEST_READ_LOCK:
+    case R_CREATOR_SW_CFG_READ_LOCK:
+    case R_OWNER_SW_CFG_READ_LOCK:
         val32 = s->regs[reg];
         break;
     case R_STATUS:
@@ -807,9 +810,6 @@ static uint64_t ot_otp_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_CHECK_TIMEOUT:
     case R_INTEGRITY_CHECK_PERIOD:
     case R_CONSISTENCY_CHECK_PERIOD:
-    case R_VENDOR_TEST_READ_LOCK:
-    case R_CREATOR_SW_CFG_READ_LOCK:
-    case R_OWNER_SW_CFG_READ_LOCK:
         /* TODO: not yet implemented */
         val32 = 0;
         break;
@@ -945,15 +945,18 @@ static void ot_otp_eg_regs_write(void *opaque, hwaddr addr, uint64_t value,
     case R_DIRECT_ACCESS_WDATA_1:
         s->regs[reg] = val32;
         break;
+    case R_VENDOR_TEST_READ_LOCK:
+    case R_CREATOR_SW_CFG_READ_LOCK:
+    case R_OWNER_SW_CFG_READ_LOCK:
+        val32 &= READ_LOCK_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_CHECK_TRIGGER_REGWEN:
     case R_CHECK_TRIGGER:
     case R_CHECK_REGWEN:
     case R_CHECK_TIMEOUT:
     case R_INTEGRITY_CHECK_PERIOD:
     case R_CONSISTENCY_CHECK_PERIOD:
-    case R_VENDOR_TEST_READ_LOCK:
-    case R_CREATOR_SW_CFG_READ_LOCK:
-    case R_OWNER_SW_CFG_READ_LOCK:
         /* TODO: not yet implemented */
         break;
     case R_STATUS:
