@@ -357,6 +357,23 @@ static const char CSR_NAMES[CSRS_COUNT][6u] = {
 };
 #undef CSR_NAME_ENTRY
 
+#define OTP_PART_VENDOR_TEST_OFFSET    0u
+#define OTP_PART_VENDOR_TEST_SIZE      64u
+#define OTP_PART_CREATOR_SW_CFG_OFFSET 64u
+#define OTP_PART_CREATOR_SW_CFG_SIZE   800u
+#define OTP_PART_OWNER_SW_CFG_OFFSET   864u
+#define OTP_PART_OWNER_SW_CFG_SIZE     800u
+#define OTP_PART_HW_CFG_OFFSET         1664u
+#define OTP_PART_HW_CFG_SIZE           80u
+#define OTP_PART_SECRET0_OFFSET        1744u
+#define OTP_PART_SECRET0_SIZE          40u
+#define OTP_PART_SECRET1_OFFSET        1784u
+#define OTP_PART_SECRET1_SIZE          88u
+#define OTP_PART_SECRET2_OFFSET        1872u
+#define OTP_PART_SECRET2_SIZE          88u
+#define OTP_PART_LIFE_CYCLE_OFFSET     1960u
+#define OTP_PART_LIFE_CYCLE_SIZE       88u
+
 typedef enum {
     OTP_PART_VENDOR_TEST,
     OTP_PART_CREATOR_SW_CFG,
@@ -442,9 +459,9 @@ struct OtOTPEgState {
 
 static const OtOTPPartition OtOTPPartitions[] = {
     [OTP_PART_VENDOR_TEST] = {
-        .size = 0x40u, /* 64 */
-        .offset = 0u,
-        .digest_offset = 56u,
+        .size = OTP_PART_VENDOR_TEST_SIZE,
+        .offset = OTP_PART_VENDOR_TEST_OFFSET,
+        .digest_offset = R_VENDOR_TEST_DIGEST,
         .hw_digest = false,
         .secret = false,
         .buffered = false,
@@ -454,9 +471,9 @@ static const OtOTPPartition OtOTPPartitions[] = {
         .wide = false,
     },
     [OTP_PART_CREATOR_SW_CFG] = {
-        .size = 0x320u, /* 800u */
-        .offset = 0x40u,
-        .digest_offset = 64u,
+        .size = OTP_PART_CREATOR_SW_CFG_SIZE,
+        .offset = OTP_PART_CREATOR_SW_CFG_OFFSET,
+        .digest_offset = R_CREATOR_SW_CFG_DIGEST,
         .hw_digest = false,
         .secret = false,
         .buffered = false,
@@ -466,9 +483,9 @@ static const OtOTPPartition OtOTPPartitions[] = {
         .wide = false,
     },
     [OTP_PART_OWNER_SW_CFG] = {
-        .size = 0x320u, /* 800u */
-        .offset = 0x360u,
-        .digest_offset = 864u,
+        .size = OTP_PART_OWNER_SW_CFG_SIZE,
+        .offset = OTP_PART_OWNER_SW_CFG_OFFSET,
+        .digest_offset = R_OWNER_SW_CFG_DIGEST,
         .hw_digest = false,
         .secret = false,
         .buffered = false,
@@ -478,9 +495,9 @@ static const OtOTPPartition OtOTPPartitions[] = {
         .wide = false,
     },
     [OTP_PART_HW_CFG] = {
-        .size = 80u,
-        .offset = 0x680u,
-        .digest_offset = 1736u,
+        .size = OTP_PART_HW_CFG_SIZE,
+        .offset = OTP_PART_HW_CFG_OFFSET,
+        .digest_offset = R_HW_CFG_DIGEST,
         .hw_digest = true,
         .secret = false,
         .buffered = true,
@@ -490,9 +507,9 @@ static const OtOTPPartition OtOTPPartitions[] = {
         .wide = false,
     },
     [OTP_PART_SECRET0] = {
-        .size = 40u,
-        .offset = 0x6d0u,
-        .digest_offset = 1776u,
+        .size = OTP_PART_SECRET0_SIZE,
+        .offset = OTP_PART_SECRET0_OFFSET,
+        .digest_offset = R_SECRET0_DIGEST,
         .hw_digest = true,
         .secret = true,
         .buffered = true,
@@ -502,9 +519,9 @@ static const OtOTPPartition OtOTPPartitions[] = {
         .wide = true,
     },
     [OTP_PART_SECRET1] = {
-        .size = 88u,
-        .offset = 0x6f8u,
-        .digest_offset = 1864u,
+        .size = OTP_PART_SECRET1_SIZE,
+        .offset = OTP_PART_SECRET1_OFFSET,
+        .digest_offset = R_SECRET1_DIGEST,
         .hw_digest = true,
         .secret = true,
         .buffered = true,
@@ -514,9 +531,9 @@ static const OtOTPPartition OtOTPPartitions[] = {
         .wide = true,
     },
     [OTP_PART_SECRET2] = {
-        .size = 88u,
-        .offset = 0x750u,
-        .digest_offset = 1952u,
+        .size = OTP_PART_SECRET2_SIZE,
+        .offset = OTP_PART_SECRET2_OFFSET,
+        .digest_offset = R_SECRET2_DIGEST,
         .hw_digest = true,
         .secret = true,
         .buffered = true,
@@ -526,8 +543,8 @@ static const OtOTPPartition OtOTPPartitions[] = {
         .wide = true,
     },
     [OTP_PART_LIFE_CYCLE] = {
-        .size = 88u,
-        .offset = 0x7a8u,
+        .size = OTP_PART_LIFE_CYCLE_SIZE,
+        .offset = OTP_PART_LIFE_CYCLE_OFFSET,
         .digest_offset = UINT16_MAX,
         .hw_digest = false,
         .secret = false,
