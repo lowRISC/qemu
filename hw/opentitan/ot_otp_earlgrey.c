@@ -5,6 +5,7 @@
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Loïc Lefort <loic@rivosinc.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -450,6 +451,7 @@ struct OtOTPEgState {
 
     OtOTPStorage otp;
     OtOTPHWCfg *hw_cfg;
+    OtOTPEntropyCfg *entropy_cfg;
 
     BlockBackend *blk; /* OTP backend */
 
@@ -1211,6 +1213,7 @@ static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
 {
     OtOTPStorage *otp = &s->otp;
     OtOTPHWCfg *hw_cfg = s->hw_cfg;
+    OtOTPEntropyCfg *entropy_cfg = s->entropy_cfg;
 
     memcpy(hw_cfg->device_id, &otp->data[R_DEVICE_ID],
            sizeof(*hw_cfg->device_id));
@@ -1219,11 +1222,12 @@ static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
     uint32_t cfg = otp->data[R_HW_CFG_ENABLE];
     hw_cfg->en_sram_ifetch =
         (uint8_t)FIELD_EX32(cfg, HW_CFG_ENABLE, EN_SRAM_IFETCH);
-    hw_cfg->en_csrng_sw_app_read =
+
+    entropy_cfg->en_csrng_sw_app_read =
         (uint8_t)FIELD_EX32(cfg, HW_CFG_ENABLE, EN_CSRNG_SW_APP_READ);
-    hw_cfg->en_entropy_src_fw_read =
+    entropy_cfg->en_entropy_src_fw_read =
         (uint8_t)FIELD_EX32(cfg, HW_CFG_ENABLE, EN_ENTROPY_SRC_FW_READ);
-    hw_cfg->en_entropy_src_fw_over =
+    entropy_cfg->en_entropy_src_fw_over =
         (uint8_t)FIELD_EX32(cfg, HW_CFG_ENABLE, EN_ENTROPY_SRC_FW_OVER);
 }
 
@@ -1244,7 +1248,15 @@ static const OtOTPHWCfg *ot_otp_eg_ctrl_get_hw_cfg(const OtOTPState *s)
 {
     OtOTPEgState *ds = OT_OTP_EARLGREY(s);
 
-    return (const OtOTPHWCfg *)ds->hw_cfg;
+    return ds->hw_cfg;
+}
+
+static const OtOTPEntropyCfg *
+ot_otp_eg_ctrl_get_entropy_cfg(const OtOTPState *s)
+{
+    OtOTPEgState *ds = OT_OTP_EARLGREY(s);
+
+    return ds->entropy_cfg;
 }
 
 static Property ot_otp_eg_properties[] = {
@@ -1426,6 +1438,7 @@ static void ot_otp_eg_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OPENTITAN_DEVICE_ALERT);
 
     s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
+    s->entropy_cfg = g_new0(OtOTPEntropyCfg, 1u);
     s->dai_delay = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_otp_eg_complete_dai, s);
 }
 
@@ -1442,6 +1455,7 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
 
     odc->get_lc_info = &ot_otp_eg_ctrl_get_lc_info;
     odc->get_hw_cfg = &ot_otp_eg_ctrl_get_hw_cfg;
+    odc->get_entropy_cfg = &ot_otp_eg_ctrl_get_entropy_cfg;
 }
 
 static const TypeInfo ot_otp_eg_info = {

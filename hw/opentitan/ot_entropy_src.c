@@ -1577,11 +1577,14 @@ static void ot_entropy_src_reset(DeviceState *dev)
 
     OtOTPStateClass *oc =
         OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
-    const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(s->otp_ctrl);
+    const OtOTPEntropyCfg *entropy_cfg = oc->get_entropy_cfg(s->otp_ctrl);
+    g_assert(entropy_cfg);
 
     s->obs_fifo_en = false;
-    s->otp_fw_read = hw_cfg->en_entropy_src_fw_read == OT_MULTIBITBOOL8_TRUE;
-    s->otp_fw_over = hw_cfg->en_entropy_src_fw_over == OT_MULTIBITBOOL8_TRUE;
+    s->otp_fw_read =
+        entropy_cfg->en_entropy_src_fw_read == OT_MULTIBITBOOL8_TRUE;
+    s->otp_fw_over =
+        entropy_cfg->en_entropy_src_fw_over == OT_MULTIBITBOOL8_TRUE;
 
     trace_ot_entropy_src_otp_conf(s->otp_fw_read, s->otp_fw_over);
 

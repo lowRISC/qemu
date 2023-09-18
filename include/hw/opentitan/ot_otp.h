@@ -3,6 +3,10 @@
  *
  * Copyright (c) 2023 Rivos, Inc.
  *
+ * Author(s):
+ *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Loïc Lefort <loic@rivosinc.com>
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -37,12 +41,16 @@ OBJECT_DECLARE_TYPE(OtOTPState, OtOTPStateClass, OT_OTP)
 typedef struct {
     uint32_t device_id[8u];
     uint32_t manuf_state[8u];
-    /* the following values are stored as OT_MULTIBITBOOL8 */
+    /* the following value is stored as OT_MULTIBITBOOL8 */
     uint8_t en_sram_ifetch;
+} OtOTPHWCfg;
+
+typedef struct {
+    /* the following values are stored as OT_MULTIBITBOOL8 */
     uint8_t en_csrng_sw_app_read;
     uint8_t en_entropy_src_fw_read;
     uint8_t en_entropy_src_fw_over;
-} OtOTPHWCfg;
+} OtOTPEntropyCfg;
 
 struct OtOTPState {
     SysBusDevice parent_obj;
@@ -54,14 +62,28 @@ struct OtOTPStateClass {
     /*
      * Provide OTP lifecycle information.
      *
+     * @s the OTP device
      * @lc_state if not NULL, updated with the encoded LifeCycle state
      * @tcount if not NULL, updated with the LifeCycle transition count
      */
     void (*get_lc_info)(const OtOTPState *s, uint32_t *lc_state,
                         unsigned *tcount);
 
-    /* Retrieve HW configuration partition data */
+    /*
+     * Retrieve HW configuration.
+     *
+     * @s the OTP device
+     * @return the HW config data (never NULL)
+     */
     const OtOTPHWCfg *(*get_hw_cfg)(const OtOTPState *s);
+
+    /*
+     * Retrieve entropy configuration.
+     *
+     * @s the OTP device
+     * @return the entropy config data (may be NULL if not present in OTP)
+     */
+    const OtOTPEntropyCfg *(*get_entropy_cfg)(const OtOTPState *s);
 };
 
 #endif /* HW_OPENTITAN_OT_OTP_H */
