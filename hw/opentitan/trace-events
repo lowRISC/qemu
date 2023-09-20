@@ -240,8 +240,8 @@ ot_spi_host_debug1(const char *msg, uint32_t val) "%s 0x%" PRIx32
 
 # ot_sram_ctrl.c
 
-ot_sram_ctrl_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
-ot_sram_ctrl_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_sram_ctrl_io_read_out(const char *sid, unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "%s: addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_sram_ctrl_io_write(const char *sid, unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "%s: addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
 # ot_timer.c
 
