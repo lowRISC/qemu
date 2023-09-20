@@ -297,9 +297,10 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
         const IbexDeviceDef *def = &defs[idx];
 
         if (def->gpio_export) {
-            const IbexGpioExportDef *export = def->gpio_export;
+            const IbexGpioExportDef *export;
 
             /* loop once to compute how the number of GPIO for each GPIO list */
+            export = def->gpio_export;
             while (export->device.num >= 0 && export->parent.num >= 0) {
                 const char *pname = export->parent.name;
                 NamedGPIOList *pngl = ibex_xgpio_list(&pgpios, pname);
@@ -309,8 +310,8 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
                 export ++;
             }
 
-            NamedGPIOList *ngl;
-            QLIST_FOREACH(ngl, &pgpios, node) {
+            NamedGPIOList *ngl, *ntmp;
+            QLIST_FOREACH_SAFE(ngl, &pgpios, node, ntmp) {
                 NamedGPIOList *pngl;
                 QLIST_FOREACH(pngl, &parent->gpios, node) {
                     if (!g_strcmp0(ngl->name, pngl->name)) {
@@ -336,6 +337,8 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
              * Shallow copy device IRQ into parent's slots, as we do not want
              * to alter the device IRQ list.
              */
+            export = def->gpio_export;
+            ngl = NULL;
             while (export->device.num >= 0 && export->parent.num >= 0) {
                 const char *defname = "unnamed-gpio-in";
                 const char *dname = export->device.name;
@@ -349,7 +352,17 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
                 qemu_irq devirq;
                 devirq = qdev_get_gpio_in_named(dev, export->device.name,
                                                 export->device.num);
-
+                if (!ngl || g_strcmp0(ngl->name, pname)) {
+                    ngl = NULL;
+                    NamedGPIOList *pngl;
+                    QLIST_FOREACH(pngl, &parent->gpios, node) {
+                        if (!g_strcmp0(pngl->name, pname)) {
+                            ngl = pngl;
+                            break;
+                        }
+                    }
+                }
+                assert(ngl);
                 ngl->in[export->parent.num] = devirq;
                 (void)object_ref(OBJECT(devirq));
                 object_property_add_alias(OBJECT(parent), ppname, OBJECT(dev),
