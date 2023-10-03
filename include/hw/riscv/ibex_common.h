@@ -139,6 +139,7 @@ typedef struct {
     };
 } IbexDevicePropDef;
 
+/* Device definition */
 struct IbexDeviceDef {
     /** Registered type of the device */
     const char *type;
@@ -159,6 +160,16 @@ struct IbexDeviceDef {
     /** Array of GPIO export */
     const IbexGpioExportDef *gpio_export;
 };
+
+/* Additional device mapping for external buses */
+typedef struct {
+    /** Registered type of the device */
+    const char *type;
+    /** Instance number, default to 0 */
+    int instance;
+    /** Array of memory map */
+    const MemMapEntry *memmap;
+} IbexDeviceMapDef;
 
 /*
  * Special memory address marked to flag a special MemMapEntry.
@@ -197,6 +208,13 @@ struct IbexDeviceDef {
     (((_idx_) & (IBEX_DEVLINK_RMT_MASK)) >> IBEX_DEVLINK_RMT_SHIFT)
 #define IBEX_DEVLINK_MAKE_RMTDEV(_par_, _ix_) \
     (((_par_) << IBEX_DEVLINK_RMT_SHIFT) | ((_ix_)&IBEX_DEVLINK_IDX_MASK))
+
+/* MemMapEntry that should be ignored (i.e. skipped, not mapped) */
+#define MEMMAPSKIP \
+    { \
+        .base = HWADDR_MAX, .size = HWADDR_MAX \
+    }
+#define SKIP_MEMMAP(_mmap_) ((_mmap_)->size == HWADDR_MAX)
 
 /**
  * Create memory map entries, each arg is MemMapEntry definition
@@ -243,6 +261,18 @@ struct IbexDeviceDef {
         __VA_ARGS__, \
         { \
             .propname = NULL \
+        } \
+    }
+
+/**
+ * Create device additional map entries, each arg is IbexDeviceMapDef definition
+ */
+#define IBEXDEVICEMAPDEFS(...) \
+    (const IbexDeviceMapDef[]) \
+    { \
+        __VA_ARGS__, \
+        { \
+            .type = NULL \
         } \
     }
 
@@ -369,11 +399,17 @@ void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
 void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
                            const IbexDeviceDef *defs, unsigned count,
                            uint32_t region_mask);
+void ibex_map_devices_ext_mask(DeviceState *dev, MemoryRegion **mrs,
+                               const IbexDeviceMapDef *defs, unsigned count,
+                               uint32_t region_mask);
 void ibex_configure_devices(DeviceState **devices, BusState *bus,
                             const IbexDeviceDef *defs, unsigned count);
 void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
                        const IbexDeviceDef *defs, unsigned count);
-
+void ibex_connect_soc_devices(DeviceState **soc_devices, DeviceState **devices,
+                              const IbexDeviceDef *defs, unsigned count);
+DeviceState *ibex_get_child_device(DeviceState *s, const char *typename,
+                                   unsigned instance);
 /**
  * Utility function to configure unimplemented device.
  * The Ibex device definition should have one defined memory entry, and an

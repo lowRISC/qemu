@@ -23,6 +23,7 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "qom/object.h"
 #include "cpu.h"
 #include "disas/disas.h"
 #include "elf.h"
@@ -227,6 +228,42 @@ void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
     }
 }
 
+void ibex_map_devices_ext_mask(DeviceState *dev, MemoryRegion **mrs,
+                               const IbexDeviceMapDef *defs, unsigned count,
+                               uint32_t region_mask)
+{
+    for (unsigned ix = 0; ix < count; ix++) {
+        const IbexDeviceMapDef *def = &defs[ix];
+        g_assert(def->type);
+        g_assert(def->memmap);
+
+        char *name = g_strdup_printf("%s[%u]", def->type, def->instance);
+        Object *child;
+        child = object_property_get_link(OBJECT(dev), name, &error_fatal);
+        SysBusDevice *sdev;
+        sdev = OBJECT_CHECK(SysBusDevice, child, TYPE_SYS_BUS_DEVICE);
+        g_free(name);
+
+        const MemMapEntry *memmap = def->memmap;
+        unsigned mem = 0;
+        while (memmap->size) {
+            if (!SKIP_MEMMAP(memmap)) {
+                unsigned region = IBEX_MEMMAP_GET_REGIDX(memmap->base);
+                if (region_mask & (1u << region)) {
+                    MemoryRegion *mr = mrs[region];
+                    if (mr) {
+                        ibex_mmio_map_device(sdev, mr, mem,
+                                             IBEX_MEMMAP_GET_ADDRESS(
+                                                 memmap->base));
+                    }
+                }
+            }
+            mem++;
+            memmap++;
+        }
+    }
+}
+
 void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
                           unsigned count)
 {
@@ -375,6 +412,47 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
     }
 }
 
+void ibex_connect_soc_devices(DeviceState **soc_devices, DeviceState **devices,
+                              const IbexDeviceDef *defs, unsigned count)
+{
+    for (unsigned ix = 0; ix < count; ix++) {
+        DeviceState *dev = devices[ix];
+        if (!dev) {
+            continue;
+        }
+        const IbexDeviceDef *def = &defs[ix];
+        if (!def->type || !def->gpio) {
+            continue;
+        }
+
+        const IbexGpioConnDef *conn = def->gpio;
+        while (conn->out.num >= 0 && conn->in.num >= 0) {
+            if (conn->in.index < 0) {
+                unsigned grp = IBEX_GPIO_GET_GRP(conn->in.num);
+                if (!(grp < count)) {
+                    g_assert_not_reached();
+                }
+                DeviceState *socdev = soc_devices[grp];
+                unsigned in_ix = IBEX_GPIO_GET_IDX(conn->in.num);
+                qemu_irq in_gpio =
+                    qdev_get_gpio_in_named(socdev, conn->in.name, in_ix);
+                if (!in_gpio) {
+                    error_setg(
+                        &error_fatal,
+                        "%s: cannot connect %s.%s.%u, no such IRQ '%s.%s.%u'\n",
+                        __func__, object_get_typename(OBJECT(dev)),
+                        conn->out.name, conn->out.num,
+                        object_get_typename(OBJECT(socdev)), conn->in.name,
+                        in_ix);
+                }
+                qdev_connect_gpio_out_named(dev, conn->out.name, conn->out.num,
+                                            in_gpio);
+            }
+            conn++;
+        }
+    }
+}
+
 void ibex_configure_devices(DeviceState **devices, BusState *bus,
                             const IbexDeviceDef *defs, unsigned count)
 {
@@ -382,6 +460,48 @@ void ibex_configure_devices(DeviceState **devices, BusState *bus,
     ibex_define_device_props(devices, defs, count);
     ibex_realize_devices(devices, bus, defs, count);
     ibex_connect_devices(devices, defs, count);
+}
+
+typedef struct {
+    Object *child;
+    const char *typename;
+    unsigned instance;
+} IbexChildMatch;
+
+static int ibex_match_device(Object *child, void *opaque)
+{
+    IbexChildMatch *match = opaque;
+
+    if (!object_dynamic_cast(child, match->typename)) {
+        return 0;
+    }
+    if (match->instance) {
+        match->instance -= 1;
+        return 0;
+    }
+
+    match->child = child;
+    return 1;
+}
+
+DeviceState *ibex_get_child_device(DeviceState *s, const char *typename,
+                                   unsigned instance)
+{
+    IbexChildMatch match = {
+        .child = NULL,
+        .typename = typename,
+        .instance = instance,
+    };
+
+    if (!object_child_foreach(OBJECT(s), &ibex_match_device, &match)) {
+        return NULL;
+    }
+
+    if (!object_dynamic_cast(match.child, TYPE_DEVICE)) {
+        return NULL;
+    }
+
+    return DEVICE(match.child);
 }
 
 void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
