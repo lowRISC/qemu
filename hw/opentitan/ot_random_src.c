@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Entropy Source device
+ * QEMU OpenTitan Random Source interface
  *
  * Copyright (c) 2023 Rivos, Inc.
  *
@@ -25,12 +25,18 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_ENTROPY_SRC_H
-#define HW_OPENTITAN_OT_ENTROPY_SRC_H
+#include "qemu/osdep.h"
+#include "hw/opentitan/ot_random_src.h"
 
-#include "qom/object.h"
+static const TypeInfo ot_random_src_info = {
+    .name = TYPE_OT_RANDOM_SRC_IF,
+    .parent = TYPE_INTERFACE,
+    .class_size = sizeof(OtRandomSrcIfClass),
+};
 
-#define TYPE_OT_ENTROPY_SRC "ot-entropy_src"
-OBJECT_DECLARE_SIMPLE_TYPE(OtEntropySrcState, OT_ENTROPY_SRC)
+static void ot_random_src_register_types(void)
+{
+    type_register_static(&ot_random_src_info);
+}
 
-#endif /* HW_OPENTITAN_OT_ENTROPY_SRC_H */
+type_init(ot_random_src_register_types)

@@ -30,6 +30,7 @@ config OT_EDN
     bool
 
 config OT_ENTROPY_SRC
+    select OT_RANDOM_SRC
     bool
 
 config OT_FLASH
@@ -72,6 +73,9 @@ config OT_PRNG
     bool
 
 config OT_PWRMGR
+    bool
+
+config OT_RANDOM_SRC
     bool
 
 config OT_ROM_CTRL

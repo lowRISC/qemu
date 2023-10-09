@@ -43,6 +43,7 @@
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_random_src.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -323,10 +324,13 @@ static const char *REG_NAMES[REGS_COUNT] = {
     ((NANOSECONDS_PER_SECOND * ES_FILL_BITS) / \
      ((uint64_t)OT_AST_RANDOM_4BIT_RATE * 4u))
 #define OT_ENTROPY_SRC_FILL_WORD_COUNT (ES_FILL_BITS / (8u * sizeof(uint32_t)))
-#define ES_WORD_COUNT                  (OT_ENTROPY_SRC_WORD_COUNT)
+#define ES_WORD_COUNT                  (OT_RANDOM_SRC_WORD_COUNT)
 #define ES_SWREAD_FIFO_WORD_COUNT      ES_WORD_COUNT
 #define ES_FINAL_FIFO_WORD_COUNT       (ES_WORD_COUNT * ES_FINAL_FIFO_DEPTH)
 #define ES_HEXBUF_SIZE                 ((8U * 2u + 1u) * ES_WORD_COUNT + 4u)
+
+/* see hw/ip/edn/doc/#multiple-edns-in-boot-time-request-mode */
+#define OT_ENTROPY_SRC_BOOT_DELAY_NS 2000000u /* 2 ms */
 
 enum {
     ALERT_RECOVERABLE,
@@ -453,19 +457,19 @@ static void ot_entropy_src_reset(DeviceState *dev);
 static void ot_entropy_src_update_alerts(OtEntropySrcState *s);
 static void ot_entropy_src_update_filler(OtEntropySrcState *s);
 
-/* -------------------------------------------------------------------------- */
-/* Public API */
-/* -------------------------------------------------------------------------- */
-
-int ot_entropy_src_get_generation(OtEntropySrcState *s)
+static int ot_entropy_src_get_generation(OtRandomSrcIf *dev)
 {
+    OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
+
     return ot_entropy_src_is_module_enabled(s) ? (int)s->gennum : 0;
 }
 
-int ot_entropy_src_get_random(OtEntropySrcState *s, int genid,
-                              uint64_t random[OT_ENTROPY_SRC_DWORD_COUNT],
-                              bool *fips)
+static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
+                                     uint64_t random[OT_RANDOM_SRC_DWORD_COUNT],
+                                     bool *fips)
 {
+    OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
+
     if (!ot_entropy_src_is_module_enabled(s)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: entropy_src is down\n", __func__);
         return -2;
@@ -838,19 +842,19 @@ static bool ot_entropy_src_can_hash(OtEntropySrcState *s)
 
 static void ot_entropy_src_perform_hash(OtEntropySrcState *s)
 {
-    uint32_t hash[OT_ENTROPY_SRC_WORD_COUNT];
+    uint32_t hash[OT_RANDOM_SRC_WORD_COUNT];
     int res;
     res = sha3_done(&s->sha3_state, (uint8_t *)hash);
     g_assert(res == CRYPT_OK);
     s->cond_word = 0;
 
     xtrace_ot_entropy_src_show_buffer("sha3 md", hash,
-                                      OT_ENTROPY_SRC_WORD_COUNT *
+                                      OT_RANDOM_SRC_WORD_COUNT *
                                           sizeof(uint32_t));
 
     ot_entropy_src_change_state(s, ENTROPY_SRC_SHA3_MSGDONE);
 
-    for (unsigned ix = 0; ix < OT_ENTROPY_SRC_WORD_COUNT; ix++) {
+    for (unsigned ix = 0; ix < OT_RANDOM_SRC_WORD_COUNT; ix++) {
         g_assert(!ot_fifo32_is_full(&s->final_fifo));
         ot_fifo32_push(&s->final_fifo, hash[ix]);
     }
@@ -881,7 +885,7 @@ ot_entropy_src_push_bypass_entropy(OtEntropySrcState *s, uint32_t word)
     s->packet_count += 1u;
 
     trace_ot_entropy_src_push_bypass_entropy(
-        ot_fifo32_num_used(&s->final_fifo) / OT_ENTROPY_SRC_WORD_COUNT);
+        ot_fifo32_num_used(&s->final_fifo) / OT_RANDOM_SRC_WORD_COUNT);
 
     return true;
 }
@@ -1626,6 +1630,10 @@ static void ot_entropy_src_class_init(ObjectClass *klass, void *data)
     dc->reset = &ot_entropy_src_reset;
     device_class_set_props(dc, ot_entropy_src_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
+    rdc->get_random_generation = &ot_entropy_src_get_generation;
+    rdc->get_random_values = &ot_entropy_src_get_random;
 }
 
 static const TypeInfo ot_entropy_src_info = {
@@ -1634,6 +1642,11 @@ static const TypeInfo ot_entropy_src_info = {
     .instance_size = sizeof(OtEntropySrcState),
     .instance_init = &ot_entropy_src_init,
     .class_init = &ot_entropy_src_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { TYPE_OT_RANDOM_SRC_IF },
+            {},
+        },
 };
 
 static void ot_entropy_src_register_types(void)

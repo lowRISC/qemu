@@ -661,7 +661,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 176)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("entropy_src", ENTROPY_SRC),
+            OT_EARLGREY_SOC_DEVLINK("random_src", ENTROPY_SRC),
             OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
     },
