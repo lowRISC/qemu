@@ -35,7 +35,7 @@
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert_earlgrey.h"
 #include "hw/opentitan/ot_aon_timer.h"
-#include "hw/opentitan/ot_ast.h"
+#include "hw/opentitan/ot_ast_earlgrey.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
@@ -536,7 +536,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         ),
     },
     [OT_EARLGREY_SOC_DEV_AST] = {
-        .type = TYPE_OT_AST,
+        .type = TYPE_OT_AST_EARLGREY,
         .memmap = MEMMAPENTRIES(
             { 0x40480000u, 0x400u }
         ),

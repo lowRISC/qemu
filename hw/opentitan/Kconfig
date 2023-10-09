@@ -14,7 +14,7 @@ config OT_ALERT_EARLGREY
 config OT_AON_TIMER
     bool
 
-config OT_AST
+config OT_AST_EARLGREY
     bool
 
 config OT_CLKMGR

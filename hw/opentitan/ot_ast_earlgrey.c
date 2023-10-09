@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Analog Sensor Top device
+ * QEMU OpenTitan EarlGrey Analog Sensor Top device
  *
  * Copyright (c) 2023 Rivos, Inc.
  *
@@ -34,7 +34,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
-#include "hw/opentitan/ot_ast.h"
+#include "hw/opentitan/ot_ast_earlgrey.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -130,7 +130,7 @@ static const char REGB_NAMES[REGSB_COUNT][6U] = {
 };
 #undef REG_NAME_ENTRY
 
-struct OtASTState {
+struct OtASTEarlGreyState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
@@ -143,7 +143,7 @@ struct OtASTState {
 /* Public API */
 /* -------------------------------------------------------------------------- */
 
-void ot_ast_getrandom(void *buf, size_t len)
+void ot_ast_eg_getrandom(void *buf, size_t len)
 {
     qemu_guest_getrandom_nofail(buf, len);
 }
@@ -152,9 +152,10 @@ void ot_ast_getrandom(void *buf, size_t len)
 /* Private implementation */
 /* -------------------------------------------------------------------------- */
 
-static uint64_t ot_ast_regs_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_ast_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
-    OtASTState *s = opaque;
+    OtASTEarlGreyState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -216,22 +217,23 @@ static uint64_t ot_ast_regs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint64_t pc = ibex_get_current_pc();
-    trace_ot_ast_io_read_out((unsigned)addr, REG_NAME(reg), (uint64_t)val32,
-                             pc);
+    trace_ot_ast_eg_io_read_out((unsigned)addr, REG_NAME(reg), (uint64_t)val32,
+                                pc);
 
     return (uint64_t)val32;
 };
 
-static void ot_ast_regs_write(void *opaque, hwaddr addr, uint64_t val64,
-                              unsigned size)
+static void ot_ast_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
+                                 unsigned size)
 {
-    OtASTState *s = opaque;
+    OtASTEarlGreyState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
 
     uint64_t pc = ibex_get_current_pc();
-    trace_ot_ast_io_write((unsigned)addr, REG_NAME(reg), val64, pc);
+    trace_ot_ast_eg_io_write((unsigned)addr, REG_NAME(reg), val64, pc);
 
     switch (reg) {
     case R_REGA0:
@@ -289,21 +291,21 @@ static void ot_ast_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_ast_properties[] = {
+static Property ot_ast_eg_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps ot_ast_regs_ops = {
-    .read = &ot_ast_regs_read,
-    .write = &ot_ast_regs_write,
+static const MemoryRegionOps ot_ast_eg_regs_ops = {
+    .read = &ot_ast_eg_regs_read,
+    .write = &ot_ast_eg_regs_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
 
-static void ot_ast_reset(DeviceState *dev)
+static void ot_ast_eg_reset(DeviceState *dev)
 {
-    OtASTState *s = OT_AST(dev);
+    OtASTEarlGreyState *s = OT_AST_EARLGREY(dev);
 
     memset(s->regsa, 0, REGSA_SIZE);
     memset(s->regsb, 0, REGSB_SIZE);
@@ -348,38 +350,39 @@ static void ot_ast_reset(DeviceState *dev)
     s->regsa[R_REGAL] = 0x26u;
 }
 
-static void ot_ast_init(Object *obj)
+static void ot_ast_eg_init(Object *obj)
 {
-    OtASTState *s = OT_AST(obj);
+    OtASTEarlGreyState *s = OT_AST_EARLGREY(obj);
 
-    memory_region_init_io(&s->mmio, obj, &ot_ast_regs_ops, s, TYPE_OT_AST,
-                          REGS_SIZE);
+    memory_region_init_io(&s->mmio, obj, &ot_ast_eg_regs_ops, s,
+                          TYPE_OT_AST_EARLGREY, REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regsa = g_new0(uint32_t, REGSA_COUNT);
     s->regsb = g_new0(uint32_t, REGSB_COUNT);
 }
 
-static void ot_ast_class_init(ObjectClass *klass, void *data)
+static void ot_ast_eg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
-    dc->reset = &ot_ast_reset;
-    device_class_set_props(dc, ot_ast_properties);
+    dc->reset = &ot_ast_eg_reset;
+    device_class_set_props(dc, ot_ast_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
-static const TypeInfo ot_ast_info = {
-    .name = TYPE_OT_AST,
+static const TypeInfo ot_ast_eg_info = {
+    .name = TYPE_OT_AST_EARLGREY,
     .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(OtASTState),
-    .instance_init = &ot_ast_init,
-    .class_init = &ot_ast_class_init,
+    .instance_size = sizeof(OtASTEarlGreyState),
+    .instance_init = &ot_ast_eg_init,
+    .class_init = &ot_ast_eg_class_init,
 };
 
-static void ot_ast_register_types(void)
+static void ot_ast_eg_register_types(void)
 {
-    type_register_static(&ot_ast_info);
+    type_register_static(&ot_ast_eg_info);
 }
 
-type_init(ot_ast_register_types)
+type_init(ot_ast_eg_register_types)

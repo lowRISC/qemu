@@ -38,7 +38,7 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
-#include "hw/opentitan/ot_ast.h"
+#include "hw/opentitan/ot_ast_earlgrey.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_fifo32.h"
@@ -322,7 +322,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define ES_FINAL_FIFO_DEPTH 4u
 #define ES_FILL_RATE_NS \
     ((NANOSECONDS_PER_SECOND * ES_FILL_BITS) / \
-     ((uint64_t)OT_AST_RANDOM_4BIT_RATE * 4u))
+     ((uint64_t)OT_AST_EARLGREY_RANDOM_4BIT_RATE * 4u))
 #define OT_ENTROPY_SRC_FILL_WORD_COUNT (ES_FILL_BITS / (8u * sizeof(uint32_t)))
 #define ES_WORD_COUNT                  (OT_RANDOM_SRC_WORD_COUNT)
 #define ES_SWREAD_FIFO_WORD_COUNT      ES_WORD_COUNT
@@ -386,7 +386,7 @@ struct OtEntropySrcState {
     bool otp_fw_read;
     bool otp_fw_over;
 
-    OtASTState *ast;
+    OtASTEarlGreyState *ast;
     OtOTPState *otp_ctrl;
 };
 
@@ -987,7 +987,7 @@ static bool ot_entropy_src_fill_noise(OtEntropySrcState *s)
 
     uint32_t buffer[OT_ENTROPY_SRC_FILL_WORD_COUNT];
     /* synchronous read */
-    ot_ast_getrandom(buffer, sizeof(buffer));
+    ot_ast_eg_getrandom(buffer, sizeof(buffer));
 
     /* push the whole entropy buffer into the input FIFO */
     unsigned pos = 0;
@@ -1515,7 +1515,8 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_entropy_src_properties[] = {
-    DEFINE_PROP_LINK("ast", OtEntropySrcState, ast, TYPE_OT_AST, OtASTState *),
+    DEFINE_PROP_LINK("ast", OtEntropySrcState, ast, TYPE_OT_AST_EARLGREY,
+                     OtASTEarlGreyState *),
     DEFINE_PROP_LINK("otp_ctrl", OtEntropySrcState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_END_OF_LIST(),

@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Analog Sensor Top device
+ * QEMU OpenTitan EarlGrey Analog Sensor Top device
  *
  * Copyright (c) 2023 Rivos, Inc.
  *
@@ -25,16 +25,16 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_AST_H
-#define HW_OPENTITAN_OT_AST_H
+#ifndef HW_OPENTITAN_OT_AST_EARLGREY_H
+#define HW_OPENTITAN_OT_AST_EARLGREY_H
 
 #include "qom/object.h"
 
-#define TYPE_OT_AST "ot-ast"
-OBJECT_DECLARE_SIMPLE_TYPE(OtASTState, OT_AST)
+#define TYPE_OT_AST_EARLGREY "ot-ast-earlgrey"
+OBJECT_DECLARE_SIMPLE_TYPE(OtASTEarlGreyState, OT_AST_EARLGREY)
 
-#define OT_AST_RANDOM_4BIT_RATE 50000u /* 50 kHz */
+#define OT_AST_EARLGREY_RANDOM_4BIT_RATE 50000u /* 50 kHz */
 
-void ot_ast_getrandom(void *buf, size_t len);
+void ot_ast_eg_getrandom(void *buf, size_t len);
 
-#endif /* HW_OPENTITAN_OT_AST_H */
+#endif /* HW_OPENTITAN_OT_AST_EARLGREY_H */

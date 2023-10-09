@@ -16,7 +16,7 @@ config OT_EARLGREY
     select OT_AES
     select OT_ALERT_EARLGREY
     select OT_AON_TIMER
-    select OT_AST
+    select OT_AST_EARLGREY
     select OT_CLKMGR
     select OT_CSRNG
     select OT_EDN

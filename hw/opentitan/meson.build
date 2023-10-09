@@ -8,7 +8,7 @@ softmmu_ss.add(when: 'CONFIG_OT_AES', if_true: [files('ot_aes.c'), libtomcrypt_d
 softmmu_ss.add(when: 'CONFIG_OT_ALERT', if_true: files('ot_alert.c'))
 softmmu_ss.add(when: 'CONFIG_OT_ALERT_EARLGREY', if_true: files('ot_alert_earlgrey.c'))
 softmmu_ss.add(when: 'CONFIG_OT_AON_TIMER', if_true: files('ot_aon_timer.c'))
-softmmu_ss.add(when: 'CONFIG_OT_AST', if_true: files('ot_ast.c'))
+softmmu_ss.add(when: 'CONFIG_OT_AST_EARLGREY', if_true: files('ot_ast_earlgrey.c'))
 softmmu_ss.add(when: 'CONFIG_OT_CLKMGR', if_true: files('ot_clkmgr.c'))
 softmmu_ss.add(when: 'CONFIG_OT_COMMON', if_true: files('ot_common.c'))
 softmmu_ss.add(when: 'CONFIG_OT_CSRNG', if_true: [files('ot_csrng.c'), libtomcrypt_dep])
