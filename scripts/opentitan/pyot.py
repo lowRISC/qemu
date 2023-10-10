@@ -368,6 +368,20 @@ class QEMUFileManager:
         """
         return self._keep_temp
 
+    def set_qemu_src_dir(self, path: str) -> None:
+        """Set the QEMU "source" directory.
+
+           :param path: the path to the QEMU source directory
+        """
+        self._env['QEMU_SRC_DIR'] = normpath(path)
+
+    def set_qemu_bin_dir(self, path: str) -> None:
+        """Set the QEMU executable directory.
+
+           :param path: the path to the QEMU binary directory
+        """
+        self._env['QEMU_BIN_DIR'] = normpath(path)
+
     def set_config_dir(self, path: str) -> None:
         """Assign the configuration directory.
 
@@ -657,9 +671,10 @@ class QEMUContextWorker:
             while self._log_q:
                 err, qline = self._log_q.popleft()
                 if err:
-                    if qline.find('info: ') > 0:
+                    if qline.find('info: ') > 0 or qline.find(' INFO ') > 0:
                         self._log.info(qline)
-                    elif qline.find('warning: ') > 0:
+                    elif qline.find('warning: ') > 0 \
+                            or qline.find(' WARNING ') > 0:
                         self._log.warning(qline)
                     else:
                         self._log.error(qline)
@@ -711,12 +726,15 @@ class QEMUContext:
     """
 
     def __init__(self, test_name: str, qfm: QEMUFileManager,
-                 qemu_cmd: List[str], context: Dict[str, List[str]]):
+                 qemu_cmd: List[str], context: Dict[str, List[str]],
+                 env: Optional[Dict[str, str]] = None):
+        #pylint: disable=too-many-arguments
         self._clog = getLogger('pyot.ctx')
         self._test_name = test_name
         self._qfm = qfm
         self._qemu_cmd = qemu_cmd
         self._context = context
+        self._env = env or {}
         self._workers: List[Popen] = []
 
     def execute(self, ctx_name: str, code: int = 0) -> None:
@@ -735,19 +753,20 @@ class QEMUContext:
         #pylint: disable=too-many-nested-blocks
         ctx = self._context.get(ctx_name, None)
         if ctx_name == 'post' and code:
-            self._clog.info('Discard execution of "%s" commands after failure '
-                            'of "%s"', ctx_name, self._test_name)
+            self._clog.info("Discard execution of '%s' commands after failure "
+                            "of '%s'", ctx_name, self._test_name)
             return
         env = dict(environ)
+        env.update(self._env)
         if self._qemu_cmd:
             env['PATH'] = ':'.join((env['PATH'], dirname(self._qemu_cmd[0])))
         if ctx:
             for cmd in ctx:
                 if cmd.endswith('&'):
                     if ctx_name == 'post':
-                        raise ValueError(f'Cannot execute background command '
-                                         f'in {ctx_name} context for '
-                                         f'"{self._test_name}"')
+                        raise ValueError(f"Cannot execute background command "
+                                         f"in [{ctx_name}] context for "
+                                         f"'{self._test_name}'")
                     cmd = cmd[:-1].rstrip()
                     self._clog.debug('Execute "%s" in backgrorund for [%s] '
                                      'context', cmd, ctx_name)
@@ -776,9 +795,9 @@ class QEMUContext:
                             if line:
                                 logger(line)
                     if fail:
-                        self._log.error('Fail to execute "%s" command for "%s"',
-                                        cmd, self._test_name)
-                        raise ValueError(f'Cannot execute {ctx_name} command')
+                        self._clog.error("Fail to execute '%s' command for "
+                                         "'%s'", cmd, self._test_name)
+                        raise ValueError(f"Cannot execute [{ctx_name}] command")
         if ctx_name == 'post':
             self._qfm.delete_default_dir(self._test_name)
 
@@ -787,11 +806,11 @@ class QEMUContext:
 
            :return: True if any worker has failed
         """
-        for w in self._workers:
-            ret = w.exit_code()
+        for worker in self._workers:
+            ret = worker.exit_code()
             if not ret:
                 continue
-            self._clog.error("%s exited with %d", w.command, ret)
+            self._clog.error("%s exited with %d", worker.command, ret)
             return True
         return False
 
@@ -979,6 +998,7 @@ class QEMUExecuter:
                     a dictionary of generated temporary files
         """
         #pylint: disable=too-many-branches
+        #pylint: disable=too-many-locals
         #pylint: disable=too-many-statements
         if args.qemu is None:
             raise ValueError('QEMU path is not defined')
@@ -1187,6 +1207,7 @@ class QEMUExecuter:
         context = defaultdict(list)
         tests_cfg = self._config.get('tests', {})
         test_cfg = tests_cfg.get(test_name, {})
+        test_env = None
         if test_cfg:
             for ctx_name in ('pre', 'with', 'post'):
                 if ctx_name not in test_cfg:
@@ -1202,7 +1223,13 @@ class QEMUExecuter:
                     cmd = self._qfm.interpolate(cmd.strip())
                     cmd = self._qfm.interpolate_dirs(cmd, test_name)
                     context[ctx_name].append(cmd)
-        return QEMUContext(test_name, self._qfm, self._qemu_cmd, dict(context))
+            env = test_cfg.get('env')
+            if env:
+                if not isinstance(env, dict):
+                    raise ValueError('Invalid context environment')
+                test_env = {k: self._qfm.interpolate(v) for k, v in env.items()}
+        return QEMUContext(test_name, self._qfm, self._qemu_cmd, dict(context),
+                           test_env)
 
 
 def main():
@@ -1212,8 +1239,8 @@ def main():
     #pylint: disable=too-many-statements
     #pylint: disable=too-many-nested-blocks
     debug = True
-    qemu_path = normpath(joinpath(dirname(dirname(dirname(__file__))),
-                                  'build', 'qemu-system-riscv32'))
+    qemu_dir = normpath(joinpath(dirname(dirname(dirname(__file__)))))
+    qemu_path = normpath(joinpath(qemu_dir, 'build', 'qemu-system-riscv32'))
     if not isfile(qemu_path):
         qemu_path = None
     try:
@@ -1354,6 +1381,8 @@ def main():
         for name, val in defaults.items():
             if getattr(args, name) is None:
                 setattr(args, name, val)
+        qfm.set_qemu_src_dir(qemu_dir)
+        qfm.set_qemu_bin_dir(dirname(args.qemu))
         qexc = QEMUExecuter(qfm, json, args)
         try:
             qexc.build()

@@ -327,6 +327,23 @@ Sample config for running some non-OpenTitan tests:
         {
             timeout:  6
         }
+        mbxhost-test:
+        {
+            env:
+            {
+                PYTHONPATH: ${QEMU_SRC_DIR}/scripts/opentitan
+            }
+            opts:
+            [
+                -chardev socket,id=devproxy,host=localhost,port=8003,server=on,wait=off
+                -global ot-dev_proxy.chardev=devproxy
+            ]
+            with:
+            [
+                ${BASEDIR}/tools/mbxhost_test.py -vv -I 3 -P 3 -t
+            ]
+            timeout: 20
+        }
         spihost-test:
         {
             # This test needs a specific SPI flash image
@@ -375,9 +392,11 @@ Sample config for running some non-OpenTitan tests:
   Note that the resulting aliases are always uppercased.
 
   To use an alias, use the `${ALIAS}` syntax. Environment variables may also be used as aliases.
-  Two special variables are automatically defined:
+  Several special variables are automatically defined:
   * `${CONFIG}` refers to the path of the configuration file itself,
   * `${TESTDIR}` refers to the default test path (see `testdir` below).
+  * `${QEMU_SRC_DIR}` refers to the path to the QEMU source directory
+  * `${QEMU_BIN_DIR}` refers to the directory than contains the QEMU executable.
 
 * `testdir`
   This section may be used to define the default path where to look for tests to run.
@@ -441,8 +460,7 @@ Sample config for running some non-OpenTitan tests:
 
 ### Special test sections
 
-Each test section may have up to three special subsections that may be used to execute arbitrary
-commands:
+Each test section may have special subsections that may be used to execute arbitrary commands:
 
 * `pre` subsection contains commands to execute before QEMU is executed.
 
@@ -457,6 +475,9 @@ commands:
 
   * This section may be useful to perform some cleanup or post processing analysis once the QEMU
     session is over
+
+It is also possible to define an `env` section to define special environment variables that would be
+required by the commands defined in the previous subsections.
 
 Regular or 'synchronous' commands are only executed if all the previous commands have been
 successful. Moreover, commands in the `post` subsection are only executed if the QEMU session has
