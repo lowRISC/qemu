@@ -39,6 +39,7 @@ Virtual machine:
                         trace event definition file
   -i N, --icount N      virtual instruction counter with 2^N clock ticks per inst.
   -s, --singlestep      enable "single stepping" QEMU execution mode
+  -U, --muxserial       enable multiple virtual UARTs to be muxed into same host output channel
 
 Files:
   -r ELF, --rom ELF     ROM ELF file
@@ -102,6 +103,8 @@ This tool may be used in two ways, which can be combined:
      matches the expected FPGA-based lowRISC CPU.
   Note that this option slows down the execution of guest applications.
 * `-s` / `--singlestep` enable QEMU "single stepping" mode.
+* `-U` / `--muxserial` enable muxing QEMU VCP. This option is required when several virtual UARTs
+  are routed to the same host output channel.
 
 ### File options:
 

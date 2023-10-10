@@ -1051,6 +1051,7 @@ class QEMUExecuter:
         if 'icount' in args:
             if args.icount is not None:
                 qemu_args.extend(('-icount', f'{args.icount}'))
+        mux = f'mux={"on" if args.muxserial else "off"}'
         device = args.device
         devdesc = device.split(':')
         try:
@@ -1060,7 +1061,7 @@ class QEMUExecuter:
             tcpdev = (devdesc[0], port)
             qemu_args.extend(('-chardev',
                               f'socket,id=serial0,host={devdesc[0]},'
-                              f'port={port},server=on,wait=on'))
+                              f'port={port},{mux},server=on,wait=on'))
             qemu_args.extend(('-serial', 'chardev:serial0'))
         except TypeError as exc:
             raise ValueError('Invalid TCP serial device') from exc
@@ -1260,8 +1261,12 @@ def main():
                          help='virtual instruction counter with 2^N clock ticks'
                               ' per inst.')
         qvm.add_argument('-s', '--singlestep', action='store_true',
-                         default=False,
+                         default=None,
                          help='enable "single stepping" QEMU execution mode')
+        qvm.add_argument('-U', '--muxserial', action='store_true',
+                         default=None,
+                         help='enable multiple virtual UARTs to be muxed into '
+                              'same host output channel')
         files = argparser.add_argument_group(title='Files')
         files.add_argument('-r', '--rom', metavar='ELF', help='ROM file')
         files.add_argument('-O', '--otp-raw', metavar='RAW',
@@ -1314,10 +1319,16 @@ def main():
                 if not isinstance(aliases, dict):
                     argparser.error('Invalid aliases definitions')
                 qfm.define(aliases)
-            defaults = json.get('default', {})
+            jdefaults = json.get('default', {})
             jargs = []
-            for arg, val in defaults.items():
+            for arg, val in jdefaults.items():
+                is_bool = isinstance(val, bool)
+                if is_bool:
+                    if not val:
+                        continue
                 jargs.append(f'--{arg}' if len(arg) > 1 else f'-{arg}')
+                if is_bool:
+                    continue
                 # arg parser expects only string args, and substitute shell env.
                 val = qfm.interpolate(val)
                 jargs.append(val)
