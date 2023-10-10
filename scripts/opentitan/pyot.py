@@ -20,8 +20,8 @@ except ImportError:
     from json import load as jload
 from logging import (Formatter, StreamHandler, CRITICAL, DEBUG, INFO, ERROR,
                      WARNING, getLogger)
-from os import close, curdir, environ, isatty, linesep, pardir, sep, unlink
-from os.path import (basename, dirname, isdir, isfile, join as joinpath,
+from os import close, curdir, environ, getcwd, isatty, linesep, sep, unlink
+from os.path import (basename, dirname, isabs, isdir, isfile, join as joinpath,
                      normpath, relpath)
 from re import Match, compile as re_compile, sub as re_sub
 from shutil import rmtree
@@ -163,10 +163,12 @@ class QEMUWrapper:
         last_guest_error = ''
         #pylint: disable=too-many-nested-blocks
         try:
+            workdir = dirname(qemu_args[0])
             log.info('Executing QEMU as %s', ' '.join(qemu_args))
             #pylint: disable=consider-using-with
-            proc = Popen(qemu_args, bufsize=1, stdout=PIPE, stderr=PIPE,
-                         encoding='utf-8', errors='ignore', text=True)
+            proc = Popen(qemu_args, bufsize=1, cwd=workdir, stdout=PIPE,
+                         stderr=PIPE, encoding='utf-8', errors='ignore',
+                         text=True)
             try:
                 # ensure that QEMU starts and give some time for it to set up
                 # its VCP before attempting to connect to it
@@ -950,6 +952,13 @@ class QEMUExecuter:
         """
         return [item for sublist in lst for item in sublist]
 
+    @staticmethod
+    def abspath(path: str) -> str:
+        """Build absolute path"""
+        if isabs(path):
+            return path
+        return normpath(joinpath(getcwd(), path))
+
     def _cleanup_temp_files(self, storage: Dict[str, Set[str]]) -> None:
         if self._qfm.keep_temporary:
             return
@@ -981,8 +990,9 @@ class QEMUExecuter:
             'none'
         ]
         if args.rom:
+            rom_path = self.abspath(args.rom)
             qemu_args.extend(('-object',
-                              f'ot-rom-img,id=rom,file={args.rom},digest=fake'))
+                              f'ot-rom-img,id=rom,file={rom_path},digest=fake'))
         else:
             if all((args.exec, args.boot)):
                 raise ValueError('Cannot use both a ROM ext/app and a '
@@ -1004,15 +1014,17 @@ class QEMUExecuter:
             qemu_args.extend(('-drive',
                               f'if=pflash,file={otp_file},format=raw'))
         elif args.otp_raw:
+            otp_raw_path = self.abspath(args.otp_raw)
             qemu_args.extend(('-drive',
-                              f'if=pflash,file={args.otp_raw},format=raw'))
+                              f'if=pflash,file={otp_raw_path},format=raw'))
         if args.flash:
             if not isfile(args.flash):
                 raise ValueError(f'No such flash file: {args.flash}')
             if any((args.exec, args.boot)):
                 raise ValueError('Flash file argument is mutually exclusive with'
                                 ' bootloader or rom extension')
-            qemu_args.extend(('-drive', f'if=mtd,bus=1,file={args.flash},'
+            flash_path = self.abspath(args.flash)
+            qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_path},'
                                         f'format=raw'))
         elif any((args.exec, args.boot)):
             if args.exec and not isfile(args.exec):
@@ -1025,11 +1037,12 @@ class QEMUExecuter:
                 qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_file},'
                                  f'format=raw'))
         if args.log_file:
-            qemu_args.extend(('-D', args.log_file))
+            qemu_args.extend(('-D', self.abspath(args.log_file)))
         if args.trace:
             # use a FileType to let argparser validate presence and type
             args.trace.close()
-            qemu_args.extend(('-trace', f'events={args.trace.name}'))
+            qemu_args.extend(('-trace',
+                              f'events={self.abspath(args.trace.name)}'))
         if args.log:
             qemu_args.append('-d')
             qemu_args.append(','.join(args.log))
