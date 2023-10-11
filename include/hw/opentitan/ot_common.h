@@ -23,6 +23,7 @@
 #ifndef HW_OPENTITAN_OT_COMMON_H
 #define HW_OPENTITAN_OT_COMMON_H
 
+#include "chardev/char-fe.h"
 #include "exec/memory.h"
 #include "hw/core/cpu.h"
 
@@ -136,5 +137,11 @@ CPUState *ot_common_get_local_cpu(DeviceState *s);
  * @return the AddressSpace if found or NULL
  */
 AddressSpace *ot_common_get_local_address_space(DeviceState *s);
+
+/* ------------------------------------------------------------------------ */
+/* CharDev utilities */
+/* ------------------------------------------------------------------------ */
+
+void ot_common_ignore_chr_status_lines(CharBackend *chr);
 
 #endif /* HW_OPENTITAN_OT_COMMON_H */

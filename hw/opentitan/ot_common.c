@@ -84,3 +84,26 @@ AddressSpace *ot_common_get_local_address_space(DeviceState *s)
 
     return cpu ? cpu->as : NULL;
 }
+
+/*
+ * Unfortunately, there is no QEMU API to properly disable serial control lines
+ */
+#ifndef _WIN32
+#include <termios.h>
+#include "chardev/char-fd.h"
+#include "io/channel-file.h"
+#endif
+
+void ot_common_ignore_chr_status_lines(CharBackend *chr)
+{
+/* it might be useful to move this to char-serial.c */
+#ifndef _WIN32
+    FDChardev *cd = FD_CHARDEV(chr->chr);
+    QIOChannelFile *fioc = QIO_CHANNEL_FILE(cd->ioc_in);
+
+    struct termios tty = { 0 };
+    tcgetattr(fioc->fd, &tty);
+    tty.c_cflag |= CLOCAL; /* ignore modem status lines */
+    tcsetattr(fioc->fd, TCSANOW, &tty);
+#endif
+}

@@ -36,6 +36,7 @@
 #include "chardev/char-fe.h"
 #include "hw/hw.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_gpio.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -44,16 +45,6 @@
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
 #include "trace.h"
-
-/*
- * Unfortunately, there is no QEMU API to properly disable serial control lines
- */
-#ifndef _WIN32
-#include <termios.h>
-#include "chardev/char-fd.h"
-#include "io/channel-file.h"
-#endif
-
 
 #define PARAM_NUM_ALERTS 1u
 
@@ -406,27 +397,13 @@ static void ot_gpio_chr_receive(void *opaque, const uint8_t *buf, int size)
     }
 }
 
-static void ot_gpio_chr_ignore_status_lines(OtGpioState *s)
-{
-/* it might be useful to move this to char-serial.c */
-#ifndef _WIN32
-    FDChardev *cd = FD_CHARDEV(s->chr.chr);
-    QIOChannelFile *fioc = QIO_CHANNEL_FILE(cd->ioc_in);
-
-    struct termios tty = { 0 };
-    tcgetattr(fioc->fd, &tty);
-    tty.c_cflag |= CLOCAL; /* ignore modem status lines */
-    tcsetattr(fioc->fd, TCSANOW, &tty);
-#endif
-}
-
 static void ot_gpio_chr_event_hander(void *opaque, QEMUChrEvent event)
 {
     OtGpioState *s = opaque;
 
     if (event == CHR_EVENT_OPENED) {
         if (object_dynamic_cast(OBJECT(s->chr.chr), TYPE_CHARDEV_SERIAL)) {
-            ot_gpio_chr_ignore_status_lines(s);
+            ot_common_ignore_chr_status_lines(&s->chr);
         }
 
         ot_gpio_update_backend(s, true);
