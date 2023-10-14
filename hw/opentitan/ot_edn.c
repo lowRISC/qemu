@@ -970,6 +970,7 @@ static void ot_edn_csrng_ack_irq(void *opaque, int n, int level)
 {
     OtEDNState *s = opaque;
     OtEDNCSRNG *c = &s->rng;
+    (void)n;
 
     trace_ot_edn_csrng_ack(c->appid, STATE_NAME(s->state), level);
 
@@ -1038,6 +1039,7 @@ static void ot_edn_csrng_ack_irq(void *opaque, int n, int level)
 static uint64_t ot_edn_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtEDNState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -1105,6 +1107,7 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     OtEDNState *s = opaque;
     OtEDNCSRNG *c = &s->rng;
     uint32_t val32 = (uint32_t)val64;
+    (void)size;
 
     hwaddr reg = R32_OFF(addr);
 
@@ -1325,6 +1328,7 @@ static void ot_edn_init(Object *obj)
 static void ot_edn_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_edn_reset;
     device_class_set_props(dc, ot_edn_properties);

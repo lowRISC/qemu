@@ -112,7 +112,8 @@ static int64_t ot_timer_ticks_to_ns(OtTimerState *s, uint64_t ticks)
     if (ns > INT64_MAX) {
         return INT64_MAX;
     }
-    return ns;
+
+    return (int64_t)ns;
 }
 
 static uint64_t ot_timer_get_mtime(OtTimerState *s, int64_t now)
@@ -195,6 +196,7 @@ static void ot_timer_cb(void *opaque)
 static uint64_t ot_timer_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtTimerState *s = opaque;
+    (void)size;
     uint32_t val32 = 0;
 
     hwaddr reg = R32_OFF(addr);
@@ -245,6 +247,7 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
                            unsigned size)
 {
     OtTimerState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)value;
 
     hwaddr reg = R32_OFF(addr);
@@ -376,6 +379,7 @@ static void ot_timer_init(Object *obj)
 static void ot_timer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_timer_reset;
     device_class_set_props(dc, ot_timer_properties);

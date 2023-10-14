@@ -561,7 +561,7 @@ static inline size_t ot_kmac_get_key_length(OtKMACState *s)
 
 static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t keylen)
 {
-    for (size_t ix = 0; ix < keylen && ix < NUM_KEY_REGS * 4u; ix++) {
+    for (size_t ix = 0; ix < keylen && ix < (size_t)NUM_KEY_REGS * 4u; ix++) {
         uint8_t reg = ix >> 2u;
         uint8_t byteoffset = ix & 3u;
 
@@ -640,6 +640,7 @@ static void ot_kmac_process(void *opaque)
         case OT_KMAC_MODE_SHA3:
             sha3_done(&s->ltc_state, &s->keccak_state[0]);
             break;
+        /* NOLINTNEXTLINE */
         case OT_KMAC_MODE_SHAKE:
             sha3_shake_done(&s->ltc_state, &s->keccak_state[0],
                             ot_kmac_get_keccak_rate_bytes(cfg->strength));
@@ -855,7 +856,7 @@ static void ot_kmac_process_start(OtKMACState *s)
         switch (cfg->strength) {
         case 128u:
         case 256u:
-            sha3_shake_init(&s->ltc_state, cfg->strength);
+            sha3_shake_init(&s->ltc_state, (int)cfg->strength);
             break;
         default:
             /* should never happen: strength was already validated earlier */
@@ -867,9 +868,9 @@ static void ot_kmac_process_start(OtKMACState *s)
         switch (cfg->strength) {
         case 128u:
         case 256u: {
-            sha3_cshake_init(&s->ltc_state, cfg->strength, cfg->prefix.funcname,
-                             cfg->prefix.funcname_len, cfg->prefix.customstr,
-                             cfg->prefix.customstr_len);
+            sha3_cshake_init(&s->ltc_state, (int)cfg->strength,
+                             cfg->prefix.funcname, cfg->prefix.funcname_len,
+                             cfg->prefix.customstr, cfg->prefix.customstr_len);
             /* if KMAC mode is enabled, process key */
             if (cfg->mode == OT_KMAC_MODE_KMAC) {
                 uint8_t key[NUM_KEY_REGS * sizeof(uint32_t)];
@@ -1029,6 +1030,7 @@ static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
 static uint64_t ot_kmac_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtKMACState *s = OT_KMAC(opaque);
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -1152,6 +1154,7 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
                                unsigned size)
 {
     OtKMACState *s = OT_KMAC(opaque);
+    (void)size;
     uint32_t val32 = (uint32_t)value;
 
     hwaddr reg = R32_OFF(addr);
@@ -1391,12 +1394,19 @@ static uint64_t ot_kmac_state_read(void *opaque, hwaddr addr, unsigned size)
 static void ot_kmac_state_write(void *opaque, hwaddr addr, uint64_t value,
                                 unsigned size)
 {
+    (void)opaque;
+    (void)addr;
+    (void)value;
+    (void)size;
     /* on real hardware, writes to STATE are ignored */
     qemu_log_mask(LOG_GUEST_ERROR, "%s: STATE is read only\n", __func__);
 }
 
 static uint64_t ot_kmac_msgfifo_read(void *opaque, hwaddr addr, unsigned size)
 {
+    (void)opaque;
+    (void)addr;
+    (void)size;
     /* on real hardware, writes to FIFO will block. Let's just return 0. */
     qemu_log_mask(LOG_GUEST_ERROR, "%s: MSG_FIFO is write only\n", __func__);
     return 0;
@@ -1449,6 +1459,7 @@ void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
     OtKMACApp *app = &s->apps[app_idx];
 
     if (app->connected) {
+        /* NOLINTNEXTLINE */
         if (memcmp(&app->cfg, cfg, sizeof(OtKMACAppCfg)) == 0 &&
             fn == app->fn && opaque == app->opaque) {
             /*
@@ -1474,7 +1485,7 @@ void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
         app->cfg.strength = 128u;
     }
     if (app->cfg.mode == OT_KMAC_MODE_KMAC) {
-        if (memcmp(app->cfg.prefix.funcname, "KMAC", 4u) ||
+        if (memcmp(app->cfg.prefix.funcname, "KMAC", 4u) != 0 ||
             app->cfg.prefix.funcname_len != 4u) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: Invalid config for app index %u: invalid prefix"
@@ -1598,6 +1609,7 @@ static void ot_kmac_reset(DeviceState *dev)
 static void ot_kmac_realize(DeviceState *dev, Error **errp)
 {
     OtKMACState *s = OT_KMAC(dev);
+    (void)errp;
 
     /* make sure num-app property is set */
     g_assert(s->num_app > 0);
@@ -1649,6 +1661,7 @@ static void ot_kmac_init(Object *obj)
 static void ot_kmac_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->realize = &ot_kmac_realize;
     dc->reset = &ot_kmac_reset;

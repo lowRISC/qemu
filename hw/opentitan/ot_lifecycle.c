@@ -240,6 +240,7 @@ static bool ot_lifecycle_own_hw_mutex(OtLifeCycleState *s)
 
 static void ot_lifecycle_start_transition(OtLifeCycleState *s)
 {
+    (void)s;
     qemu_log_mask(LOG_UNIMP, "%s: Transition commands not implemented\n",
                   __func__);
 }
@@ -335,6 +336,7 @@ static bool ot_lifecycle_is_vendor_test_state(uint32_t state)
 static uint64_t ot_lifecycle_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtLifeCycleState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -409,6 +411,7 @@ static void ot_lifecycle_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                     unsigned size)
 {
     OtLifeCycleState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -444,7 +447,7 @@ static void ot_lifecycle_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_TRANSITION_CMD:
         val32 &= R_TRANSITION_CMD_START_MASK;
-        if (ot_lifecycle_own_hw_mutex(s)) {
+        if (val32 && ot_lifecycle_own_hw_mutex(s)) {
             ot_lifecycle_start_transition(s);
         }
         break;
@@ -555,6 +558,7 @@ static void ot_lifecycle_init(Object *obj)
 static void ot_lifecycle_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_lifecycle_reset;
     device_class_set_props(dc, ot_lifecycle_properties);

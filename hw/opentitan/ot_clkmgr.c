@@ -250,6 +250,7 @@ static uint32_t ot_clkmgr_get_clock_hints(OtClkMgrState *s)
 static uint64_t ot_clkmgr_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtClkMgrState *s = opaque;
+    (void)size;
 
     uint32_t val32;
 
@@ -315,6 +316,7 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
                             unsigned size)
 {
     OtClkMgrState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -596,6 +598,7 @@ static void ot_clkmgr_init(Object *obj)
 static void ot_clkmgr_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_clkmgr_reset;
     device_class_set_props(dc, ot_clkmgr_properties);

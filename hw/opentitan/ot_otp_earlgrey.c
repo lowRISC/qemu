@@ -559,6 +559,8 @@ static const OtOTPPartition OtOTPPartitions[] = {
 };
 
 /* clang-format on */
+
+/* NOLINTNEXTLINE */
 #include "ot_otp_earlgrey_lcvalues.c"
 
 #define LC_TRANSITION_COUNT_MAX 24u
@@ -768,17 +770,20 @@ static void ot_otp_eg_direct_read(OtOTPEgState *s)
 
 static void ot_otp_eg_direct_write(OtOTPEgState *s)
 {
+    (void)s;
     qemu_log_mask(LOG_UNIMP, "%s: OTP write is not supported\n", __func__);
 }
 
 static void ot_otp_eg_direct_digest(OtOTPEgState *s)
 {
+    (void)s;
     qemu_log_mask(LOG_UNIMP, "%s: OTP change is not supported\n", __func__);
 }
 
 static uint64_t ot_otp_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtOTPEgState *s = OT_OTP_EARLGREY(opaque);
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -803,6 +808,7 @@ static uint64_t ot_otp_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 =
             FIELD_DP32(0, DIRECT_ACCESS_REGWEN, REGWEN, (uint32_t)!s->dai_busy);
         break;
+    /* NOLINTNEXTLINE */
     case R_DIRECT_ACCESS_CMD:
         val32 = 0; /* R0W1C */
         break;
@@ -901,6 +907,7 @@ static void ot_otp_eg_regs_write(void *opaque, hwaddr addr, uint64_t value,
                                  unsigned size)
 {
     OtOTPEgState *s = OT_OTP_EARLGREY(opaque);
+    (void)size;
     uint32_t val32 = (uint32_t)value;
 
     hwaddr reg = R32_OFF(addr);
@@ -1128,6 +1135,8 @@ static void ot_otp_eg_swcfg_write(void *opaque, hwaddr addr, uint64_t value,
 
 static uint64_t ot_otp_eg_csrs_read(void *opaque, hwaddr addr, unsigned size)
 {
+    (void)opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -1159,6 +1168,8 @@ static uint64_t ot_otp_eg_csrs_read(void *opaque, hwaddr addr, unsigned size)
 static void ot_otp_eg_csrs_write(void *opaque, hwaddr addr, uint64_t value,
                                  unsigned size)
 {
+    (void)opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)value;
 
     hwaddr reg = R32_OFF(addr);
@@ -1364,7 +1375,7 @@ static void ot_otp_eg_load(OtOTPEgState *s, Error **errp)
                         (blk_supports_write_perm(s->blk) ? BLK_PERM_WRITE : 0);
         (void)blk_set_perm(s->blk, perm, perm, errp);
 
-        int rc = blk_pread(s->blk, 0, otp_size, otp->storage, 0);
+        int rc = blk_pread(s->blk, 0, (int64_t)otp_size, otp->storage, 0);
         if (rc < 0) {
             error_setg(errp, "failed to read the initial OTP content: %d", rc);
             return;
@@ -1372,7 +1383,7 @@ static void ot_otp_eg_load(OtOTPEgState *s, Error **errp)
 
         const struct otp_header *otp_hdr = (const struct otp_header *)base;
 
-        if (memcmp(otp_hdr->magic, "vOTP", sizeof(otp_hdr->magic))) {
+        if (memcmp(otp_hdr->magic, "vOTP", sizeof(otp_hdr->magic)) != 0) {
             error_setg(errp, "OTP file is not a valid OTP backend");
             return;
         }
@@ -1407,6 +1418,7 @@ static void ot_otp_eg_load(OtOTPEgState *s, Error **errp)
 static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
 {
     OtOTPEgState *s = OT_OTP_EARLGREY(dev);
+    (void)errp;
 
     ot_otp_eg_load(s, &error_fatal);
 }
@@ -1445,6 +1457,7 @@ static void ot_otp_eg_init(Object *obj)
 static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_otp_eg_reset;
     dc->realize = &ot_otp_eg_realize;

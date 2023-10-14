@@ -118,23 +118,23 @@ struct OtRomCtrlClass {
 struct OtRomCtrlState {
     SysBusDevice parent_obj;
 
-    IbexIRQ pwrmgr_good;
-    IbexIRQ pwrmgr_done;
-
     MemoryRegion mem;
     MemoryRegion mmio;
+    IbexIRQ pwrmgr_good;
+    IbexIRQ pwrmgr_done;
     IbexIRQ alert;
 
     uint32_t regs[REGS_COUNT];
 
-    bool first_reset;
-    bool fake_digest;
     hwaddr digest_offset;
 
-    char *rom_id;
     uint32_t size;
     OtKMACState *kmac;
+    char *rom_id;
     uint8_t kmac_app;
+
+    bool first_reset;
+    bool fake_digest;
 };
 
 static void ot_rom_ctrl_load_rom(OtRomCtrlState *s)
@@ -202,6 +202,7 @@ static void ot_rom_ctrl_compare_and_notify(OtRomCtrlState *s)
 static uint64_t ot_rom_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtRomCtrlState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -250,6 +251,7 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                    unsigned size)
 {
     OtRomCtrlState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -343,7 +345,7 @@ ot_rom_ctrl_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
             memcpy(&share1, &rsp->digest_share1[ix * sizeof(uint32_t)],
                    sizeof(uint32_t));
             s->regs[R_DIGEST_0 + ix] = share0 ^ share1;
-            /* if "fake digest" mode is enabled, copy computed digest to expected */
+            /* "fake digest" mode enabled, copy computed digest to expected */
             if (s->fake_digest) {
                 s->regs[R_EXP_DIGEST_0 + ix] = s->regs[R_DIGEST_0 + ix];
             }
@@ -422,7 +424,7 @@ static void ot_rom_ctrl_mem_write(void *opaque, hwaddr addr, uint64_t value,
     uint8_t *rom_ptr = (uint8_t *)memory_region_get_ram_ptr(&s->mem);
 
     if ((addr + size) <= s->size) {
-        stn_le_p(&rom_ptr[addr], size, value);
+        stn_le_p(&rom_ptr[addr], (int)size, value);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: Bad offset 0x%" HWADDR_PRIx ", pc=0x%x\n", __func__,
@@ -434,6 +436,7 @@ static bool ot_rom_ctrl_mem_accepts(void *opaque, hwaddr addr, unsigned size,
                                     bool is_write, MemTxAttrs attrs)
 {
     OtRomCtrlState *s = opaque;
+    (void)attrs;
     uint64_t pc = ibex_get_current_pc();
 
     trace_ot_rom_ctrl_mem_accepts((unsigned int)addr, is_write, pc);
@@ -500,6 +503,8 @@ static void ot_rom_ctrl_init(Object *obj)
 static void ot_rom_ctrl_class_init(ObjectClass *klass, void *data)
 {
     OtRomCtrlClass *rcc = OT_ROM_CTRL_CLASS(klass);
+    (void)data;
+
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(dc);
 

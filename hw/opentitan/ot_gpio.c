@@ -45,7 +45,7 @@
 #include "hw/sysbus.h"
 #include "trace.h"
 
-/* 
+/*
  * Unfortunately, there is no QEMU API to properly disable serial control lines
  */
 #ifndef _WIN32
@@ -198,13 +198,13 @@ static void ot_gpio_update_backend(OtGpioState *s, bool oe)
 
     len += snprintf(&buf[len], sizeof(buf), "O:%08x\r\n", s->data_out);
 
-    qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, len);
+    qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, (int)len);
 }
 
 static uint64_t ot_gpio_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtGpioState *s = opaque;
-
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -258,6 +258,7 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
                           unsigned size)
 {
     OtGpioState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
     uint32_t mask;
 
@@ -281,7 +282,7 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        ibex_irq_set(&s->alert, val32);
+        ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     case R_DIRECT_OUT:
         s->regs[reg] = val32;
@@ -389,6 +390,7 @@ static void ot_gpio_chr_receive(void *opaque, const uint8_t *buf, int size)
         }
         uint32_t data_in = 0;
         char cmd = '\0';
+        /* NOLINTNEXTLINE */
         int ret = sscanf(s->ibuf, "%c:%08x", &cmd, &data_in);
         memmove(s->ibuf, eol + 1u, eolpos + 1u);
         s->ipos = 0;
@@ -444,6 +446,8 @@ static gboolean ot_gpio_chr_watch_cb(void *do_not_use, GIOCondition cond,
                                      void *opaque)
 {
     OtGpioState *s = opaque;
+    (void)do_not_use;
+    (void)cond;
 
     s->watch_tag = 0;
 
@@ -508,6 +512,7 @@ static void ot_gpio_reset(DeviceState *dev)
 static void ot_gpio_realize(DeviceState *dev, Error **errp)
 {
     OtGpioState *s = OT_GPIO(dev);
+    (void)errp;
 
     qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_chr_can_receive,
                              &ot_gpio_chr_receive, &ot_gpio_chr_event_hander,
@@ -531,6 +536,7 @@ static void ot_gpio_init(Object *obj)
 static void ot_gpio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_gpio_reset;
     dc->realize = &ot_gpio_realize;

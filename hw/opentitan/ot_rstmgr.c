@@ -273,6 +273,7 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
 static uint64_t ot_rstmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtRstMgrState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -331,6 +332,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                  unsigned size)
 {
     OtRstMgrState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -455,7 +457,6 @@ static void ot_rstmgr_reset(DeviceState *dev)
 {
     OtRstMgrState *s = OT_RSTMGR(dev);
 
-
     s->regs[R_RESET_REQ] = 0x9u;
     if (s->por) {
         memset(s->regs, 0, REGS_SIZE);
@@ -496,6 +497,7 @@ static void ot_rstmgr_init(Object *obj)
 static void ot_rstmgr_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_rstmgr_reset;
     device_class_set_props(dc, ot_rstmgr_properties);

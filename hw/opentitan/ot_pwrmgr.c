@@ -207,7 +207,7 @@ static void ot_pwrmgr_update_irq(OtPwrMgrState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
-    ibex_irq_set(&s->irq, level);
+    ibex_irq_set(&s->irq, (int)(bool)level);
 }
 
 static void ot_pwrmgr_cdc_sync(void *opaque)
@@ -265,6 +265,7 @@ static void ot_pwrmgr_rom_done(void *opaque, int irq, int level)
 static void ot_pwrmgr_wkup(void *opaque, int irq, int level)
 {
     /* not implemented yet */
+    (void)opaque;
     unsigned src = (unsigned)irq;
 
     assert(src < OT_PWRMGR_WAKEUP_COUNT);
@@ -346,6 +347,7 @@ static void ot_pwrmgr_trigger_reset(void *opaque)
 static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtPwrMgrState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -393,6 +395,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                  unsigned size)
 {
     OtPwrMgrState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -429,8 +432,11 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_CFG_CDC_SYNC:
         val32 &= R_CFG_CDC_SYNC_SYNC_MASK;
-        timer_mod(s->cdc_sync, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                                   CDC_SYNC_PULSE_DURATION_NS);
+        s->regs[reg] |= val32; /* not described as RW1S, but looks like it */
+        if (val32) {
+            timer_mod(s->cdc_sync, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                                       CDC_SYNC_PULSE_DURATION_NS);
+        }
         break;
     case R_WAKEUP_EN_REGWEN:
         val32 &= R_WAKEUP_EN_REGWEN_EN_MASK;
@@ -514,6 +520,7 @@ static void ot_pwrmgr_reset(DeviceState *dev)
 static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
 {
     OtPwrMgrState *s = OT_PWRMGR(dev);
+    (void)errp;
 
     if (s->num_rom) {
         s->roms = g_new0(OtPwrMgrRomStatus, s->num_rom);
@@ -553,6 +560,7 @@ static void ot_pwrmgr_init(Object *obj)
 static void ot_pwrmgr_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->realize = &ot_pwrmgr_realize;
     dc->reset = &ot_pwrmgr_reset;

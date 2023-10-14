@@ -196,7 +196,7 @@ typedef struct OtAESRegisters {
     uint32_t status;
 
     /* implementation */
-    DECLARE_BITMAP(keyshare_bm, PARAM_NUM_REGS_KEY * 2u);
+    DECLARE_BITMAP(keyshare_bm, (uint64_t)(PARAM_NUM_REGS_KEY * 2u));
     DECLARE_BITMAP(iv_bm, PARAM_NUM_REGS_IV);
     DECLARE_BITMAP(data_in_bm, PARAM_NUM_REGS_DATA);
     DECLARE_BITMAP(data_out_bm, PARAM_NUM_REGS_DATA);
@@ -431,7 +431,7 @@ static void ot_aes_init_keyshare(OtAESState *s)
 
     trace_ot_aes_init("keyshare");
     ot_aes_randomize(s, r->keyshare, ARRAY_SIZE(r->keyshare));
-    bitmap_zero(r->keyshare_bm, PARAM_NUM_REGS_KEY * 2u);
+    bitmap_zero(r->keyshare_bm, (int64_t)(PARAM_NUM_REGS_KEY * 2u));
     c->key_ready = false;
 }
 
@@ -906,7 +906,8 @@ static void ot_aes_process_cond(OtAESState *s)
                  */
                 timer_del(s->retard_timer);
                 uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-                timer_mod(s->retard_timer, now + OT_AES_RETARD_DELAY_NS);
+                timer_mod(s->retard_timer,
+                          (int64_t)(now + OT_AES_RETARD_DELAY_NS));
             } else {
                 /*
                  * if fast mode is enabled, vCPU cannot resume execution before
@@ -973,6 +974,7 @@ static void ot_aes_reseed(OtAESState *s)
 static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtAESState *s = opaque;
+    (void)size;
     OtAESRegisters *r = s->regs;
 
     uint32_t val32;
@@ -1018,7 +1020,7 @@ static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
     case R_DATA_OUT_2:
     case R_DATA_OUT_3:
         val32 = r->data_out[reg - R_DATA_OUT_0];
-        clear_bit(reg - R_DATA_OUT_0, r->data_out_bm);
+        clear_bit((int64_t)(reg - R_DATA_OUT_0), r->data_out_bm);
         if (bitmap_empty(r->data_out_bm, PARAM_NUM_REGS_DATA)) {
             r->status &= ~R_STATUS_OUTPUT_VALID_MASK;
             s->ctx->do_full = false;
@@ -1061,6 +1063,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
                          unsigned size)
 {
     OtAESState *s = opaque;
+    (void)size;
     OtAESRegisters *r = s->regs;
     uint32_t val32 = (uint32_t)val64;
 
@@ -1106,7 +1109,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_KEY_SHARE1_7:
         if (ot_aes_is_idle(s)) {
             r->keyshare[reg - R_KEY_SHARE0_0] = val32;
-            set_bit(reg - R_KEY_SHARE0_0, r->keyshare_bm);
+            set_bit((int64_t)(reg - R_KEY_SHARE0_0), r->keyshare_bm);
             ot_aes_update_key(s);
             ot_aes_update_config(s);
         }
@@ -1117,7 +1120,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_IV_3:
         if (ot_aes_is_idle(s)) {
             r->iv[reg - R_IV_0] = val32;
-            set_bit(reg - R_IV_0, r->iv_bm);
+            set_bit((int64_t)(reg - R_IV_0), r->iv_bm);
             ot_aes_update_iv(s);
             ot_aes_update_config(s);
         }
@@ -1127,7 +1130,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_DATA_IN_2:
     case R_DATA_IN_3:
         r->data_in[reg - R_DATA_IN_0] = val32;
-        set_bit(reg - R_DATA_IN_0, r->data_in_bm);
+        set_bit((int64_t)(reg - R_DATA_IN_0), r->data_in_bm);
         if (ot_aes_is_data_in_ready(r)) {
             ibex_irq_set(&s->clkmgr, (int)true);
             ot_aes_pop(s);
@@ -1283,6 +1286,7 @@ static void ot_aes_init(Object *obj)
 static void ot_aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_aes_reset;
     device_class_set_props(dc, ot_aes_properties);

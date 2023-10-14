@@ -130,20 +130,21 @@ ot_aon_timer_ticks_to_ns(OtAonTimerState *s, uint32_t prescaler, uint32_t ticks)
     if (ns > INT64_MAX) {
         return INT64_MAX;
     }
-    return ns;
+    return (int64_t)ns;
 }
 
 static uint32_t ot_aon_timer_get_wkup_count(OtAonTimerState *s, uint64_t now)
 {
     uint32_t prescaler = FIELD_EX32(s->regs[R_WKUP_CTRL], WKUP_CTRL, PRESCALER);
     return s->regs[R_WKUP_COUNT] +
-           ot_aon_timer_ns_to_ticks(s, prescaler, now - s->wkup_origin_ns);
+           ot_aon_timer_ns_to_ticks(s, prescaler,
+                                    (int64_t)(now - s->wkup_origin_ns));
 }
 
 static uint32_t ot_aon_timer_get_wdog_count(OtAonTimerState *s, uint64_t now)
 {
     return s->regs[R_WDOG_COUNT] +
-           ot_aon_timer_ns_to_ticks(s, 0u, now - s->wdog_origin_ns);
+           ot_aon_timer_ns_to_ticks(s, 0u, (int64_t)(now - s->wdog_origin_ns));
 }
 
 static int64_t ot_aon_timer_compute_next_timeout(OtAonTimerState *s,
@@ -288,6 +289,7 @@ static void ot_aon_timer_wdog_cb(void *opaque)
 static uint64_t ot_aon_timer_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtAonTimerState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -340,6 +342,7 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
                                unsigned size)
 {
     OtAonTimerState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)value;
 
     hwaddr reg = R32_OFF(addr);
@@ -509,6 +512,7 @@ static void ot_aon_timer_init(Object *obj)
 static void ot_aon_timer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = ot_aon_timer_reset;
     device_class_set_props(dc, ot_aon_timer_properties);

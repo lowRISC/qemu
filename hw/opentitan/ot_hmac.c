@@ -286,6 +286,7 @@ static inline void ot_hmac_wipe_buffer(OtHMACState *s, uint32_t *buffer,
 static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtHMACState *s = OT_HMAC(opaque);
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -371,6 +372,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
                                unsigned size)
 {
     OtHMACState *s = OT_HMAC(opaque);
+    (void)size;
     uint32_t val32 = (uint32_t)value;
 
     hwaddr reg = R32_OFF(addr);
@@ -513,6 +515,9 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
 
 static uint64_t ot_hmac_fifo_read(void *opaque, hwaddr addr, unsigned size)
 {
+    (void)opaque;
+    (void)addr;
+    (void)size;
     qemu_log_mask(LOG_GUEST_ERROR, "%s: MSG_FIFO is write only\n", __func__);
 
     return 0;
@@ -556,7 +561,7 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
         value >>= 8u;
     }
 
-    s->regs->msg_length += 8u * size;
+    s->regs->msg_length += (uint64_t)size * 8u;
 
     /* trigger delayed processing of FIFO */
     timer_del(s->fifo_trigger_handle);
@@ -639,6 +644,7 @@ static void ot_hmac_reset(DeviceState *dev)
 static void ot_hmac_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_hmac_reset;
     device_class_set_props(dc, ot_hmac_properties);

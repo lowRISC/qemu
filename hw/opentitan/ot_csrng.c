@@ -393,7 +393,7 @@ qemu_irq ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id,
     trace_ot_csrng_connection(app_id);
 
     return qdev_get_gpio_in_named(DEVICE(s), TYPE_OT_CSRNG "-genbits_ready",
-                                  app_id);
+                                  (int)app_id);
 }
 
 int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
@@ -1371,7 +1371,7 @@ static void ot_csrng_command_schedule(OtCSRNGState *s, OtCSRNGInstance *inst)
 
     trace_ot_csrng_schedule(ot_csrng_get_slot(inst), "command");
     uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    timer_mod(s->cmd_scheduler, now + CMD_EXECUTE_DELAY_NS);
+    timer_mod(s->cmd_scheduler, (int64_t)(now + CMD_EXECUTE_DELAY_NS));
 }
 
 static void ot_csrng_command_scheduler(void *opaque)
@@ -1455,7 +1455,7 @@ static void ot_csrng_command_scheduler(void *opaque)
         if (s->state != CSRNG_ERROR) {
             xtrace_ot_csrng_info("scheduling new command", 0);
             uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-            timer_mod(s->cmd_scheduler, now + CMD_EXECUTE_DELAY_NS);
+            timer_mod(s->cmd_scheduler, (int64_t)(now + CMD_EXECUTE_DELAY_NS));
         } else {
             xtrace_ot_csrng_error("cannot schedule new command on error");
         }
@@ -1510,6 +1510,7 @@ static uint32_t ot_csrng_read_state_db(OtCSRNGState *s)
 static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtCSRNGState *s = opaque;
+    (void)size;
     uint32_t val32;
     OtCSRNGInstance *inst;
 
@@ -1597,6 +1598,7 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                 unsigned size)
 {
     OtCSRNGState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
     OtCSRNGInstance *inst;
 
@@ -1841,6 +1843,7 @@ static void ot_csrng_init(Object *obj)
 static void ot_csrng_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_csrng_reset;
     device_class_set_props(dc, ot_csrng_properties);

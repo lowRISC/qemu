@@ -138,22 +138,26 @@ struct OtSensorState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
-    IbexIRQ irq;
+    IbexIRQ irqs[2u];
     IbexIRQ alert;
 
     uint32_t *regs;
 };
 
-static void ot_sensor_update_irq(OtSensorState *s)
+static void ot_sensor_update_irqs(OtSensorState *s)
 {
-    uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
+    uint32_t levels = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
-    ibex_irq_set(&s->irq, level);
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
+        int level = (int)(bool)(levels & (1u << ix));
+        ibex_irq_set(&s->irqs[ix], level);
+    }
 }
 
 static uint64_t ot_sensor_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtSensorState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -200,6 +204,7 @@ static void ot_sensor_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                  unsigned size)
 {
     OtSensorState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -211,17 +216,17 @@ static void ot_sensor_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_INTR_STATE:
         val32 &= INTR_MASK;
         s->regs[R_INTR_STATE] &= ~val32; /* RW1C */
-        ot_sensor_update_irq(s);
+        ot_sensor_update_irqs(s);
         break;
     case R_INTR_ENABLE:
         val32 &= INTR_MASK;
         s->regs[R_INTR_ENABLE] = val32;
-        ot_sensor_update_irq(s);
+        ot_sensor_update_irqs(s);
         break;
     case R_INTR_TEST:
         val32 &= INTR_MASK;
         s->regs[R_INTR_STATE] |= val32;
-        ot_sensor_update_irq(s);
+        ot_sensor_update_irqs(s);
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
@@ -270,7 +275,7 @@ static void ot_sensor_reset(DeviceState *dev)
 
     s->regs[R_CFG_REGWEN] = 0x1u;
 
-    ot_sensor_update_irq(s);
+    ot_sensor_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
 }
 
@@ -283,13 +288,16 @@ static void ot_sensor_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
-    ibex_sysbus_init_irq(obj, &s->irq);
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
+        ibex_sysbus_init_irq(obj, &s->irqs[ix]);
+    }
     ibex_qdev_init_irq(obj, &s->alert, OPENTITAN_DEVICE_ALERT);
 }
 
 static void ot_sensor_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_sensor_reset;
     device_class_set_props(dc, ot_sensor_properties);

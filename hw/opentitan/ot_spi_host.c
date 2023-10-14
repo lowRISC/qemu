@@ -249,17 +249,17 @@ static void ot_spi_host_trace_status(const char *msg, uint32_t status)
     unsigned rxd = FIELD_EX32(status, STATUS, RXQD);
     unsigned txd = FIELD_EX32(status, STATUS, TXQD);
     char str[64u];
-    snprintf(str, sizeof(str), "%s%s%s%s%s%s%s%s%s%s",
-             FIELD_EX32(status, STATUS, RXWM) ? "RXM|" : "",
-             FIELD_EX32(status, STATUS, RXSTALL) ? "RXS|" : "",
-             FIELD_EX32(status, STATUS, RXEMPTY) ? "RXE|" : "",
-             FIELD_EX32(status, STATUS, RXFULL) ? "RXF|" : "",
-             FIELD_EX32(status, STATUS, TXWM) ? "TXM|" : "",
-             FIELD_EX32(status, STATUS, TXSTALL) ? "TXS|" : "",
-             FIELD_EX32(status, STATUS, TXEMPTY) ? "TXE|" : "",
-             FIELD_EX32(status, STATUS, TXFULL) ? "TXF|" : "",
-             FIELD_EX32(status, STATUS, ACTIVE) ? "ACT|" : "",
-             FIELD_EX32(status, STATUS, READY) ? "RDY|" : "");
+    (void)snprintf(str, sizeof(str), "%s%s%s%s%s%s%s%s%s%s",
+                   FIELD_EX32(status, STATUS, RXWM) ? "RXM|" : "",
+                   FIELD_EX32(status, STATUS, RXSTALL) ? "RXS|" : "",
+                   FIELD_EX32(status, STATUS, RXEMPTY) ? "RXE|" : "",
+                   FIELD_EX32(status, STATUS, RXFULL) ? "RXF|" : "",
+                   FIELD_EX32(status, STATUS, TXWM) ? "TXM|" : "",
+                   FIELD_EX32(status, STATUS, TXSTALL) ? "TXS|" : "",
+                   FIELD_EX32(status, STATUS, TXEMPTY) ? "TXE|" : "",
+                   FIELD_EX32(status, STATUS, TXFULL) ? "TXF|" : "",
+                   FIELD_EX32(status, STATUS, ACTIVE) ? "ACT|" : "",
+                   FIELD_EX32(status, STATUS, READY) ? "RDY|" : "");
     trace_ot_spi_host_status(msg, status, str, cmd, rxd, txd);
 }
 
@@ -1231,6 +1231,7 @@ static Property ot_spi_host_properties[] = {
 static void ot_spi_host_realize(DeviceState *dev, Error **errp)
 {
     OtSPIHostState *s = OT_SPI_HOST(dev);
+    (void)errp;
 
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 
@@ -1278,6 +1279,8 @@ static void ot_spi_host_instance_init(Object *obj)
 static void ot_spi_host_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
+
     dc->realize = ot_spi_host_realize;
     dc->reset = ot_spi_host_reset;
     device_class_set_props(dc, ot_spi_host_properties);

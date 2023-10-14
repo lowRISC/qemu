@@ -30,6 +30,7 @@
 /* Section auto-generated with otpconv.py [-i/-c/-h/-O lc_arrays] script */
 
 /* clang-format off */
+/* NOLINTBEGIN */
 static const char lc_states[21u][40u] = {
     [LC_STATE_RAW] = {
         0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
@@ -336,6 +337,7 @@ static const char lc_transition_cnts[25u][48u] = {
         0xbeu, 0x76u, 0xfdu, 0x6bu, 0xfbu, 0x8fu, 0xcdu, 0xfbu
     },
 };
+/* NOLINTEND */
 /* clang-format on */
 
 /* End of auto-generated section */

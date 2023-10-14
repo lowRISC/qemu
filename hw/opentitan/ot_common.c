@@ -37,7 +37,7 @@ typedef struct {
 static int ot_common_node_child_walker(Object *child, void *opaque)
 {
     OtCommonNodeEntry *entry = opaque;
-    if (!object_dynamic_cast(OBJECT(child), entry->type)) {
+    if (!object_dynamic_cast(child, entry->type)) {
         /* continue walking the children hierarchy */
         return 0;
     }

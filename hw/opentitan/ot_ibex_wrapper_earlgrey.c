@@ -240,6 +240,7 @@ static void ot_ibex_wrapper_eg_request_entropy(OtIbexWrapperEgState *s)
 static void ot_ibex_wrapper_eg_update_remap(OtIbexWrapperEgState *s, bool doi,
                                             unsigned slot)
 {
+    (void)doi;
     g_assert(slot < PARAM_NUM_REGIONS);
     /*
      * Warning:
@@ -284,6 +285,7 @@ static uint64_t
 ot_ibex_wrapper_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtIbexWrapperEgState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -321,6 +323,7 @@ static void ot_ibex_wrapper_eg_regs_write(void *opaque, hwaddr addr,
                                           uint64_t val64, unsigned size)
 {
     OtIbexWrapperEgState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -446,6 +449,7 @@ static void ot_ibex_wrapper_eg_init(Object *obj)
 static void ot_ibex_wrapper_eg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_ibex_wrapper_eg_reset;
     device_class_set_props(dc, ot_ibex_wrapper_eg_properties);

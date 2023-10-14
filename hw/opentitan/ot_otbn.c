@@ -390,6 +390,7 @@ static void ot_otbn_handle_command(OtOTBNState *s, unsigned command)
 static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtOTBNState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     uint64_t pc = ibex_get_current_pc();
@@ -444,6 +445,7 @@ static void ot_otbn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                unsigned size)
 {
     OtOTBNState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -493,7 +495,7 @@ static void ot_otbn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_otbn_proxy_set_instruction_count(s->proxy, val32);
         break;
     case R_LOAD_CHECKSUM:
-        val32 = s->load_checksum;
+        s->load_checksum = val32;
         break;
     case R_STATUS:
     case R_FATAL_ALERT_CAUSE:
@@ -691,6 +693,7 @@ static void ot_otbn_realize(DeviceState *dev, Error **errp)
 static void ot_otbn_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_otbn_reset;
     dc->realize = &ot_otbn_realize;

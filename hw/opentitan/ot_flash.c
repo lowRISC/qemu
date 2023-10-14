@@ -713,7 +713,8 @@ static void ot_flash_op_signal(void *opaque)
 static void ot_flash_initialize(OtFlashState *s)
 {
     if (s->op.kind != OP_NONE) {
-        qemu_log_mask(LOG_GUEST_ERROR, "cannot initialize while in op");
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot initialize while in op",
+                      __func__);
         return;
     }
 
@@ -848,6 +849,7 @@ static void ot_flash_op_execute(OtFlashState *s)
 static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtFlashState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     if (ot_flash_is_disabled(s)) {
@@ -994,8 +996,8 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_ALERT_TEST:
     case R_PROG_FIFO:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x%03" HWADDR_PRIx " (%s)\n", addr,
-                      REG_NAME(reg));
+                      "%s: W/O register 0x%03" HWADDR_PRIx " (%s)\n", __func__,
+                      addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
@@ -1016,6 +1018,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                 unsigned size)
 {
     OtFlashState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -1087,6 +1090,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         unsigned info_sel = (unsigned)FIELD_EX32(val32, CONTROL, INFO_SEL);
         unsigned num = (unsigned)FIELD_EX32(val32, CONTROL, NUM);
         if (start && s->op.kind == OP_NONE) {
+            /* NOLINTNEXTLINE */
             switch (op) {
             case 0:
                 s->op.kind = OP_READ;
@@ -1277,8 +1281,8 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_PHY_STATUS:
     case R_CURR_FIFO_LVL:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x%03" HWADDR_PRIx " (%s)\n", addr,
-                      REG_NAME(reg));
+                      "%s: R/O register 0x%03" HWADDR_PRIx " (%s)\n", __func__,
+                      addr, REG_NAME(reg));
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
@@ -1290,6 +1294,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static uint64_t ot_flash_csrs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtFlashState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     if (ot_flash_is_disabled(s)) {
@@ -1342,6 +1347,7 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
                                 unsigned size)
 {
     OtFlashState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr csr = R32_OFF(addr);
@@ -1608,7 +1614,7 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
             return;
         }
 
-        if (memcmp(header->magic, "vFSH", sizeof(header->magic))) {
+        if (memcmp(header->magic, "vFSH", sizeof(header->magic)) != 0) {
             error_setg(errp, "Flash file is not a valid flash backend");
             return;
         }
@@ -1667,10 +1673,10 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
 
         /* two banks, OTRE+OTB0 binaries/bank */
         size_t debug_trailer_size =
-            flash->bank_count * ELFNAME_SIZE * BIN_APP_COUNT;
+            (size_t)(flash->bank_count) * ELFNAME_SIZE * BIN_APP_COUNT;
         uint8_t *elfnames = blk_blockalign(s->blk, debug_trailer_size);
-        rc = blk_pread(s->blk, (int64_t)offset + flash_size, debug_trailer_size,
-                       elfnames, 0);
+        rc = blk_pread(s->blk, (int64_t)offset + flash_size,
+                       (int64_t)debug_trailer_size, elfnames, 0);
         if (!rc) {
             const char *elfname = (const char *)elfnames;
             for (unsigned ix = 0; ix < BIN_APP_COUNT; ix++) {
@@ -1727,7 +1733,8 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
      * - Debug info (ELF file names)
      */
     flash->data = (uint32_t *)(base);
-    flash->info = (uint32_t *)(base + flash->bank_count * data_size);
+    flash->info =
+        (uint32_t *)(base + (uintptr_t)(flash->bank_count * data_size));
     flash->data_size = data_size;
     flash->info_size = info_size;
 }
@@ -1784,6 +1791,7 @@ static const MemoryRegionOps ot_flash_mem_ops = {
 static void ot_flash_realize(DeviceState *dev, Error **errp)
 {
     OtFlashState *s = OT_FLASH(dev);
+    (void)errp;
 
     ot_flash_load(s, &error_fatal);
 
@@ -1831,6 +1839,7 @@ static void ot_flash_init(Object *obj)
 static void ot_flash_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_flash_reset;
     dc->realize = &ot_flash_realize;

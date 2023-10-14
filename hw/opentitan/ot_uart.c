@@ -219,7 +219,7 @@ static int ot_uart_can_receive(void *opaque)
     OtUARTState *s = opaque;
 
     if (s->regs[R_CTRL] & R_CTRL_RX_MASK) {
-        return fifo8_num_free(&s->rx_fifo);
+        return (int)fifo8_num_free(&s->rx_fifo);
     }
 
     return 0;
@@ -292,7 +292,7 @@ static void ot_uart_xmit(OtUARTState *s)
         /* system loopback mode, just forward to RX FIFO */
         uint32_t count = fifo8_num_used(&s->tx_fifo);
         buf = fifo8_pop_buf(&s->tx_fifo, count, &size);
-        ot_uart_receive(s, buf, size);
+        ot_uart_receive(s, buf, (int)size);
         count -= size;
         /*
          * there may be more data to send if data wraps around the end of TX
@@ -300,7 +300,7 @@ static void ot_uart_xmit(OtUARTState *s)
          */
         if (count) {
             buf = fifo8_pop_buf(&s->tx_fifo, count, &size);
-            ot_uart_receive(s, buf, size);
+            ot_uart_receive(s, buf, (int)size);
         }
     } else {
         /* instant drain the fifo when there's no back-end */
@@ -313,7 +313,7 @@ static void ot_uart_xmit(OtUARTState *s)
         /* get a continuous buffer from the FIFO */
         buf = fifo8_peek_buf(&s->tx_fifo, fifo8_num_used(&s->tx_fifo), &size);
         /* send as much as possible */
-        ret = qemu_chr_fe_write(&s->chr, buf, size);
+        ret = qemu_chr_fe_write(&s->chr, buf, (int)size);
         /* if some characters where sent, remove them from the FIFO */
         if (ret >= 0) {
             fifo8_consume_all(&s->tx_fifo, ret);
@@ -337,6 +337,8 @@ static gboolean ot_uart_watch_cb(void *do_not_use, GIOCondition cond,
                                  void *opaque)
 {
     OtUARTState *s = opaque;
+    (void)do_not_use;
+    (void)cond;
 
     s->watch_tag = 0;
     ot_uart_xmit(s);
@@ -368,9 +370,10 @@ static void uart_write_tx_fifo(OtUARTState *s, uint8_t val)
     }
 }
 
-static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned int size)
+static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtUARTState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -447,9 +450,10 @@ static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned int size)
 }
 
 static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
-                          unsigned int size)
+                          unsigned size)
 {
     OtUARTState *s = opaque;
+    (void)size;
     uint32_t val32 = val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -524,7 +528,6 @@ static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
         qemu_log_mask(LOG_GUEST_ERROR,
                       "R/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
                       REG_NAME(reg));
-        val32 = 0;
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
@@ -566,6 +569,7 @@ static int ot_uart_be_change(void *opaque)
 static void ot_uart_realize(DeviceState *dev, Error **errp)
 {
     OtUARTState *s = OT_UART(dev);
+    (void)errp;
 
     fifo8_create(&s->tx_fifo, OT_UART_TX_FIFO_SIZE);
     fifo8_create(&s->rx_fifo, OT_UART_RX_FIFO_SIZE);
@@ -606,6 +610,7 @@ static void ot_uart_init(Object *obj)
 static void ot_uart_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->realize = ot_uart_realize;
     dc->reset = ot_uart_reset;

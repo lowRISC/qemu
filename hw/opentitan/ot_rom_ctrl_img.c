@@ -51,6 +51,7 @@ static void ot_rom_img_prop_set_file(Object *obj, const char *value,
                                      Error **errp)
 {
     OtRomImg *ri = OT_ROM_IMG(obj);
+    (void)errp;
 
     g_free(ri->filename);
     ri->filename = g_strdup(value);
@@ -59,6 +60,7 @@ static void ot_rom_img_prop_set_file(Object *obj, const char *value,
 static char *ot_rom_img_prop_get_file(Object *obj, Error **errp)
 {
     OtRomImg *ri = OT_ROM_IMG(obj);
+    (void)errp;
 
     return g_strdup(ri->filename);
 }
@@ -105,19 +107,21 @@ static void ot_rom_img_prop_set_digest(Object *obj, const char *value,
 static char *ot_rom_img_prop_get_digest(Object *obj, Error **errp)
 {
     OtRomImg *ri = OT_ROM_IMG(obj);
-    char *digest;
+    (void)errp;
 
     if (ri->fake_digest) {
         return g_strdup("fake");
     }
 
-    digest = g_new0(char, (ri->digest_len * 2) + 1);
+    char *digest = g_new0(char, (ri->digest_len * 2u) + 1u);
     for (unsigned idx = 0; idx < ri->digest_len; idx++) {
-        uint8_t val = ri->digest[ri->digest_len - 1 - idx];
-        digest[(idx * 2)] = HEX[(val >> 4) & 0xf];
-        digest[(idx * 2) + 1] = HEX[val & 0xf];
+        uint8_t val = ri->digest[ri->digest_len - 1u - idx];
+        /* NOLINTNEXTLINE */
+        digest[(idx * 2u)] = HEX[(val >> 4u) & 0xfu];
+        digest[(idx * 2u) + 1u] = HEX[val & 0xfu];
     }
-    digest[ri->digest_len * 2] = '\0';
+    /* NOLINTNEXTLINE */
+    digest[ri->digest_len * 2u] = '\0';
 
     return digest;
 }
@@ -156,6 +160,7 @@ static void ot_rom_img_complete(UserCreatable *uc, Error **errp)
 static void ot_rom_img_class_init(ObjectClass *oc, void *data)
 {
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
+    (void)data;
 
     ucc->complete = &ot_rom_img_complete;
 

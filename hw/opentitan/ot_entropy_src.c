@@ -23,6 +23,11 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ *
+ * Notes:
+ * - missing correct handling of ALERT_FAIL_COUNTS, currently never incremented.
+ * - missing some error handling? ES_MAIN_SM_ERR is the only error that can be
+ *   triggered.
  */
 
 #include "qemu/osdep.h"
@@ -243,7 +248,7 @@ REG32(MAIN_SM_STATE, 0xe0u)
      R_ERR_CODE_ES_CNTR_ERR_MASK | R_ERR_CODE_SHA3_STATE_ERR_MASK | \
      R_ERR_CODE_SHA3_RST_STORAGE_ERR_MASK)
 
-#define ALERT_STATUS_BIT(_x_) R_RECOV_ALERT_STS_##_x_##_FIELD_ALERT_MASK
+#define ALERT_STATUS_BIT(_x_) R_RECOV_ALERT_STS_##_x_##_FIELD_ALERT_SHIFT
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
@@ -315,7 +320,8 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define ES_FILL_BITS        128u
 #define ES_FINAL_FIFO_DEPTH 4u
 #define ES_FILL_RATE_NS \
-    ((NANOSECONDS_PER_SECOND * ES_FILL_BITS) / (OT_AST_RANDOM_4BIT_RATE * 4u))
+    ((NANOSECONDS_PER_SECOND * ES_FILL_BITS) / \
+     ((uint64_t)OT_AST_RANDOM_4BIT_RATE * 4u))
 #define OT_ENTROPY_SRC_FILL_WORD_COUNT (ES_FILL_BITS / (8u * sizeof(uint32_t)))
 #define ES_WORD_COUNT                  (OT_ENTROPY_SRC_WORD_COUNT)
 #define ES_SWREAD_FIFO_WORD_COUNT      ES_WORD_COUNT
@@ -701,16 +707,11 @@ static void ot_entropy_src_update_alerts(OtEntropySrcState *s)
     bool recoverable = (bool)s->regs[R_RECOV_ALERT_STS];
     if (alert_count >= alert_threshold || recoverable) {
         ibex_irq_set(&s->alerts[ALERT_RECOVERABLE], 1);
-        if (s->state != ENTROPY_SRC_ERROR) {
-            ot_entropy_src_change_state(s, ENTROPY_SRC_ALERT_STATE);
-        }
     }
     uint32_t fatal_alert = s->regs[R_ERR_CODE] & ERR_CODE_FATAL_ERROR_MASK;
+    fatal_alert |= (1u << s->regs[R_ERR_CODE_TEST]) & ERR_CODE_FATAL_ERROR_MASK;
     if (fatal_alert) {
         ibex_irq_set(&s->alerts[ALERT_FATAL], 1);
-        if (s->state != ENTROPY_SRC_ERROR) {
-            ot_entropy_src_change_state(s, ENTROPY_SRC_ERROR);
-        }
     }
 }
 
@@ -762,7 +763,7 @@ static void ot_entropy_src_update_filler(OtEntropySrcState *s)
         if (!timer_pending(s->scheduler)) {
             trace_ot_entropy_src_info("reschedule");
             uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-            timer_mod(s->scheduler, now + (uint64_t)ES_FILL_RATE_NS);
+            timer_mod(s->scheduler, (int64_t)(now + (uint64_t)ES_FILL_RATE_NS));
         }
     }
 }
@@ -1047,8 +1048,6 @@ static void ot_entropy_src_scheduler(void *opaque)
     switch (s->state) {
     case ENTROPY_SRC_BOOT_HT_RUNNING:
     case ENTROPY_SRC_BOOT_PHASE_DONE:
-        ot_entropy_src_noise_refill(s);
-        break;
     case ENTROPY_SRC_STARTUP_HT_START:
     case ENTROPY_SRC_CONT_HT_START:
     case ENTROPY_SRC_CONT_HT_RUNNING:
@@ -1084,6 +1083,7 @@ static uint64_t
 ot_entropy_src_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtEntropySrcState *s = opaque;
+    (void)size;
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
@@ -1142,7 +1142,7 @@ ot_entropy_src_regs_read(void *opaque, hwaddr addr, unsigned size)
                            ot_fifo32_num_used(&s->final_fifo));
         val32 = FIELD_DP32(val32, DEBUG_STATUS, MAIN_SM_IDLE,
                            (uint32_t)(s->state == ENTROPY_SRC_IDLE));
-        val32 = FIELD_DP32(0, DEBUG_STATUS, MAIN_SM_BOOT_DONE,
+        val32 = FIELD_DP32(val32, DEBUG_STATUS, MAIN_SM_BOOT_DONE,
                            (uint32_t)(s->state == ENTROPY_SRC_BOOT_PHASE_DONE));
         break;
     case R_MAIN_SM_STATE:
@@ -1246,6 +1246,7 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                       unsigned size)
 {
     OtEntropySrcState *s = opaque;
+    (void)size;
     uint32_t val32 = (uint32_t)val64;
 
     hwaddr reg = R32_OFF(addr);
@@ -1318,7 +1319,8 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 }
                 uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
                 timer_mod(s->scheduler,
-                          now + (uint64_t)OT_ENTROPY_SRC_BOOT_DELAY_NS);
+                          (int64_t)(now +
+                                    (uint64_t)OT_ENTROPY_SRC_BOOT_DELAY_NS));
             }
             break;
         }
@@ -1463,9 +1465,7 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ERR_CODE_TEST:
         val32 &= R_ERR_CODE_TEST_VAL_MASK;
-        val32 = 1u << val32;
-        val32 &= ERR_CODE_MASK;
-        s->regs[R_ERR_CODE] = val32;
+        s->regs[R_ERR_CODE_TEST] = val32;
         ot_entropy_src_update_irqs(s);
         ot_entropy_src_update_alerts(s);
         break;
@@ -1621,6 +1621,7 @@ static void ot_entropy_src_init(Object *obj)
 static void ot_entropy_src_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_entropy_src_reset;
     device_class_set_props(dc, ot_entropy_src_properties);

@@ -33,7 +33,7 @@
 #define TYPE_OT_AST "ot-ast"
 OBJECT_DECLARE_SIMPLE_TYPE(OtASTState, OT_AST)
 
-#define OT_AST_RANDOM_4BIT_RATE 50000 /* 50 kHz */
+#define OT_AST_RANDOM_4BIT_RATE 50000u /* 50 kHz */
 
 void ot_ast_getrandom(void *buf, size_t len);
 

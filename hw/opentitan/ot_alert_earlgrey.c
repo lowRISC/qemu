@@ -266,6 +266,7 @@ static void ot_alert_eg_update_irqs(OtAlertEgState *s)
 static uint64_t ot_alert_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtAlertEgState *s = opaque;
+    (void)size;
     OtAlertRegs *regs = s->regs;
     uint32_t val32;
 
@@ -419,6 +420,7 @@ static void ot_alert_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                    unsigned size)
 {
     OtAlertEgState *s = opaque;
+    (void)size;
     OtAlertRegs *regs = s->regs;
     uint32_t val32 = (uint32_t)val64;
 
@@ -665,6 +667,7 @@ static void ot_alert_eg_init(Object *obj)
 static void ot_alert_eg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    (void)data;
 
     dc->reset = &ot_alert_eg_reset;
     device_class_set_props(dc, ot_alert_eg_properties);
