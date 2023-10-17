@@ -883,6 +883,9 @@ static void ot_earlgrey_soc_flash_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
     DriveInfo *dinfo = drive_get(IF_MTD, 1, 0);
+    (void)def;
+    (void)parent;
+
     if (dinfo) {
         qdev_prop_set_drive_err(dev, "drive", blk_by_legacy_dinfo(dinfo),
                                 &error_fatal);
@@ -893,6 +896,9 @@ static void ot_earlgrey_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
     OtEarlGreyMachineState *ms = RISCV_OT_EARLGREY_MACHINE(qdev_get_machine());
+    (void)def;
+    (void)parent;
+
     if (ms->no_epmp_cfg) {
         /* skip default PMP config */
         return;
@@ -921,6 +927,9 @@ static void ot_earlgrey_soc_otp_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
     DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
+    (void)def;
+    (void)parent;
+
     if (dinfo) {
         qdev_prop_set_drive_err(dev, "drive", blk_by_legacy_dinfo(dinfo),
                                 &error_fatal);
@@ -930,6 +939,8 @@ static void ot_earlgrey_soc_otp_ctrl_configure(
 static void ot_earlgrey_soc_uart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
+    (void)def;
+    (void)parent;
     qdev_prop_set_chr(dev, "chardev", serial_hd(def->instance));
 }
 
@@ -970,6 +981,7 @@ static void ot_earlgrey_soc_reset_exit(Object *obj)
 static void ot_earlgrey_soc_realize(DeviceState *dev, Error **errp)
 {
     OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(dev);
+    (void)errp;
 
     /* Link, define properties and realize devices, then connect GPIOs */
     ibex_link_devices(s->devices, ot_earlgrey_soc_devices,
@@ -999,6 +1011,7 @@ static void ot_earlgrey_soc_class_init(ObjectClass *oc, void *data)
     OtEarlGreySoCClass *sc = RISCV_OT_EARLGREY_SOC_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
     ResettableClass *rc = RESETTABLE_CLASS(dc);
+    (void)data;
 
     resettable_class_set_parent_phases(rc, NULL, &ot_earlgrey_soc_reset_hold,
                                        &ot_earlgrey_soc_reset_exit,
@@ -1066,6 +1079,7 @@ static void ot_earlgrey_board_init(Object *obj)
 static void ot_earlgrey_board_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
+    (void)data;
 
     dc->realize = &ot_earlgrey_board_realize;
 }
@@ -1092,6 +1106,7 @@ type_init(ot_earlgrey_board_register_types);
 static bool ot_earlgrey_machine_get_no_epmp_cfg(Object *obj, Error **errp)
 {
     OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
+    (void)errp;
 
     return s->no_epmp_cfg;
 }
@@ -1100,6 +1115,7 @@ static void
 ot_earlgrey_machine_set_no_epmp_cfg(Object *obj, bool value, Error **errp)
 {
     OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
+    (void)errp;
 
     s->no_epmp_cfg = value;
 }
@@ -1127,6 +1143,7 @@ static void ot_earlgrey_machine_init(MachineState *state)
 static void ot_earlgrey_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    (void)data;
 
     mc->desc = "RISC-V Board compatible with OpenTitan EarlGrey FPGA platform";
     mc->init = ot_earlgrey_machine_init;
