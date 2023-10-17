@@ -295,15 +295,25 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
         break;
     }
 
-    uint32_t rstmask = 1u << src; /*rst_req are stored in the LSBs */
-    s->regs[R_RESET_STATUS] |= rstmask;
+    uint32_t rstmask = 1u << src; /* rst_req are stored in the LSBs */
 
-    /*
-     * for now, there is no FSM in PWRMGR implementation.
-     * simply forward the request to the RSTMGR
-     */
-    qemu_bh_schedule(s->reset_bh);
-    trace_ot_pwrmgr_reset_req("scheduling reset", src);
+    if (level) {
+        if (s->regs[R_RESET_STATUS]) {
+            /* do nothing if a reset is already in progress */
+            return;
+        }
+
+        s->regs[R_RESET_STATUS] |= rstmask;
+
+        /*
+         * for now, there is no FSM in PWRMGR implementation.
+         * simply forward the request to the RSTMGR
+         */
+        qemu_bh_schedule(s->reset_bh);
+        trace_ot_pwrmgr_reset_req("scheduling reset", src);
+    } else {
+        s->regs[R_RESET_STATUS] &= ~rstmask;
+    }
 }
 
 static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
@@ -314,27 +324,34 @@ static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
     assert(src < NUM_SW_RST_REQ);
 
     trace_ot_pwrmgr_sw_rst_req(src, (bool)level);
-    if (!level) {
-        return;
-    }
 
     uint32_t rstmask = 1u << (NUM_SW_RST_REQ + src);
-    if (!(s->regs[R_RESET_EN] & rstmask)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: SW reset %u not enabled\n",
-                      __func__, src);
-        return;
+
+    if (level) {
+        if (!(s->regs[R_RESET_EN] & rstmask)) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: SW reset %u not enabled\n",
+                          __func__, src);
+            return;
+        }
+
+        if (s->regs[R_RESET_STATUS]) {
+            /* do nothing if a reset is already in progress */
+            return;
+        }
+
+        s->regs[R_RESET_STATUS] |= rstmask;
+
+        /*
+         * for now, there is no FSM in PWRMGR implementation.
+         * simply forward the request to the RSTMGR
+         */
+        s->reset_req.req = OT_RSTMGR_RESET_SW;
+        s->reset_req.domain = true;
+        qemu_bh_schedule(s->reset_bh);
+        trace_ot_pwrmgr_reset_req("scheduling SW reset", 0);
+    } else {
+        s->regs[R_RESET_STATUS] &= ~rstmask;
     }
-
-    s->regs[R_RESET_STATUS] |= rstmask;
-
-    /*
-     * for now, there is no FSM in PWRMGR implementation.
-     * simply forward the request to the RSTMGR
-     */
-    s->reset_req.req = OT_RSTMGR_RESET_SW;
-    s->reset_req.domain = true;
-    qemu_bh_schedule(s->reset_bh);
-    trace_ot_pwrmgr_reset_req("scheduling SW reset", 0);
 }
 
 static void ot_pwrmgr_trigger_reset(void *opaque)
