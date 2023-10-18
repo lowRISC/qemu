@@ -39,6 +39,7 @@ struct OtRomImg {
     char *filename;
     uint8_t *digest;
     unsigned digest_len;
+    uint32_t address;
     bool fake_digest;
 };
 

@@ -873,7 +873,8 @@
 ##
 { 'struct': 'OtRomImgProperties',
   'data': { 'file': 'str',
-            'digest': 'str' } }
+            'digest': 'str',
+            '*addr': 'uint32' } }
 
 ##
 # @ObjectType:

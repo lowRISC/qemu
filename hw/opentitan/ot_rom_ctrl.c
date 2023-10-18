@@ -33,6 +33,7 @@
 #include "qemu/bswap.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
+#include "qapi/error.h"
 #include "elf.h"
 #include "hw/loader.h"
 #include "hw/opentitan/ot_alert.h"
@@ -137,6 +138,92 @@ struct OtRomCtrlState {
     bool fake_digest;
 };
 
+static void ot_rom_ctrl_get_mem_bounds(OtRomCtrlState *s, hwaddr *minaddr,
+                                       hwaddr *maxaddr)
+{
+    *minaddr = s->mem.addr;
+    *maxaddr = s->mem.addr + (hwaddr)memory_region_size(&s->mem);
+}
+
+static void ot_rom_ctrl_load_elf(OtRomCtrlState *s, const OtRomImg *ri)
+{
+    AddressSpace *as = ot_common_get_local_address_space(DEVICE(s));
+    hwaddr minaddr;
+    hwaddr maxaddr;
+    ot_rom_ctrl_get_mem_bounds(s, &minaddr, &maxaddr);
+    uint64_t loaddr;
+    if (load_elf_ram_sym(ri->filename, NULL, NULL, NULL, NULL, &loaddr, NULL,
+                         NULL, 0, EM_RISCV, 1, 0, as, false, NULL) <= 0) {
+        error_setg(&error_fatal,
+                   "ot_rom_ctrl: %s: ROM image '%s', ELF loading failed",
+                   s->rom_id, ri->filename);
+        return;
+    }
+    if ((loaddr < minaddr) || (loaddr > maxaddr)) {
+        /* cannot test upper load address as QEMU loader returns VMA, not LMA */
+        error_setg(&error_fatal, "ot_rom_ctrl: %s: ELF cannot fit into ROM\n",
+                   s->rom_id);
+    }
+}
+
+static void ot_rom_ctrl_load_binary(OtRomCtrlState *s, const OtRomImg *ri)
+{
+    hwaddr minaddr;
+    hwaddr maxaddr;
+    ot_rom_ctrl_get_mem_bounds(s, &minaddr, &maxaddr);
+
+    hwaddr binaddr = (hwaddr)ri->address;
+
+    if (binaddr < minaddr) {
+        error_setg(&error_fatal, "ot_rom_ctrl: %s: address 0x%x: not in ROM:\n",
+                   s->rom_id, ri->address);
+    }
+
+    int fd = open(ri->filename, O_RDONLY | O_BINARY | O_CLOEXEC);
+    if (fd == -1) {
+        error_setg(&error_fatal,
+                   "ot_rom_ctrl: %s: could not open ROM '%s': %s\n",
+                   ri->filename, s->rom_id, strerror(errno));
+    }
+
+    ssize_t binsize = (ssize_t)lseek(fd, 0, SEEK_END);
+    if (binsize == -1) {
+        close(fd);
+        error_setg(&error_fatal,
+                   "ot_rom_ctrl: %s: file %s: get size error: %s\n", s->rom_id,
+                   ri->filename, strerror(errno));
+    }
+
+    if (binaddr + binsize > maxaddr) {
+        close(fd);
+        error_setg(&error_fatal, "ot_rom_ctrl: cannot fit into ROM\n");
+    }
+
+    uint8_t *data = g_malloc0(binsize);
+    lseek(fd, 0, SEEK_SET);
+
+    ssize_t rc = read(fd, data, binsize);
+    close(fd);
+    if (rc != binsize) {
+        g_free(data);
+        error_setg(
+            &error_fatal,
+            "ot_rom_ctrl: %s: file %s: read error: rc=%zd (expected %zd)\n",
+            s->rom_id, ri->filename, rc, binsize);
+        return; /* static analyzer does not know error_fatal never returns */
+    }
+
+    hwaddr offset = binaddr - minaddr;
+
+    uintptr_t hostptr = (uintptr_t)memory_region_get_ram_ptr(&s->mem);
+    hostptr += offset;
+    memcpy((void *)hostptr, data, binsize);
+    g_free(data);
+
+    memory_region_set_dirty(&s->mem, offset, binsize);
+}
+
+
 static void ot_rom_ctrl_load_rom(OtRomCtrlState *s)
 {
     Object *obj = NULL;
@@ -152,17 +239,15 @@ static void ot_rom_ctrl_load_rom(OtRomCtrlState *s)
     }
     rom_img = (OtRomImg *)object_dynamic_cast(obj, TYPE_OT_ROM_IMG);
     if (!rom_img) {
-        warn_report("ot_rom_ctrl: Object with id '%s' is not a ROM Image",
-                    s->rom_id);
+        error_setg(&error_fatal, "ot_rom_ctrl: %s: Object is not a ROM Image",
+                   s->rom_id);
         return;
     }
 
-    AddressSpace *as = ot_common_get_local_address_space(DEVICE(s));
-    if (load_elf_ram_sym(rom_img->filename, NULL, NULL, NULL, NULL, NULL, NULL,
-                         NULL, 0, EM_RISCV, 1, 0, as, false, NULL) <= 0) {
-        warn_report("ot_rom_ctrl: ROM image '%s', ELF loading failed",
-                    s->rom_id);
-        return;
+    if (rom_img->address == UINT32_MAX) {
+        ot_rom_ctrl_load_elf(s, rom_img);
+    } else {
+        ot_rom_ctrl_load_binary(s, rom_img);
     }
 
     /* check if fake digest is requested */
@@ -187,10 +272,12 @@ static void ot_rom_ctrl_compare_and_notify(OtRomCtrlState *s)
     for (unsigned ix = 0; ix < ROM_DIGEST_WORDS; ix++) {
         if (s->regs[R_EXP_DIGEST_0 + ix] != s->regs[R_DIGEST_0 + ix]) {
             rom_good = false;
-            warn_report("ot_rom_ctrl: DIGEST_%u mismatch (expected 0x%08x got "
-                        "0x%08x)",
-                        ix, s->regs[R_EXP_DIGEST_0 + ix],
-                        s->regs[R_DIGEST_0 + ix]);
+            error_setg(
+                &error_fatal,
+                "ot_rom_ctrl: %s: DIGEST_%u mismatch (expected 0x%08x got "
+                "0x%08x)",
+                s->rom_id, ix, s->regs[R_EXP_DIGEST_0 + ix],
+                s->regs[R_DIGEST_0 + ix]);
         }
     }
 
@@ -427,8 +514,8 @@ static void ot_rom_ctrl_mem_write(void *opaque, hwaddr addr, uint64_t value,
         stn_le_p(&rom_ptr[addr], (int)size, value);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Bad offset 0x%" HWADDR_PRIx ", pc=0x%x\n", __func__,
-                      addr, (unsigned)pc);
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx ", pc=0x%x\n",
+                      __func__, s->rom_id, addr, (unsigned)pc);
     }
 }
 

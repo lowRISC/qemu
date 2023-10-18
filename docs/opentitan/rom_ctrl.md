@@ -15,17 +15,38 @@ comparison happens).
 
 ## QEMU ROM Options
 
+### Digest
+
+The ROM digest is either a sequence of 64 hex digits (_i.e._ 32 bytes) or the exact string `fake` to
+enable _fake digest_ mode).
+
+### ELF ROM file
+
 The ROM ELF file and its digest can be provided on the QEMU command line using this option:
 
 ```
 -object ot-rom-img,id=rom,file=/path/to/rom.elf,digest=<romdigest>
 ```
 
-The ROM image ID may depend on the SoC. For EarlGrey which has a single ROM, the ID is expected to
-be `rom`.
+### Binary ROM file
 
-The ROM digest is either a sequence of 64 hex digits (_i.e._ 32 bytes) or the exact string `fake` to
-enable _fake digest_ mode).
+The ROM binary file and its digest can be provided on the QEMU command line using this option:
+
+```
+-object ot-rom-img,id=rom,file=/path/to/rom.bin,digest=<romdigest>,addr=address
+```
+
+If `addr` is specifed, the file is loaded as a raw binary file, whatever its extension.
+
+`addr` is specified as an absolute address in the CPU address space, _i.e._ not relative to the
+ROM base address.
+
+### ROM identifiers
+
+The ROM image ID may depend on the SoC.
+
+* for EarlGrey which has a single ROM, the ID is expected to be `rom`.
+* for a SoC with two ROMs, the IDs would be expected to be `rom0` and `rom1`.
 
 ## Booting with and without ROM
 
@@ -48,3 +69,7 @@ for the machine), it does not prevent the CPU from starting:
 - ROM Controller activates _fake digest_ mode: digest is computed on the empty ROM region and
   expected digest value is faked. ROM is "valid" so signal is sent to Power Manager to start the
 CPU.
+
+When the `-kernel` option is used, the default `resetvec` of the machine is overridden with the
+entry point defined in the ELF file. The default `mtvec` is not modified - it is expected the ELF
+early code updates the `mtvec` with a reachable location if no ROM is used.

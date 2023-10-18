@@ -33,6 +33,8 @@
 #include "qapi/error.h"
 #include "qom/object_interfaces.h"
 #include "hw/opentitan/ot_rom_ctrl_img.h"
+#include "hw/qdev-properties-system.h"
+#include "hw/qdev-properties.h"
 
 /* Current ROMs digests are 256 bits (32 bytes) */
 #define ROM_DIGEST_BYTES (32u)
@@ -45,6 +47,7 @@ static void ot_rom_img_reset(OtRomImg *ri)
     ri->digest = NULL;
     ri->digest_len = 0;
     ri->fake_digest = false;
+    ri->address = UINT32_MAX;
 }
 
 static void ot_rom_img_prop_set_file(Object *obj, const char *value,
@@ -126,9 +129,35 @@ static char *ot_rom_img_prop_get_digest(Object *obj, Error **errp)
     return digest;
 }
 
+static void ot_rom_img_prop_get_addr(Object *obj, Visitor *v, const char *name,
+                                     void *opaque, Error **errp)
+{
+    OtRomImg *ri = OT_ROM_IMG(obj);
+    (void)opaque;
+
+    uint32_t address = ri->address;
+
+    visit_type_uint32(v, name, &address, errp);
+}
+
+static void ot_rom_img_prop_set_addr(Object *obj, Visitor *v, const char *name,
+                                     void *opaque, Error **errp)
+{
+    OtRomImg *ri = OT_ROM_IMG(obj);
+    (void)opaque;
+    uint32_t address;
+
+    if (!visit_type_uint32(v, name, &address, errp)) {
+        return;
+    }
+
+    ri->address = address;
+}
+
 static void ot_rom_img_instance_init(Object *obj)
 {
     OtRomImg *ri = OT_ROM_IMG(obj);
+
     ot_rom_img_reset(ri);
 }
 
@@ -164,10 +193,12 @@ static void ot_rom_img_class_init(ObjectClass *oc, void *data)
 
     ucc->complete = &ot_rom_img_complete;
 
-    object_class_property_add_str(oc, "file", ot_rom_img_prop_get_file,
-                                  ot_rom_img_prop_set_file);
-    object_class_property_add_str(oc, "digest", ot_rom_img_prop_get_digest,
-                                  ot_rom_img_prop_set_digest);
+    object_class_property_add_str(oc, "file", &ot_rom_img_prop_get_file,
+                                  &ot_rom_img_prop_set_file);
+    object_class_property_add_str(oc, "digest", &ot_rom_img_prop_get_digest,
+                                  &ot_rom_img_prop_set_digest);
+    object_class_property_add(oc, "addr", "uint32", &ot_rom_img_prop_get_addr,
+                              &ot_rom_img_prop_set_addr, NULL, NULL);
 }
 
 static const TypeInfo ot_rom_img_info = {
