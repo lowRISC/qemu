@@ -209,8 +209,8 @@ ${SCRIPT_DIR}/flashgen.py -v -D -x "${OT_ROM_EXT_BIN}" -b "${OT_BL0_TEST_BIN}" \
     flash.raw ${FLASHGEN_OPTS} || die "flashgen.py failed"
 
 echo "Use [Ctrl-A] + x to quit QEMU"
-${QEMU_BUILD_DIR}/qemu-system-riscv32 \
+(cd ${QEMU_BUILD_DIR} && ./qemu-system-riscv32 \
     -M ot-earlgrey -display none -serial mon:stdio ${QEMU_GUEST_OPT} \
-    -drive if=pflash,file=otp.raw,format=raw \
-    -drive if=mtd,bus=1,file=flash.raw,format=raw $*
+    -drive if=pflash,file=${QEMU_DIR}/otp.raw,format=raw \
+    -drive if=mtd,bus=1,file=${QEMU_DIR}/flash.raw,format=raw $*)
 
