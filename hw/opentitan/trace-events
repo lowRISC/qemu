@@ -223,6 +223,39 @@ ot_rstmgr_sw_rst(const char *path, bool reset) "%s: reset:%u"
 ot_sensor_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_sensor_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_spi_device.c
+
+ot_spi_device_buf_read_out(unsigned int addr, unsigned int size, uint64_t val, uint64_t pc) "addr=0x%02x, sz=%u, val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_spi_device_buf_write_in(unsigned int addr, unsigned int size, uint64_t val, uint64_t pc) "addr=0x%02x, sz=%u,  val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_spi_device_bus_change_state(int line, const char *state, int stateval) "@%d: %s [%d]"
+ot_spi_device_chr_cs_assert(unsigned count, bool release, char rx, char tx, const char *st) "0x%x bytes, /cs: %u, rx: %csb, tx: %csb, mode:%s"
+ot_spi_device_chr_error(const char *err) "%s"
+ot_spi_device_flash_byte_unexpected(uint8_t rx) "unexpected byte 0x%02x after completed command"
+ot_spi_device_flash_change_state(int line, const char *state, int stateval) "@%d: %s [%d]"
+ot_spi_device_flash_cross_buffer(const char *msg, uint32_t addr) "%s 0x%08x"
+ot_spi_device_flash_disabled_slot(uint8_t cmd, unsigned slot) "cmd 0x%02x matching disabled slot %u"
+ot_spi_device_flash_exec(const char *cmd) "%s"
+ot_spi_device_flash_ignored_command(const char* msg, uint8_t cmd) "%s cmd 0x%02x"
+ot_spi_device_flash_new_command(const char* type, uint8_t cmd, unsigned slot) "%s cmd 0x%02x slot %u"
+ot_spi_device_flash_overflow(const char *msg) "%s"
+ot_spi_device_flash_pace(const char *msg, bool pending) "%s: %u"
+ot_spi_device_flash_payload(unsigned fpos, unsigned idx, unsigned len) "pos:%u idx:%u len:%u"
+ot_spi_device_flash_push_address(uint32_t address) "0x%08x"
+ot_spi_device_flash_set_read_addr(uint32_t addr) "0x%08x"
+ot_spi_device_flash_read_status(unsigned slot, uint8_t status) "sr[%u] 0x%02x"
+ot_spi_device_flash_read_threshold(uint32_t addr, uint32_t threshold) "0x%08x @ 0x%08x"
+ot_spi_device_flash_upload(unsigned slot, uint32_t cmd_info, bool busy) "slot:%d info:0x%08x busy:%u"
+ot_spi_device_gen_fifo_error(const char *msg) "%s"
+ot_spi_device_gen_phase(const char *func, unsigned off, unsigned lim, bool phase) "%s off:0x%03x lim:0x%03x ph:%u"
+ot_spi_device_gen_rx_timeout(unsigned count) "%d"
+ot_spi_device_gen_update_fifo(const char *fifo, int line, uint32_t val) "%s@%d: 0x%08x"
+ot_spi_device_io_spi_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_spi_device_io_spi_write_in(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_spi_device_set_irq(const char *name, unsigned irq) "%s [%u]"
+ot_spi_device_io_tpm_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_spi_device_io_tpm_write_in(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_spi_device_update_last_read_addr(uint32_t addr) "0x%08x"
+
 # ot_spi_host.c
 
 ot_spi_host_reset(const char *msg) "%s"

@@ -88,6 +88,9 @@ config OT_RSTMGR
 config OT_SENSOR
     bool
 
+config OT_SPI_DEVICE
+    bool
+
 config OT_SPI_HOST
     bool
     select SSI
