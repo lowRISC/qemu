@@ -217,10 +217,8 @@ static inline void warn_always_zero_bit(target_ulong val, target_ulong mask,
     }
 }
 
-static void do_trigger_action(CPURISCVState *env, target_ulong trigger_index)
+static void do_trigger_action(CPURISCVState *env, trigger_action_t action)
 {
-    trigger_action_t action = get_trigger_action(env, trigger_index);
-
     switch (action) {
     case DBG_ACTION_NONE:
         break;
@@ -564,7 +562,7 @@ void helper_itrigger_match(CPURISCVState *env)
         itrigger_set_count(env, i, count--);
         if (!count) {
             env->itrigger_enabled = riscv_itrigger_enabled(env);
-            do_trigger_action(env, i);
+            do_trigger_action(env, get_trigger_action(env, i));
         }
     }
 }
@@ -601,7 +599,7 @@ static void riscv_itrigger_update_count(CPURISCVState *env)
             executed = current_icount - last_icount;
             itrigger_set_count(env, i, count - executed);
             if (count == executed) {
-                do_trigger_action(env, i);
+                do_trigger_action(env, get_trigger_action(env, i));
             }
         } else {
             /*
