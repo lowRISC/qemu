@@ -228,6 +228,13 @@ static void do_trigger_action(CPURISCVState *env, trigger_action_t action)
         riscv_raise_exception(env, RISCV_EXCP_BREAKPOINT, 0);
         break;
     case DBG_ACTION_DBG_MODE:
+        if (!env->debug_dm) {
+            cpu_handle_guest_debug(env_cpu(env));
+        } else {
+            riscv_cpu_store_debug_cause(env_cpu(env), DCSR_CAUSE_BREAKPOINT);
+            riscv_raise_exception(env, RISCV_EXCP_BREAKPOINT, 0);
+        }
+        break;
     case DBG_ACTION_TRACE0:
     case DBG_ACTION_TRACE1:
     case DBG_ACTION_TRACE2:
