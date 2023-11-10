@@ -330,3 +330,7 @@ djmemc_write(int reg, uint64_t value, unsigned int size) "reg=0x%x value=0x%"PRI
 # iosb.c
 iosb_read(int reg, uint64_t value, unsigned int size) "reg=0x%x value=0x%"PRIx64" size=%u"
 iosb_write(int reg, uint64_t value, unsigned int size) "reg=0x%x value=0x%"PRIx64" size=%u"
+
+# pulp_rv_dm.c
+pulp_rv_dm_mem_read_out(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, val=0x%" PRIx64 ", pc=0x%" PRIx64
+pulp_rv_dm_mem_write(unsigned int addr, uint64_t val, uint64_t pc) "addr=0x%02x, val=0x%" PRIx64 ", pc=0x%" PRIx64
