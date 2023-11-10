@@ -44,6 +44,7 @@
 #include "hw/irq.h"
 #include "hw/loader.h"
 #include "hw/misc/pulp_rv_dm.h"
+#include "hw/opentitan/ot_alert.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -66,6 +67,10 @@
  */
 
 /* clang-format off */
+
+/* MMIO Regs */
+REG32(ALERT_TEST, 0x0u)
+    FIELD(ALERT_TEST, FATAL_FAULT, 0u, 1u)
 
 /* MMIO Mem (Actions) */
 REG32(HALTED, RISCV_DM_HALTED_OFFSET)
@@ -120,6 +125,7 @@ REG32(FLAGS, RISCV_DM_FLAGS_OFFSET)
 struct PulpRVDMState {
     SysBusDevice parent_obj;
 
+    MemoryRegion regs; /* MMIO */
     MemoryRegion mem; /* Container for the following: */
     MemoryRegion dmact; /* MMIO */
     MemoryRegion prog; /* ROM device */
@@ -132,6 +138,7 @@ struct PulpRVDMState {
     uint64_t idle_bm;
 
     qemu_irq *ack_out;
+    IbexIRQ alert;
 };
 
 #ifdef DISCARD_REPEATED_IO_TRACES
@@ -230,6 +237,37 @@ static void pulp_rv_dm_load_rom(PulpRVDMState *s)
     }
     memcpy(rom, DEBUG_ROM, sizeof(DEBUG_ROM));
 }
+
+static uint64_t pulp_rv_dm_regs_read(void *opaque, hwaddr addr, unsigned size)
+{
+    (void)opaque;
+    (void)size;
+    /* the unique register is W/O */
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%" HWADDR_PRIx "\n",
+                  __func__, addr);
+
+    return 0u;
+};
+
+static void pulp_rv_dm_regs_write(void *opaque, hwaddr addr, uint64_t val64,
+                                  unsigned size)
+{
+    PulpRVDMState *s = opaque;
+    uint32_t val32 = (uint32_t)val64;
+    (void)size;
+
+    switch (R32_OFF(addr)) {
+    case R_ALERT_TEST:
+        if (val32 & R_ALERT_TEST) {
+            ibex_irq_set(&s->alert, true);
+        }
+        break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
+                      __func__, addr);
+        break;
+    }
+};
 
 static MemTxResult pulp_rv_dm_dmact_read_with_attrs(
     void *opaque, hwaddr addr, uint64_t *val64, unsigned size, MemTxAttrs attrs)
@@ -412,6 +450,14 @@ static MemTxResult pulp_rv_dm_dmflag_write_with_attrs(
     return res;
 };
 
+static const MemoryRegionOps pulp_rv_dm_regs_ops = {
+    .read = &pulp_rv_dm_regs_read,
+    .write = &pulp_rv_dm_regs_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl.min_access_size = 4,
+    .impl.max_access_size = 4,
+};
+
 static const MemoryRegionOps pulp_rv_dm_dmact_ops = {
     .read_with_attrs = &pulp_rv_dm_dmact_read_with_attrs,
     .write_with_attrs = &pulp_rv_dm_dmact_write_with_attrs,
@@ -432,6 +478,8 @@ static void pulp_rv_dm_reset(DeviceState *dev)
 {
     PulpRVDMState *s = PULP_RV_DM(dev);
 
+    ibex_irq_set(&s->alert, false);
+
     memset(memory_region_get_ram_ptr(&s->prog), 0, PULP_RV_DM_PROG_SIZE);
     memset(s->dmflag_regs, 0, sizeof(s->dmflag_regs));
 }
@@ -447,6 +495,11 @@ static void pulp_rv_dm_init(Object *obj)
     /* Top-level container */
     memory_region_init(&s->mem, obj, TYPE_PULP_RV_DM, 0x1000);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mem);
+
+    /* Top-level MMIO */
+    memory_region_init_io(&s->regs, obj, &pulp_rv_dm_regs_ops, s,
+                          TYPE_PULP_RV_DM "-regs", PULP_RV_DM_REGS_SIZE);
+    sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->regs);
 
     /* Mem container content */
     memory_region_init_io(&s->dmact, obj, &pulp_rv_dm_dmact_ops, s,
@@ -471,6 +524,8 @@ static void pulp_rv_dm_init(Object *obj)
                              ACK_COUNT);
 
     pulp_rv_dm_load_rom(s);
+
+    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 }
 
 static void pulp_rv_dm_class_init(ObjectClass *klass, void *data)
