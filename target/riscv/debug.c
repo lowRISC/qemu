@@ -112,13 +112,13 @@ static trigger_action_t get_trigger_action(CPURISCVState *env,
     case TRIGGER_TYPE_INT:
     case TRIGGER_TYPE_EXCP:
     case TRIGGER_TYPE_EXT_SRC:
-        qemu_log_mask(LOG_UNIMP, "trigger type: %d is not supported\n",
-                      trigger_type);
+        qemu_log_mask(LOG_UNIMP, "%s: trigger type: %d is not supported\n",
+                      __func__, trigger_type);
         break;
     case TRIGGER_TYPE_NO_EXIST:
     case TRIGGER_TYPE_UNAVAIL:
-        qemu_log_mask(LOG_GUEST_ERROR, "trigger type: %d does not exit\n",
-                      trigger_type);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: trigger type: %d does not exit\n",
+                      __func__, trigger_type);
         break;
     default:
         g_assert_not_reached();
@@ -199,7 +199,7 @@ static target_ulong tdata1_validate(CPURISCVState *env, target_ulong val,
 
     if (type != t) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring type write to tdata1 register\n");
+                      "%s: ignoring type write to tdata1 register\n", __func__);
     }
 
     if (dmode != 0) {
@@ -213,7 +213,7 @@ static inline void warn_always_zero_bit(target_ulong val, target_ulong mask,
                                         const char *msg)
 {
     if (val & mask) {
-        qemu_log_mask(LOG_UNIMP, "%s bit is always zero\n", msg);
+        qemu_log_mask(LOG_UNIMP, "%s: %s bit is always zero\n", __func__, msg);
     }
 }
 
@@ -232,7 +232,8 @@ static void do_trigger_action(CPURISCVState *env, trigger_action_t action)
     case DBG_ACTION_TRACE3:
     case DBG_ACTION_EXT_DBG0:
     case DBG_ACTION_EXT_DBG1:
-        qemu_log_mask(LOG_UNIMP, "action: %d is not supported\n", action);
+        qemu_log_mask(LOG_UNIMP, "%s: action: %d is not supported\n",
+                    __func__, action);
         break;
     default:
         g_assert_not_reached();
@@ -280,8 +281,9 @@ static target_ulong type2_mcontrol_validate(CPURISCVState *env,
     /* validate size encoding */
     size = type2_breakpoint_size(env, ctrl);
     if (access_size[size] == -1) {
-        qemu_log_mask(LOG_UNIMP, "access size %d is not supported, using "
-                                 "SIZE_ANY\n", size);
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: access size %d is not supported, using SIZE_ANY\n",
+                      __func__, size);
     } else {
         val |= (ctrl & TYPE2_SIZELO);
         if (riscv_cpu_mxl(env) == MXL_RV64) {
@@ -409,8 +411,9 @@ static target_ulong type6_mcontrol6_validate(CPURISCVState *env,
     /* validate size encoding */
     size = extract32(ctrl, 16, 4);
     if (access_size[size] == -1) {
-        qemu_log_mask(LOG_UNIMP, "access size %d is not supported, using "
-                                 "SIZE_ANY\n", size);
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: access size %d is not supported, using SIZE_ANY\n",
+                      __func__, size);
     } else {
         val |= (ctrl & TYPE6_SIZE);
     }
@@ -487,7 +490,8 @@ static void type6_reg_write(CPURISCVState *env, target_ulong index,
         break;
     case TDATA3:
         qemu_log_mask(LOG_UNIMP,
-                      "tdata3 is not supported for type 6 trigger\n");
+                      "%s: tdata3 is not supported for type 6 trigger\n",
+                      __func__);
         break;
     default:
         g_assert_not_reached();
@@ -666,11 +670,13 @@ static void itrigger_reg_write(CPURISCVState *env, target_ulong index,
         break;
     case TDATA2:
         qemu_log_mask(LOG_UNIMP,
-                      "tdata2 is not supported for icount trigger\n");
+                      "%s: tdata2 is not supported for icount trigger\n",
+                      __func__);
         break;
     case TDATA3:
         qemu_log_mask(LOG_UNIMP,
-                      "tdata3 is not supported for icount trigger\n");
+                      "%s: tdata3 is not supported for icount trigger\n",
+                      __func__);
         break;
     default:
         g_assert_not_reached();
@@ -733,13 +739,13 @@ void tdata_csr_write(CPURISCVState *env, int tdata_index, target_ulong val)
     case TRIGGER_TYPE_INT:
     case TRIGGER_TYPE_EXCP:
     case TRIGGER_TYPE_EXT_SRC:
-        qemu_log_mask(LOG_UNIMP, "trigger type: %d is not supported\n",
-                      trigger_type);
+        qemu_log_mask(LOG_UNIMP, "%s: trigger type: %d is not supported\n",
+                      __func__, trigger_type);
         break;
     case TRIGGER_TYPE_NO_EXIST:
     case TRIGGER_TYPE_UNAVAIL:
-        qemu_log_mask(LOG_GUEST_ERROR, "trigger type: %d does not exit\n",
-                      trigger_type);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: trigger type: %d does not exit\n",
+                      __func__, trigger_type);
         break;
     default:
         g_assert_not_reached();
