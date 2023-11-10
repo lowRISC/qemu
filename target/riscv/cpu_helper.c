@@ -1200,6 +1200,44 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     env->two_stage_indirect_lookup = two_stage_indirect;
 }
 
+static bool riscv_cpu_handle_breakpoint(CPUState *cs)
+{
+    /*
+     * EBREAK/C.BREAK causes the receiving privilege mode’s epc register to be
+     * set to the address of the EBREAK instruction itself, not the address of
+     * the following instruction. As ECALL and EBREAK cause synchronous
+     * exceptions, they are not considered to retire, and should not increment
+     * the minstret CSR.
+
+     * Instruction address breakpoints have the same cause value as, but
+     * different priority than, data address breakpoints (a.k.a. watchpoints)
+     * and environment break exceptions (which are raised by the EBREAK
+     * instruction).
+
+     * DCSR ebreakX fields:
+     * 0: ebreak instructions in X-mode behave as described in the Priv. Spec.
+     *   a. the core enters the exception handler routine located at mtvec
+     *      (Debug Mode is not entered)
+     *   b. mepc and mcause are updated
+     * 1: ebreak instructions in X-mode enter Debug Mode.
+     *   a. the core enters Debug Mode and starts executing debug code located
+     *      at dmhaltvec (exception routine not called)
+     *   b. dpc and dcsr are updated
+     */
+    CPURISCVState *env = &RISCV_CPU(cs)->env;
+    target_ulong ebreak = get_field(env->dcsr, DCSR_EBREAK_MASK);
+    if (!(ebreak & (1u << env->priv)) && !env->debugger) {
+        /* breakpoint not handled, fall back to default exception handling */
+        return false;
+    }
+
+    /* clear current exception */
+    cs->exception_index = -1;
+    cs->interrupt_request |= CPU_INTERRUPT_DEBUG;
+    /* the current exception has been handled */
+    return true;
+}
+
 void riscv_cpu_store_debug_cause(CPUState *cs, unsigned cause)
 {
     /*
@@ -1735,6 +1773,11 @@ void riscv_cpu_do_interrupt(CPUState *cs)
             tval = env->bins;
             break;
         case RISCV_EXCP_BREAKPOINT:
+            if (env->debug_dm) {
+                if (riscv_cpu_handle_breakpoint(cs)) {
+                    return;
+                }
+            }
             if (cs->watchpoint_hit) {
                 tval = cs->watchpoint_hit->hitaddr;
                 cs->watchpoint_hit = NULL;
