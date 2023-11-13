@@ -53,6 +53,7 @@
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_sensor.h"
+#include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/opentitan/ot_timer.h"
@@ -319,11 +320,26 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
         )
     },
     [OT_EARLGREY_SOC_DEV_SPI_DEVICE] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-spi_device",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_SPI_DEVICE,
         .memmap = MEMMAPENTRIES(
             { 0x40050000u, 0x2000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 65),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 66),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 67),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 68),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 69),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 70),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 71),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 72),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 73),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 74),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 75),
+            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 76)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_BOOL_PROP("dpsram", true)
         ),
     },
     [OT_EARLGREY_SOC_DEV_I2C0] = {
