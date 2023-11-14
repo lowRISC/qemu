@@ -30,7 +30,6 @@
 
 #include "qom/object.h"
 
-/* Implemented by devices that can be plugged on Conventional PCI buses */
 #define TYPE_OT_RANDOM_SRC_IF "ot-random_src-interface"
 typedef struct OtRandomSrcIfClass OtRandomSrcIfClass;
 DECLARE_CLASS_CHECKERS(OtRandomSrcIfClass, OT_RANDOM_SRC_IF,
