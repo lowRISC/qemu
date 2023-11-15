@@ -625,4 +625,4 @@ static void ibex_register_types(void)
     monitor_register_hmp("ibex", true, &hmp_info_ibex);
 }
 
-type_init(ibex_register_types)
+type_init(ibex_register_types);
