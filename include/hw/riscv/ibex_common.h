@@ -385,6 +385,7 @@ DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
     ibex_link_remote_devices(_devs_, _defs_, _cnt_, NULL)
 void ibex_link_remote_devices(DeviceState **devices, const IbexDeviceDef *defs,
                               unsigned count, DeviceState ***remotes);
+void ibex_apply_device_props(Object *obj, const IbexDevicePropDef *prop);
 void ibex_define_device_props(DeviceState **devices, const IbexDeviceDef *defs,
                               unsigned count);
 void ibex_realize_system_devices(DeviceState **devices,

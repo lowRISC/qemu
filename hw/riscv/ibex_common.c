@@ -23,6 +23,7 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 #include "qom/object.h"
 #include "cpu.h"
 #include "disas/disas.h"
@@ -85,9 +86,7 @@ void ibex_link_remote_devices(DeviceState **devices, const IbexDeviceDef *defs,
                               unsigned count, DeviceState ***remotes)
 {
     /* Link devices */
-    if (!remotes) {
-        remotes = &devices;
-    }
+    DeviceState ***targets = remotes ?: &devices;
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
         if (!dev) {
@@ -98,14 +97,73 @@ void ibex_link_remote_devices(DeviceState **devices, const IbexDeviceDef *defs,
             while (link->propname) {
                 unsigned rix = IBEX_DEVLINK_REMOTE(link->index);
                 unsigned dix = IBEX_DEVLINK_DEVICE(link->index);
-                DeviceState **tdevices = remotes[rix];
+                if (rix && !remotes) {
+                    /*
+                     * if no remote devices are specified, only local links
+                     * can be performed, skip any remote definition.
+                     */
+                    link++;
+                    continue;
+                }
+                if (!rix && remotes) {
+                    /*
+                     * if remote devices are specified, only remote links
+                     * should be performed, skip any local definition.
+                     */
+                    link++;
+                    continue;
+                }
+                DeviceState **tdevices = targets[rix];
                 g_assert(tdevices);
                 DeviceState *target = tdevices[dix];
                 g_assert(target);
                 object_property_set_link(OBJECT(dev), link->propname,
                                          OBJECT(target), &error_fatal);
+                g_autofree char *plink;
+                plink = object_property_get_str(OBJECT(dev), link->propname,
+                                                &error_fatal);
+                if (!plink || *plink == '\0') {
+                    /*
+                     * unfortunately, if an object is not parented, it is not
+                     * possible to create a link (its canonical being NULL), but
+                     * the `object_property_set_link` silently fails. Read back
+                     * the property to ensure it has been really set.
+                     */
+                    error_setg(&error_fatal, "%s: cannot create %s link",
+                               __func__, link->propname);
+                }
                 link++;
             }
+        }
+    }
+}
+
+void ibex_apply_device_props(Object *obj, const IbexDevicePropDef *prop)
+{
+    if (prop) {
+        while (prop->propname) {
+            switch (prop->type) {
+            case IBEX_PROP_TYPE_BOOL:
+                object_property_set_bool(obj, prop->propname, prop->b,
+                                         &error_fatal);
+                break;
+            case IBEX_PROP_TYPE_INT:
+                object_property_set_int(obj, prop->propname, prop->i,
+                                        &error_fatal);
+                break;
+            case IBEX_PROP_TYPE_UINT:
+                object_property_set_uint(obj, prop->propname, prop->u,
+                                         &error_fatal);
+                break;
+            case IBEX_PROP_TYPE_STR:
+                object_property_set_str(obj, prop->propname, prop->s,
+                                        &error_fatal);
+                break;
+            default:
+                g_assert_not_reached();
+                break;
+            }
+            prop++;
         }
     }
 }
@@ -118,33 +176,7 @@ void ibex_define_device_props(DeviceState **devices, const IbexDeviceDef *defs,
         if (!dev) {
             continue;
         }
-        const IbexDevicePropDef *prop = defs[idx].prop;
-        if (prop) {
-            while (prop->propname) {
-                switch (prop->type) {
-                case IBEX_PROP_TYPE_BOOL:
-                    object_property_set_bool(OBJECT(dev), prop->propname,
-                                             prop->b, &error_fatal);
-                    break;
-                case IBEX_PROP_TYPE_INT:
-                    object_property_set_int(OBJECT(dev), prop->propname,
-                                            prop->i, &error_fatal);
-                    break;
-                case IBEX_PROP_TYPE_UINT:
-                    object_property_set_uint(OBJECT(dev), prop->propname,
-                                             prop->u, &error_fatal);
-                    break;
-                case IBEX_PROP_TYPE_STR:
-                    object_property_set_str(OBJECT(dev), prop->propname,
-                                            prop->s, &error_fatal);
-                    break;
-                default:
-                    g_assert_not_reached();
-                    break;
-                }
-                prop++;
-            }
-        }
+        ibex_apply_device_props(OBJECT(dev), defs[idx].prop);
     }
 }
 
