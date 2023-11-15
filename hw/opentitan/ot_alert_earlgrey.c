@@ -688,4 +688,4 @@ static void ot_alert_eg_register_types(void)
     type_register_static(&ot_alert_eg_info);
 }
 
-type_init(ot_alert_eg_register_types)
+type_init(ot_alert_eg_register_types);

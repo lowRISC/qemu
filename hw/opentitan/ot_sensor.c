@@ -317,4 +317,4 @@ static void ot_sensor_register_types(void)
     type_register_static(&ot_sensor_info);
 }
 
-type_init(ot_sensor_register_types)
+type_init(ot_sensor_register_types);

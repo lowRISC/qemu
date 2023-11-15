@@ -39,4 +39,4 @@ static void ot_random_src_register_types(void)
     type_register_static(&ot_random_src_info);
 }
 
-type_init(ot_random_src_register_types)
+type_init(ot_random_src_register_types);

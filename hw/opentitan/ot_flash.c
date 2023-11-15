@@ -1860,4 +1860,4 @@ static void ot_flash_register_types(void)
     type_register_static(&ot_flash_info);
 }
 
-type_init(ot_flash_register_types)
+type_init(ot_flash_register_types);

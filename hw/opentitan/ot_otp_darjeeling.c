@@ -2232,4 +2232,4 @@ static void ot_otp_dj_register_types(void)
     type_register_static(&ot_otp_dj_info);
 }
 
-type_init(ot_otp_dj_register_types)
+type_init(ot_otp_dj_register_types);

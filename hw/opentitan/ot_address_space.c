@@ -79,4 +79,4 @@ static void ot_address_space_register_types(void)
     type_register_static(&ot_address_space_info);
 }
 
-type_init(ot_address_space_register_types)
+type_init(ot_address_space_register_types);

@@ -1877,4 +1877,4 @@ static void ot_csrng_register_types(void)
     type_register_static(&ot_csrng_info);
 }
 
-type_init(ot_csrng_register_types)
+type_init(ot_csrng_register_types);

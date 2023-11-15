@@ -292,4 +292,4 @@ static void ot_sram_ctrl_register_types(void)
     type_register_static(&ot_sram_ctrl_info);
 }
 
-type_init(ot_sram_ctrl_register_types)
+type_init(ot_sram_ctrl_register_types);

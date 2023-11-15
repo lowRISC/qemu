@@ -1307,4 +1307,4 @@ static void ot_spi_host_register_types(void)
     type_register_static(&ot_spi_host_info);
 }
 
-type_init(ot_spi_host_register_types)
+type_init(ot_spi_host_register_types);

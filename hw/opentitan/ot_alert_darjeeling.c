@@ -688,4 +688,4 @@ static void ot_alert_dj_register_types(void)
     type_register_static(&ot_alert_dj_info);
 }
 
-type_init(ot_alert_dj_register_types)
+type_init(ot_alert_dj_register_types);

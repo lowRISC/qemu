@@ -618,4 +618,4 @@ static void ot_clkmgr_register_types(void)
     type_register_static(&ot_clkmgr_info);
 }
 
-type_init(ot_clkmgr_register_types)
+type_init(ot_clkmgr_register_types);

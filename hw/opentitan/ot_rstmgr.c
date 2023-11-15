@@ -517,4 +517,4 @@ static void ot_rstmgr_register_types(void)
     type_register_static(&ot_rstmgr_info);
 }
 
-type_init(ot_rstmgr_register_types)
+type_init(ot_rstmgr_register_types);

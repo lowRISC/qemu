@@ -2702,4 +2702,4 @@ static void ot_spi_device_register_types(void)
     type_register_static(&ot_spi_device_info);
 }
 
-type_init(ot_spi_device_register_types)
+type_init(ot_spi_device_register_types);

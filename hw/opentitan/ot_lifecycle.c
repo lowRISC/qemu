@@ -578,4 +578,4 @@ static void ot_lifecycle_register_types(void)
     type_register_static(&ot_lifecycle_info);
 }
 
-type_init(ot_lifecycle_register_types)
+type_init(ot_lifecycle_register_types);

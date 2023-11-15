@@ -398,4 +398,4 @@ static void ot_timer_register_types(void)
     type_register_static(&ot_timer_info);
 }
 
-type_init(ot_timer_register_types)
+type_init(ot_timer_register_types);

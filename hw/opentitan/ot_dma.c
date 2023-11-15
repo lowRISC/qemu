@@ -1167,4 +1167,4 @@ static void ot_dma_register_types(void)
     type_register_static(&ot_dma_info);
 }
 
-type_init(ot_dma_register_types)
+type_init(ot_dma_register_types);

@@ -714,4 +714,4 @@ static void ot_otbn_register_types(void)
     type_register_static(&ot_otbn_info);
 }
 
-type_init(ot_otbn_register_types)
+type_init(ot_otbn_register_types);

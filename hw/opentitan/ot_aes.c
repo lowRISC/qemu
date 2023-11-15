@@ -1306,4 +1306,4 @@ static void ot_aes_register_types(void)
     type_register_static(&ot_aes_info);
 }
 
-type_init(ot_aes_register_types)
+type_init(ot_aes_register_types);

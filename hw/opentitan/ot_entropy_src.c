@@ -1655,4 +1655,4 @@ static void ot_entropy_src_register_types(void)
     type_register_static(&ot_entropy_src_info);
 }
 
-type_init(ot_entropy_src_register_types)
+type_init(ot_entropy_src_register_types);

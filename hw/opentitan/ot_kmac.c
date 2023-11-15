@@ -1682,4 +1682,4 @@ static void ot_kmac_register_types(void)
     type_register_static(&ot_kmac_info);
 }
 
-type_init(ot_kmac_register_types)
+type_init(ot_kmac_register_types);

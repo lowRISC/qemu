@@ -1550,16 +1550,14 @@ static void ot_dev_proxy_register_types(void)
     type_register_static(&ot_dev_proxy_info);
 }
 
-type_init(ot_dev_proxy_register_types)
+type_init(ot_dev_proxy_register_types);
 
-    /* ------------------------------------------------------------------------ */
-    /* OtDevProxyStateWatcher */
-    /* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------ */
+/* OtDevProxyStateWatcher */
+/* ------------------------------------------------------------------------ */
 
-    static MemTxResult
-    ot_dev_proxy_watcher_read_with_attrs(void *opaque, hwaddr addr,
-                                         uint64_t *val64, unsigned size,
-                                         MemTxAttrs attrs)
+static MemTxResult ot_dev_proxy_watcher_read_with_attrs(
+    void *opaque, hwaddr addr, uint64_t *val64, unsigned size, MemTxAttrs attrs)
 {
     OtDevProxyWatcherState *s = opaque;
 
@@ -1667,4 +1665,4 @@ static void ot_dev_proxy_watcher_register_types(void)
     type_register_static(&ot_dev_proxy_watcher_info);
 }
 
-type_init(ot_dev_proxy_watcher_register_types)
+type_init(ot_dev_proxy_watcher_register_types);

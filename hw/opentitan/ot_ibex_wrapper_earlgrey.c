@@ -917,4 +917,4 @@ static void ot_ibex_wrapper_eg_register_types(void)
     type_register_static(&ot_ibex_wrapper_eg_info);
 }
 
-type_init(ot_ibex_wrapper_eg_register_types)
+type_init(ot_ibex_wrapper_eg_register_types);

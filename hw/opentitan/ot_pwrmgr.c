@@ -598,4 +598,4 @@ static void ot_pwrmgr_register_types(void)
     type_register_static(&ot_pwrmgr_info);
 }
 
-type_init(ot_pwrmgr_register_types)
+type_init(ot_pwrmgr_register_types);

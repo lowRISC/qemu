@@ -534,4 +534,4 @@ static void ot_gpio_register_types(void)
     type_register_static(&ot_gpio_info);
 }
 
-type_init(ot_gpio_register_types)
+type_init(ot_gpio_register_types);

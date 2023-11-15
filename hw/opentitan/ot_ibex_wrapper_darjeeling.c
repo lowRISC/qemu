@@ -1467,4 +1467,4 @@ static void ot_ibex_wrapper_dj_register_types(void)
     type_register_static(&ot_ibex_wrapper_dj_info);
 }
 
-type_init(ot_ibex_wrapper_dj_register_types)
+type_init(ot_ibex_wrapper_dj_register_types);

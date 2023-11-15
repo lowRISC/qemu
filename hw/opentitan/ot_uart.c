@@ -631,4 +631,4 @@ static void ot_uart_register_types(void)
     type_register_static(&ot_uart_info);
 }
 
-type_init(ot_uart_register_types)
+type_init(ot_uart_register_types);
