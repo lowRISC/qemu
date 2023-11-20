@@ -116,15 +116,34 @@ void cpu_reset(CPUState *cpu)
     trace_cpu_reset(cpu->cpu_index);
 }
 
-static void cpu_common_reset_hold(Object *obj)
+static void cpu_common_reset_enter(Object *obj, ResetType type)
 {
     CPUState *cpu = CPU(obj);
     CPUClass *cc = CPU_GET_CLASS(cpu);
+    cpu->on_reset = true;
 
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
-        qemu_log("CPU Reset (CPU %d)\n", cpu->cpu_index);
+        qemu_log("CPU Reset Enter (CPU %d)\n", cpu->cpu_index);
         log_cpu_state(cpu, cc->reset_dump_flags);
     }
+}
+
+static void cpu_common_reset_exit(Object *obj)
+{
+    CPUState *cpu = CPU(obj);
+    cpu->on_reset = false;
+    cpu->halted = 0;
+    if (qemu_loglevel_mask(CPU_LOG_RESET)) {
+        CPUClass *cc = CPU_GET_CLASS(cpu);
+        qemu_log("CPU Reset Exit (CPU %d) PC:0x%" VADDR_PRIx "\n",
+                 cpu->cpu_index, cc->get_pc(cpu));
+    }
+    cpu_resume(cpu);
+}
+
+static void cpu_common_reset_hold(Object *obj)
+{
+    CPUState *cpu = CPU(obj);
 
     cpu->interrupt_request = 0;
     cpu->halted = cpu->start_powered_off;
@@ -270,7 +289,9 @@ static void cpu_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_CPU, dc->categories);
     dc->realize = cpu_common_realizefn;
     dc->unrealize = cpu_common_unrealizefn;
+    rc->phases.enter = cpu_common_reset_enter;
     rc->phases.hold = cpu_common_reset_hold;
+    rc->phases.exit = cpu_common_reset_exit;
     cpu_class_init_props(dc);
     /*
      * Reason: CPUs still need special care by board code: wiring up
