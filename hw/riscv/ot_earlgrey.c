@@ -977,7 +977,12 @@ static void ot_earlgrey_soc_reset_hold(Object *obj)
     resettable_assert_reset(OBJECT(s->devices[OT_EARLGREY_SOC_DEV_ROM_CTRL]),
                             RESET_TYPE_COLD);
 
-    cpu_reset(CPU(s->devices[OT_EARLGREY_SOC_DEV_HART]));
+    /*
+     * leave hart on reset
+     * power manager should release it once ROM has been validated
+     */
+    CPUState *cs = CPU(s->devices[OT_EARLGREY_SOC_DEV_HART]);
+    resettable_assert_reset(OBJECT(cs), RESET_TYPE_COLD);
 }
 
 static void ot_earlgrey_soc_reset_exit(Object *obj)
