@@ -30,7 +30,9 @@
 #include "qemu/main-loop.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "chardev/char-fe.h"
 #include "exec/address-spaces.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_ibex_wrapper_darjeeling.h"
 #include "hw/qdev-properties-system.h"
@@ -331,11 +333,19 @@ REG32(RND_STATUS, 0x41cu)
     FIELD(RND_STATUS, RND_DATA_VALID, 0u, 1u)
     FIELD(RND_STATUS, RND_DATA_FIPS, 1u, 1u)
 REG32(FPGA_INFO, 0x420u)
+REG32(DV_SIM_STATUS, 0x440u)
+REG32(DV_SIM_LOG, 0x444u)
+REG32(DV_SIM_WIN2, 0x448u)
+REG32(DV_SIM_WIN3, 0x44cu)
+REG32(DV_SIM_WIN4, 0x450u)
+REG32(DV_SIM_WIN5, 0x454u)
+REG32(DV_SIM_WIN6, 0x458u)
+REG32(DV_SIM_WIN7, 0x45cu)
 /* clang-format on */
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
-#define R_LAST_REG (R_FPGA_INFO)
+#define R_LAST_REG (R_DV_SIM_WIN7)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
@@ -608,14 +618,78 @@ static const char *REG_NAMES[REGS_COUNT] = {
     REG_NAME_ENTRY(RND_DATA),
     REG_NAME_ENTRY(RND_STATUS),
     REG_NAME_ENTRY(FPGA_INFO),
+    REG_NAME_ENTRY(DV_SIM_STATUS),
+    REG_NAME_ENTRY(DV_SIM_LOG),
+    REG_NAME_ENTRY(DV_SIM_WIN2),
+    REG_NAME_ENTRY(DV_SIM_WIN3),
+    REG_NAME_ENTRY(DV_SIM_WIN4),
+    REG_NAME_ENTRY(DV_SIM_WIN5),
+    REG_NAME_ENTRY(DV_SIM_WIN6),
+    REG_NAME_ENTRY(DV_SIM_WIN7),
 };
+
+static const char MISSING_LOG_STRING[] = "(?)";
 
 #define CASE_RANGE(_reg_, _cnt_) (_reg_)...((_reg_) + (_cnt_) - (1u))
 
 #define xtrace_ot_ibex_wrapper_info(_msg_) \
     trace_ot_ibex_wrapper_info(__func__, __LINE__, _msg_)
+#define xtrace_ot_ibex_wrapper_error(_msg_) \
+    trace_ot_ibex_wrapper_error(__func__, __LINE__, _msg_)
 
 #define OtIbexWrapperDjState OtIbexWrapperDarjeelingState
+
+/*
+ * These enumerated values are not HW values, however the two last values are
+ * documented by DV SW as:"This is a terminal state. Any code appearing after
+ * this value is set is unreachable."
+ *
+ * There are therefore handled as special HW-SW case that triggers explicit
+ * QEMU termination with a special exit code.
+ */
+typedef enum {
+    TEST_STATUS_IN_BOOT_ROM = 0xb090, /* 'bogo', BOotrom GO */
+    TEST_STATUS_IN_BOOT_ROM_HALT = 0xb057, /* 'bost', BOotrom STop */
+    TEST_STATUS_IN_TEST = 0x4354, /* 'test' */
+    TEST_STATUS_IN_WFI = 0x1d1e, /* 'idle' */
+    TEST_STATUS_PASSED = 0x900d, /* 'good' */
+    TEST_STATUS_FAILED = 0xbaad /* 'baad' */
+} OtIbexTestStatus;
+
+/* OpenTitan SW log severities. */
+typedef enum {
+    TEST_LOG_SEVERITY_INFO,
+    TEST_LOG_SEVERITY_WARN,
+    TEST_LOG_SEVERITY_ERROR,
+    TEST_LOG_SEVERITY_FATAL,
+} OtIbexTestLogLevel;
+
+/* OpenTitan SW log metadata used to format a log line. */
+typedef struct {
+    OtIbexTestLogLevel severity;
+    uint32_t file_name_ptr; /* const char * in RV32 */
+    uint32_t line;
+    uint32_t nargs;
+    uint32_t format_ptr; /* const char * in RV32 */
+} OtIbexTestLogFields;
+
+typedef enum {
+    TEST_LOG_STATE_IDLE,
+    TEST_LOG_STATE_ARG,
+    TEST_LOG_STATE_ERROR,
+} OtIbexTestLogState;
+
+typedef struct {
+    OtIbexTestLogState state;
+    AddressSpace *as;
+    OtIbexTestLogFields fields;
+    unsigned arg_count;
+    uintptr_t *args; /* arguments */
+    bool *strargs; /* whether slot should be freed or a not */
+    const char *fmtptr; /* current pointer in format string */
+    char *filename;
+    char *format;
+} OtIbexTestLogEngine;
 
 struct OtIbexWrapperDarjeelingState {
     SysBusDevice parent_obj;
@@ -624,12 +698,19 @@ struct OtIbexWrapperDarjeelingState {
     MemoryRegion remappers[PARAM_NUM_REGIONS];
 
     uint32_t *regs;
+    OtIbexTestLogEngine *log_engine;
     bool entropy_requested;
     bool edn_connected;
 
-    OtEDNState *edn; /* EDN connection is optional */
+    /* Optional properties */
+    OtEDNState *edn;
     uint8_t edn_ep;
+    CharBackend chr;
 };
+
+/* should match OpenTitan definition */
+static_assert(sizeof(OtIbexTestLogFields) == 20u,
+              "Invalid OtIbexTestLogFields structure");
 
 static void
 ot_ibex_wrapper_dj_remapper_destroy(OtIbexWrapperDjState *s, unsigned slot)
@@ -718,7 +799,7 @@ static void ot_ibex_wrapper_dj_request_entropy(OtIbexWrapperDjState *s)
         trace_ot_ibex_wrapper_request_entropy(s->entropy_requested);
         if (ot_edn_request_entropy(s->edn, s->edn_ep)) {
             s->entropy_requested = false;
-            trace_ot_ibex_wrapper_error("failed to request entropy");
+            xtrace_ot_ibex_wrapper_error("failed to request entropy");
         }
     }
 }
@@ -767,6 +848,339 @@ static void ot_ibex_wrapper_dj_update_remap(OtIbexWrapperDjState *s, bool doi,
     }
 }
 
+static bool ot_ibex_wrapper_dj_log_load_string(OtIbexWrapperDjState *s,
+                                               hwaddr addr, char **str)
+{
+    OtIbexTestLogEngine *eng = s->log_engine;
+
+    /*
+     * Logging needs to access strings that are stored in guest memory.
+     * This function adopts a "best effort" strategy: it may fails to retrieve
+     * a log string argument.
+     */
+    bool res = false;
+    MemoryRegionSection mrs;
+
+    /*
+     * Find the region where the string may reside, using a small size as the
+     * length of the string is not known, and memory_region_find would fail if
+     * look up is performed behing the end of the containing memory region
+     */
+    mrs = memory_region_find(eng->as->root, addr, 4u);
+    MemoryRegion *mr = mrs.mr;
+    if (!mr) {
+        xtrace_ot_ibex_wrapper_error("cannot find mr section");
+        goto end;
+    }
+
+    if (!memory_region_is_ram(mr)) {
+        xtrace_ot_ibex_wrapper_error("invalid mr section");
+        goto end;
+    }
+
+    uintptr_t src = (uintptr_t)memory_region_get_ram_ptr(mr);
+    if (!src) {
+        xtrace_ot_ibex_wrapper_error("cannot get host mem");
+        goto end;
+    }
+    src += mrs.offset_within_region;
+
+    size_t size = int128_getlo(mrs.size) - mrs.offset_within_region;
+    size = MIN(size, 4096u);
+
+    const void *end = memchr((const void *)src, '\0', size);
+    if (!end) {
+        xtrace_ot_ibex_wrapper_error("cannot compute strlen");
+        goto end;
+    }
+    size_t slen = (uintptr_t)end - (uintptr_t)src;
+
+    char *tstr = g_malloc(slen + 1);
+    memcpy(tstr, (const void *)src, slen);
+    tstr[slen] = '\0';
+
+    *str = tstr;
+    res = true;
+
+end:
+    if (mr) {
+        memory_region_unref(mr);
+    }
+    return res;
+}
+
+static bool
+ot_ibex_wrapper_dj_log_load_fields(OtIbexWrapperDjState *s, hwaddr addr)
+{
+    OtIbexTestLogEngine *eng = s->log_engine;
+
+    MemoryRegionSection mrs;
+    mrs = memory_region_find(eng->as->root, addr, sizeof(eng->fields));
+
+    MemoryRegion *mr = mrs.mr;
+    bool res = false;
+
+    if (!mr) {
+        xtrace_ot_ibex_wrapper_error("cannot find mr section");
+        goto end;
+    }
+
+    if (!memory_region_is_ram(mr)) {
+        xtrace_ot_ibex_wrapper_error("invalid mr section");
+        goto end;
+    }
+
+    uintptr_t src = (uintptr_t)memory_region_get_ram_ptr(mr);
+    if (!src) {
+        xtrace_ot_ibex_wrapper_error("cannot get host mem");
+        goto end;
+    }
+    src += mrs.offset_within_region;
+
+    memcpy(&eng->fields, (const void *)src, sizeof(eng->fields));
+
+    if (eng->fields.file_name_ptr) {
+        if (!ot_ibex_wrapper_dj_log_load_string(s,
+                                                (uintptr_t)
+                                                    eng->fields.file_name_ptr,
+                                                &eng->filename)) {
+            xtrace_ot_ibex_wrapper_error("cannot get filename");
+            goto end;
+        }
+    }
+
+    if (eng->fields.format_ptr) {
+        if (!ot_ibex_wrapper_dj_log_load_string(s,
+                                                (uintptr_t)
+                                                    eng->fields.format_ptr,
+                                                &eng->format)) {
+            xtrace_ot_ibex_wrapper_error("cannot get format string");
+            goto end;
+        }
+    }
+
+    eng->arg_count = 0;
+    eng->fmtptr = eng->format;
+    if (eng->fields.nargs) {
+        eng->args = g_new0(uintptr_t, eng->fields.nargs);
+        eng->strargs = g_new0(bool, eng->fields.nargs);
+    } else {
+        eng->args = NULL;
+        eng->strargs = NULL;
+    }
+
+    res = true;
+
+end:
+    if (mr) {
+        memory_region_unref(mr);
+    }
+    return res;
+}
+
+static bool
+ot_ibex_wrapper_dj_log_load_arg(OtIbexWrapperDjState *s, uint32_t value)
+{
+    OtIbexTestLogEngine *eng = s->log_engine;
+
+    if (!eng->fmtptr) {
+        xtrace_ot_ibex_wrapper_error("invalid fmtptr");
+        return false;
+    }
+
+    bool cont;
+    do {
+        cont = false;
+        eng->fmtptr = strchr(eng->fmtptr, '%');
+        if (!eng->fmtptr) {
+            xtrace_ot_ibex_wrapper_error("cannot find formatter");
+            return false;
+        }
+        eng->fmtptr++;
+        switch (*eng->fmtptr) {
+        case '%':
+            eng->fmtptr++;
+            cont = true;
+            continue;
+        case '\0':
+            xtrace_ot_ibex_wrapper_error("cannot find formatter");
+            return false;
+        case 's':
+            if (!ot_ibex_wrapper_dj_log_load_string(
+                    s, (hwaddr)value, (char **)&eng->args[eng->arg_count])) {
+                xtrace_ot_ibex_wrapper_error("cannot load string arg");
+                /* use a default string, best effort strategy */
+                eng->args[eng->arg_count] = (uintptr_t)&MISSING_LOG_STRING[0];
+            } else {
+                /* string has been dynamically allocated, and should be freed */
+                eng->strargs[eng->arg_count] = true;
+            }
+            break;
+        default:
+            eng->args[eng->arg_count] = (uintptr_t)value;
+            break;
+        }
+    } while (cont);
+
+    eng->arg_count++;
+
+    return true;
+}
+
+static void ot_ibex_wrapper_dj_log_cleanup(OtIbexWrapperDjState *s)
+{
+    OtIbexTestLogEngine *eng = s->log_engine;
+
+    if (eng->strargs && eng->args) {
+        for (unsigned ix = 0; ix < eng->fields.nargs; ix++) {
+            if (eng->strargs[ix]) {
+                if (eng->args[ix]) {
+                    g_free((void *)eng->args[ix]);
+                }
+            }
+        }
+    }
+    g_free(eng->format);
+    g_free(eng->filename);
+    g_free(eng->strargs);
+    g_free(eng->args);
+    eng->format = NULL;
+    eng->filename = NULL;
+    eng->fmtptr = NULL;
+    eng->strargs = NULL;
+    eng->args = NULL;
+}
+
+static void ot_ibex_wrapper_dj_log_emit(OtIbexWrapperDjState *s)
+{
+    OtIbexTestLogEngine *eng = s->log_engine;
+
+    const char *level;
+    switch (eng->fields.severity) {
+    case TEST_LOG_SEVERITY_INFO:
+        level = "INFO";
+        break;
+    case TEST_LOG_SEVERITY_WARN:
+        level = "WARN ";
+        break;
+    case TEST_LOG_SEVERITY_ERROR:
+        level = "ERROR ";
+        break;
+    case TEST_LOG_SEVERITY_FATAL:
+        level = "FATAL ";
+        break;
+    default:
+        level = "DEBUG ";
+        break;
+    }
+
+    /* discard the path of the stored file to reduce log message length */
+    const char *basename = strrchr(eng->filename, '/');
+    basename = basename ? basename + 1u : eng->filename;
+
+    char *logfmt = g_strdup_printf("%s %s:%d %s\n", level, basename,
+                                   eng->fields.line, eng->format);
+
+/* hack ahead: use the uintptr_t array as a va_list */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
+    char *logmsg = g_strdup_vprintf(logfmt, (char *)eng->args);
+#pragma GCC diagnostic pop
+
+    if (!qemu_chr_fe_backend_connected(&s->chr)) {
+        qemu_log_mask(LOG_STRACE, "%s", logmsg);
+    } else {
+        qemu_chr_fe_write(&s->chr, (const uint8_t *)logmsg,
+                          (int)strlen(logmsg));
+    }
+
+    g_free(logmsg);
+    g_free(logfmt);
+
+    ot_ibex_wrapper_dj_log_cleanup(s);
+}
+
+static void
+ot_ibex_wrapper_dj_status_report(OtIbexWrapperDjState *s, uint32_t value)
+{
+    const char *msg;
+    switch (value) {
+    case TEST_STATUS_IN_BOOT_ROM:
+        msg = "IN_BOOT_ROM";
+        break;
+    case TEST_STATUS_IN_BOOT_ROM_HALT:
+        msg = "IN_BOOT_ROM_HALT";
+        break;
+    case TEST_STATUS_IN_TEST:
+        msg = "IN_TEST";
+        break;
+    case TEST_STATUS_IN_WFI:
+        msg = "IN_BOOT_WFI";
+        break;
+    case TEST_STATUS_PASSED:
+        msg = "PASSED";
+        break;
+    case TEST_STATUS_FAILED:
+        msg = "FAILED";
+        break;
+    default:
+        msg = "UNKNOWN";
+        break;
+    }
+
+    if (!qemu_chr_fe_backend_connected(&s->chr)) {
+        qemu_log_mask(LOG_STRACE, "%s\n", msg);
+    } else {
+        qemu_chr_fe_write(&s->chr, (const uint8_t *)msg, (int)strlen(msg));
+        uint8_t eol[] = { '\n' };
+        qemu_chr_fe_write(&s->chr, eol, (int)sizeof(eol));
+    }
+}
+
+static void
+ot_ibex_wrapper_dj_log_handle(OtIbexWrapperDjState *s, uint32_t value)
+{
+    /*
+     * Note about logging:
+     *
+     * For OT DV logging to work, the "fields" should not be placed in the
+     * default linker-discarded sections such as ".logs.fields"
+     * i.e. __attribute__((section(".logs.fields"))) should be removed from
+     * the "LOG()"" macro.
+     */
+    OtIbexTestLogEngine *eng = s->log_engine;
+
+    switch (eng->state) {
+    case TEST_LOG_STATE_IDLE:
+        if (!ot_ibex_wrapper_dj_log_load_fields(s, (hwaddr)value)) {
+            eng->state = TEST_LOG_STATE_ERROR;
+            ot_ibex_wrapper_dj_log_cleanup(s);
+            break;
+        }
+        if (eng->fields.nargs) {
+            eng->state = TEST_LOG_STATE_ARG;
+        } else {
+            ot_ibex_wrapper_dj_log_emit(s);
+            eng->state = TEST_LOG_STATE_IDLE;
+        }
+        break;
+    case TEST_LOG_STATE_ARG:
+        if (!ot_ibex_wrapper_dj_log_load_arg(s, value)) {
+            ot_ibex_wrapper_dj_log_cleanup(s);
+            eng->state = TEST_LOG_STATE_ERROR;
+        }
+        if (eng->arg_count == eng->fields.nargs) {
+            ot_ibex_wrapper_dj_log_emit(s);
+            eng->state = TEST_LOG_STATE_IDLE;
+        }
+        break;
+    case TEST_LOG_STATE_ERROR:
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR, "Can no longer handle DV log, in error");
+        break;
+    }
+}
+
 static uint64_t
 ot_ibex_wrapper_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -804,6 +1218,9 @@ ot_ibex_wrapper_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
             ot_ibex_wrapper_dj_request_entropy(s);
         }
         break;
+    case R_DV_SIM_LOG:
+        val32 = 0;
+        break;
     default:
         val32 = s->regs[reg];
         break;
@@ -830,6 +1247,10 @@ static void ot_ibex_wrapper_dj_regs_write(void *opaque, hwaddr addr,
     switch (reg) {
     case R_SW_FATAL_ERR:
         if ((val32 >> 16u) == 0xC0DEu) {
+            /* guest should now use DV_SIM_STATUS register */
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: QEMU exit on SW_FATAL_ERR is deprecated",
+                          __func__);
             /* discard MSB magic */
             val32 &= UINT16_MAX;
             /* discard multibool4false mark */
@@ -880,16 +1301,37 @@ static void ot_ibex_wrapper_dj_regs_write(void *opaque, hwaddr addr,
         }
         ot_ibex_wrapper_dj_update_remap(s, true, reg - R_DBUS_REMAP_ADDR_0);
         break;
+    case R_DV_SIM_STATUS:
+        ot_ibex_wrapper_dj_status_report(s, val32);
+        switch (val32) {
+        case TEST_STATUS_PASSED:
+            xtrace_ot_ibex_wrapper_info("DV SIM success, exiting");
+            exit(0);
+            break;
+        case TEST_STATUS_FAILED:
+            xtrace_ot_ibex_wrapper_info("DV SIM failure, exiting");
+            exit(1);
+            break;
+        default:
+            s->regs[reg] = val32;
+            break;
+        }
+        break;
+    case R_DV_SIM_LOG:
+        ot_ibex_wrapper_dj_log_handle(s, val32);
+        break;
     default:
         s->regs[reg] = val32;
         break;
     }
 };
 
+/* all properties are optional */
 static Property ot_ibex_wrapper_dj_properties[] = {
     DEFINE_PROP_LINK("edn", OtIbexWrapperDjState, edn, TYPE_OT_EDN,
                      OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtIbexWrapperDjState, edn_ep, UINT8_MAX),
+    DEFINE_PROP_CHR("logdev", OtIbexWrapperDjState, chr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -918,6 +1360,9 @@ static void ot_ibex_wrapper_dj_reset(DeviceState *dev)
     }
     s->regs[R_FPGA_INFO] = 0x554d4551u; /* 'QEMU' in LE */
     s->entropy_requested = false;
+
+    memset(s->log_engine, 0, sizeof(*s->log_engine));
+    s->log_engine->as = ot_common_get_local_address_space(dev);
 }
 
 static void ot_ibex_wrapper_dj_init(Object *obj)
@@ -929,6 +1374,7 @@ static void ot_ibex_wrapper_dj_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
+    s->log_engine = g_new0(OtIbexTestLogEngine, 1u);
 }
 
 static void ot_ibex_wrapper_dj_class_init(ObjectClass *klass, void *data)
@@ -946,8 +1392,8 @@ static const TypeInfo ot_ibex_wrapper_dj_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtIbexWrapperDjState),
     .instance_init = &ot_ibex_wrapper_dj_init,
-    .class_size = sizeof(OtIbexWrapperStateClass),
     .class_init = &ot_ibex_wrapper_dj_class_init,
+    .class_size = sizeof(OtIbexWrapperStateClass),
 };
 
 static void ot_ibex_wrapper_dj_register_types(void)
