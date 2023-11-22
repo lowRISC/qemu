@@ -680,11 +680,11 @@ static const char *FLASH_STATE_NAMES[] = {
 #undef STATE_NAME_ENTRY
 
 #define BUS_STATE_NAME(_st_) \
-    ((_st_) >= 0 && (_st_) < ARRAY_SIZE(BUS_STATE_NAMES) ? \
+    (((unsigned)(_st_)) < ARRAY_SIZE(BUS_STATE_NAMES) ? \
          BUS_STATE_NAMES[(_st_)] : \
          "?")
 #define FLASH_STATE_NAME(_st_) \
-    ((_st_) >= 0 && (_st_) < ARRAY_SIZE(FLASH_STATE_NAMES) ? \
+    (((unsigned)(_st_)) < ARRAY_SIZE(FLASH_STATE_NAMES) ? \
          FLASH_STATE_NAMES[(_st_)] : \
          "?")
 
@@ -708,7 +708,7 @@ static const char *IRQ_NAMES[] = {
 #undef IRQ_NAME_ENTRY
 
 #define IRQ_NAME(_st_) \
-    ((_st_) >= 0 && (_st_) < ARRAY_SIZE(IRQ_NAMES) ? IRQ_NAMES[(_st_)] : "?")
+    (((unsigned)(_st_)) < ARRAY_SIZE(IRQ_NAMES) ? IRQ_NAMES[(_st_)] : "?")
 
 #define WORD_ALIGN(_x_) ((_x_) & ~0x3u)
 
