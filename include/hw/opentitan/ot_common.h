@@ -142,6 +142,19 @@ AddressSpace *ot_common_get_local_address_space(DeviceState *s);
 /* CharDev utilities */
 /* ------------------------------------------------------------------------ */
 
+/**
+ * Configure a (PTY) char backend to ignore status lines.
+ *
+ * @chr the character backend to configure.
+ */
 void ot_common_ignore_chr_status_lines(CharBackend *chr);
+
+/**
+ * Find a char device by its id, e.g. "-chardev type,id=<id>,...`"
+ *
+ * @chrid the id of the char device
+ * @return the char device if found, @c NULL otherwise.
+ */
+Chardev *ot_common_get_chardev_by_id(const char *chrid);
 
 #endif /* HW_OPENTITAN_OT_COMMON_H */
