@@ -132,6 +132,9 @@ config RISCV_VIRT
     select PLATFORM_BUS
     select ACPI
 
+config RISCV_DEBUG
+    bool
+
 config SHAKTI_C
     bool
     select RISCV_ACLINT
