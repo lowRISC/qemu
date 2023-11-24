@@ -138,6 +138,10 @@ config RISCV_VIRT
 config RISCV_DEBUG
     bool
 
+config RISCV_DM
+    select RISCV_DEBUG
+    bool
+
 config RISCV_DTM
     bool
 
