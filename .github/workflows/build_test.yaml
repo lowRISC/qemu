@@ -1,0 +1,156 @@
+#------------------------------------------------------------------------------
+# QEMU OpenTitan CI
+#
+# Copyright (c) 2023 Rivos, Inc.
+# SPDX-License-Identifier: Apache License 2.0
+#------------------------------------------------------------------------------
+
+name: Build & Test QEMU OT
+on: [pull_request]
+jobs:
+  build-clang:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install deps
+        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+               sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
+             sudo apt-get update &&
+             sudo apt-get install -y git make pkg-config clang-16 cmake ninja-build python3 rust-all
+               libpixman-1-dev
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          rm -rf build-clang
+          git clean -dffx subprojects
+          mkdir build-clang
+          (cd build-clang &&
+           ../configure --cc=clang-16 --disable-werror --target-list=riscv32-softmmu,riscv64-softmmu)
+      - name: Build
+        run: |
+          ninja -C build-clang &&
+          ninja -C build-clang qemu-img &&
+          strip build-clang/qemu-system-riscv32
+      - name: Create minimal test binaries
+        run: |
+          scripts/opentitan/swexit.py -t earlgrey -o build-clang/exit_eg.bin
+          scripts/opentitan/swexit.py -t darjeeling -o build-clang/exit_dj.bin
+      - name: Upload QEMU binary artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: qemu-bin
+          path: |
+            build-clang/qemu-system-riscv32
+            build-clang/exit_*.bin
+          retention-days: 1
+      - name: Pack source artifacts
+        # GitHub takes ages to retrieve each source file, so pack them
+        run: |
+          tar czf qemu-src-artifact.tar.gz \
+            subprojects/libtomcrypt/src/headers/*.h \
+            build-clang/*.h \
+            build-clang/qapi/*.h \
+            build-clang/trace/*.h \
+            build-clang/compile_commands.json
+      - name: Upload QEMU source artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: qemu-src
+          path: qemu-src-artifact.tar.gz
+          retention-days: 1
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+               sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
+             sudo apt-get update &&
+             sudo apt-get install -y clang-format-16
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Check execution
+        run: |
+          clang-format-16 -i \
+             include/hw/opentitan/*.h hw/opentitan/*.c \
+             include/hw/riscv/ot_*.h hw/riscv/ot_*.c  \
+             include/hw/riscv/ibex*.h hw/riscv/ibex*.c \
+             target/riscv/ibex_csr.c
+
+  lint-clang:
+    runs-on: ubuntu-latest
+    needs: build-clang
+    steps:
+      - name: Install tools
+        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
+             sudo apt-get update &&
+             sudo apt-get install -y clang-tidy-16
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Download QEMU source artifacts
+        uses: actions/download-artifact@v3
+        with:
+            name: qemu-src
+      - name: Unpack source artifacts
+        run: |
+          tar xzf qemu-src-artifact.tar.gz
+      - name: Clang tidy
+        # Expect many warnings/errors (accounted but not reported) from included QEMU files
+        run: |
+          clang-tidy -p build-clang \
+            hw/opentitan/*.c \
+            hw/riscv/ot_*.c  \
+            hw/riscv/ibex*.c \
+            target/riscv/ibex_csr.c
+
+  test-clang:
+    runs-on: ubuntu-latest
+    needs: build-clang
+    steps:
+      - name: Install tools
+        run: sudo apt-get update &&
+             sudo apt-get install -y libpixman-1-0
+      - name: Download QEMU binary artifacts
+        uses: actions/download-artifact@v3
+        with:
+            name: qemu-bin
+      - name: Check machine availability
+        run: |
+          chmod +x ./qemu-system-riscv32 &&
+          ./qemu-system-riscv32 -M help | grep ot-earlgrey &&
+          ./qemu-system-riscv32 -M help | grep ot-darjeeling
+      - name: Check EarlGrey VM execution
+        run: |
+          timeout -s KILL 4 ./qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -nographic \
+            -object ot-rom-img,id=rom,file=exit_eg.bin,digest=fake,addr=0x8080 -d in_asm,int
+      - name: Check Darjeeling VM execution
+        run: |
+          timeout -s KILL 4 ./qemu-system-riscv32 -M ot-darjeeling,no_epmp_cfg=true -nographic \
+            -object ot-rom-img,id=rom0,file=exit_dj.bin,digest=fake,addr=0x8080 -d in_asm,int
+
+  build-gcc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+               sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
+             sudo apt-get update &&
+             sudo apt-get install -y git make pkg-config gcc cmake ninja-build
+             python3 rust-all libpixman-1-dev
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          rm -rf build-gcc
+          git clean -dffx subprojects
+          mkdir build-gcc
+          (cd build-gcc &&
+           ../configure --cc=gcc --enable-werror --target-list=riscv32-softmmu,riscv64-softmmu)
+      - name: Build
+        run: |
+          ninja -C build-gcc

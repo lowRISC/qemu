@@ -1,5 +1,7 @@
 # QEMU OpenTitan README
 
+[![.github/workflows/build_test.yaml](https://github.com/lowRISC/qemu/actions/workflows/build_test.yaml/badge.svg?branch=ot-darjeeling-8.0.2)](https://github.com/lowRISC/qemu/actions/workflows/build_test.yaml)
+
 QEMU is a generic and open source machine & userspace emulator and virtualizer.
 
 QEMU is capable of emulating a complete machine in software without any need for hardware
