@@ -1,0 +1,30 @@
+---
+Checks:          '*,
+                  -*-avoid-non-const-global-variables,
+                  -*-magic-numbers,
+                  -*-uppercase-literal-suffix,
+                  -altera-*,
+                  -android-cloexec-fopen,
+                  -bugprone-assignment-in-if-condition,
+                  -bugprone-easily-swappable-parameters,
+                  -bugprone-reserved-identifier,
+                  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+                  -clang-diagnostic-error,
+                  -clang-diagnostic-unknown-warning-option,
+                  -cert-dcl37-c,-cert-dcl51-cpp,
+                  -concurrency-mt-unsafe,
+                  -cppcoreguidelines-init-variables,
+                  -cppcoreguidelines-interfaces-global-init,
+                  -google-readability-*,
+                  -hicpp-no-assembler,
+                  -hicpp-signed-bitwise,
+                  -llvmlibc-*,
+                  -llvm-include-order,
+                  -modernize-macro-to-enum,
+                  -performance-no-int-to-ptr,
+                  -readability-function-cognitive-complexity,
+                  -readability-identifier-length,
+                  -readability-isolate-declaration'
+UseColor: true
+WarningsAsErrors: '*'
+...
