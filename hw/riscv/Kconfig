@@ -19,6 +19,7 @@ config OT_DARJEELING
     select OT_AST_DARJEELING
     select OT_CLKMGR
     select OT_CSRNG
+    select OT_DEV_PROXY
     select OT_EDN
     select OT_ENTROPY_SRC
     select OT_GPIO

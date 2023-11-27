@@ -183,6 +183,18 @@ enum OtDevProxyErr {
 #define PROXY_MAKE_UID(_uid_, _req_) \
     (((_uid_) & ~(1u << 31u)) | (((uint32_t)(bool)(_req_)) << 31u))
 
+#if defined(MEMTXATTRS_HAS_ROLE) && (MEMTXATTRS_HAS_ROLE != 0)
+#define MEMTXATTRS_WITH_ROLE(_r_) \
+    (MemTxAttrs) \
+    { \
+        .role = _r_ \
+    }
+#define MEMTXATTRS_GET_ROLE(_a_) ((_a_).unspecified ? 0xfu : (_a_).role);
+#else
+#define MEMTXATTRS_WITH_ROLE(_r_) MEMTXATTRS_UNSPECIFIED
+#define MEMTXATTRS_GET_ROLE(_a_)  ((_a_).unspecified ? 0xfu : 0x0)
+#endif
+
 static void ot_dev_proxy_send(OtDevProxyState *s, unsigned uid, int dir,
                               uint16_t command, const void *payload,
                               size_t length)
@@ -410,7 +422,7 @@ static void ot_dev_proxy_read_reg(OtDevProxyState *s)
     uint64_t tmp;
 
     if (role != PROXY_DISABLED_ROLE) {
-        MemTxAttrs attrs = { .role = role };
+        MemTxAttrs attrs = MEMTXATTRS_WITH_ROLE(role);
         MemTxResult res;
 
         res = ops->read_with_attrs(mr->opaque, reg << 2u, &tmp,
@@ -466,7 +478,7 @@ static void ot_dev_proxy_write_reg(OtDevProxyState *s)
         return;
     }
 
-    MemTxAttrs attrs = { .role = role };
+    MemTxAttrs attrs = MEMTXATTRS_WITH_ROLE(role);
     MemTxResult res;
     uint64_t tmp;
 
@@ -526,7 +538,7 @@ static void ot_dev_proxy_read_buffer(OtDevProxyState *s, bool mbx_mode)
     OtDevProxyItem *item = &s->items[devix];
     OtDevProxyCaps *caps = &item->caps;
     Object *obj = item->obj;
-    MemTxAttrs attrs = { .role = role };
+    MemTxAttrs attrs = MEMTXATTRS_WITH_ROLE(role);
     MemoryRegion *mr = NULL;
     MemTxResult res = MEMTX_OK;
 
@@ -639,7 +651,7 @@ static void ot_dev_proxy_write_buffer(OtDevProxyState *s, bool mbx_mode)
     OtDevProxyItem *item = &s->items[devix];
     OtDevProxyCaps *caps = &item->caps;
     Object *obj = item->obj;
-    MemTxAttrs attrs = { .role = role };
+    MemTxAttrs attrs = MEMTXATTRS_WITH_ROLE(role);
     MemoryRegion *mr = NULL;
     MemTxResult res = MEMTX_OK;
 
@@ -1552,7 +1564,7 @@ type_init(ot_dev_proxy_register_types)
     OtDevProxyWatcherState *s = opaque;
 
     if (s->read && s->stop) {
-        unsigned role = attrs.unspecified ? 0xfu : attrs.role;
+        unsigned role = MEMTXATTRS_GET_ROLE(attrs);
         uint32_t address = s->address + (uint32_t)addr;
         s->stop -= 1u;
         ot_dev_proxy_notify_mmio_access(s->devproxy, s->wid, false, role,
@@ -1569,7 +1581,7 @@ static MemTxResult ot_dev_proxy_watcher_write_with_attrs(
     OtDevProxyWatcherState *s = opaque;
 
     if (s->write && s->stop) {
-        unsigned role = attrs.unspecified ? 0xfu : attrs.role;
+        unsigned role = MEMTXATTRS_GET_ROLE(attrs);
         uint32_t address = s->address + (uint32_t)addr;
         ot_dev_proxy_notify_mmio_access(s->devproxy, s->wid, true, role,
                                         address, size, (uint32_t)val64);
