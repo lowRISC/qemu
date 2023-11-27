@@ -1075,7 +1075,7 @@ static void ot_ibex_wrapper_dj_log_emit(OtIbexWrapperDjState *s)
     }
 
     /* discard the path of the stored file to reduce log message length */
-    const char *basename = strrchr(eng->filename, '/');
+    const char *basename = eng->filename ? strrchr(eng->filename, '/') : NULL;
     basename = basename ? basename + 1u : eng->filename;
 
     char *logfmt = g_strdup_printf("%s %s:%d %s\n", level, basename,
