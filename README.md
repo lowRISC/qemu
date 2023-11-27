@@ -6,8 +6,7 @@ QEMU is capable of emulating a complete machine in software without any need for
 virtualization support. By using dynamic translation, it achieves very good performance.
 
 This branch contains a fork of QEMU 8.0.2 dedicated to support lowRISC Ibex platforms:
-  * IbexDemo with FPGA ARTY7 memory map,
-  * OpenTitan EarlGrey 2.5.2 with FPGA "Bergen Board" CW310 memory map.
+  * OpenTitan Darjeeling with FPGA "Bergen Board" CW310 memory map.
 
 See [ot_ref.log](hw/opentitan/ot_ref.log) for OpenTitan reference.
 
