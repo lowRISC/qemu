@@ -182,6 +182,8 @@ struct IbexDemoMachineState {
 static void ibexdemo_soc_gpio_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
+    (void)def;
+    (void)parent;
     qdev_prop_set_uint32(dev, "in_count", IBEXDEMO_GPIO_IN_MAX);
     qdev_prop_set_uint32(dev, "out_count", IBEXDEMO_GPIO_OUT_MAX);
 }
@@ -189,6 +191,8 @@ static void ibexdemo_soc_gpio_configure(
 static void ibexdemo_soc_hart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
+    (void)def;
+    (void)parent;
     IbexDemoSoCState *s = RISCV_IBEXDEMO_SOC(parent);
 
     qdev_prop_set_uint64(dev, "resetvec", s->resetvec);
@@ -197,6 +201,7 @@ static void ibexdemo_soc_hart_configure(
 static void ibexdemo_soc_uart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
+    (void)parent;
     qdev_prop_set_chr(dev, "chardev", serial_hd(def->instance));
 }
 
@@ -204,13 +209,15 @@ static void ibexdemo_soc_uart_configure(
 /* SoC */
 /* ------------------------------------------------------------------------ */
 
-static void ibexdemo_soc_load_boot(IbexDemoSoCState *s)
+static void ibexdemo_soc_load_boot(void)
 {
     /* do not use rom_add_blob_fixed_as as absolute address is not yet known */
     MachineState *ms = MACHINE(qdev_get_machine());
     void *ram = memory_region_get_ram_ptr(ms->ram);
     if (!ram) {
         error_setg(&error_fatal, "no main RAM");
+        /* linter cannot detect error_fatal prevents from returning */
+        abort();
     }
     memcpy(ram, IBEXDEMO_BOOT, sizeof(IBEXDEMO_BOOT));
 }
@@ -224,6 +231,8 @@ static void ibexdemo_soc_reset(DeviceState *dev)
 
 static void ibexdemo_soc_realize(DeviceState *dev, Error **errp)
 {
+    (void)errp;
+
     IbexDemoSoCState *s = RISCV_IBEXDEMO_SOC(dev);
 
     MachineState *ms = MACHINE(qdev_get_machine());
@@ -239,7 +248,7 @@ static void ibexdemo_soc_realize(DeviceState *dev, Error **errp)
     ibex_connect_devices(s->devices, ibexdemo_soc_devices,
                          ARRAY_SIZE(ibexdemo_soc_devices));
 
-    ibexdemo_soc_load_boot(s);
+    ibexdemo_soc_load_boot();
 
     /* load application if provided */
     ibex_load_kernel(NULL);
@@ -262,6 +271,7 @@ static Property ibexdemo_soc_props[] = {
 static void ibexdemo_soc_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
+    (void)data;
 
     device_class_set_props(dc, ibexdemo_soc_props);
     dc->reset = &ibexdemo_soc_reset;
@@ -291,6 +301,7 @@ type_init(ibexdemo_soc_register_types);
 static void ibexdemo_board_realize(DeviceState *dev, Error **errp)
 {
     IbexDemoBoardState *board = RISCV_IBEXDEMO_BOARD(dev);
+    (void)errp;
 
     IbexDemoSoCState *soc =
         RISCV_IBEXDEMO_SOC(board->devices[IBEXDEMO_BOARD_DEV_SOC]);
@@ -331,6 +342,7 @@ static void ibexdemo_board_instance_init(Object *obj)
 static void ibexdemo_board_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
+    (void)data;
 
     dc->realize = &ibexdemo_board_realize;
 }
@@ -366,6 +378,7 @@ static void ibexdemo_machine_init(MachineState *state)
 static void ibexdemo_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    (void)data;
 
     mc->desc = "RISC-V Board compatible with IbexDemo";
     mc->init = ibexdemo_machine_init;

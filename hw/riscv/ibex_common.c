@@ -131,8 +131,8 @@ void ibex_define_device_props(DeviceState **devices, const IbexDeviceDef *defs,
                                             prop->i, &error_fatal);
                     break;
                 case IBEX_PROP_TYPE_UINT:
-                    object_property_set_int(OBJECT(dev), prop->propname,
-                                            prop->u, &error_fatal);
+                    object_property_set_uint(OBJECT(dev), prop->propname,
+                                             prop->u, &error_fatal);
                     break;
                 case IBEX_PROP_TYPE_STR:
                     object_property_set_str(OBJECT(dev), prop->propname,
@@ -399,7 +399,7 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
                         }
                     }
                 }
-                assert(ngl);
+                assert(ngl && ngl->in);
                 ngl->in[export->parent.num] = devirq;
                 (void)object_ref(OBJECT(devirq));
                 object_property_add_alias(OBJECT(parent), ppname, OBJECT(dev),
@@ -435,7 +435,7 @@ void ibex_connect_soc_devices(DeviceState **soc_devices, DeviceState **devices,
                 DeviceState *socdev = soc_devices[grp];
                 unsigned in_ix = IBEX_GPIO_GET_IDX(conn->in.num);
                 qemu_irq in_gpio =
-                    qdev_get_gpio_in_named(socdev, conn->in.name, in_ix);
+                    qdev_get_gpio_in_named(socdev, conn->in.name, (int)in_ix);
                 if (!in_gpio) {
                     error_setg(
                         &error_fatal,
@@ -507,6 +507,8 @@ DeviceState *ibex_get_child_device(DeviceState *s, const char *typename,
 void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
                           DeviceState *parent)
 {
+    (void)parent;
+
     if (def->name) {
         qdev_prop_set_string(dev, "name", def->name);
     }
@@ -530,6 +532,7 @@ void ibex_load_kernel(AddressSpace *as)
         }
 
         CPUState *cpu;
+        /* NOLINTNEXTLINE */
         CPU_FOREACH(cpu) {
             if (!as || cpu->as == as) {
                 CPURISCVState *env = &RISCV_CPU(cpu)->env;
@@ -589,7 +592,9 @@ static void rust_demangle_fn(const char *st_name, int st_info,
 static void hmp_info_ibex(Monitor *mon, const QDict *qdict)
 {
     CPUState *cpu;
+    (void)qdict;
 
+    /* NOLINTNEXTLINE */
     CPU_FOREACH(cpu) {
         vaddr pc;
         const char *symbol;
