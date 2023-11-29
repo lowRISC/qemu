@@ -240,6 +240,25 @@ static bool ot_mbx_is_on_abort(const OtMbxState *s)
     return (bool)(s->host.regs[R_HOST_CONTROL] & R_HOST_CONTROL_ABORT_MASK);
 }
 
+static bool ot_mbx_is_sys_interrupt(const OtMbxState *s)
+{
+    return (bool)(s->host.regs[R_HOST_STATUS] &
+                  R_HOST_STATUS_SYS_INTR_STATE_MASK);
+}
+
+static void ot_mbx_set_error(OtMbxState *s)
+{
+    uint32_t *hregs = s->host.regs;
+
+    // should busy be set?
+    hregs[R_HOST_CONTROL] |= R_HOST_CONTROL_ERROR_MASK;
+
+    if (hregs[R_HOST_STATUS] & R_HOST_STATUS_SYS_INTR_ENABLE_MASK) {
+        hregs[R_HOST_STATUS] |= R_HOST_STATUS_SYS_INTR_STATE_MASK;
+        // placeholder: should trigger system interrupt from here
+    }
+}
+
 static void ot_mbx_clear_busy(OtMbxState *s)
 {
     uint32_t *hregs = s->host.regs;
@@ -345,7 +364,9 @@ static void ot_mbx_host_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             ot_mbx_clear_busy(s);
             hregs[reg] &= ~R_HOST_CONTROL_ABORT_MASK; /* RW1C */
         }
-        hregs[reg] |= val32 & R_HOST_CONTROL_ERROR_MASK; /* RW1S */
+        if (val32 & R_HOST_CONTROL_ERROR_MASK) { /* RW1S */
+            ot_mbx_set_error(s);
+        };
         xtrace_ot_mbx_status(s);
         break;
     case R_HOST_STATUS:
@@ -409,7 +430,6 @@ static void ot_mbx_host_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 
             if (hregs[R_HOST_STATUS] & R_HOST_STATUS_SYS_INTR_ENABLE_MASK) {
                 hregs[R_HOST_STATUS] |= R_HOST_STATUS_SYS_INTR_STATE_MASK;
-                // placeholder: should trigger system interrupt from here
             }
         }
         xtrace_ot_mbx_status(s);
@@ -474,19 +494,6 @@ static void ot_mbx_sys_go(OtMbxState *s)
     }
 }
 
-static void ot_mbx_sys_set_error(OtMbxState *s)
-{
-    uint32_t *hregs = s->host.regs;
-
-    // should busy be set?
-    hregs[R_HOST_CONTROL] |= R_HOST_CONTROL_ERROR_MASK;
-
-    if (hregs[R_HOST_STATUS] & R_HOST_STATUS_SYS_INTR_ENABLE_MASK) {
-        hregs[R_HOST_STATUS] |= R_HOST_STATUS_SYS_INTR_STATE_MASK;
-        // placeholder: should trigger system interrupt from here
-    }
-}
-
 static MemTxResult ot_mbx_sys_regs_read_with_attrs(
     void *opaque, hwaddr addr, uint64_t *val64, unsigned size, MemTxAttrs attrs)
 {
@@ -513,7 +520,8 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
         break;
     case R_SYS_STATUS:
         val32 = FIELD_DP32(0, SYS_STATUS, BUSY, (uint32_t)ot_mbx_is_busy(s));
-        val32 = FIELD_DP32(val32, SYS_STATUS, INT, (uint32_t)ot_mbx_is_busy(s));
+        val32 = FIELD_DP32(val32, SYS_STATUS, INT,
+                           (uint32_t)ot_mbx_is_sys_interrupt(s));
         val32 = FIELD_DP32(val32, SYS_STATUS, ERROR,
                            (uint32_t)ot_mbx_is_on_error(s));
         val32 = FIELD_DP32(val32, SYS_STATUS, READY,
@@ -639,7 +647,7 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
         if (hregs[R_HOST_IN_WRITE_PTR] >= hregs[R_HOST_IN_LIMIT_ADDR]) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s write overflow\n", __func__,
                           s->mbx_id);
-            ot_mbx_sys_set_error(s);
+            ot_mbx_set_error(s);
             xtrace_ot_mbx_status(s);
         }
         hwaddr waddr = (hwaddr)hregs[R_HOST_IN_WRITE_PTR];
@@ -650,7 +658,7 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s Cannot write @ 0x%" HWADDR_PRIx ": %u\n",
                           __func__, s->mbx_id, waddr, mres);
-            ot_mbx_sys_set_error(s);
+            ot_mbx_set_error(s);
             xtrace_ot_mbx_status(s);
             ibex_irq_set(&s->host.alerts[ALERT_RECOVERABLE], 1);
             break;
