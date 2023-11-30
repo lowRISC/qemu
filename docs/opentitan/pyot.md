@@ -5,7 +5,7 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-c JSON] [-w CSV] [-k SECONDS] [-v] [-d] [-q QEMU]
+usage: pyot.py [-h] [-c JSON] [-w CSV] [-R] [-k SECONDS] [-v] [-d] [-q QEMU]
                [-Q OPTS] [-m MACHINE] [-p DEVICE] [-L LOG_FILE] [-M LOG]
                [-t TRACE] [-i N] [-r ELF] [-O RAW] [-o VMEM] [-f RAW] [-x file]
                [-b file]
@@ -17,6 +17,7 @@ options:
   -c JSON, --config JSON
                         path to configuration file
   -w CSV, --result CSV  path to output result file
+  -R, --summary         show a result summary
   -k SECONDS, --timeout SECONDS
                         exit after the specified seconds (default: 60 secs)
   -F TEST, --filter TEST
@@ -64,6 +65,7 @@ This tool may be used in two ways, which can be combined:
   [Configuration](#Configurationfile) section for details.
 * `-w` / `--result` specify an output CSV report file where the result of all the QEMU sessions,
   one per test, are reported.
+* `-R` / `--summary` show a execution result summary on exit
 * `-k` / `--timeout` define the maximal duration of each QEMU session. QEMU is terminated or killed
   after this delay if the executed test has not completed in time.
 * `-F` / `--filter` when used, only tests whose filenames match one of the selected filter are

@@ -9,7 +9,7 @@
 from argparse import ArgumentParser, FileType, Namespace
 from atexit import register
 from collections import defaultdict
-from csv import writer as csv_writer
+from csv import reader as csv_reader, writer as csv_writer
 from fnmatch import fnmatchcase
 from glob import glob
 try:
@@ -38,7 +38,7 @@ from typing import (Any, Deque, Dict, Iterator, List, NamedTuple, Optional, Set,
 
 # pylint: disable=too-many-lines
 
-DEFAULT_MACHINE ='ot-earlgrey'
+DEFAULT_MACHINE = 'ot-earlgrey'
 DEFAULT_DEVICE = 'localhost:8000'
 DEFAULT_TIMEOUT = 60  # seconds
 
@@ -93,6 +93,48 @@ class CustomFormatter(Formatter):
                   else self.PLAIN_FORMAT
         formatter = Formatter(log_fmt)
         return formatter.format(record)
+
+
+class ResultFormatter:
+    """Format a result CSV file as a simple result table."""
+
+    def __init__(self):
+        self._results = []
+
+    def load(self, csvpath: str) -> None:
+        """Load a CSV file (generated with QEMUExecuter) and parse it.
+
+           :param csvpath: the path to the CSV file.
+        """
+        with open(csvpath, 'rt', encoding='utf-8') as cfp:
+            csv = csv_reader(cfp)
+            for row in csv:
+                self._results.append(row)
+
+    def show(self, spacing: bool = False) -> None:
+        """Print a simple formatted ASCII table with loaded CSV results.
+
+           :param spacing: add an empty line before and after the table
+        """
+        if spacing:
+            print('')
+        widths = [max(len(x) for x in col) for col in zip(*self._results)]
+        self._show_line(widths, '-')
+        self._show_row(widths, self._results[0])
+        self._show_line(widths, '=')
+        for row in self._results[1:]:
+            self._show_row(widths, row)
+            self._show_line(widths, '-')
+        if spacing:
+            print('')
+
+    def _show_line(self, widths: List[int], csep: str) -> None:
+        print(f'+{"+".join([csep * (w+2) for w in widths])}+')
+
+    def _show_row(self, widths: List[int], cols: List[str]) -> None:
+        line = '|'.join([f' {c:{">" if p else "<"}{w}s} '
+                         for p, (w, c) in enumerate(zip(widths, cols))])
+        print(f'|{line}|')
 
 
 class QEMUWrapper:
@@ -1243,6 +1285,7 @@ def main():
     qemu_path = normpath(joinpath(qemu_dir, 'build', 'qemu-system-riscv32'))
     if not isfile(qemu_path):
         qemu_path = None
+    tmp_result: Optional[str] = None
     try:
         args: Optional[Namespace] = None
         argparser = ArgumentParser(description=modules[__name__].__doc__)
@@ -1251,6 +1294,8 @@ def main():
                                help='path to configuration file')
         argparser.add_argument('-w', '--result', metavar='CSV',
                                help='path to output result file')
+        argparser.add_argument('-R', '--summary', action='store_true',
+                               help='show a result summary')
         argparser.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
                                help=f'exit after the specified seconds '
                                     f'(default: {DEFAULT_TIMEOUT} secs)')
@@ -1316,6 +1361,10 @@ def main():
             opts = []
         args = argparser.parse_args(sargv)
         debug = args.debug
+        if args.summary and not args.result:
+            tmpfd, tmp_result = mkstemp(suffix='.csv')
+            close(tmpfd)
+            args.result = tmp_result
         if opts:
             qopts = getattr(args, 'opts')
             qopts.extend(opts)
@@ -1391,6 +1440,10 @@ def main():
                 print(format_exc(chain=False), file=stderr)
             argparser.error(str(exc))
         ret = qexc.run(args.debug)
+        if args.summary:
+            rfmt = ResultFormatter()
+            rfmt.load(args.result)
+            rfmt.show(True)
         log.debug('End of execution with code %d', ret or 0)
         sysexit(ret)
     # pylint: disable=broad-except
@@ -1401,6 +1454,9 @@ def main():
         sysexit(1)
     except KeyboardInterrupt:
         sysexit(2)
+    finally:
+        if tmp_result and isfile(tmp_result):
+            unlink(tmp_result)
 
 
 if __name__ == '__main__':
