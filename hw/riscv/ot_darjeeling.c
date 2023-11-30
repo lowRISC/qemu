@@ -837,9 +837,9 @@ static const uint32_t ot_darjeeling_pmp_addrs[] = {
     IBEX_PMP_ADDR(0x00000000),
     IBEX_PMP_ADDR(0x00000000),
     IBEX_PMP_ADDR(0x21100000), /* rgn 10 [MMIO: lo=0x2110_0000] */
-    IBEX_PMP_ADDR(0x33008080), /* rgn 11 [MMIO: hi=0x3300_8080] */
+    IBEX_PMP_ADDR(0x30601000), /* rgn 11 [MMIO: hi=0x3060_1000] */
     IBEX_PMP_ADDR(0x00000000),
-    IBEX_PMP_ADDR(0x000107fc), /* rgn 13 [DV_ROM: base=0x0001_0000 sz (4KiB)] */
+    IBEX_PMP_ADDR(0x000407fc), /* rgn 13 [DV_ROM: base=0x0004_0000 sz (4KiB)] */
     IBEX_PMP_ADDR(0x00000000),
     IBEX_PMP_ADDR(0x00000000)
     /* clang-format on */
