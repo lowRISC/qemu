@@ -21,8 +21,8 @@ except ImportError:
 from logging import (Formatter, StreamHandler, CRITICAL, DEBUG, INFO, ERROR,
                      WARNING, getLogger)
 from os import close, curdir, environ, getcwd, isatty, linesep, sep, unlink
-from os.path import (basename, dirname, isabs, isdir, isfile, join as joinpath,
-                     normpath, relpath)
+from os.path import (abspath, basename, dirname, isabs, isdir, isfile,
+                     join as joinpath, normpath, relpath)
 from re import Match, compile as re_compile, sub as re_sub
 from shutil import rmtree
 from socket import socket, timeout as LegacyTimeoutError
@@ -36,7 +36,7 @@ from typing import (Any, Deque, Dict, Iterator, List, NamedTuple, Optional, Set,
                     Tuple)
 
 
-#pylint: disable=too-many-lines
+# pylint: disable=too-many-lines
 
 DEFAULT_MACHINE ='ot-earlgrey'
 DEFAULT_DEVICE = 'localhost:8000'
@@ -102,7 +102,7 @@ class QEMUWrapper:
                       Virtual Com Port of QEMU first UART
        :param debug: whether running in debug mode
     """
-    #pylint: disable=too-few-public-methods
+    # pylint: disable=too-few-public-methods
 
     EXIT_ON = rb'(PASS|FAIL)!\r'
     """Matching strings to search for in guest output.
@@ -121,7 +121,7 @@ class QEMUWrapper:
     NO_MATCH_RETURN_CODE = 100
     """Return code when no matching string is found in guest output."""
 
-    LOG_LEVELS = { 'D': DEBUG, 'I': INFO, 'E': ERROR }
+    LOG_LEVELS = {'D': DEBUG, 'I': INFO, 'E': ERROR}
     """OpenTitan log levels."""
 
     def __init__(self, tcpdev: Tuple[str, int], debug: bool):
@@ -144,9 +144,9 @@ class QEMUWrapper:
            :param ctx: execution context, if any
            :return: a 3-uple of exit code, execution time, and last guest error
         """
-        #pylint: disable=too-many-locals
-        #pylint: disable=too-many-branches
-        #pylint: disable=too-many-statements
+        # pylint: disable=too-many-locals
+        # pylint: disable=too-many-branches
+        # pylint: disable=too-many-statements
 
         # stdout and stderr belongs to QEMU VM
         # OT's UART0 is redirected to a TCP stream that can be accessed through
@@ -161,11 +161,11 @@ class QEMUWrapper:
         xend = None
         log = self._log
         last_guest_error = ''
-        #pylint: disable=too-many-nested-blocks
+        # pylint: disable=too-many-nested-blocks
         try:
             workdir = dirname(qemu_args[0])
             log.info('Executing QEMU as %s', ' '.join(qemu_args))
-            #pylint: disable=consider-using-with
+            # pylint: disable=consider-using-with
             proc = Popen(qemu_args, bufsize=1, cwd=workdir, stdout=PIPE,
                          stderr=PIPE, encoding='utf-8', errors='ignore',
                          text=True)
@@ -346,7 +346,7 @@ class QEMUFileManager:
 
        :param keep_temp: do not automatically discard generated files on exit
     """
-    #pylint: disable=too-few-public-methods
+    # pylint: disable=too-few-public-methods
 
     DEFAULT_OTP_ECC_BITS = 6
 
@@ -373,14 +373,14 @@ class QEMUFileManager:
 
            :param path: the path to the QEMU source directory
         """
-        self._env['QEMU_SRC_DIR'] = normpath(path)
+        self._env['QEMU_SRC_DIR'] = abspath(path)
 
     def set_qemu_bin_dir(self, path: str) -> None:
         """Set the QEMU executable directory.
 
            :param path: the path to the QEMU binary directory
         """
-        self._env['QEMU_BIN_DIR'] = normpath(path)
+        self._env['QEMU_BIN_DIR'] = abspath(path)
 
     def set_config_dir(self, path: str) -> None:
         """Assign the configuration directory.
@@ -388,7 +388,7 @@ class QEMUFileManager:
            :param path: the directory that contains the input configuration
                         file
         """
-        self._env['CONFIG'] = normpath(path)
+        self._env['CONFIG'] = abspath(path)
 
     def interpolate(self, value: Any) -> str:
         """Interpolate a ${...} marker with shell substitutions or local
@@ -477,7 +477,7 @@ class QEMUFileManager:
            :param bootloader: optional path to a bootloader
            :return: the full path to the temporary flash file
         """
-        #pylint: disable=import-outside-toplevel
+        # pylint: disable=import-outside-toplevel
         from flashgen import FlashGen
         gen = FlashGen(FlashGen.CHIP_ROM_EXT_SIZE_MAX if bool(bootloader)
                        else 0, True)
@@ -507,7 +507,7 @@ class QEMUFileManager:
            :param vmem: path to the VMEM source file
            :return: the full path to the temporary OTP file
         """
-        #pylint: disable=import-outside-toplevel
+        # pylint: disable=import-outside-toplevel
         if vmem in self._otp_files:
             otp_file, ref_count = self._otp_files[vmem]
             self._log.debug('Use existing %s', basename(otp_file))
@@ -575,7 +575,7 @@ class QEMUFileManager:
     def _cleanup(self) -> None:
         """Remove a generated, temporary flash image file.
         """
-        #pylint: disable=too-many-branches
+        # pylint: disable=too-many-branches
         removed: Set[str] = set()
         for tmpfile in self._in_fly:
             if not isfile(tmpfile):
@@ -728,7 +728,7 @@ class QEMUContext:
     def __init__(self, test_name: str, qfm: QEMUFileManager,
                  qemu_cmd: List[str], context: Dict[str, List[str]],
                  env: Optional[Dict[str, str]] = None):
-        #pylint: disable=too-many-arguments
+        # pylint: disable=too-many-arguments
         self._clog = getLogger('pyot.ctx')
         self._test_name = test_name
         self._qfm = qfm
@@ -748,9 +748,9 @@ class QEMUContext:
 
            :param code: a previous error completion code, if any
         """
-        #pylint: disable=too-many-branches
-        #pylint: disable=too-many-locals
-        #pylint: disable=too-many-nested-blocks
+        # pylint: disable=too-many-branches
+        # pylint: disable=too-many-locals
+        # pylint: disable=too-many-nested-blocks
         ctx = self._context.get(ctx_name, None)
         if ctx_name == 'post' and code:
             self._clog.info("Discard execution of '%s' commands after failure "
@@ -776,7 +776,7 @@ class QEMUContext:
                 else:
                     self._clog.debug('Execute "%s" in sync for [%s] context',
                                      cmd, ctx_name)
-                    #pylint: disable=consider-using-with
+                    # pylint: disable=consider-using-with
                     proc = Popen(cmd,  bufsize=1, stdout=PIPE, stderr=PIPE,
                                  shell=True, env=env, encoding='utf-8',
                                  errors='ignore', text=True)
@@ -832,7 +832,7 @@ class QEMUExecuter:
        :param config: configuration dictionary
        :param args: parsed arguments
     """
-    #pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-instance-attributes
 
     RESULT_MAP = {
         0: 'PASS',
@@ -874,13 +874,13 @@ class QEMUExecuter:
 
            :return: success or the code of the first encountered error
         """
-        #pylint: disable=too-many-locals
+        # pylint: disable=too-many-locals
         qot = QEMUWrapper(self._vcp, debug)
         ret = 0
         results = defaultdict(int)
         result_file = self._argdict.get('result')
-        #pylint: disable=consider-using-with
-        cfp = open(result_file, 'wt',encoding='utf-8') if result_file else None
+        # pylint: disable=consider-using-with
+        cfp = open(result_file, 'wt', encoding='utf-8') if result_file else None
         try:
             csv = csv_writer(cfp) if cfp else None
             if csv:
@@ -988,7 +988,7 @@ class QEMUExecuter:
 
     def _build_qemu_command(self, args: Namespace,
                             opts: Optional[List[str]] = None) \
-            ->  Tuple[List[str], Tuple[str, int], Dict[str, Set[str]]]:
+            -> Tuple[List[str], Tuple[str, int], Dict[str, Set[str]]]:
         """Build QEMU command line from argparser values.
 
            :param args: the parsed arguments
@@ -997,9 +997,9 @@ class QEMUExecuter:
                     the TCP device descriptor to connect to the QEMU VCP, and
                     a dictionary of generated temporary files
         """
-        #pylint: disable=too-many-branches
-        #pylint: disable=too-many-locals
-        #pylint: disable=too-many-statements
+        # pylint: disable=too-many-branches
+        # pylint: disable=too-many-locals
+        # pylint: disable=too-many-statements
         if args.qemu is None:
             raise ValueError('QEMU path is not defined')
         qemu_args = [
@@ -1042,7 +1042,7 @@ class QEMUExecuter:
                 raise ValueError(f'No such flash file: {args.flash}')
             if any((args.exec, args.boot)):
                 raise ValueError('Flash file argument is mutually exclusive with'
-                                ' bootloader or rom extension')
+                                 ' bootloader or rom extension')
             flash_path = self.abspath(args.flash)
             qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_path},'
                                         f'format=raw'))
@@ -1100,12 +1100,12 @@ class QEMUExecuter:
         return qemu_cmd, args, timeout, temp_files, ctx
 
     def _build_test_list(self, alphasort: bool = True) -> List[str]:
-        #pylint: disable=too-many-branches
-        #pylint: disable=too-many-locals
-        #pylint: disable=too-many-nested-blocks
+        # pylint: disable=too-many-branches
+        # pylint: disable=too-many-locals
+        # pylint: disable=too-many-nested-blocks
         pathnames = set()
         testdir = normpath(self._qfm.interpolate(self._config.get('testdir',
-                                                                  curdir)))
+                                                                 curdir)))
         self._qfm.define({'testdir': testdir})
         tfilters = self._args.filter or ['*']
         inc_filters = self._config.get('include')
@@ -1234,10 +1234,10 @@ class QEMUExecuter:
 
 def main():
     """Main routine"""
-    #pylint: disable=too-many-branches
-    #pylint: disable=too-many-locals
-    #pylint: disable=too-many-statements
-    #pylint: disable=too-many-nested-blocks
+    # pylint: disable=too-many-branches
+    # pylint: disable=too-many-locals
+    # pylint: disable=too-many-statements
+    # pylint: disable=too-many-nested-blocks
     debug = True
     qemu_dir = normpath(joinpath(dirname(dirname(dirname(__file__)))))
     qemu_path = normpath(joinpath(qemu_dir, 'build', 'qemu-system-riscv32'))
@@ -1361,7 +1361,7 @@ def main():
                 jargs.append(val)
             if jargs:
                 jwargs = argparser.parse_args(jargs)
-                #pylint: disable=protected-access
+                # pylint: disable=protected-access
                 for name, val in jwargs._get_kwargs():
                     if not hasattr(args, name):
                         argparser.error(f'Unknown config file default: {name}')
@@ -1393,7 +1393,7 @@ def main():
         ret = qexc.run(args.debug)
         log.debug('End of execution with code %d', ret or 0)
         sysexit(ret)
-    #pylint: disable=broad-except
+    # pylint: disable=broad-except
     except Exception as exc:
         print(f'{linesep}Error: {exc}', file=stderr)
         if debug:
