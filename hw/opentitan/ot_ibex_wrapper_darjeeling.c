@@ -728,12 +728,56 @@ ot_ibex_wrapper_dj_remapper_destroy(OtIbexWrapperDjState *s, unsigned slot)
     }
 }
 
+/* NOLINTNEXTLINE */
+static bool ot_ibex_wrapper_dj_mr_map_offset(
+    hwaddr *offset, const MemoryRegion *root, hwaddr dst, size_t size,
+    const MemoryRegion *tmr)
+{
+    if (root == tmr) {
+        return true;
+    }
+
+    const MemoryRegion *mr;
+
+    QTAILQ_FOREACH(mr, &root->subregions, subregions_link) {
+        if (dst < mr->addr ||
+            (dst + size) > (mr->addr + int128_getlo(mr->size))) {
+            continue;
+        }
+
+        bool ret;
+
+        if (mr->alias) {
+            hwaddr alias_offset = mr->addr - mr->alias_offset;
+            dst -= alias_offset;
+
+            ret = ot_ibex_wrapper_dj_mr_map_offset(offset, mr->alias, dst, size,
+                                                   tmr);
+            if (ret) {
+                /*
+                 * the selected MR tree leads to the target region, so update
+                 * the alias offset with the local offset
+                 */
+                *offset += alias_offset;
+            }
+        } else {
+            ret = ot_ibex_wrapper_dj_mr_map_offset(offset, mr, dst, size, tmr);
+            if (ret) {
+                *offset += mr->addr;
+            }
+        }
+
+        return ret;
+    }
+
+    return false;
+}
+
 static void ot_ibex_wrapper_dj_remapper_create(
     OtIbexWrapperDjState *s, unsigned slot, hwaddr dst, hwaddr src, size_t size)
 {
     g_assert(slot < PARAM_NUM_REGIONS);
     MemoryRegion *mr = &s->remappers[slot];
-    trace_ot_ibex_wrapper_map(slot, src, dst, size);
     g_assert(!memory_region_is_mapped(mr));
 
     int priority = (int)(PARAM_NUM_REGIONS - slot);
@@ -752,7 +796,19 @@ static void ot_ibex_wrapper_dj_remapper_create(
     mrs = memory_region_find(s->sys_mem, dst, (uint64_t)size);
     size_t mrs_lsize = int128_getlo(mrs.size);
     mr_dst = (mrs.mr && mrs_lsize >= size) ? mrs.mr : s->sys_mem;
-    hwaddr offset = dst - mr_dst->addr;
+
+    /*
+     * adjust the offset if the memory region target for the mapping
+     * is itself mapped through memory region(s)
+     */
+    hwaddr offset = 0;
+    if (ot_ibex_wrapper_dj_mr_map_offset(&offset, s->sys_mem, dst, size,
+                                         mr_dst)) {
+        offset = dst - offset;
+    }
+
+    trace_ot_ibex_wrapper_map(slot, src, dst, size, mr_dst->name,
+                              (uint32_t)offset);
     memory_region_init_alias(mr, OBJECT(s), name, mr_dst, offset,
                              (uint64_t)size);
     memory_region_add_subregion_overlap(s->sys_mem, src, mr, priority);

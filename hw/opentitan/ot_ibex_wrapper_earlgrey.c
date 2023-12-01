@@ -252,7 +252,6 @@ static void ot_ibex_wrapper_eg_remapper_create(
 {
     g_assert(slot < PARAM_NUM_REGIONS);
     MemoryRegion *mr = &s->remappers[slot];
-    trace_ot_ibex_wrapper_map(slot, src, dst, size);
     g_assert(!memory_region_is_mapped(mr));
 
     int priority = (int)(PARAM_NUM_REGIONS - slot);
@@ -273,6 +272,8 @@ static void ot_ibex_wrapper_eg_remapper_create(
     size_t mrs_lsize = int128_getlo(mrs.size);
     mr_dst = (mrs.mr && mrs_lsize >= size) ? mrs.mr : sys_mem;
     hwaddr offset = dst - mr_dst->addr;
+    trace_ot_ibex_wrapper_map(slot, src, dst, size, mr_dst->name,
+                              (uint32_t)offset);
     memory_region_init_alias(mr, OBJECT(s), name, mr_dst, offset,
                              (uint64_t)size);
     memory_region_add_subregion_overlap(sys_mem, src, mr, priority);
