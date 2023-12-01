@@ -157,4 +157,10 @@ void ot_common_ignore_chr_status_lines(CharBackend *chr);
  */
 Chardev *ot_common_get_chardev_by_id(const char *chrid);
 
+/* ------------------------------------------------------------------------ */
+/* String utilities */
+/* ------------------------------------------------------------------------ */
+
+int ot_common_string_ends_with(const char *str, const char *suffix);
+
 #endif /* HW_OPENTITAN_OT_COMMON_H */
