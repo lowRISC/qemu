@@ -696,6 +696,7 @@ struct OtIbexWrapperDarjeelingState {
 
     MemoryRegion mmio;
     MemoryRegion remappers[PARAM_NUM_REGIONS];
+    MemoryRegion *sys_mem;
 
     uint32_t *regs;
     OtIbexTestLogEngine *log_engine;
@@ -722,8 +723,7 @@ ot_ibex_wrapper_dj_remapper_destroy(OtIbexWrapperDjState *s, unsigned slot)
         memory_region_transaction_begin();
         memory_region_set_enabled(mr, false);
         /* QEMU memory model enables unparenting alias regions */
-        MemoryRegion *sys_mem = get_system_memory();
-        memory_region_del_subregion(sys_mem, mr);
+        memory_region_del_subregion(s->sys_mem, mr);
         memory_region_transaction_commit();
     }
 }
@@ -738,7 +738,6 @@ static void ot_ibex_wrapper_dj_remapper_create(
 
     int priority = (int)(PARAM_NUM_REGIONS - slot);
 
-    MemoryRegion *sys_mem = get_system_memory();
     MemoryRegion *mr_dst;
 
     char *name =
@@ -750,13 +749,13 @@ static void ot_ibex_wrapper_dj_remapper_create(
      * map on the whole address space.
      */
     MemoryRegionSection mrs;
-    mrs = memory_region_find(sys_mem, dst, (uint64_t)size);
+    mrs = memory_region_find(s->sys_mem, dst, (uint64_t)size);
     size_t mrs_lsize = int128_getlo(mrs.size);
-    mr_dst = (mrs.mr && mrs_lsize >= size) ? mrs.mr : sys_mem;
+    mr_dst = (mrs.mr && mrs_lsize >= size) ? mrs.mr : s->sys_mem;
     hwaddr offset = dst - mr_dst->addr;
     memory_region_init_alias(mr, OBJECT(s), name, mr_dst, offset,
                              (uint64_t)size);
-    memory_region_add_subregion_overlap(sys_mem, src, mr, priority);
+    memory_region_add_subregion_overlap(s->sys_mem, src, mr, priority);
     memory_region_set_enabled(mr, true);
     memory_region_transaction_commit();
     g_free(name);
@@ -1347,6 +1346,8 @@ static void ot_ibex_wrapper_dj_reset(DeviceState *dev)
 {
     OtIbexWrapperDjState *s = OT_IBEX_WRAPPER_DARJEELING(dev);
 
+    g_assert(s->sys_mem);
+
     for (unsigned slot = 0; slot < PARAM_NUM_REGIONS; slot++) {
         ot_ibex_wrapper_dj_remapper_destroy(s, slot);
     }
@@ -1363,6 +1364,14 @@ static void ot_ibex_wrapper_dj_reset(DeviceState *dev)
 
     memset(s->log_engine, 0, sizeof(*s->log_engine));
     s->log_engine->as = ot_common_get_local_address_space(dev);
+}
+
+static void ot_ibex_wrapper_dj_realize(DeviceState *dev, Error **errp)
+{
+    OtIbexWrapperDjState *s = OT_IBEX_WRAPPER_DARJEELING(dev);
+    (void)errp;
+
+    s->sys_mem = ot_common_get_local_address_space(dev)->root;
 }
 
 static void ot_ibex_wrapper_dj_init(Object *obj)
@@ -1383,6 +1392,7 @@ static void ot_ibex_wrapper_dj_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->reset = &ot_ibex_wrapper_dj_reset;
+    dc->realize = &ot_ibex_wrapper_dj_realize;
     device_class_set_props(dc, ot_ibex_wrapper_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
