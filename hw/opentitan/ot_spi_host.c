@@ -767,8 +767,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     if (!(read || write)) {
         /* dummy mode uses clock cycle count rather than byte count */
         if (length % 8u) {
-            qemu_log_mask(LOG_UNIMP, "Unsupported clock cycle count: %u\n",
-                          length);
+            qemu_log_mask(LOG_UNIMP, "%s: unsupported clock cycle count: %u\n",
+                          __func__, length);
         }
         length = DIV_ROUND_UP(length, 8u);
     }
@@ -922,7 +922,7 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     uint32_t val32;
 
     if (s->on_reset) {
-        qemu_log_mask(LOG_GUEST_ERROR, "device in reset");
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: device in reset\n", __func__);
         return 0u;
     }
 
@@ -934,8 +934,8 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     case R_COMMAND:
     case R_TXDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "W/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
-                      REG_NAME(reg));
+                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
+                      addr, REG_NAME(reg));
         val32 = 0u;
         break;
     case R_INTR_STATE:
@@ -986,7 +986,8 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     }
     default:
         val32 = 0u;
-        qemu_log_mask(LOG_GUEST_ERROR, "Bad offset 0x%" HWADDR_PRIx "\n", addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
+                      __func__, addr);
     }
 
     uint64_t pc = ibex_get_current_pc();
@@ -1029,7 +1030,7 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
     trace_ot_spi_host_write(addr, REG_NAME(reg), val64, pc);
 
     if (s->on_reset) {
-        qemu_log_mask(LOG_GUEST_ERROR, "device in reset");
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: device in reset\n", __func__);
         return;
     }
 
@@ -1144,8 +1145,8 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
     }
     case R_RXDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "R/O register 0x%02" HWADDR_PRIx " (%s)\n", addr,
-                      REG_NAME(reg));
+                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
+                      addr, REG_NAME(reg));
         break;
     case R_TXDATA: {
         /*
@@ -1198,7 +1199,8 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_spi_host_update_event(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "Bad offset 0x%" HWADDR_PRIx "\n", addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%" HWADDR_PRIx "\n",
+                      __func__, addr);
         break;
     }
 }
