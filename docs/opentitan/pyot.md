@@ -395,14 +395,19 @@ Sample config for running some non-OpenTitan tests:
 * `aliases`
   This section may be used to define string aliases to simplify further definitions.
 
-  Note that the resulting aliases are always uppercased.
+  Note that the resulting aliases are always uppercased. To use an alias, use the `${ALIAS}` syntax.
+  Environment variables may also be used as aliases.
 
-  To use an alias, use the `${ALIAS}` syntax. Environment variables may also be used as aliases.
   Several special variables are automatically defined:
   * `${CONFIG}` refers to the path of the configuration file itself,
   * `${TESTDIR}` refers to the default test path (see `testdir` below).
   * `${QEMU_SRC_DIR}` refers to the path to the QEMU source directory
   * `${QEMU_BIN_DIR}` refers to the directory than contains the QEMU executable.
+
+  Moreover, the following special variables are defined for each executed test:
+  * `${UTPATH}` absolute path to the executed OT test
+  * `${UTDIR}` absolute path to the directory containing the executed OT test
+  * `${UTFILE}` file name of the executed OT test (without directory specifier)
 
 * `testdir`
   This section may be used to define the default path where to look for tests to run.

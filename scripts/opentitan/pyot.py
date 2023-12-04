@@ -319,7 +319,7 @@ class QEMUWrapper:
         except (OSError, ValueError) as exc:
             if ret is None:
                 log.error('Unable to execute QEMU: %s', exc)
-                ret = proc.resultcode if proc.poll() is not None else 125
+                ret = proc.returncode if proc.poll() is not None else 125
         finally:
             if xend is None:
                 xend = now()
@@ -399,6 +399,7 @@ class QEMUFileManager:
         self._in_fly: Set[str] = set()
         self._otp_files: Dict[str, Tuple[str, int]] = {}
         self._env: Dict[str, str] = {}
+        self._transient_vars: Set[str] = set()
         self._dirs: Dict[str, str] = {}
         register(self._cleanup)
 
@@ -469,6 +470,26 @@ class QEMUFileManager:
             aliases[name] = value
             self._env[name.upper()] = value
             self._log.debug('Store %s as %s', name.upper(), value)
+
+    def define_transient(self, aliases: Dict[str, Any]) -> None:
+        """Add short-lived aliases that are all discarded when cleanup_transient
+           is called.
+
+           :param aliases: a dict of aliases
+        """
+        for name in aliases:
+            name = name.upper()
+            # be sure not to make an existing non-transient variable transient
+            if name not in self._env:
+                self._transient_vars.add(name)
+        self.define(aliases)
+
+    def cleanup_transient(self) -> None:
+        """Remove all transient variables."""
+        for name in self._transient_vars:
+            if name in self._env:
+                del self._env[name]
+        self._transient_vars.clear()
 
     def interpolate_dirs(self, value: str, default: str) -> str:
         """Resolve temporary directories, creating ones whenever required.
@@ -882,6 +903,7 @@ class QEMUExecuter:
         0: 'PASS',
         1: 'ERROR',
         6: 'ABORT',
+        11: 'CRASH',
         QEMUWrapper.GUEST_ERROR_OFFSET + 1: 'FAIL',
         124: 'TIMEOUT',
         125: 'DEADLOCK',
@@ -950,13 +972,22 @@ class QEMUExecuter:
             for tpos, test in enumerate(tests, start=1):
                 self._log.info('[TEST %s] (%d/%d)', self.get_test_radix(test),
                                tpos, tcount)
-                qemu_cmd, targs, timeout, temp_files, ctx = \
-                    self._build_qemu_test_command(test)
-                test_name = self.get_test_radix(test)
-                ctx.execute('pre')
-                tret, xtime, err = qot.run(qemu_cmd, timeout, test_name, ctx)
-                ctx.finalize()
-                ctx.execute('post', tret)
+                try:
+                    self._qfm.define_transient({
+                        'UTPATH': test,
+                        'UTDIR': normpath(dirname(test)),
+                        'UTFILE': basename(test),
+                    })
+                    qemu_cmd, targs, timeout, temp_files, ctx = \
+                        self._build_qemu_test_command(test)
+                    test_name = self.get_test_radix(test)
+                    ctx.execute('pre')
+                    tret, xtime, err = qot.run(qemu_cmd, timeout, test_name,
+                                               ctx)
+                    ctx.finalize()
+                    ctx.execute('post', tret)
+                finally:
+                    self._qfm.cleanup_transient()
                 results[tret] += 1
                 sret = self.RESULT_MAP.get(tret, tret)
                 icount = self.get_namespace_arg(targs, 'icount')
