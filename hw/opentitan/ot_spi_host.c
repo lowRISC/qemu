@@ -762,13 +762,15 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     uint32_t command = (uint32_t)headcmd->command;
     bool read = ot_spi_host_is_rx(command);
     bool write = ot_spi_host_is_tx(command);
-    bool multi = FIELD_EX32(command, COMMAND, SPEED) != 0;
+    unsigned speed = FIELD_EX32(command, COMMAND, SPEED);
+    bool multi = speed != 0;
     uint32_t length = FIELD_EX32(command, COMMAND, LEN) + 1u;
     if (!(read || write)) {
         /* dummy mode uses clock cycle count rather than byte count */
-        if (length % 8u) {
-            qemu_log_mask(LOG_UNIMP, "%s: unsupported clock cycle count: %u\n",
-                          __func__, length);
+        if (length % (1u << (3u - speed))) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: unsupported clk cycle count: %u for speed %u\n",
+                          __func__, length, speed);
         }
         length = DIV_ROUND_UP(length, 8u);
     }
