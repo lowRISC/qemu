@@ -187,7 +187,7 @@ enum OtDevProxyErr {
 #define MEMTXATTRS_WITH_ROLE(_r_) \
     (MemTxAttrs) \
     { \
-        .role = _r_ \
+        .role = (_r_) \
     }
 #define MEMTXATTRS_GET_ROLE(_a_) ((_a_).unspecified ? 0xfu : (_a_).role);
 #else
