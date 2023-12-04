@@ -182,7 +182,7 @@ class DeviceProxy:
        :paran regcount: count of 32-bit registers in the remote device
     """
 
-    #pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-instance-attributes
 
     MB4_TRUE = 0x6
     """Multibit bool true value."""
@@ -195,7 +195,7 @@ class DeviceProxy:
 
     def __init__(self, proxy: 'Proxy', name: str, devid: int, addr: int,
                  count: int, offset: int):
-        #pylint: disable=too-many-arguments
+        # pylint: disable=too-many-arguments
         logname = self.__class__.__name__.lower().replace('proxy', '')
         self._log = getLogger(f'proxy.{logname}')
         if offset > 0xffff:
@@ -366,7 +366,7 @@ class MbxHostProxy(DeviceProxy):
        :param role: optional access role
     """
 
-    #pylint: disable=too-many-public-methods
+    # pylint: disable=too-many-public-methods
 
     DEVICE_ID = 'mbh'
 
@@ -394,6 +394,7 @@ class MbxHostProxy(DeviceProxy):
     IRQS = {
         'MSGREADY': 0,
         'ABORT': 1,
+        'ERROR': 3,
     }
     """Supported IRQ channels."""
 
@@ -504,7 +505,7 @@ class MbxHostProxy(DeviceProxy):
            :return: true if OBJECT READY bit is set
         """
         res = (bool)(self.read_word(self._role, self.REGS['STATUS']) &
-                      (1 << 31))
+                     (1 << 31))
         self._log.debug('%d', res)
         return res
 
@@ -684,7 +685,7 @@ class MbxSysProxy(DeviceProxy):
     def go(self) -> None:
         """Tell the mailbox responder that a request is reading to be processed.
         """
-        #pylint: disable=invalid-name
+        # pylint: disable=invalid-name
         self._log.debug('')
         self.write_word(self._role, self.REGS['CONTROL'], 1 << 31, 1 << 31)
 
@@ -945,7 +946,7 @@ class ProxyEngine:
     """Tool to access and remotely drive devices and memories.
     """
 
-    #pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-instance-attributes
 
     VERSION = (0, 12)
     """Protocol version."""
@@ -1035,7 +1036,7 @@ class ProxyEngine:
     def discover_devices(self) -> None:
         """Enumerate and store supported remote devices.
         """
-        #pylint: disable=too-many-locals
+        # pylint: disable=too-many-locals
         try:
             devices = self.exchange('ED')
         except ProxyCommandError as exc:
@@ -1140,7 +1141,7 @@ class ProxyEngine:
                         specified count of access. Use 0 to disable auto-discard
            :param prority: priority of the intercepter
         """
-        #pylint: disable=too-many-arguments
+        # pylint: disable=too-many-arguments
         if not read and not write:
             raise ValueError('Read or/and Write should be specified')
         if not isinstance(priority, int) or not priority or priority > 0x3f:
@@ -1244,7 +1245,7 @@ class ProxyEngine:
         uid = (0 << 31) | (self._tx_uid & ~(1 << 31))
         self._log.debug('TX cmd:%s, len:%d, uid:%d', command, len(data), uid)
         request = spack(self.HEADER, bytes(reversed(command.encode())),
-                                           len(data), uid)
+                        len(data), uid)
         request = b''.join((request, data))
         try:
             if self._port:
@@ -1258,8 +1259,8 @@ class ProxyEngine:
     def _receive(self):
         """Worker thread that handle data reception.
         """
-        #pylint: disable=too-many-branches
-        #pylint: disable=too-many-statements
+        # pylint: disable=too-many-branches
+        # pylint: disable=too-many-statements
         buffer = bytearray()
         cmd = ''
         length = 0
@@ -1290,7 +1291,7 @@ class ProxyEngine:
                     uid = uid & ~(1 << 31)
                     cmd = bytes(reversed(bcmd)).decode()
                     self._log.debug('RX cmd:%s, len:%d, uid:%d, resp:%d',
-                                   cmd, length, uid, resp)
+                                    cmd, length, uid, resp)
                     buffer = buffer[self.HEADER_SIZE:]
                 if len(buffer) < length:
                     continue
@@ -1311,7 +1312,7 @@ class ProxyEngine:
                 length = 0
                 uid = 0
                 resp = False
-            #pylint: disable=broad-except
+            # pylint: disable=broad-except
             except Exception as exc:
                 self._resume = False
                 self._log.fatal('Exception: %s', exc)
@@ -1340,7 +1341,7 @@ class ProxyEngine:
                         continue
                     self._request_handler(rcmd, payload, *self._request_args)
 
-            #pylint: disable=broad-except
+            # pylint: disable=broad-except
             except Exception as exc:
                 self._log.fatal('Exception: %s', exc)
                 break
@@ -1428,7 +1429,7 @@ def _main():
         proxy.connect('localhost', 8003)
         proxy.discover_devices()
         proxy.discover_memory_spaces()
-    #pylint: disable-msg=broad-except
+    # pylint: disable-msg=broad-except
     except Exception as exc:
         print(f'\nError: {exc}', file=stderr)
         if debug:
@@ -1439,7 +1440,7 @@ def _main():
 
 
 if __name__ == '__main__':
-    #pylint: disable=ungrouped-imports
+    # pylint: disable=ungrouped-imports
     from argparse import ArgumentParser
     from sys import exit as sysexit, stderr
     from traceback import format_exc
