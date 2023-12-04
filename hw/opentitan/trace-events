@@ -263,6 +263,13 @@ ot_rstmgr_sw_rst(const char *path, bool reset) "%s: reset:%u"
 ot_sensor_io_read_out(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 ot_sensor_io_write(unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
 
+# ot_soc_proxy.c
+
+ot_soc_proxy_io_read_out(const char * mid, unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "%s: addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_soc_proxy_io_write(const char * mid, unsigned int addr, const char * regname, uint64_t val, uint64_t pc) "%s: addr=0x%02x (%s), val=0x%" PRIx64 ", pc=0x%" PRIx64
+ot_soc_proxy_ingress_irq(const char * mid, unsigned n, bool level) "%s: #%u: %u"
+ot_soc_proxy_update_irq(const char * mid, unsigned n, int prev, int next) "%s: #%u %d -> %d"
+
 # ot_spi_device.c
 
 ot_spi_device_buf_read_out(unsigned int addr, unsigned int size, uint64_t val, uint64_t pc) "addr=0x%02x, sz=%u, val=0x%" PRIx64 ", pc=0x%" PRIx64
