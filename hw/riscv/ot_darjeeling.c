@@ -41,7 +41,6 @@
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
-#include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_gpio.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_ibex_wrapper_darjeeling.h"
@@ -231,9 +230,9 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x21110000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 114),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 115),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 116),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 115),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 116),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 117),
             OT_DARJEELING_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
         ),
     },
@@ -243,9 +242,9 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x21120000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 117),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 118),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 119)
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 118),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 119),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 120)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DARJEELING_SOC_DEVLINK("edn", EDN0)
@@ -261,7 +260,7 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x21130000u, 0x10000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 120),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 121),
             OT_DARJEELING_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -287,10 +286,10 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x21150000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 122),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 123),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 124),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 125)
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 123),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 124),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 125),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 126)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DARJEELING_SOC_DEVLINK("random_src", AST),
@@ -304,8 +303,8 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x21170000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 126),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 127)
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 128)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DARJEELING_SOC_DEVLINK("csrng", CSRNG)
@@ -321,8 +320,8 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x21180000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 128),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 129)
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 129),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 130)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DARJEELING_SOC_DEVLINK("csrng", CSRNG)
@@ -543,7 +542,7 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             IBEX_DEV_STRING_PROP("hart-config", "M"),
             IBEX_DEV_UINT_PROP("hartid-base", 0u),
             /* note: should always be max_irq + 1 */
-            IBEX_DEV_UINT_PROP("num-sources", 153u),
+            IBEX_DEV_UINT_PROP("num-sources", 164u),
             IBEX_DEV_UINT_PROP("num-priorities", 3u),
             IBEX_DEV_UINT_PROP("priority-base", 0x0u),
             IBEX_DEV_UINT_PROP("pending-base", 0x1000u),
@@ -621,6 +620,10 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x30020000u, 0x40u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 80),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 81)
+        )
     },
     [OT_DARJEELING_SOC_DEV_I2C0] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
@@ -696,8 +699,8 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x30300000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 75),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 76)
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 76),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 77)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("bus-num", 0)
@@ -729,7 +732,7 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x30400000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 77)
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 78)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DARJEELING_SOC_DEVLINK("rstmgr", RSTMGR)
@@ -766,8 +769,8 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             { 0x30470000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 78),
-            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 79),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 79),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 80),
             OT_DARJEELING_SOC_SIGNAL(OPENTITAN_AON_TIMER_WKUP, 0, PWRMGR, \
                                      OPENTITAN_PWRMGR_WKUP_REQ, \
                                      OT_PWRMGR_WAKEUP_AON_TIMER),
