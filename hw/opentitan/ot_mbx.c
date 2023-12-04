@@ -60,6 +60,7 @@
 REG32(HOST_INTR_STATE, 0x00u)
     SHARED_FIELD(INTR_MBX_READY, 0u, 1u)
     SHARED_FIELD(INTR_MBX_ABORT, 1u, 1u)
+    SHARED_FIELD(INTR_MBX_ERROR, 2u, 1u)
 REG32(HOST_INTR_ENABLE, 0x04u)
 REG32(HOST_INTR_TEST, 0x08u)
 REG32(HOST_ALERT_TEST, 0x0cu)
@@ -123,13 +124,15 @@ REG32(SYS_READ_DATA, 0x14u)
 #define REGS_SYSLOCAL_COUNT (R_SYSLOCAL_LAST_REG + 1u)
 #define REGS_SYSLOCAL_SIZE  (REGS_SYSLOCAL_COUNT * sizeof(uint32_t))
 
-#define HOST_INTR_MASK  (INTR_MBX_READY_MASK | INTR_MBX_ABORT_MASK)
+#define HOST_INTR_MASK \
+    (INTR_MBX_READY_MASK | INTR_MBX_ABORT_MASK | INTR_MBX_ERROR_MASK)
 #define HOST_INTR_COUNT (HOST_INTR_MASK - 1u)
 #define HOST_ALERT_TEST_MASK \
     (R_HOST_ALERT_TEST_FATAL_FAULT_MASK | R_HOST_ALERT_TEST_RECOV_FAULT_MASK)
 #define HOST_CONTROL_MASK \
     (R_HOST_CONTROL_ABORT_MASK | R_HOST_CONTROL_ABORT_MASK)
 
+static_assert(OT_MBX_HOST_REGS_COUNT == REGS_HOST_COUNT, "Invalid HOST regs");
 static_assert(OT_MBX_SYS_REGS_COUNT == REGS_SYS_COUNT, "Invalid SYS regs");
 
 #define REG_NAME(_kind_, _reg_) \
@@ -250,13 +253,24 @@ static void ot_mbx_set_error(OtMbxState *s)
 {
     uint32_t *hregs = s->host.regs;
 
-    // should busy be set?
+    /* should busy be set? */
     hregs[R_HOST_CONTROL] |= R_HOST_CONTROL_ERROR_MASK;
 
     if (hregs[R_HOST_STATUS] & R_HOST_STATUS_SYS_INTR_ENABLE_MASK) {
         hregs[R_HOST_STATUS] |= R_HOST_STATUS_SYS_INTR_STATE_MASK;
-        // placeholder: should trigger system interrupt from here
     }
+
+    /*
+     * Note: you should not use this interrupt, as it might create
+     * hard-to-manage signalling since IRQ might be raise at unexpected time
+     * in mailbox management. You've been warned.
+     *
+     * On error, wait for GO bit to be set, then handle any HW error at this
+     * point. If the SYS side detects the error bit before it sets the GO flag
+     * it can immediately trigger an abort.
+     */
+    hregs[R_HOST_INTR_STATE] |= INTR_MBX_ERROR_MASK;
+    ot_mbx_host_update_irqs(s);
 }
 
 static void ot_mbx_clear_busy(OtMbxState *s)
