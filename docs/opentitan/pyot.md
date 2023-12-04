@@ -40,6 +40,8 @@ Virtual machine:
                         trace event definition file
   -i N, --icount N      virtual instruction counter with 2^N clock ticks per inst.
   -s, --singlestep      enable "single stepping" QEMU execution mode
+  -T SECS, --timeout-factor SECS
+                        timeout factor
   -U, --muxserial       enable multiple virtual UARTs to be muxed into same host output channel
 
 Files:
@@ -105,6 +107,8 @@ This tool may be used in two ways, which can be combined:
      matches the expected FPGA-based lowRISC CPU.
   Note that this option slows down the execution of guest applications.
 * `-s` / `--singlestep` enable QEMU "single stepping" mode.
+* `-T` / `--timeout-factor` apply a multiplier factor to all timeouts. Specified as a real number,
+  it can be greater to increase timeouts or lower than 1 to decrease timeouts.
 * `-U` / `--muxserial` enable muxing QEMU VCP. This option is required when several virtual UARTs
   are routed to the same host output channel.
 

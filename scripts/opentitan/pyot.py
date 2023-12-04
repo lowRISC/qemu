@@ -41,6 +41,7 @@ from typing import (Any, Deque, Dict, Iterator, List, NamedTuple, Optional, Set,
 DEFAULT_MACHINE = 'ot-earlgrey'
 DEFAULT_DEVICE = 'localhost:8000'
 DEFAULT_TIMEOUT = 60  # seconds
+DEFAULT_TIMEOUT_FACTOR = 1.0
 
 
 class ExecTime(float):
@@ -829,7 +830,8 @@ class QEMUContext:
                         proc.kill()
                         outs, errs = proc.communicate()
                         fail = True
-                    for sfp, logger in zip((outs, errs),
+                    for sfp, logger in zip(
+                            (outs, errs),
                             (self._clog.debug,
                              self._clog.error if fail else self._clog.info)):
                         for line in sfp.split('\n'):
@@ -930,9 +932,10 @@ class QEMUExecuter:
             app = self._argdict.get('exec')
             if app:
                 assert 'timeout' in self._argdict
+                timeout = int(float(self._argdict.get('timeout') *
+                              float(self._argdict.get('timeout_factor', 1.0))))
                 self._log.info('Execute %s', basename(self._argdict['exec']))
-                ret, xtime, err = qot.run(self._qemu_cmd,
-                                          self._argdict['timeout'],
+                ret, xtime, err = qot.run(self._qemu_cmd, timeout,
                                           self.get_test_radix(app), None)
                 results[ret] += 1
                 sret = self.RESULT_MAP.get(ret, ret)
@@ -1132,8 +1135,7 @@ class QEMUExecuter:
         return qemu_args, tcpdev, temp_files
 
     def _build_qemu_test_command(self, filename: str) -> \
-            Tuple[List[str], Namespace, int, Dict[str, Set[str]], \
-            QEMUContext]:
+            Tuple[List[str], Namespace, int, Dict[str, Set[str]], QEMUContext]:
         test_name = self.get_test_radix(filename)
         args, opts, timeout = self._build_test_args(test_name)
         setattr(args, 'exec', filename)
@@ -1242,8 +1244,10 @@ class QEMUExecuter:
                 raise ValueError('fInvalid QEMU options for {test_name}')
             opts = self.flatten([opt.split(' ') for opt in opts])
             opts = [self._qfm.interpolate_dirs(opt, test_name) for opt in opts]
-        timeout = int(kwargs.get('timeout', DEFAULT_TIMEOUT))
-        return Namespace(**kwargs), opts or [], timeout
+        timeout = float(kwargs.get('timeout', DEFAULT_TIMEOUT))
+        tmfactor = float(kwargs.get('timeout_factor', DEFAULT_TIMEOUT_FACTOR))
+        itimeout = int(timeout * tmfactor)
+        return Namespace(**kwargs), opts or [], itimeout
 
     def _build_test_context(self, test_name: str) -> QEMUContext:
         context = defaultdict(list)
@@ -1335,6 +1339,9 @@ def main():
         qvm.add_argument('-s', '--singlestep', action='store_true',
                          default=None,
                          help='enable "single stepping" QEMU execution mode')
+        qvm.add_argument('-T', '--timeout-factor', type=float, metavar='SECS',
+                         default=DEFAULT_TIMEOUT_FACTOR,
+                         help='timeout factor')
         qvm.add_argument('-U', '--muxserial', action='store_true',
                          default=None,
                          help='enable multiple virtual UARTs to be muxed into '
