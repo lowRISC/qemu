@@ -36,6 +36,7 @@ config OT_DARJEELING
     select OT_PWRMGR
     select OT_ROM_CTRL
     select OT_SENSOR
+    select OT_SOC_PROXY
     select OT_SPI_DEVICE
     select OT_SPI_HOST
     select OT_SRAM_CTRL

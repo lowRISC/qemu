@@ -57,6 +57,7 @@
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_sensor.h"
+#include "hw/opentitan/ot_soc_proxy.h"
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
@@ -483,12 +484,48 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             IBEX_DEV_STRING_PROP("id", "0")
         )
     },
+
     [OT_DARJEELING_SOC_DEV_SOC_PROXY] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-soc_proxy",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_SOC_PROXY,
         .memmap = MEMMAPENTRIES(
             { 0x22030000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 83),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 84),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 85),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 86),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 87),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 88),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 89),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 90),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 91),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 92),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 93),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 94),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 95),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 96),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 97),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 98),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 99),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 100),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(18, PLIC, 101),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(19, PLIC, 102),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(20, PLIC, 103),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(21, PLIC, 104),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(22, PLIC, 105),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(23, PLIC, 106),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(24, PLIC, 107),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(25, PLIC, 108),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(26, PLIC, 109),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(27, PLIC, 110),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 111),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 112),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 113),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 114)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("id", "0")
         ),
     },
     [OT_DARJEELING_SOC_DEV_MBX_PCIE0] = {
