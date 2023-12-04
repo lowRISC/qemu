@@ -163,6 +163,12 @@ REG32(INT_SRC_VAL_8, 0xecu)
 REG32(INT_SRC_VAL_9, 0xf0u)
 REG32(INT_SRC_VAL_10, 0xf4u)
 
+#if defined(MEMTXATTRS_HAS_ROLE) && (MEMTXATTRS_HAS_ROLE != 0)
+#define OT_DMA_HAS_ROLE
+#else
+#undef OT_DMA_HAS_ROLE
+#endif
+
 typedef enum {
     TRANSACTION_WIDTH_BYTE = 0x0,
     TRANSACTION_WIDTH_HALF = 0x1,
@@ -244,6 +250,9 @@ struct OtDMAState {
     char *ctn_as_name; /* externel port AS unique name */
     char *sys_as_name; /* external system AS unique name */
     char *dma_id;
+#ifdef OT_DMA_HAS_ROLE
+    uint8_t role;
+#endif
 };
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
@@ -633,6 +642,9 @@ static bool ot_dma_go(OtDMAState *s)
     OtDMAOp *op = &s->op;
 
     op->attrs.unspecified = false;
+#ifdef OT_DMA_HAS_ROLE
+    op->attrs.role = (unsigned)s->role;
+#endif
     op->size = s->regs[R_TOTAL_DATA_SIZE];
 
     /*
@@ -1054,6 +1066,9 @@ static Property ot_dma_properties[] = {
     DEFINE_PROP_STRING("ot_as_name", OtDMAState, ot_as_name),
     DEFINE_PROP_STRING("ctn_as_name", OtDMAState, ctn_as_name),
     DEFINE_PROP_STRING("sys_as_name", OtDMAState, sys_as_name),
+#ifdef OT_DMA_HAS_ROLE
+    DEFINE_PROP_UINT8("role", OtDMAState, role, UINT8_MAX),
+#endif
     DEFINE_PROP_STRING("id", OtDMAState, dma_id),
     DEFINE_PROP_END_OF_LIST(),
 };
