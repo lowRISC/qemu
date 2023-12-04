@@ -854,6 +854,79 @@ class MbxSysProxy(DeviceProxy):
         self.write_word(self._role, self.REGS['INTR_MSG_DATA'], data)
 
 
+class SoCProxy(DeviceProxy):
+    """SoC proxy.
+
+       Specialized DeviceProxy that helps managing an SOC PROXY device.
+
+       :param args: forwarded as is to the parent, see #DevicePRoxy
+       :param role: optional access role
+    """
+
+    DEVICE_ID = 'soc'
+
+    REGS = {
+        'INTR_STATE':  0x00,
+        'INTR_ENABLE':  0x04,
+        'INTR_TEST':  0x08,
+        'ALERT_TEST':  0x0c,
+    }
+    """Supported registers."""
+
+    def __init__(self, *args, role: Optional[int] = None):
+        super().__init__(*args)
+        self._role = 0xff  # ensure it should be defined through set_role
+        if role is not None:
+            self.set_role(role)
+
+    def set_role(self, role: int):
+        """Set the control access role to read/write remote registers."""
+        if not isinstance(role, int) or role > 0xf:
+            raise ValueError('Invalid role')
+        self._role = role
+        self._log.debug('%d', role)
+
+    @property
+    def interrupt_state(self) -> int:
+        """Report which interrupts are active.
+
+           :return: interrupt state bitfield
+        """
+        return self.read_word(self._role, self.REGS['INTR_STATE'])
+
+    def enable_interrupts(self, intrs: int) -> None:
+        """Enable interrupts.
+
+           :param intrs: the bitfield of interrupts to enable
+        """
+        self._log.debug('0x%08x', intrs)
+        self.write_word(self._role, self.REGS['INTR_ENABLE'], intrs)
+
+    def clear_interrupts(self, intrs: int) -> None:
+        """Clear interrupts.
+
+           :param intrs: the bitfield of interrupts to clear
+        """
+        self._log.debug('0x%08x', intrs)
+        self.write_word(self._role, self.REGS['INTR_STATE'], intrs)
+
+    def test_interrupts(self, intrs: int) -> None:
+        """Test interrupts.
+
+           :param intrs: the bitfield of interrupts to test
+        """
+        self._log.debug('0x%08x', intrs)
+        self.write_word(self._role, self.REGS['INTR_TEST'], intrs)
+
+    def test_alerts(self, alerts: int) -> None:
+        """Test alerts
+
+           :param alerts: the bitfield of interrupts to test
+        """
+        self._log.debug('0x%08x', alerts)
+        self.write_word(self._role, self.REGS['ALERT_TEST'], alerts)
+
+
 class MemProxy(DeviceProxy):
     """Memroy device proxy.
 

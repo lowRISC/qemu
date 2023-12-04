@@ -39,6 +39,7 @@
 #include "hw/irq.h"
 #include "hw/opentitan/ot_dev_proxy.h"
 #include "hw/opentitan/ot_mbx.h"
+#include "hw/opentitan/ot_soc_proxy.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -304,6 +305,11 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
         const OtDevProxyCaps *caps = &item->caps;
         struct entry *entry = &entries[count];
         if (object_dynamic_cast(item->obj, TYPE_OT_MBX)) {
+            memcpy(&entry->desc[0u], item->prefix, 4u);
+            const char *oid =
+                object_property_get_str(item->obj, "id", &error_fatal);
+            memcpy(&entry->desc[4u], oid, 4u);
+        } else if (object_dynamic_cast(item->obj, TYPE_OT_SOC_PROXY)) {
             memcpy(&entry->desc[0u], item->prefix, 4u);
             const char *oid =
                 object_property_get_str(item->obj, "id", &error_fatal);
@@ -1312,6 +1318,17 @@ static int ot_dev_proxy_discover_device(Object *child, void *opaque)
         item->caps.reg_count = OT_MBX_SYS_REGS_COUNT;
         item->caps.irq_mask = 0; /* no IRQ on sys side */
         item->prefix = "MBS/";
+        g_array_append_val(array, item);
+    } else if (object_dynamic_cast(child, TYPE_OT_SOC_PROXY)) {
+        OtDevProxyItem *item = g_new0(OtDevProxyItem, 1);
+        object_ref(child);
+        item->obj = child;
+        SysBusDevice *sysdev = SYS_BUS_DEVICE(child);
+        g_assert(sysdev->num_mmio == 1u);
+        item->caps.mr = sysdev->mmio[0u].memory;
+        item->caps.reg_count = OT_SOC_PROXY_REGS_COUNT; /* per slot */
+        item->caps.irq_mask = UINT32_MAX; /* all IRQs can be routed */
+        item->prefix = "SOC/";
         g_array_append_val(array, item);
     } else if (object_dynamic_cast(child, TYPE_OT_SRAM_CTRL)) {
         OtDevProxyItem *item = g_new0(OtDevProxyItem, 1);
