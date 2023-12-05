@@ -203,7 +203,7 @@ class QEMUWrapper:
         xstart = None
         xend = None
         log = self._log
-        last_guest_error = ''
+        last_error = ''
         # pylint: disable=too-many-nested-blocks
         try:
             workdir = dirname(qemu_args[0])
@@ -248,7 +248,17 @@ class QEMUWrapper:
             Thread(target=self._qemu_logger, name='qemu_err_logger',
                    args=(proc, log_q, False)).start()
             if ctx:
-                ctx.execute('with')
+                try:
+                    ctx.execute('with')
+                except OSError as exc:
+                    ret = exc.errno
+                    last_error = exc.strerror
+                    raise
+                # pylint: disable=broad-except
+                except Exception as exc:
+                    ret = 126
+                    last_error = str(exc)
+                    raise
             xstart = now()
             abstimeout = float(timeout) + xstart
             while now() < abstimeout:
@@ -263,9 +273,12 @@ class QEMUWrapper:
                             self._qlog.error(qline)
                     else:
                         self._qlog.info(qline)
-                if ctx.check_error():
-                    ret = 126
-                    raise OSError()
+                if ctx:
+                    wret = ctx.check_error()
+                    if wret:
+                        ret = wret
+                        last_error = 'Fail to execute worker'
+                        raise OSError(wret, last_error)
                 xret = proc.poll()
                 if xret is not None:
                     if xend is None:
@@ -294,7 +307,7 @@ class QEMUWrapper:
                         log.info("Exit sequence detected: '%s' -> %d",
                                  exit_word, ret)
                         if ret == 0:
-                            last_guest_error = ''
+                            last_error = ''
                         break
                     sline = line.decode('utf-8', errors='ignore').rstrip()
                     lmo = lre.search(sline)
@@ -304,7 +317,7 @@ class QEMUWrapper:
                             err = re_sub(r'^.*:\d+]', '', sline).lstrip()
                             # be sure not to preserve comma as this char is
                             # used as a CSV separator.
-                            last_guest_error = err.strip('"').replace(',', ';')
+                            last_error = err.strip('"').replace(',', ';')
                     else:
                         level = DEBUG  # fall back when no prefix is found
                     self._otlog.log(level, sline)
@@ -347,7 +360,7 @@ class QEMUWrapper:
                         if line:
                             logger(line)
         xtime = ExecTime(xend-xstart) if xstart and xend else 0.0
-        return abs(ret) or 0, xtime, last_guest_error
+        return abs(ret) or 0, xtime, last_error
 
     def _qemu_logger(self, proc: Popen, queue: Deque, err: bool):
         # worker thread, blocking on VM stdout/stderr
@@ -755,11 +768,12 @@ class QEMUContextWorker:
             try:
                 # leave 1 second for QEMU to cleanly complete...
                 proc.wait(1.0)
+                self._ret = 0
             except TimeoutExpired:
                 # otherwise kill it
                 self._log.error('Force-killing command "%s"', self.command)
                 proc.kill()
-            self._ret = proc.returncode
+                self._ret = proc.returncode
         # retrieve the remaining log messages
         stdlog = self._log.info if self._ret else self._log.debug
         for sfp, logger in zip(proc.communicate(timeout=0.1),
@@ -844,40 +858,42 @@ class QEMUContext:
                     proc = Popen(cmd,  bufsize=1, stdout=PIPE, stderr=PIPE,
                                  shell=True, env=env, encoding='utf-8',
                                  errors='ignore', text=True)
+                    ret = 0
                     try:
                         outs, errs = proc.communicate(timeout=5)
-                        fail = bool(proc.returncode)
+                        ret = proc.returncode
                     except TimeoutExpired:
                         proc.kill()
                         outs, errs = proc.communicate()
-                        fail = True
+                        ret = proc.returncode
                     for sfp, logger in zip(
                             (outs, errs),
                             (self._clog.debug,
-                             self._clog.error if fail else self._clog.info)):
+                             self._clog.error if ret else self._clog.info)):
                         for line in sfp.split('\n'):
                             line = line.strip()
                             if line:
                                 logger(line)
-                    if fail:
+                    if ret:
                         self._clog.error("Fail to execute '%s' command for "
                                          "'%s'", cmd, self._test_name)
-                        raise ValueError(f"Cannot execute [{ctx_name}] command")
+                        raise OSError(ret,
+                                      f'Cannot execute [{ctx_name}] command')
         if ctx_name == 'post':
             self._qfm.delete_default_dir(self._test_name)
 
-    def check_error(self) -> bool:
+    def check_error(self) -> int:
         """Check if any background worker exited in error.
 
-           :return: True if any worker has failed
+           :return: a non-zero value on error
         """
         for worker in self._workers:
             ret = worker.exit_code()
             if not ret:
                 continue
             self._clog.error("%s exited with %d", worker.command, ret)
-            return True
-        return False
+            return ret
+        return 0
 
     def finalize(self) -> None:
         """Terminate any running background command, in reverse order.
