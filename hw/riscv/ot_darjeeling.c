@@ -39,6 +39,7 @@
 #include "hw/opentitan/ot_ast_darjeeling.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_csrng.h"
+#include "hw/opentitan/ot_dev_proxy.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_gpio.h"
@@ -806,6 +807,7 @@ static const uint32_t ot_darjeeling_pmp_addrs[] = {
 enum OtDarjeelingBoardDevice {
     OT_DARJEELING_BOARD_DEV_SOC,
     OT_DARJEELING_BOARD_DEV_FLASH,
+    OT_DARJEELING_BOARD_DEV_DEV_PROXY,
     _OT_DARJEELING_BOARD_DEV_COUNT,
 };
 
@@ -1034,6 +1036,10 @@ static void ot_darjeeling_board_realize(DeviceState *dev, Error **errp)
 
     qemu_irq cs = qdev_get_gpio_in_named(flash, SSI_GPIO_CS, 0);
     qdev_connect_gpio_out_named(spihost, SSI_GPIO_CS, 0, cs);
+
+    DeviceState *devproxy = board->devices[OT_DARJEELING_BOARD_DEV_DEV_PROXY];
+    object_property_add_child(OBJECT(board), "devproxy", OBJECT(devproxy));
+    qdev_realize_and_unref(devproxy, NULL, errp);
 }
 
 static void ot_darjeeling_board_init(Object *obj)
@@ -1044,6 +1050,7 @@ static void ot_darjeeling_board_init(Object *obj)
     s->devices[OT_DARJEELING_BOARD_DEV_SOC] =
         qdev_new(TYPE_RISCV_OT_DARJEELING_SOC);
     s->devices[OT_DARJEELING_BOARD_DEV_FLASH] = qdev_new("is25wp128");
+    s->devices[OT_DARJEELING_BOARD_DEV_DEV_PROXY] = qdev_new(TYPE_OT_DEV_PROXY);
 }
 
 static void ot_darjeeling_board_class_init(ObjectClass *oc, void *data)
