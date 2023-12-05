@@ -20,7 +20,8 @@ except ImportError:
     from json import load as jload
 from logging import (Formatter, StreamHandler, CRITICAL, DEBUG, INFO, ERROR,
                      WARNING, getLogger)
-from os import close, curdir, environ, getcwd, isatty, linesep, sep, unlink
+from os import (close, curdir, environ, getcwd, isatty, linesep, pardir, sep,
+                unlink)
 from os.path import (abspath, basename, dirname, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
 from re import Match, compile as re_compile, sub as re_sub
@@ -849,15 +850,22 @@ class QEMUContext:
                         raise ValueError(f"Cannot execute background command "
                                          f"in [{ctx_name}] context for "
                                          f"'{self._test_name}'")
-                    cmd = cmd[:-1].rstrip()
-                    self._clog.debug('Execute "%s" in backgrorund for [%s] '
-                                     'context', cmd, ctx_name)
+                    cmd = normpath(cmd[:-1].rstrip())
+                    rcmd = relpath(cmd)
+                    if rcmd.startswith(pardir):
+                        rcmd = cmd
+                    self._clog.debug('Execute "%s" in background for [%s] '
+                                     'context', rcmd, ctx_name)
                     worker = QEMUContextWorker(cmd, env)
                     worker.run()
                     self._workers.append(worker)
                 else:
+                    cmd = normpath(cmd.rstrip())
+                    rcmd = relpath(cmd)
+                    if rcmd.startswith(pardir):
+                        rcmd = cmd
                     self._clog.debug('Execute "%s" in sync for [%s] context',
-                                     cmd, ctx_name)
+                                     rcmd, ctx_name)
                     # pylint: disable=consider-using-with
                     proc = Popen(cmd,  bufsize=1, stdout=PIPE, stderr=PIPE,
                                  shell=True, env=env, encoding='utf-8',
