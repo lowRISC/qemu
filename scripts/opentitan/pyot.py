@@ -207,7 +207,7 @@ class QEMUWrapper:
         # pylint: disable=too-many-nested-blocks
         try:
             workdir = dirname(qemu_args[0])
-            log.info('Executing QEMU as %s', ' '.join(qemu_args))
+            log.debug('Executing QEMU as %s', ' '.join(qemu_args))
             # pylint: disable=consider-using-with
             proc = Popen(qemu_args, bufsize=1, cwd=workdir, stdout=PIPE,
                          stderr=PIPE, encoding='utf-8', errors='ignore',
@@ -266,7 +266,11 @@ class QEMUWrapper:
                     err, qline = log_q.popleft()
                     if err:
                         if qline.find('info: ') > 0:
-                            self._qlog.info(qline)
+                            if qline.startswith('qemu-system-'):
+                                # qemu chardev info is parasiting logs
+                                self._qlog.debug(qline)
+                            else:
+                                self._qlog.info(qline)
                         elif qline.find('warning: ') > 0:
                             self._qlog.warning(qline)
                         else:
@@ -972,7 +976,7 @@ class QEMUExecuter:
                 assert 'timeout' in self._argdict
                 timeout = int(float(self._argdict.get('timeout') *
                               float(self._argdict.get('timeout_factor', 1.0))))
-                self._log.info('Execute %s', basename(self._argdict['exec']))
+                self._log.debug('Execute %s', basename(self._argdict['exec']))
                 ret, xtime, err = qot.run(self._qemu_cmd, timeout,
                                           self.get_test_radix(app), None)
                 results[ret] += 1
@@ -1199,12 +1203,9 @@ class QEMUExecuter:
                                                                  curdir)))
         self._qfm.define({'testdir': testdir})
         tfilters = self._args.filter or ['*']
-        inc_filters = self._config.get('include')
+        inc_filters = self._build_config_list('include')
         if inc_filters:
             self._log.debug('Searching for tests from %s dir', testdir)
-            if not isinstance(inc_filters, list):
-                raise ValueError('Invalid configuration file: '
-                                 '"include" is not a list')
             for path_filter in filter(None, inc_filters):
                 if testdir:
                     path_filter = joinpath(testdir, path_filter)
@@ -1225,11 +1226,8 @@ class QEMUExecuter:
                     pathnames.add(testfile)
         if not pathnames:
             return []
-        exc_filters = self._config.get('exclude')
+        exc_filters = self._build_config_list('exclude')
         if exc_filters:
-            if not isinstance(exc_filters, list):
-                raise ValueError('Invalid configuration file: '
-                                 '"exclude" is not a list')
             for path_filter in filter(None, exc_filters):
                 if testdir:
                     path_filter = joinpath(testdir, path_filter)
@@ -1241,11 +1239,8 @@ class QEMUExecuter:
         return list(pathnames)
 
     def _enumerate_from(self, config_entry: str) -> Iterator[str]:
-        incf_filters = self._config.get(config_entry)
+        incf_filters = self._build_config_list(config_entry)
         if incf_filters:
-            if not isinstance(incf_filters, list):
-                raise ValueError(f'Invalid configuration file: '
-                                 f'"{config_entry}" is not a list')
             for incf in incf_filters:
                 incf = normpath(self._qfm.interpolate(incf))
                 if not isfile(incf):
@@ -1261,6 +1256,35 @@ class QEMUExecuter:
                         if not testfile.startswith(sep):
                             testfile = joinpath(incf_dir, testfile)
                         yield normpath(testfile)
+
+    def _build_config_list(self, config_entry: str) -> List:
+        cfglist = []
+        items = self._config.get(config_entry)
+        if not items:
+            return cfglist
+        if not isinstance(items, list):
+            raise ValueError(f'Invalid configuration file: '
+                             f'"{config_entry}" is not a list')
+        # pylint: disable=too-many-nested-blocks
+        for item in items:
+            if isinstance(item, str):
+                cfglist.append(item)
+                continue
+            if isinstance(item, dict):
+                for dname, dval in item.items():
+                    try:
+                        cond = bool(int(environ.get(dname, '0')))
+                    except (ValueError, TypeError):
+                        cond = False
+                    if not cond:
+                        continue
+                    if isinstance(dval, str):
+                        dval = [dval]
+                    if isinstance(dval, list):
+                        for sitem in dval:
+                            if isinstance(sitem, str):
+                                cfglist.append(sitem)
+        return cfglist
 
     def _build_test_args(self, test_name: str) \
             -> Tuple[Namespace, List[str], int]:

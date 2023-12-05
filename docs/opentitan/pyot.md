@@ -429,6 +429,11 @@ Sample config for running some non-OpenTitan tests:
   It is possible to exclude some tests from this list with the `exclude` and `exclude_from`
   sections.
 
+  It is possible to define sub-sections as items of the list. Each subsection should be a map, where
+  the sub-section is only evaluated if an environment variable exists and evaluates to true. This
+  enables configuring lists based on environment variables, such as running is some specific
+  contexts such as a CI environment.
+
 * `include_from`
   This section contains a list of files defining the tests to be run.
 
