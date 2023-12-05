@@ -33,6 +33,7 @@
 #include "hw/boards.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/misc/unimp.h"
+#include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert_darjeeling.h"
 #include "hw/opentitan/ot_aon_timer.h"
@@ -40,6 +41,7 @@
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_dev_proxy.h"
+#include "hw/opentitan/ot_dma.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_gpio.h"
@@ -91,9 +93,13 @@ static void ot_darjeeling_soc_uart_configure(
 /* Darjeeling AON clock is 62.5 MHz */
 #define OT_DARJEELING_AON_CLK_HZ 62500000u
 
+/* CTN address space */
+#define OT_DARJEELING_CTN_REGION_OFFSET 0x40000000u
+#define OT_DARJEELING_CTN_REGION_SIZE   (1u << 30u)
+
 /* CTN RAM (1MB) */
-#define OT_DARJEELING_CTN_RAM_ADDR 0x41000000u
-#define OT_DARJEELING_CTN_RAM_SIZE (1u << 20u)
+#define OT_DARJEELING_CTN_RAM_ADDR 0x01000000u
+#define OT_DARJEELING_CTN_RAM_SIZE (2u << 20u)
 
 enum OtDarjeelingSocDevice {
     OT_DARJEELING_SOC_DEV_AES,
@@ -146,7 +152,7 @@ enum OtDarjeelingSocDevice {
 
 enum OtDarjeelingMemoryRegion {
     OT_DARJEELING_DEFAULT_MEMORY_REGION,
-    OT_DARJEELING_XPORT_MEMORY_REGION,
+    OT_DARJEELING_CTN_MEMORY_REGION,
 };
 
 #define OT_DARJEELING_SOC_GPIO(_irq_, _target_, _num_) \
@@ -187,7 +193,7 @@ enum OtDarjeelingMemoryRegion {
                              OPENTITAN_CLKMGR_HINT, _num_)
 
 #define OT_DARJEELING_XPORT_MEMORY(_addr_) \
-    IBEX_MEMMAP_MAKE_REG((_addr_), OT_DARJEELING_XPORT_MEMORY_REGION)
+    IBEX_MEMMAP_MAKE_REG((_addr_), OT_DARJEELING_CTN_MEMORY_REGION)
 
 /*
  * MMIO/interrupt mapping as per:
@@ -462,12 +468,20 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
         OT_DARJEELING_SOC_DEV_MBX(7, 0x22000800u, 155),
     },
     [OT_DARJEELING_SOC_DEV_DMA] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-dma",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_DMA,
         .memmap = MEMMAPENTRIES(
             { 0x22010000u, 0x1000u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 131),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132),
+            OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 133)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_as_name", "ot-dma"),
+            IBEX_DEV_STRING_PROP("ctn_as_name", "ctn-dma"),
+            IBEX_DEV_STRING_PROP("id", "0")
+        )
     },
     [OT_DARJEELING_SOC_DEV_SOC_PROXY] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
@@ -824,8 +838,6 @@ struct OtDarjeelingSoCState {
     SysBusDevice parent_obj;
 
     DeviceState **devices;
-    MemoryRegion *sys; /* local memory region */
-    MemoryRegion *xport; /* external port */
 };
 
 struct OtDarjeelingBoardState {
@@ -940,7 +952,7 @@ static void ot_darjeeling_soc_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     CPUState *cpu = CPU(s->devices[OT_DARJEELING_SOC_DEV_HART]);
-    cpu->memory = s->sys;
+    cpu->memory = get_system_memory();
     cpu->cpu_index = 0;
 
     /* Link, define properties and realize devices, then connect GPIOs */
@@ -948,12 +960,49 @@ static void ot_darjeeling_soc_realize(DeviceState *dev, Error **errp)
                            ot_darjeeling_soc_devices,
                            ARRAY_SIZE(ot_darjeeling_soc_devices));
 
+    Object *oas;
+
+    oas = object_property_get_link(OBJECT(s)->parent, "ctn-as", errp);
+    g_assert(oas);
+    AddressSpace *ctn_as = ot_address_space_get(OT_ADDRESS_SPACE(oas));
+
     MemoryRegion *mrs[IBEX_MEMMAP_REGIDX_COUNT] = {
-        [OT_DARJEELING_DEFAULT_MEMORY_REGION] = s->sys,
-        [OT_DARJEELING_XPORT_MEMORY_REGION] = s->xport,
+        [OT_DARJEELING_DEFAULT_MEMORY_REGION] = cpu->memory,
+        [OT_DARJEELING_CTN_MEMORY_REGION] = ctn_as->root,
     };
     ibex_map_devices(s->devices, mrs, ot_darjeeling_soc_devices,
                      ARRAY_SIZE(ot_darjeeling_soc_devices));
+
+    oas = object_new(TYPE_OT_ADDRESS_SPACE);
+    object_property_add_child(OBJECT(dev), "ot-dma", oas);
+    ot_address_space_set(OT_ADDRESS_SPACE(oas), cpu->as);
+
+    /*
+     * create a new root region to map the CTN for the DMA, viewed as an
+     * elevated region, which means the address range below the elevated CTN
+     * range is kept empty
+     */
+    MemoryRegion *ctn_dma_mr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    memory_region_init(ctn_dma_mr, OBJECT(dev), "ctn-dma",
+                       OT_DARJEELING_CTN_REGION_OFFSET +
+                           OT_DARJEELING_CTN_REGION_SIZE);
+
+    /* create an AS view for this new root region */
+    AddressSpace *ctn_dma_as = g_new0(AddressSpace, 1u);
+    address_space_init(ctn_dma_as, ctn_dma_mr, "ctn-dma-as");
+
+    /* create and map an alias to the CTN MR into the elevated region */
+    MemoryRegion *ctn_amr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    memory_region_init_alias(ctn_amr, OBJECT(dev), "ctn-dma-alias",
+                             ctn_as->root, 0u,
+                             (uint64_t)OT_DARJEELING_CTN_REGION_SIZE);
+    memory_region_add_subregion(ctn_dma_mr,
+                                (hwaddr)OT_DARJEELING_CTN_REGION_OFFSET,
+                                ctn_amr);
+
+    oas = object_new(TYPE_OT_ADDRESS_SPACE);
+    object_property_add_child(OBJECT(dev), "ctn-dma", oas);
+    ot_address_space_set(OT_ADDRESS_SPACE(oas), ctn_dma_as);
 
     /* load kernel if provided */
     ibex_load_kernel(cpu->as);
@@ -1009,16 +1058,36 @@ static void ot_darjeeling_board_realize(DeviceState *dev, Error **errp)
     DeviceState *soc = board->devices[OT_DARJEELING_BOARD_DEV_SOC];
     object_property_add_child(OBJECT(board), "soc", OBJECT(soc));
 
+    /* CTN memory region */
+    MemoryRegion *ctn_mr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    memory_region_init(ctn_mr, OBJECT(dev), "ctn-xbar",
+                       (uint64_t)OT_DARJEELING_CTN_REGION_SIZE);
+
+    /* CTN address space */
+    AddressSpace *ctn_as = g_new0(AddressSpace, 1);
+    address_space_init(ctn_as, ctn_mr, "ctn-as");
+    Object *oas = object_new(TYPE_OT_ADDRESS_SPACE);
+    object_property_add_child(OBJECT(dev), ctn_as->name, oas);
+    ot_address_space_set(OT_ADDRESS_SPACE(oas), ctn_as);
+
     OtDarjeelingSoCState *s = RISCV_OT_DARJEELING_SOC(soc);
 
-    s->sys = get_system_memory();
-    s->xport = NULL; /* to be filled */
     BusState *bus = sysbus_get_default();
     qdev_realize_and_unref(DEVICE(soc), bus, &error_fatal);
 
     /* CTN RAM */
-    MachineState *ms = MACHINE(qdev_get_machine());
-    memory_region_add_subregion(s->sys, OT_DARJEELING_CTN_RAM_ADDR, ms->ram);
+    MemoryRegion *ctn_ram = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    memory_region_init_ram_nomigrate(ctn_ram, OBJECT(s), "ctn-ram",
+                                     OT_DARJEELING_CTN_RAM_SIZE, errp);
+    memory_region_add_subregion(ctn_mr, OT_DARJEELING_CTN_RAM_ADDR, ctn_ram);
+
+    /* CTN aliased memory in CPU address space */
+    MemoryRegion *ctn_alias_mr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    memory_region_init_alias(ctn_alias_mr, OBJECT(dev), "ctn-alias", ctn_mr, 0u,
+                             (uint64_t)OT_DARJEELING_CTN_REGION_SIZE);
+    memory_region_add_subregion(get_system_memory(),
+                                (hwaddr)OT_DARJEELING_CTN_REGION_OFFSET,
+                                ctn_alias_mr);
 
     DeviceState *spihost = s->devices[OT_DARJEELING_SOC_DEV_SPI_HOST0];
     DeviceState *flash = board->devices[OT_DARJEELING_BOARD_DEV_FLASH];
@@ -1125,8 +1194,6 @@ static void ot_darjeeling_machine_class_init(ObjectClass *oc, void *data)
     mc->init = ot_darjeeling_machine_init;
     mc->max_cpus = 1u;
     mc->default_cpus = 1u;
-    mc->default_ram_id = "ctn-ram";
-    mc->default_ram_size = OT_DARJEELING_CTN_RAM_SIZE;
 }
 
 static const TypeInfo ot_darjeeling_machine_type_info = {

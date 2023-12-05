@@ -13,6 +13,7 @@ config OT_DARJEELING
     bool
     select IBEX
     select IBEX_COMMON
+    select OT_ADDRESS_SPACE
     select OT_AES
     select OT_ALERT_DARJEELING
     select OT_AON_TIMER
@@ -20,6 +21,7 @@ config OT_DARJEELING
     select OT_CLKMGR
     select OT_CSRNG
     select OT_DEV_PROXY
+    select OT_DMA
     select OT_EDN
     select OT_ENTROPY_SRC
     select OT_GPIO
