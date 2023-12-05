@@ -46,6 +46,7 @@
 #include "hw/opentitan/ot_ibex_wrapper_darjeeling.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lifecycle.h"
+#include "hw/opentitan/ot_mbx.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_darjeeling.h"
 #include "hw/opentitan/ot_pinmux.h"
@@ -168,6 +169,18 @@ enum OtDarjeelingMemoryRegion {
             .num = (_tnum_), \
         } \
     }
+
+#define OT_DARJEELING_SOC_DEV_MBX(_ix_, _addr_, _irq_) \
+    .type = TYPE_OT_MBX, .instance = (_ix_), \
+    .memmap = MEMMAPENTRIES({ (_addr_), 0x100u }), \
+    .gpio = IBEXGPIOCONNDEFS(OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, \
+                                                               (_irq_)), \
+                             OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, \
+                                                               (_irq_) + 1u), \
+                             OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, \
+                                                               (_irq_) + 2u)), \
+    .prop = IBEXDEVICEPROPDEFS( \
+        IBEX_DEV_STRING_PROP("id", stringify(_ix_)))
 
 #define OT_DARJEELING_SOC_CLKMGR_HINT(_num_) \
     OT_DARJEELING_SOC_SIGNAL(OPENTITAN_CLOCK_ACTIVE, 0, CLKMGR, \
@@ -425,76 +438,28 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
         ),
     },
     [OT_DARJEELING_SOC_DEV_MBX0] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 0,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000000u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(0, 0x22000000u, 134),
     },
     [OT_DARJEELING_SOC_DEV_MBX1] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 1,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000100u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(1, 0x22000100u, 137),
     },
     [OT_DARJEELING_SOC_DEV_MBX2] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 2,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000200u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(2, 0x22000200u, 140),
     },
     [OT_DARJEELING_SOC_DEV_MBX3] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 3,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000300u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(3, 0x22000300u, 143),
     },
     [OT_DARJEELING_SOC_DEV_MBX4] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 4,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000400u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(4, 0x22000400u, 146),
     },
     [OT_DARJEELING_SOC_DEV_MBX5] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 5,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000500u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(5, 0x22000500u, 149),
     },
     [OT_DARJEELING_SOC_DEV_MBX6] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 6,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000600u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(6, 0x22000600u, 152),
     },
     [OT_DARJEELING_SOC_DEV_MBX_JTAG] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 7,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22000800u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(7, 0x22000800u, 155),
     },
     [OT_DARJEELING_SOC_DEV_DMA] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
@@ -513,22 +478,10 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
         ),
     },
     [OT_DARJEELING_SOC_DEV_MBX_PCIE0] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 8,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22040000u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(8, 0x22040000u, 158),
     },
     [OT_DARJEELING_SOC_DEV_MBX_PCIE1] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-mbx",
-        .instance = 9,
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x22040100u, 0x40u }
-        ),
+        OT_DARJEELING_SOC_DEV_MBX(9, 0x22040100u, 161),
     },
     [OT_DARJEELING_SOC_DEV_PLIC] = {
         .type = TYPE_SIFIVE_PLIC,
