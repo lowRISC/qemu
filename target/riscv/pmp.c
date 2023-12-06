@@ -150,11 +150,18 @@ static bool pmp_write_cfg(CPURISCVState *env, uint32_t pmp_index, uint8_t val)
 {
     if (pmp_index < MAX_RISCV_PMPS) {
         if (!pmp_is_writable(env, pmp_index)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "ignoring pmpcfg write - locked\n");
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "ignoring pmpcfg[%u] write - locked"
+                          " - current:0x%02x new:0x%02x\n",
+                          pmp_index, env->pmp_state.pmp[pmp_index].cfg_reg,
+                          val);
         } else if (riscv_cpu_cfg(env)->epmp &&
                    !pmp_is_valid_epmp_cfg(env, val)) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "ignoring pmpcfg write - invalid\n");
+                          "ignoring pmpcfg[%u] write - invalid"
+                          " - current:0x%02x new:0x%02x\n",
+                          pmp_index, env->pmp_state.pmp[pmp_index].cfg_reg,
+                          val);
         } else if (env->pmp_state.pmp[pmp_index].cfg_reg != val) {
             env->pmp_state.pmp[pmp_index].cfg_reg = val;
             pmp_update_rule_addr(env, pmp_index);
@@ -162,7 +169,7 @@ static bool pmp_write_cfg(CPURISCVState *env, uint32_t pmp_index, uint8_t val)
         }
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring pmpcfg write - out of bounds\n");
+                      "ignoring pmpcfg[%u] write - out of bounds\n", pmp_index);
     }
 
     return false;
@@ -362,7 +369,9 @@ bool pmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
         /* partially inside */
         if ((s + e) == 1) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "pmp violation - access is partially inside\n");
+                          "pmp violation at 0x" TARGET_FMT_lx "+" TARGET_FMT_lu
+                          " - access is partially inside pmp[%u]\n",
+                          addr, size, i);
             *allowed_privs = 0;
             return false;
         }
@@ -538,7 +547,11 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
 
             if (!pmp_is_writable(env, addr_index + 1) && is_next_cfg_tor) {
                 qemu_log_mask(LOG_GUEST_ERROR,
-                              "ignoring pmpaddr write - pmpcfg + 1 locked\n");
+                              "ignoring pmpaddr[%u] write - pmpcfg+1 locked"
+                              " - prev:0x" TARGET_FMT_lx " new:0x" TARGET_FMT_lx
+                              "\n",
+                              addr_index,
+                              env->pmp_state.pmp[addr_index].addr_reg, val);
                 return;
             }
         }
@@ -554,11 +567,16 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
             }
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "ignoring pmpaddr write - locked\n");
+                          "ignoring pmpaddr[%u] write - locked"
+                          " - prev:0x" TARGET_FMT_lx " new:0x" TARGET_FMT_lx
+                          "\n",
+                          addr_index, env->pmp_state.pmp[addr_index].addr_reg,
+                          val);
         }
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring pmpaddr write - out of bounds\n");
+                      "ignoring pmpaddr[%u] write - out of bounds\n",
+                      addr_index);
     }
 }
 
@@ -575,7 +593,8 @@ target_ulong pmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
         trace_pmpaddr_csr_read(env->mhartid, addr_index, val);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring pmpaddr read - out of bounds\n");
+                      "ignoring pmpaddr[%u] read - out of bounds\n",
+                      addr_index);
     }
 
     return val;
