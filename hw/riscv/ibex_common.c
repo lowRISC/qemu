@@ -517,13 +517,13 @@ void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
     qdev_prop_set_uint64(dev, "size", def->memmap->size);
 }
 
-void ibex_load_kernel(AddressSpace *as)
+uint32_t ibex_load_kernel(AddressSpace *as)
 {
     MachineState *ms = MACHINE(qdev_get_machine());
 
+    uint64_t kernel_entry;
     /* load kernel if provided */
     if (ms->kernel_filename) {
-        uint64_t kernel_entry;
         if (load_elf_ram_sym(ms->kernel_filename, NULL, NULL, NULL,
                              &kernel_entry, NULL, NULL, NULL, 0, EM_RISCV, 1, 0,
                              as, true, &rust_demangle_fn) <= 0) {
@@ -531,15 +531,25 @@ void ibex_load_kernel(AddressSpace *as)
             exit(EXIT_FAILURE);
         }
 
+        if (((uint32_t)kernel_entry & 0xFFu) != 0x80u) {
+            qemu_log("%s: invalid kernel entry address 0x%08x\n", __func__,
+                     (uint32_t)kernel_entry);
+        }
+
+        kernel_entry &= ~0xFFull;
         CPUState *cpu;
         /* NOLINTNEXTLINE */
         CPU_FOREACH(cpu) {
             if (!as || cpu->as == as) {
-                CPURISCVState *env = &RISCV_CPU(cpu)->env;
-                env->resetvec = (target_ulong)kernel_entry;
+                RISCV_CPU(cpu)->env.resetvec = kernel_entry | 0x80ull;
+                RISCV_CPU(cpu)->cfg.mtvec = kernel_entry | 0b1ull;
             }
         }
+    } else {
+        kernel_entry = UINT64_MAX;
     }
+
+    return (uint32_t)kernel_entry;
 }
 
 uint64_t ibex_get_current_pc(void)
