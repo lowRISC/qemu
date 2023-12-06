@@ -934,6 +934,118 @@ static void ot_dev_proxy_intercept_interrupts(OtDevProxyState *s, bool enable)
                                0);
 }
 
+static void ot_dev_proxy_signal_interrupt(OtDevProxyState *s)
+{
+    if (s->rx_hdr.length != 3u * sizeof(uint32_t)) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_COMMAND_LENGTH, NULL);
+        return;
+    }
+
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned gid = s->rx_buffer[0u] & 0xffffu;
+
+    if (devix >= s->dev_count) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, NULL);
+        return;
+    }
+
+    OtDevProxyItem *item = &s->items[devix];
+
+    if (!object_dynamic_cast(item->obj, TYPE_DEVICE)) {
+        ot_dev_proxy_reply_error(s, PE_UNSUPPORTED_DEVICE, NULL);
+        return;
+    }
+
+    DeviceState *dev = DEVICE(item->obj);
+
+    unsigned irq_num = s->rx_buffer[1u] & 0xffffu;
+    int irq_level = (int)s->rx_buffer[2u];
+
+    NamedGPIOList *gl = NULL;
+    NamedGPIOList *ngl;
+    QLIST_FOREACH(ngl, &dev->gpios, node) {
+        if (!gid) {
+            gl = ngl;
+            break;
+        }
+        gid--;
+    }
+
+    if (!gl) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_SPECIFIER_ID, "no such group");
+        return;
+    }
+
+    if (irq_num >= gl->num_in) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_IRQ, "no such irq");
+        return;
+    }
+
+    qemu_irq irq = gl->in[irq_num];
+    qemu_set_irq(irq, irq_level);
+
+    ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', 's'), NULL, 0);
+}
+
+static void ot_dev_proxy_enumerate_interrupts(OtDevProxyState *s)
+{
+    if (s->rx_hdr.length != 1u * sizeof(uint32_t)) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_COMMAND_LENGTH, NULL);
+        return;
+    }
+
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+
+    if (devix >= s->dev_count) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, NULL);
+        return;
+    }
+
+    OtDevProxyItem *item = &s->items[devix];
+
+    if (!object_dynamic_cast(item->obj, TYPE_DEVICE)) {
+        ot_dev_proxy_reply_error(s, PE_UNSUPPORTED_DEVICE, NULL);
+        return;
+    }
+
+    DeviceState *dev = DEVICE(item->obj);
+
+    unsigned group_count = 0;
+    NamedGPIOList *ngl;
+    QLIST_FOREACH(ngl, &dev->gpios, node) {
+        group_count++;
+    }
+
+    struct irq_id {
+        uint16_t in_count;
+        uint16_t out_count;
+        char name[16u];
+    };
+    static_assert(sizeof(struct irq_id) == 5 * sizeof(uint32_t),
+                  "invalid struct irq_id, need packing");
+
+    struct irq_id *entries;
+
+    if (group_count) {
+        entries = g_new0(struct irq_id, group_count);
+        struct irq_id *irq_id = entries;
+        QLIST_FOREACH(ngl, &dev->gpios, node) {
+            irq_id->in_count = ngl->num_in;
+            irq_id->out_count = ngl->num_out;
+            if (ngl->name) {
+                strncpy(irq_id->name, ngl->name, sizeof(irq_id->name));
+            }
+            irq_id++;
+        }
+    } else {
+        entries = NULL;
+    }
+
+    ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', 'e'), entries,
+                               group_count * sizeof(struct irq_id));
+    g_free(entries);
+}
+
 static void ot_dev_proxy_intercept_mmio(OtDevProxyState *s)
 {
     if (s->rx_hdr.length != 3u * sizeof(uint32_t)) {
@@ -1160,6 +1272,12 @@ static void ot_dev_proxy_dispatch_request(OtDevProxyState *s)
         break;
     case PROXY_COMMAND('I', 'R'):
         ot_dev_proxy_intercept_interrupts(s, false);
+        break;
+    case PROXY_COMMAND('I', 'S'):
+        ot_dev_proxy_signal_interrupt(s);
+        break;
+    case PROXY_COMMAND('I', 'E'):
+        ot_dev_proxy_enumerate_interrupts(s);
         break;
     case PROXY_COMMAND('M', 'I'):
         ot_dev_proxy_intercept_mmio(s);

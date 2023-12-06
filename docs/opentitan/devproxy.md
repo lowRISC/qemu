@@ -782,7 +782,6 @@ This is the last command, as QEMU should exit upon receiving this request.
 
 Route one or more device output interrupt to the proxy (vs. the internal PLIC)
 
-* `Role` is the initiator role to use to access the device
 * `Device` is the device to access (see [Enumerate](#enumerate-devices))
 * `Interrupt mask` define which interrupt should be routed (1 bit per interrupt)
 
@@ -819,7 +818,6 @@ Route one or more device output interrupt to the proxy (vs. the internal PLIC)
 Revert any previous interception, reconnecting selected IRQ to their original
 destination device.
 
-* `Role` is the initiator role to use to access the device
 * `Device` is the device to access (see [Enumerate](#enumerate-devices))
 * `Interrupt mask` define which interrupt should be released (1 bit per interrupt)
 
@@ -850,6 +848,117 @@ destination device.
 |                              UID                            |0|
 +---------------+---------------+---------------+---------------+
 ```
+
+#### Signal Interrupt [signal-interrupt]
+
+Set or Reset an input interrupt line.
+
+* `Device` is the device to access (see [Enumerate](#enumerate-devices))
+* `GID` the identifier of the IRQ group.
+   * The group identifier can be retrieved using the [Enumerate Device Interrupt](#enumerate-irq)
+     API.
+* `Interrupt line` the number of the interrupt line to signal within the group. The interrupt line
+   should range between 0 and the input IRQ count for this group.
+* `Level` the new interrupt line level. Usually `1` to assert/set (1) or `0` to deassert/release,
+  even if any 32-bit value is accepted.
+
+##### Request
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'IS'              |               12              |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+|              GID              |         Device        |   -   |
++---------------+---------------+---------------+---------------+
+|          Interrupt line       |               -               |
++---------------+---------------+---------------+---------------+
+|                             Level                             |
++---------------+---------------+---------------+---------------+
+```
+
+##### Response
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'is'              |               0               |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+```
+
+#### Enumerate Device Interrupt [enumerate-irq]
+
+Enumerate can be called by the Application to retrieve the list of interrupt
+group of a supported device. The group position in the response can be further
+use with the [Signal Interrupt API](#signal-interrupt) to set the level of
+each individual IRQ line.
+
+##### Request
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
++---------------+---------------+---------------+---------------+
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'IE'              |               4               |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+|               -               |         Device        |   -   |
++---------------+---------------+---------------+---------------+
+```
+
+##### Response
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
++---------------+---------------+---------------+---------------+
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'ie'              |            0..20N             |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+|        IRQ input count        |        IRQ output count       |
++---------------+---------------+---------------+---------------+
+|                                                               |
+|                                                               |
+|                           Identifier                          |
+|                                                               |
+|                                                               |
++---------------+---------------+---------------+---------------+
+|        IRQ input count        |        IRQ output count       |
++---------------+---------------+---------------+---------------+
+|                                                               |
+|                                                               |
+|                           Identifier                          |
+|                                                               |
+|                                                               |
++---------------+---------------+---------------+---------------+
+|                             ....                              |
++---------------+---------------+---------------+---------------+
+|        IRQ input count        |        IRQ output count       |
++---------------+---------------+---------------+---------------+
+|                                                               |
+|                                                               |
+|                           Identifier                          |
+|                                                               |
+|                                                               |
++---------------+---------------+---------------+---------------+
+```
+Reponse contains 0 up to N interrupt groups, each group is described with a 20-byte entry, where:
+
+* `IRQ input count` is the count of the input interrupts for this group,
+* `IRQ output count` is the count of the output interrupts for this group,
+* `Identifier` is an arbitrary 16-character string that describes this group.
+
+The count of address spaces can be retrieved from the `LENGTH` field.
 
 #### Intercept arbitrary MMIO region
 

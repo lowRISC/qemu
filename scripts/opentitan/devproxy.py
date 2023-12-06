@@ -208,6 +208,7 @@ class DeviceProxy:
         self._regcount = count
         self._offset = offset * 4
         self._end = offset + count * 4
+        self._interrupts: Optional[Dict[str, Tuple[int, int, int]]] = None
         self._new()
 
     @property
@@ -344,6 +345,51 @@ class DeviceProxy:
         else:
             self.release_interrupts(mask)
 
+    def enumerate_interrupts(self, out: bool) -> Iterator[Tuple[str, int]]:
+        """Enumerate supported interrupt lines.
+
+           :param out: True to enumerate output IRQ lines, False for input ones
+           :yield: enumerated tuples that contain the IRQ group name, and the
+                   count of interrupt line in this group.
+        """
+        if self._interrupts is None:
+            self._enumerate_interrupts()
+        for name, (_, gin, gout) in self._interrupts.items():
+            if not out:
+                if gin:
+                    yield name, gin
+            else:
+                if gout:
+                    yield name, gout
+
+    def signal_interrupt(self, group: str, irq: int, level: int | bool) -> None:
+        """Set the level of an input interrupt line.
+
+           :param group: the name of the group
+           :param irq: the IRQ line to signal
+           :param level: the new level for this IRQ line
+
+           The group name may be retrieved with the #enumerate_interrupts API.
+        """
+        if self._interrupts is None:
+            self._enumerate_interrupts()
+        if group not in self._interrupts:
+            raise ValueError(f'No such interrupt group "{group}"')
+        grp = self._interrupts[group]
+        grp_num, irq_count = grp[0:2]
+        if irq >= irq_count:
+            raise ValueError(f'No such interrupt {irq} in {group}')
+        level = int(level)
+        if level >= (1 << 32):
+            raise ValueError(f'Invalied interrupt level {level}')
+        request = spack('<HHHHI', grp_num, self._make_sel(self._devid), irq, 0,
+                        level)
+        try:
+            self._proxy.exchange('IS', request)
+        except ProxyCommandError as exc:
+            self._log.fatal('%s', exc)
+            raise
+
     @classmethod
     def _make_sel(cls, device: int, role: int = 0xf) -> int:
         if not isinstance(device, int) or not 0 <= device <= 0xfff:
@@ -355,6 +401,35 @@ class DeviceProxy:
     def _new(self):
         self._log.debug('Device %s @ 0x%08x: %s',
                         str(self), self._addr, self._name)
+
+    def _enumerate_interrupts(self) -> None:
+        # lazy initialization interrupt enumeration is rarely used
+        request = spack('<HH', 0, self._make_sel(self._devid))
+        try:
+            irqgroups = self._proxy.exchange('IE', request)
+        except ProxyCommandError as exc:
+            self._log.fatal('%s', exc)
+            raise
+        grpfmt = '<HH16s'
+        grplen = scalc(grpfmt)
+        if len(irqgroups) % grplen:
+            raise ValueError('Unexpected response length')
+        grpcount = len(irqgroups) // grplen
+        self._log.info('Found %d remote interrupt groups for %s', grpcount,
+                       str(self))
+        self._interrupts = {}
+        gnum = 0
+        while irqgroups:
+            grphdr = irqgroups[0:grplen]
+            irqgroups = irqgroups[grplen:]
+            gin, gout, gname = sunpack(grpfmt, grphdr)
+            grpname = gname.rstrip(b'\x00').decode().lower()
+            if grpname in self._interrupts:
+                self._log.error("Multiple devices w/ identical identifier: "
+                                "'%s'", grpname)
+            else:
+                self._interrupts[grpname] = (gnum, gin, gout)
+            gnum += 1
 
 
 class MbxHostProxy(DeviceProxy):
@@ -552,7 +627,7 @@ class MbxHostProxy(DeviceProxy):
         """Lock address range (base and limit registers).
         """
         res = self.read_word(self._role, self.REGS['ADDRESS_RANGE_REGWEN']) \
-                              != self.MB4_TRUE
+            != self.MB4_TRUE
         self._log.debug('%d', res)
         return res
 
@@ -901,6 +976,12 @@ class SoCProxy(DeviceProxy):
         """
         self._log.debug('0x%08x', intrs)
         self.write_word(self._role, self.REGS['INTR_ENABLE'], intrs)
+
+    @property
+    def enabled_interrupts(self) -> int:
+        """Get enabled interrupt channels.
+        """
+        return self.read_word(self._role, self.REGS['INTR_ENABLE'])
 
     def clear_interrupts(self, intrs: int) -> None:
         """Clear interrupts.
