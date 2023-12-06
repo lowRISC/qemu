@@ -12,7 +12,8 @@ from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import modules
 from threading import Event, Thread, get_ident
 from time import time as now
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import (Any, Callable, Dict, Iterator, List, NamedTuple, Optional,
+                    Tuple, Union)
 
 try:
     from serial import Serial, serial_for_url
@@ -1090,6 +1091,18 @@ class ProxyEngine:
                                 "identifier: '%d'", mrname)
                 continue
             self._mroots[mspc] = MemoryRoot(mrname, address, size)
+
+    def enumerate_devices(self) -> Iterator[str]:
+        """Provide an iterator on discovered devices.
+        """
+        for name in self._devices.keys():
+            yield name
+
+    def enumerate_memory_spaces(self) -> Iterator[str]:
+        """Provide an iterator on discovered memory spaces.
+        """
+        for name in self._mroots.keys():
+            yield name
 
     def get_device_by_name(self, name: str) -> Optional[DeviceProxy]:
         """Retrieve a device proxy from its name."""

@@ -174,14 +174,13 @@ enum OtDarjeelingMemoryRegion {
 #define OT_DARJEELING_SOC_DEV_MBX(_ix_, _addr_, _irq_) \
     .type = TYPE_OT_MBX, .instance = (_ix_), \
     .memmap = MEMMAPENTRIES({ (_addr_), 0x100u }), \
-    .gpio = IBEXGPIOCONNDEFS(OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, \
-                                                               (_irq_)), \
-                             OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, \
-                                                               (_irq_) + 1u), \
-                             OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, \
-                                                               (_irq_) + 2u)), \
-    .prop = IBEXDEVICEPROPDEFS( \
-        IBEX_DEV_STRING_PROP("id", stringify(_ix_)))
+    .gpio = \
+        IBEXGPIOCONNDEFS(OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
+                         OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, \
+                                                           (_irq_) + 1u), \
+                         OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, \
+                                                           (_irq_) + 2u)), \
+    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("id", stringify(_ix_)))
 
 #define OT_DARJEELING_SOC_CLKMGR_HINT(_num_) \
     OT_DARJEELING_SOC_SIGNAL(OPENTITAN_CLOCK_ACTIVE, 0, CLKMGR, \
