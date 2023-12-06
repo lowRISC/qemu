@@ -183,4 +183,7 @@ MATERIALISE_EXT_PREDICATE(xtheadmempair)
 MATERIALISE_EXT_PREDICATE(xtheadsync)
 MATERIALISE_EXT_PREDICATE(XVentanaCondOps)
 
+/* Extensions that are not yet upstream */
+MATERIALISE_EXT_PREDICATE(zbr);
+
 #endif
