@@ -5,29 +5,19 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-c JSON] [-w CSV] [-R] [-k SECONDS] [-v] [-d] [-q QEMU]
-               [-Q OPTS] [-m MACHINE] [-p DEVICE] [-L LOG_FILE] [-M LOG]
-               [-t TRACE] [-i N] [-r ELF] [-O RAW] [-o VMEM] [-f RAW] [-x file]
-               [-b file]
+usage: pyot.py [-h] [-q QEMU] [-Q OPTS] [-m MACHINE] [-p DEVICE] [-L LOG_FILE]
+               [-M LOG] [-t TRACE] [-i N] [-s] [-T SECS] [-U] [-c JSON]
+               [-w CSV] [-K] [-r ELF] [-O RAW] [-o VMEM] [-f RAW] [-x file]
+               [-b file] [-R] [-k SECONDS] [-F TEST] [-v] [-d]
 
-OpenTitan test sequencer
+OpenTitan QEMU test sequencer.
 
 options:
   -h, --help            show this help message and exit
-  -c JSON, --config JSON
-                        path to configuration file
-  -w CSV, --result CSV  path to output result file
-  -R, --summary         show a result summary
-  -k SECONDS, --timeout SECONDS
-                        exit after the specified seconds (default: 60 secs)
-  -F TEST, --filter TEST
-                        Only run tests whose filename matches any defined filter (may be repeated)
-  -K, --keep-tmp        Do not automatically remove temporary files and dirs on exit
-  -v, --verbose         increase verbosity
-  -d, --debug           enable debug mode
 
 Virtual machine:
-  -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-riscv32)
+  -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-
+                        riscv32)
   -Q OPTS, --opts OPTS  QEMU verbatim option (can be repeated)
   -m MACHINE, --machine MACHINE
                         virtual machine (default to ot-earlgrey)
@@ -38,20 +28,37 @@ Virtual machine:
   -M LOG, --log LOG     log message types
   -t TRACE, --trace TRACE
                         trace event definition file
-  -i N, --icount N      virtual instruction counter with 2^N clock ticks per inst.
+  -i N, --icount N      virtual instruction counter with 2^N clock ticks per
+                        inst.
   -s, --singlestep      enable "single stepping" QEMU execution mode
   -T SECS, --timeout-factor SECS
                         timeout factor
-  -U, --muxserial       enable multiple virtual UARTs to be muxed into same host output channel
+  -U, --muxserial       enable multiple virtual UARTs to be muxed into same
+                        host output channel
 
 Files:
-  -r ELF, --rom ELF     ROM ELF file
+  -c JSON, --config JSON
+                        path to configuration file
+  -w CSV, --result CSV  path to output result file
+  -K, --keep-tmp        Do not automatically remove temporary files and dirs
+                        on exit
+  -r ELF, --rom ELF     ROM file
   -O RAW, --otp-raw RAW
                         OTP image file
   -o VMEM, --otp VMEM   OTP VMEM file
   -f RAW, --flash RAW   embedded Flash image file
   -x file, --exec file  rom extension or application
   -b file, --boot file  bootloader 0 file
+
+Execution:
+  -R, --summary         show a result summary
+  -k SECONDS, --timeout SECONDS
+                        exit after the specified seconds (default: 60 secs)
+  -F TEST, --filter TEST
+                        only run tests whose filename matches any defined
+                        filter (may be repeated)
+  -v, --verbose         increase verbosity
+  -d, --debug           enable debug mode
 ````
 
 This tool may be used in two ways, which can be combined:

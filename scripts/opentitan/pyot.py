@@ -452,6 +452,13 @@ class QEMUFileManager:
         """
         self._env['CONFIG'] = abspath(path)
 
+    def set_extra_options(self, opts: List[str]) -> None:
+        """Assign the extra options defined on the command line.
+
+           :param opts: the options
+        """
+        self._env['XOPTS'] = ' '.join(opts)
+
     def interpolate(self, value: Any) -> str:
         """Interpolate a ${...} marker with shell substitutions or local
            substitution.
@@ -1208,7 +1215,7 @@ class QEMUExecuter:
         # pylint: disable=too-many-nested-blocks
         pathnames = set()
         testdir = normpath(self._qfm.interpolate(self._config.get('testdir',
-                                                                 curdir)))
+                                                                  curdir)))
         self._qfm.define({'testdir': testdir})
         tfilters = self._args.filter or ['*']
         inc_filters = self._build_config_list('include')
@@ -1322,6 +1329,8 @@ class QEMUExecuter:
             if opts and not isinstance(opts, list):
                 raise ValueError('fInvalid QEMU options for {test_name}')
             opts = self.flatten([opt.split(' ') for opt in opts])
+            opts = [self._qfm.interpolate(opt) for opt in opts]
+            opts = self.flatten([opt.split(' ') for opt in opts])
             opts = [self._qfm.interpolate_dirs(opt, test_name) for opt in opts]
         timeout = float(kwargs.get('timeout', DEFAULT_TIMEOUT))
         tmfactor = float(kwargs.get('timeout_factor', DEFAULT_TIMEOUT_FACTOR))
@@ -1372,28 +1381,6 @@ def main():
     try:
         args: Optional[Namespace] = None
         argparser = ArgumentParser(description=modules[__name__].__doc__)
-        argparser.add_argument('-c', '--config', metavar='JSON',
-                               type=FileType('rt', encoding='utf-8'),
-                               help='path to configuration file')
-        argparser.add_argument('-w', '--result', metavar='CSV',
-                               help='path to output result file')
-        argparser.add_argument('-R', '--summary', action='store_true',
-                               help='show a result summary')
-        argparser.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
-                               help=f'exit after the specified seconds '
-                                    f'(default: {DEFAULT_TIMEOUT} secs)')
-        argparser.add_argument('-F', '--filter', metavar='TEST',
-                               action='append',
-                               help='Only run tests whose filename matches '
-                                    'any defined filter (may be repeated)')
-        argparser.add_argument('-K', '--keep-tmp', action='store_true',
-                               default=False,
-                               help='Do not automatically remove temporary '
-                                    'files and dirs on exit')
-        argparser.add_argument('-v', '--verbose', action='count',
-                               help='increase verbosity')
-        argparser.add_argument('-d', '--debug', action='store_true',
-                               help='enable debug mode')
         qvm = argparser.add_argument_group(title='Virtual machine')
         rel_qemu_path = relpath(qemu_path) if qemu_path else '?'
         qvm.add_argument('-q', '--qemu',
@@ -1426,6 +1413,15 @@ def main():
                          help='enable multiple virtual UARTs to be muxed into '
                               'same host output channel')
         files = argparser.add_argument_group(title='Files')
+        files.add_argument('-c', '--config', metavar='JSON',
+                           type=FileType('rt', encoding='utf-8'),
+                           help='path to configuration file')
+        files.add_argument('-w', '--result', metavar='CSV',
+                           help='path to output result file')
+        files.add_argument('-K', '--keep-tmp', action='store_true',
+                           default=False,
+                           help='Do not automatically remove temporary files '
+                                'and dirs on exit')
         files.add_argument('-r', '--rom', metavar='ELF', help='ROM file')
         files.add_argument('-O', '--otp-raw', metavar='RAW',
                            help='OTP image file')
@@ -1436,6 +1432,20 @@ def main():
                            metavar='file', help='rom extension or application')
         files.add_argument('-b', '--boot',
                            metavar='file', help='bootloader 0 file')
+        exe = argparser.add_argument_group(title='Execution')
+        exe.add_argument('-R', '--summary', action='store_true',
+                         help='show a result summary')
+        exe.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
+                         help=f'exit after the specified seconds '
+                              f'(default: {DEFAULT_TIMEOUT} secs)')
+        exe.add_argument('-F', '--filter', metavar='TEST',
+                               action='append',
+                         help='only run tests whose filename matches any '
+                              'defined filter (may be repeated)')
+        exe.add_argument('-v', '--verbose', action='count',
+                         help='increase verbosity')
+        exe.add_argument('-d', '--debug', action='store_true',
+                         help='enable debug mode')
 
         try:
             # all arguments after `--` are forwarded to QEMU
@@ -1445,6 +1455,7 @@ def main():
         except ValueError:
             sargv = argv[1:]
             opts = []
+        cli_opts = list(opts)
         args = argparser.parse_args(sargv)
         debug = args.debug
         if args.summary and not args.result:
@@ -1466,6 +1477,7 @@ def main():
         log.addHandler(logh)
 
         qfm = QEMUFileManager(args.keep_tmp)
+        qfm.set_extra_options(cli_opts)
 
         # this is a bit circomvulted, as we need to parse the config filename
         # if any, and load the default values out of the configuration file,
