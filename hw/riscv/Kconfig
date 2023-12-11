@@ -34,6 +34,7 @@ config OT_DARJEELING
     select OT_OTP_DARJEELING
     select OT_PINMUX
     select OT_PWRMGR
+    select OT_RSTMGR
     select OT_ROM_CTRL
     select OT_SENSOR
     select OT_SOC_PROXY
