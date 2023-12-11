@@ -43,6 +43,7 @@ config OT_DARJEELING
     select OT_SRAM_CTRL
     select OT_TIMER
     select OT_UART
+    select RISCV_DMI
     select SIFIVE_PLIC
 
 config OT_EARLGREY

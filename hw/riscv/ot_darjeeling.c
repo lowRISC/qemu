@@ -25,8 +25,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/cutils.h"
-#include "qemu/units.h"
 #include "qapi/error.h"
 #include "cpu.h"
 #include "exec/address-spaces.h"
@@ -64,6 +62,7 @@
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
+#include "hw/riscv/dmi.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_darjeeling.h"
 #include "hw/ssi/ssi.h"
@@ -110,6 +109,7 @@ enum OtDarjeelingSocDevice {
     OT_DARJEELING_SOC_DEV_CLKMGR,
     OT_DARJEELING_SOC_DEV_CSRNG,
     OT_DARJEELING_SOC_DEV_DMA,
+    OT_DARJEELING_SOC_DEV_DMI,
     OT_DARJEELING_SOC_DEV_EDN0,
     OT_DARJEELING_SOC_DEV_EDN1,
     OT_DARJEELING_SOC_DEV_GPIO,
@@ -197,6 +197,12 @@ enum OtDarjeelingMemoryRegion {
     IBEX_MEMMAP_MAKE_REG((_addr_), OT_DARJEELING_CTN_MEMORY_REGION)
 
 /*
+ * Darjeeling RV DM
+ * see https://github.com/lowRISC/part-number-registry/blob/main/jtag_partno.md
+ */
+#define DARJEELING_TAP_IDCODE IBEX_JTAG_IDCODE(1, 1, 0)
+
+/*
  * MMIO/interrupt mapping as per:
  * lowRISC/opentitan: hw/top_darjeeling/sw/autogen/top_darjeeling_memory.h
  * and
@@ -221,12 +227,11 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
-    [OT_DARJEELING_SOC_DEV_RV_DM_MEM] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-rv_dm_mem",
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x00040000u, 0x1000u }
+    [OT_DARJEELING_SOC_DEV_DMI] = {
+        .type = TYPE_RISCV_DMI,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("tap_ir_length", IBEX_TAP_IR_LENGTH),
+            IBEX_DEV_UINT_PROP("tap_idcode", DARJEELING_TAP_IDCODE)
         ),
     },
     [OT_DARJEELING_SOC_DEV_AES] = {
@@ -957,6 +962,9 @@ static void ot_darjeeling_soc_reset_hold(Object *obj)
     if (c->parent_phases.hold) {
         c->parent_phases.hold(obj);
     }
+
+    Object *dmi = OBJECT(s->devices[OT_DARJEELING_SOC_DEV_DMI]);
+    resettable_reset(dmi, RESET_TYPE_COLD);
 
     /* keep ROM_CTRLs in reset, we'll release them last */
     resettable_assert_reset(OBJECT(s->devices[OT_DARJEELING_SOC_DEV_ROM0]),
