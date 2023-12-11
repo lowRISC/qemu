@@ -3211,6 +3211,7 @@ trace_events_subdirs = [
   'monitor',
   'util',
   'gdbstub',
+  'jtag'
 ]
 if have_linux_user
   trace_events_subdirs += [ 'linux-user' ]
@@ -3338,6 +3339,7 @@ subdir('crypto')
 subdir('ui')
 subdir('hw')
 subdir('gdbstub')
+subdir('jtag')
 
 if enable_modules
   libmodulecommon = static_library('module-common', files('module-common.c') + genh, pic: true, c_args: '-DBUILD_DSO')
