@@ -135,6 +135,9 @@ config RISCV_VIRT
 config RISCV_DEBUG
     bool
 
+config RISCV_DMI
+    bool
+
 config SHAKTI_C
     bool
     select RISCV_ACLINT

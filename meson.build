@@ -3272,6 +3272,7 @@ if have_system
     'hw/ppc',
     'hw/rdma',
     'hw/rdma/vmw',
+    'hw/riscv',
     'hw/rtc',
     'hw/s390x',
     'hw/scsi',
