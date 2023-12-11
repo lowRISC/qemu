@@ -33,6 +33,7 @@
 #include "hw/boards.h"
 #include "hw/core/split-irq.h"
 #include "hw/intc/sifive_plic.h"
+#include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_aes.h"
@@ -67,6 +68,7 @@
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
+#include "hw/riscv/dm.h"
 #include "hw/riscv/dtm.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_darjeeling.h"
@@ -79,6 +81,8 @@
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
 
+static void ot_dj_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                   DeviceState *parent);
 static void ot_dj_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent);
 static void ot_dj_soc_otp_ctrl_configure(
@@ -105,6 +109,7 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_CSRNG,
     OT_DJ_SOC_DEV_DM_TL_LC_CTRL,
     OT_DJ_SOC_DEV_DM_TL_MBX,
+    OT_DJ_SOC_DEV_DM,
     OT_DJ_SOC_DEV_DMA,
     OT_DJ_SOC_DEV_DTM,
     OT_DJ_SOC_DEV_EDN0,
@@ -325,11 +330,26 @@ static const uint32_t ot_dj_pmp_addrs[] = {
     OT_DJ_DEBUG_TL_TO_DMI(OT_DJ_DEBUG_MBX_JTAG_ADDR)
 #define OT_DJ_DEBUG_MBX_JTAG_DMI_SIZE (OT_MBX_SYS_APERTURE / sizeof(uint32_t))
 
+#define OT_DARJEELING_SOC_DM_CONNECTION(_dst_dev_, _num_) \
+    { \
+        .out = { \
+            .name = PULP_RV_DM_ACK_OUT_LINES, \
+            .num = (_num_), \
+        }, \
+        .in = { \
+            .name = RISCV_DM_ACK_LINES, \
+            .index = (_dst_dev_), \
+            .num = (_num_), \
+        } \
+    }
+
 /*
  * Darjeeling RV DM
  * see https://github.com/lowRISC/part-number-registry/blob/main/jtag_partno.md
  */
 #define DARJEELING_TAP_IDCODE IBEX_JTAG_IDCODE(1, 1, 0)
+
+#define PULP_DM_BASE 0x00040000u
 
 /*
  * MMIO/interrupt mapping as per:
@@ -353,6 +373,10 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("x-zbr", true),
             IBEX_DEV_UINT_PROP("resetvec", 0x8080u),
             IBEX_DEV_UINT_PROP("mtvec", 0x8001u),
+            IBEX_DEV_UINT_PROP("dmhaltvec", PULP_DM_BASE +
+                PULP_RV_DM_ROM_BASE + PULP_RV_DM_HALT_OFFSET),
+            IBEX_DEV_UINT_PROP("dmexcpvec", PULP_DM_BASE +
+                PULP_RV_DM_ROM_BASE + PULP_RV_DM_EXCEPTION_OFFSET),
             IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
@@ -389,6 +413,33 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("tl_addr", OT_DJ_DEBUG_MBX_JTAG_ADDR),
             IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
         )
+    },
+    [OT_DJ_SOC_DEV_DM] = {
+        .type = TYPE_RISCV_DM,
+        .cfg = &ot_dj_soc_dm_configure,
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("dtm", DTM)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("nscratch", PULP_RV_DM_NSCRATCH_COUNT),
+            IBEX_DEV_UINT_PROP("progbuf_count",
+                PULP_RV_DM_PROGRAM_BUFFER_COUNT),
+            IBEX_DEV_UINT_PROP("data_count", PULP_RV_DM_DATA_COUNT),
+            IBEX_DEV_UINT_PROP("abstractcmd_count",
+                PULP_RV_DM_ABSTRACTCMD_COUNT),
+            IBEX_DEV_UINT_PROP("dm_phyaddr", PULP_DM_BASE),
+            IBEX_DEV_UINT_PROP("rom_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_ROM_BASE),
+            IBEX_DEV_UINT_PROP("whereto_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_WHERETO_OFFSET),
+            IBEX_DEV_UINT_PROP("data_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_DATAADDR_OFFSET),
+            IBEX_DEV_UINT_PROP("progbuf_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_PROGRAM_BUFFER_OFFSET),
+            IBEX_DEV_UINT_PROP("resume_offset", PULP_RV_DM_RESUME_OFFSET),
+            IBEX_DEV_BOOL_PROP("sysbus_access", true),
+            IBEX_DEV_BOOL_PROP("abstractauto", false)
+        ),
     },
     [OT_DJ_SOC_DEV_AES] = {
         .type = TYPE_OT_AES,
@@ -598,11 +649,16 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_RV_DM] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-rv_dm",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_PULP_RV_DM,
         .memmap = MEMMAPENTRIES(
+            { PULP_DM_BASE, 0x1000u },
             { 0x21200000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 0),
+            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 1),
+            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 2),
+            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 3)
         ),
     },
     [OT_DJ_SOC_DEV_MBX0] = {
@@ -1069,6 +1125,16 @@ struct OtDjMachineState {
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
 
+static void ot_dj_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                   DeviceState *parent)
+{
+    (void)def;
+    (void)parent;
+    QList *hart = qlist_new();
+    qlist_append_int(hart, 0);
+    qdev_prop_set_array(dev, "hart", hart);
+}
+
 static void ot_dj_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent)
 {
@@ -1138,6 +1204,9 @@ static void ot_dj_soc_reset_hold(Object *obj)
                      RESET_TYPE_COLD);
     resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_TL_MBX]),
                      RESET_TYPE_COLD);
+
+    Object *dm = OBJECT(s->devices[OT_DJ_SOC_DEV_DM]);
+    resettable_reset(dm, RESET_TYPE_COLD);
 
     /* keep ROM_CTRLs in reset, we'll release them last */
     resettable_assert_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_ROM0]),
