@@ -1019,7 +1019,7 @@ static void ot_darjeeling_soc_realize(DeviceState *dev, Error **errp)
      * elevated region, which means the address range below the elevated CTN
      * range is kept empty
      */
-    MemoryRegion *ctn_dma_mr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    MemoryRegion *ctn_dma_mr = g_new0(MemoryRegion, 1u);
     memory_region_init(ctn_dma_mr, OBJECT(dev), "ctn-dma",
                        OT_DARJEELING_CTN_REGION_OFFSET +
                            OT_DARJEELING_CTN_REGION_SIZE);
@@ -1029,7 +1029,7 @@ static void ot_darjeeling_soc_realize(DeviceState *dev, Error **errp)
     address_space_init(ctn_dma_as, ctn_dma_mr, "ctn-dma-as");
 
     /* create and map an alias to the CTN MR into the elevated region */
-    MemoryRegion *ctn_amr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    MemoryRegion *ctn_amr = g_new0(MemoryRegion, 1u);
     memory_region_init_alias(ctn_amr, OBJECT(dev), "ctn-dma-alias",
                              ctn_as->root, 0u,
                              (uint64_t)OT_DARJEELING_CTN_REGION_SIZE);
@@ -1096,7 +1096,7 @@ static void ot_darjeeling_board_realize(DeviceState *dev, Error **errp)
     object_property_add_child(OBJECT(board), "soc", OBJECT(soc));
 
     /* CTN memory region */
-    MemoryRegion *ctn_mr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    MemoryRegion *ctn_mr = g_new0(MemoryRegion, 1u);
     memory_region_init(ctn_mr, OBJECT(dev), "ctn-xbar",
                        (uint64_t)OT_DARJEELING_CTN_REGION_SIZE);
 
@@ -1113,13 +1113,13 @@ static void ot_darjeeling_board_realize(DeviceState *dev, Error **errp)
     qdev_realize_and_unref(DEVICE(soc), bus, &error_fatal);
 
     /* CTN RAM */
-    MemoryRegion *ctn_ram = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    MemoryRegion *ctn_ram = g_new0(MemoryRegion, 1u);
     memory_region_init_ram_nomigrate(ctn_ram, OBJECT(s), "ctn-ram",
                                      OT_DARJEELING_CTN_RAM_SIZE, errp);
     memory_region_add_subregion(ctn_mr, OT_DARJEELING_CTN_RAM_ADDR, ctn_ram);
 
     /* CTN aliased memory in CPU address space */
-    MemoryRegion *ctn_alias_mr = MEMORY_REGION(object_new(TYPE_MEMORY_REGION));
+    MemoryRegion *ctn_alias_mr = g_new0(MemoryRegion, 1u);
     memory_region_init_alias(ctn_alias_mr, OBJECT(dev), "ctn-alias", ctn_mr, 0u,
                              (uint64_t)OT_DARJEELING_CTN_REGION_SIZE);
     memory_region_add_subregion(get_system_memory(),
