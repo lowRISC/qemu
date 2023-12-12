@@ -37,6 +37,7 @@
 #include "hw/core/cpu.h"
 #include "hw/hw.h"
 #include "hw/irq.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_dev_proxy.h"
 #include "hw/opentitan/ot_mbx.h"
 #include "hw/opentitan/ot_soc_proxy.h"
@@ -183,18 +184,6 @@ enum OtDevProxyErr {
 #define PROXY_UID(_u_)          ((_u_) & ~(1u << 31u))
 #define PROXY_MAKE_UID(_uid_, _req_) \
     (((_uid_) & ~(1u << 31u)) | (((uint32_t)(bool)(_req_)) << 31u))
-
-#if defined(MEMTXATTRS_HAS_ROLE) && (MEMTXATTRS_HAS_ROLE != 0)
-#define MEMTXATTRS_WITH_ROLE(_r_) \
-    (MemTxAttrs) \
-    { \
-        .role = (_r_) \
-    }
-#define MEMTXATTRS_GET_ROLE(_a_) ((_a_).unspecified ? 0xfu : (_a_).role);
-#else
-#define MEMTXATTRS_WITH_ROLE(_r_) MEMTXATTRS_UNSPECIFIED
-#define MEMTXATTRS_GET_ROLE(_a_)  ((_a_).unspecified ? 0xfu : 0x0)
-#endif
 
 static void ot_dev_proxy_send(OtDevProxyState *s, unsigned uid, int dir,
                               uint16_t command, const void *payload,

@@ -44,6 +44,22 @@
 #define OT_MULTIBITBOOL16_FALSE 0x6969u
 
 /* ------------------------------------------------------------------------ */
+/* Extended memory transactions (MemTxAttrs can be tained with .role attr)  */
+/* ------------------------------------------------------------------------ */
+
+#if defined(MEMTXATTRS_HAS_ROLE) && (MEMTXATTRS_HAS_ROLE != 0)
+#define MEMTXATTRS_WITH_ROLE(_r_) \
+    (MemTxAttrs) \
+    { \
+        .role = (_r_) \
+    }
+#define MEMTXATTRS_GET_ROLE(_a_) ((_a_).unspecified ? 0xfu : (_a_).role);
+#else
+#define MEMTXATTRS_WITH_ROLE(_r_) MEMTXATTRS_UNSPECIFIED
+#define MEMTXATTRS_GET_ROLE(_a_)  ((_a_).unspecified ? 0xfu : 0x0)
+#endif
+
+/* ------------------------------------------------------------------------ */
 /* Shadow Registers */
 /* ------------------------------------------------------------------------ */
 
