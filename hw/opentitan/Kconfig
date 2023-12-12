@@ -40,6 +40,10 @@ config OT_CSRNG
 config OT_DEV_PROXY
     bool
 
+config OT_DM_TL
+    select RISCV_DEBUG
+    bool
+
 config OT_DMA
     select OT_ADDRESS_SPACE
     bool

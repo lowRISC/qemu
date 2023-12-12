@@ -84,6 +84,12 @@ ot_dev_proxy_write_memory(const char *prefix, unsigned devix, unsigned offset, u
 ot_dev_proxy_read_reg(const char *prefix, unsigned devix, unsigned offset) "%s #%u 0x%08x"
 ot_dev_proxy_write_reg(const char *prefix, unsigned devix, unsigned offset, unsigned value) "%s #%u 0x%08x 0x%08x"
 
+# ot_dm_tl.c
+
+ot_dm_tl_invalid_addr(uint32_t addr) "0x%x"
+ot_dm_tl_update(uint32_t addr, uint32_t value, const char *msg, uint32_t res) "0x%x: 0x%x (%s): %u"
+ot_dm_tl_capture(uint32_t addr, uint32_t value) "0x%x: %u"
+
 # ot_dma.c
 
 ot_dma_abort(const char *did) "%s"
