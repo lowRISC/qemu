@@ -39,6 +39,7 @@
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_dev_proxy.h"
+#include "hw/opentitan/ot_dm_tl.h"
 #include "hw/opentitan/ot_dma.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
@@ -108,6 +109,7 @@ enum OtDarjeelingSocDevice {
     OT_DARJEELING_SOC_DEV_AST,
     OT_DARJEELING_SOC_DEV_CLKMGR,
     OT_DARJEELING_SOC_DEV_CSRNG,
+    OT_DARJEELING_SOC_DEV_DM_TL_MBOX,
     OT_DARJEELING_SOC_DEV_DMA,
     OT_DARJEELING_SOC_DEV_DMI,
     OT_DARJEELING_SOC_DEV_EDN0,
@@ -154,6 +156,7 @@ enum OtDarjeelingSocDevice {
 enum OtDarjeelingMemoryRegion {
     OT_DARJEELING_DEFAULT_MEMORY_REGION,
     OT_DARJEELING_CTN_MEMORY_REGION,
+    OT_DARJEELING_DEBUG_MEMORY_REGION,
 };
 
 #define OT_DARJEELING_SOC_GPIO(_irq_, _target_, _num_) \
@@ -180,7 +183,19 @@ enum OtDarjeelingMemoryRegion {
 
 #define OT_DARJEELING_SOC_DEV_MBX(_ix_, _addr_, _irq_) \
     .type = TYPE_OT_MBX, .instance = (_ix_), \
-    .memmap = MEMMAPENTRIES({ (_addr_), 0x100u }), \
+    .memmap = MEMMAPENTRIES({ (_addr_), OT_MBX_HOST_APERTURE }), \
+    .gpio = \
+        IBEXGPIOCONNDEFS(OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
+                         OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, \
+                                                           (_irq_) + 1u), \
+                         OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(2, PLIC, \
+                                                           (_irq_) + 2u)), \
+    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("id", stringify(_ix_)))
+
+#define OT_DARJEELING_SOC_DEV_MBX_DUAL(_ix_, _addr_, _irq_, _xaddr_) \
+    .type = TYPE_OT_MBX, .instance = (_ix_), \
+    .memmap = MEMMAPENTRIES({ (_addr_), OT_MBX_HOST_APERTURE }, \
+                            { (_xaddr_), OT_MBX_SYS_APERTURE }), \
     .gpio = \
         IBEXGPIOCONNDEFS(OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
                          OT_DARJEELING_SOC_GPIO_SYSBUS_IRQ(1, PLIC, \
@@ -195,6 +210,11 @@ enum OtDarjeelingMemoryRegion {
 
 #define OT_DARJEELING_XPORT_MEMORY(_addr_) \
     IBEX_MEMMAP_MAKE_REG((_addr_), OT_DARJEELING_CTN_MEMORY_REGION)
+
+#define OT_DARJEELING_DBG_XBAR_APERTURE 0x2000u
+
+#define DEBUG_MEMORY(_addr_) \
+    IBEX_MEMMAP_MAKE_REG((_addr_), OT_DARJEELING_DEBUG_MEMORY_REGION)
 
 /*
  * Darjeeling RV DM
@@ -231,8 +251,23 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
         .type = TYPE_RISCV_DMI,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("tap_ir_length", IBEX_TAP_IR_LENGTH),
-            IBEX_DEV_UINT_PROP("tap_idcode", DARJEELING_TAP_IDCODE)
+            IBEX_DEV_UINT_PROP("tap_idcode", DARJEELING_TAP_IDCODE),
+            /* should be a constant, need to encode 0x500 */
+            IBEX_DEV_UINT_PROP("abits", 11u)
         ),
+    },
+    [OT_DARJEELING_SOC_DEV_DM_TL_MBOX] = {
+        .type = TYPE_OT_DM_TL,
+        .link = IBEXDEVICELINKDEFS(
+            OT_DARJEELING_SOC_DEVLINK("dmi", DMI),
+            OT_DARJEELING_SOC_DEVLINK("tl_dev", MBX_JTAG)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("dmi_addr", 0x200u),
+            IBEX_DEV_UINT_PROP("dmi_size", OT_MBX_SYS_REGS_COUNT),
+            IBEX_DEV_UINT_PROP("tl_addr", 0x1000u),
+            IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
+        )
     },
     [OT_DARJEELING_SOC_DEV_AES] = {
         .type = TYPE_OT_AES,
@@ -471,7 +506,8 @@ static const IbexDeviceDef ot_darjeeling_soc_devices[] = {
         OT_DARJEELING_SOC_DEV_MBX(6, 0x22000600u, 152),
     },
     [OT_DARJEELING_SOC_DEV_MBX_JTAG] = {
-        OT_DARJEELING_SOC_DEV_MBX(7, 0x22000800u, 155),
+        OT_DARJEELING_SOC_DEV_MBX_DUAL(7, 0x22000800u, 155,
+                                       DEBUG_MEMORY(0x1000)),
     },
     [OT_DARJEELING_SOC_DEV_DMA] = {
         .type = TYPE_OT_DMA,
@@ -966,6 +1002,9 @@ static void ot_darjeeling_soc_reset_hold(Object *obj)
     Object *dmi = OBJECT(s->devices[OT_DARJEELING_SOC_DEV_DMI]);
     resettable_reset(dmi, RESET_TYPE_COLD);
 
+    resettable_reset(OBJECT(s->devices[OT_DARJEELING_SOC_DEV_DM_TL_MBOX]),
+                     RESET_TYPE_COLD);
+
     /* keep ROM_CTRLs in reset, we'll release them last */
     resettable_assert_reset(OBJECT(s->devices[OT_DARJEELING_SOC_DEV_ROM0]),
                             RESET_TYPE_COLD);
@@ -1011,12 +1050,29 @@ static void ot_darjeeling_soc_realize(DeviceState *dev, Error **errp)
     g_assert(oas);
     AddressSpace *ctn_as = ot_address_space_get(OT_ADDRESS_SPACE(oas));
 
+    MemoryRegion *dbg_mr = g_new0(MemoryRegion, 1u);
+    memory_region_init(dbg_mr, OBJECT(dev), "dbg-xbar",
+                       OT_DARJEELING_DBG_XBAR_APERTURE);
+
     MemoryRegion *mrs[IBEX_MEMMAP_REGIDX_COUNT] = {
         [OT_DARJEELING_DEFAULT_MEMORY_REGION] = cpu->memory,
         [OT_DARJEELING_CTN_MEMORY_REGION] = ctn_as->root,
+        [OT_DARJEELING_DEBUG_MEMORY_REGION] = dbg_mr,
     };
-    ibex_map_devices(s->devices, mrs, ot_darjeeling_soc_devices,
-                     ARRAY_SIZE(ot_darjeeling_soc_devices));
+    ibex_map_devices_mask(s->devices, mrs, ot_darjeeling_soc_devices,
+                          ARRAY_SIZE(ot_darjeeling_soc_devices),
+                          IBEX_MEMMAP_MAKE_REG_MASK(
+                              OT_DARJEELING_DEFAULT_MEMORY_REGION) |
+                              IBEX_MEMMAP_MAKE_REG_MASK(
+                                  OT_DARJEELING_DEBUG_MEMORY_REGION));
+
+    AddressSpace *dbg_as = g_new0(AddressSpace, 1u);
+    address_space_init(dbg_as, dbg_mr, "dbg-as");
+
+    oas = object_new(TYPE_OT_ADDRESS_SPACE);
+    object_property_add_child(OBJECT(dev), "ot-dbg", oas);
+    ot_address_space_set(OT_ADDRESS_SPACE(oas), dbg_as);
+
 
     oas = object_new(TYPE_OT_ADDRESS_SPACE);
     object_property_add_child(OBJECT(dev), "ot-dma", oas);
