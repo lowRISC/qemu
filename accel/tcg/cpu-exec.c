@@ -689,11 +689,11 @@ static inline bool cpu_handle_halt(CPUState *cpu)
             return true;
         }
 
-        cpu->halted = cpu->on_reset;
+        cpu->halted = 0;
     }
 #endif /* !CONFIG_USER_ONLY */
 
-    return cpu->on_reset;
+    return false;
 }
 
 static inline void cpu_handle_debug_exception(CPUState *cpu)
