@@ -1,1 +1,1 @@
-common_ss.add(files('jtag_bitbang.c'))
+system_ss.add(files('jtag_bitbang.c'))
