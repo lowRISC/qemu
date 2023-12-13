@@ -900,6 +900,8 @@ static void riscv_cpu_reset_hold(Object *obj)
     }
     env->mcause = 0;
     env->miclaim = MIP_SGEIP;
+    env->pc = env->resetvec;
+    env->mtvec = cpu->cfg.mtvec;
     env->bins = 0;
     env->two_stage_lookup = false;
 
@@ -959,24 +961,6 @@ static void riscv_cpu_reset_hold(Object *obj)
 
     env->mseccfg = (target_ulong)cfg->mseccfg;
 #endif
-}
-
-static void riscv_cpu_reset_exit(Object *obj)
-{
-    CPUState *cs = CPU(obj);
-    RISCVCPU *cpu = RISCV_CPU(cs);
-    RISCVCPUClass *mcc = RISCV_CPU_GET_CLASS(cpu);
-    CPURISCVState *env = &cpu->env;
-
-#ifndef CONFIG_USER_ONLY
-    /* reset vector and mtvec may be updated while hart is in reset */
-    env->pc = env->resetvec;
-    env->mtvec = cpu->cfg.mtvec;
-#endif
-
-    if (mcc->parent_phases.exit) {
-        mcc->parent_phases.exit(obj);
-    }
 }
 
 static void riscv_cpu_disas_set_info(CPUState *s, disassemble_info *info)
@@ -2215,8 +2199,7 @@ static void riscv_cpu_class_init(ObjectClass *c, void *data)
     device_class_set_parent_realize(dc, riscv_cpu_realize,
                                     &mcc->parent_realize);
 
-    resettable_class_set_parent_phases(rc, NULL, riscv_cpu_reset_hold,
-                                       riscv_cpu_reset_exit,
+    resettable_class_set_parent_phases(rc, NULL, riscv_cpu_reset_hold, NULL,
                                        &mcc->parent_phases);
 
     cc->class_by_name = riscv_cpu_class_by_name;
