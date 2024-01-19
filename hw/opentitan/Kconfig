@@ -67,6 +67,9 @@ config OT_GPIO_EG
 config OT_HMAC
     bool
 
+config OT_I2C_DJ
+    bool
+
 config OT_IBEX_WRAPPER
     bool
 

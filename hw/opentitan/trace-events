@@ -182,6 +182,17 @@ ot_hmac_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc)
 ot_hmac_fifo_write(uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "addr=0x%02x, val=0x%x (%u), pc=0x%x"
 ot_hmac_debug(const char *msg) "%s"
 
+# ot_i2c_dj.c
+
+ot_i2c_io_read(const char *id, unsigned int addr, const char *regname, uint64_t val, uint64_t pc) "[%s] addr:0x%02x (%s), val:0x%" PRIx64", pc:0x%" PRIx64
+ot_i2c_io_write(const char *id, unsigned int addr, const char *regname, uint64_t val, uint64_t pc) "[%s] addr:0x%02x (%s), val:0x%" PRIx64", pc:0x%" PRIx64
+ot_i2c_irq(const char *id, const char *irq_id, bool en) "[%s] set interrupt %s to %u"
+ot_i2c_host_recv(const char *id, unsigned int entries, unsigned int bytes_to_read) "[%s] rx_fifo_entries:%u bytes_to_read:%u"
+ot_i2c_host_send(const char *id, unsigned int entries, unsigned int host_tx_threshold) "[%s] tx_fifo_entries:%u tx_threshold:%u"
+ot_i2c_target_recv(const char *id, unsigned int entries, uint8_t data) "[%s] tx_fifo_entries:%u data:0x%02x"
+ot_i2c_target_set_acqdata(const char *id, unsigned int entries, uint8_t data, unsigned int signal) "[%s] rx_fifo_entries:%u data:0x%02x signal:0x%02x"
+ot_i2c_update_irqs(const char *id, uint32_t active, uint32_t mask, uint32_t eff) "[%s] act:0x%08x msk:0x%08x eff:0x%08x"
+
 # ot_ibex_wrapper.c
 
 ot_ibex_wrapper_cpu_enable(const char *id, const char *ch, bool level, uint32_t bm, bool cpu_en) "%s: %s:%u (0x%x)-> CPU enable %u"
