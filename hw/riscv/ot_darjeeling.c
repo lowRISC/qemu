@@ -50,6 +50,7 @@
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_gpio_dj.h"
 #include "hw/opentitan/ot_hmac.h"
+#include "hw/opentitan/ot_i2c_dj.h"
 #include "hw/opentitan/ot_ibex_wrapper_dj.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
@@ -943,12 +944,30 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         )
     },
     [OT_DJ_SOC_DEV_I2C0] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-i2c",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_I2C_DJ,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
             { 0x30080000u, 0x80u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 53),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 54),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 55),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 56),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 57),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 58),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 59),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 60),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 61),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 62),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 63),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 64),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 65),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 66),
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 67)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
         ),
     },
     [OT_DJ_SOC_DEV_TIMER] = {

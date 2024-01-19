@@ -27,6 +27,7 @@ config OT_DARJEELING
     select OT_ENTROPY_SRC
     select OT_GPIO_DJ
     select OT_HMAC
+    select OT_I2C_DJ
     select OT_IBEX_WRAPPER_DJ
     select OT_KMAC
     select OT_LC_CTRL
