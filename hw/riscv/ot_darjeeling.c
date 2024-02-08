@@ -348,8 +348,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     [OT_DJ_SOC_DEV_DMI] = {
         .type = TYPE_RISCV_DMI,
         .prop = IBEXDEVICEPROPDEFS(
-            /* should be a constant, need to encode 0x500 */
-            IBEX_DEV_UINT_PROP("abits", 11u)
+            IBEX_DEV_UINT_PROP("abits", 12u)
         ),
     },
     [OT_DJ_SOC_DEV_DM_TL_MBOX] = {
