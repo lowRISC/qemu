@@ -1,4 +1,4 @@
-# OT GPIO
+# OpenTitan GPIO
 
 ## Initial configuration
 

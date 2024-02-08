@@ -1,8 +1,8 @@
-# EarlGrey CW310
+# Darjeeling CW310
 
 ## Supported version
 
-EarlGrey 2.5.2-RC0
+Please check out `hw/opentitan/ot_ref.log`
 
 ## Supported features
 
@@ -19,8 +19,14 @@ EarlGrey 2.5.2-RC0
 * CSRNG
 * EDN
 * HMAC
+* JTAG (compatible with OpenOCD/Spike "remote bitbang" protocol)
+* Mailbox
+   * [JTAG mailbox](jtagmbx.md) can be accessed through JTAG using a DM-TL bridge
 * OTBN
   * missing side-loading
+* OTP controller
+  * read and write features are supported, Present scrambling is supported w/ digest checks,
+    ECC bits are ignored
 * SPI data flash (from QEMU upstream w/ fixes)
 * SPI Host controller
   * HW bus config is ignored (SPI mode, speed, ...)
@@ -33,18 +39,23 @@ EarlGrey 2.5.2-RC0
 
 Devices in this group implement subset(s) of the real HW.
 
+* DMA
+  * Only memory-to-memory transfers (inc. hashing) are supported, Handshake modes are not supported
 * Flash controller
   * read-only features only
-* OTP controller
-  * read-only features only, ECC is ignored
 * Entropy Src
    * test/health features are not supported
-   * AES CTR not supported (uses xoroshiro128++ reseeded from entropy src)
 * [GPIO](gpio.md)
    * A CharDev backend can be used to get GPIO outputs and update GPIO inputs,
 * KMAC
   * Side loading is not supported
+* Lifecycle controller
+  * Escalation is not supported
+* Power Manager
+  * Fast FSM is partially supported, Slow FSM is bypassed
+  * Interactions with other devices (such as the Reset Manager) are limited
 * [ROM controller](rom_ctrl.md)
+* SoC Proxy only supports IRQ routing/gating
 
 ### Sparsely implemented devices
 
@@ -56,12 +67,12 @@ features are implemented.
 * Clock Manager
   * Clock hints only
 * Ibex wrapper
-  * random source (connected to CSR), FPGA version, virtual remapper
-* Lifecycle controller
-  * only forwards LC state from OTP
-* Power Manager
-  * Fast FSM is partially supported, Slow FSM is bypassed
-  * Interactions with other devices (such as the Reset Manager) are limited
+  * random source (connected to CSR), FPGA version, virtual remapper, fetch enable can be controlled
+    from Power Manager
+* Reset Manager
+  * HW and SW reset requests are supported
+* SRAM controller
+  * Supported as dummy SRAM memories
 
 ### Dummy devices
 
@@ -70,27 +81,31 @@ any useful feature (only allow guest test code to execute as expected).
 
 * Alert controller
 * Key manager
-* KMAC (in development)
-* GPIO
 * Pinmux
-* Power Manager
 * Sensor
+
+### Additional devices
+
+* [DevProxy](devproxy.md) is a CharDev-enabled component that can be remotely controlled to enable
+  communication with the system-side buses of the mailboxes and DMA devices. A Python library is
+  available as `scripts/opentitan/devproxy.py` and provide an API to remote drive the devproxy
+  communication interface.
 
 ## Running the virtual machine
 
 ### Arbitrary application
 
 ````sh
-qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -display none -serial mon:stdio \
-  -kernel hello.elf
+qemu-system-riscv32 -M ot-darjeeling,no_epmp_cfg=true -display none -serial mon:stdio \
+  -global ot-ibex_wrapper-dj.lc-ignore=on -kernel hello.elf
 ````
-
-See the section "Useful execution options" for documentation about the `no_epmp_cfg` option.
+See the section "Useful execution options" for documentation about the `no_epmp_cfg` and
+`ot-ibex_wrapper-dj.lc-ignore=on` option.
 
 ### Boot sequence ROM, ROM_EXT, BLO
 
 ````sh
-qemu-system-riscv32 -M ot-earlgrey -display none -serial mon:stdio \
+qemu-system-riscv32 -M ot-darjeeling -display none -serial mon:stdio \
   -object ot-rom-img,id=rom,file=rom_with_fake_keys_fpga_cw310.elf,digest=fake \
   -drive if=pflash,file=otp-rma.raw,format=raw \
   -drive if=mtd,bus=1,file=flash.raw,format=raw
@@ -118,8 +133,15 @@ See [`tools.md`](tools.md)
   machine.
 
 * `no_epmp_cfg=true` can be appended to the machine option switch, _i.e._
-  `-M ot-earlgrey,no_epmp_cfg=true` to disable the initial ePMP configuration, which can be very
+  `-M ot-darjeeeling,no_epmp_cfg=true` to disable the initial ePMP configuration, which can be very
   useful to execute arbitrary code on the Ibex core without requiring an OT ROM image to boot up.
+
+* `-global ot-ibex_wrapper-dj.lc-ignore=on` should be used whenever no OTP image is provided, or if
+  the current LifeCycle state stored in the OTP image does not allow the Ibex core to fetch data.
+  This switch forces the Ibex core to execute whatever the LifeCycle broadcasted signal, which
+  departs from the HW behavior but maybe helpful to run the machine without a full OTP set up. The
+  alternative to allow the Ibex core to execute guest code is to provide a valid OTP image with one
+  of the expected LifeCycle state, such as TestUnlock*, Dev, Prod or RMA.
 
 * `-cpu lowrisc-ibex,x-zbr=false` can be used to force disable the Zbr experimental-and-deprecated
   RISC-V bitmap extension for CRC32 extension.

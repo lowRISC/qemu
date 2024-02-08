@@ -24,6 +24,10 @@ ninja qemu-img
     * `--enable-gtk` should be used on Linux hosts
     * `--enable-cocoa` should be used on macOS hosts
 
+* `--extra-cflags=-Wno-deprecated-declarations` and
+  `--extra-ldflags=-Wl,-no_warn_duplicate_libraries` may be required to build on recent relases of
+   macOS (QEMU issues which are not related to the OpenTitan port)
+
 ### Useful build options
 
  * `--enable-debug`
@@ -32,4 +36,5 @@ ninja qemu-img
 ## Supported platforms
 
  * [IbexDemo](ibexdemo.md) built for Digilent Arty7 board
+ * [Darjeeling](darjeeling.md) build for CW310 "Bergen" board
  * [EarlGrey](earlgrey.md) build for CW310 "Bergen" board

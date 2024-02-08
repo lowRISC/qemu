@@ -1,4 +1,4 @@
-# SPI Device support
+# OpenTitan SPI Device support
 
 ## Supported modes
 
