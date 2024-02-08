@@ -70,74 +70,74 @@
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
 
-static void ot_earlgrey_soc_flash_ctrl_configure(
+static void ot_eg_soc_flash_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
-static void ot_earlgrey_soc_hart_configure(
+static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                     DeviceState *parent);
+static void ot_eg_soc_otp_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
-static void ot_earlgrey_soc_otp_ctrl_configure(
-    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
-static void ot_earlgrey_soc_uart_configure(
-    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+static void ot_eg_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                     DeviceState *parent);
 
 /* ------------------------------------------------------------------------ */
 /* Constants */
 /* ------------------------------------------------------------------------ */
 
-enum OtEarlGreySocDevice {
-    OT_EARLGREY_SOC_DEV_ADC_CTRL,
-    OT_EARLGREY_SOC_DEV_AES,
-    OT_EARLGREY_SOC_DEV_ALERT_HANDLER,
-    OT_EARLGREY_SOC_DEV_AON_TIMER,
-    OT_EARLGREY_SOC_DEV_AST,
-    OT_EARLGREY_SOC_DEV_CLKMGR,
-    OT_EARLGREY_SOC_DEV_CSRNG,
-    OT_EARLGREY_SOC_DEV_EDN0,
-    OT_EARLGREY_SOC_DEV_EDN1,
-    OT_EARLGREY_SOC_DEV_ENTROPY_SRC,
-    OT_EARLGREY_SOC_DEV_FLASH_CTRL,
-    OT_EARLGREY_SOC_DEV_GPIO,
-    OT_EARLGREY_SOC_DEV_HART,
-    OT_EARLGREY_SOC_DEV_HMAC,
-    OT_EARLGREY_SOC_DEV_I2C0,
-    OT_EARLGREY_SOC_DEV_I2C1,
-    OT_EARLGREY_SOC_DEV_I2C2,
-    OT_EARLGREY_SOC_DEV_IBEX_WRAPPER,
-    OT_EARLGREY_SOC_DEV_KEYMGR,
-    OT_EARLGREY_SOC_DEV_KMAC,
-    OT_EARLGREY_SOC_DEV_LC_CTRL,
-    OT_EARLGREY_SOC_DEV_OTBN,
-    OT_EARLGREY_SOC_DEV_OTP_CTRL,
-    OT_EARLGREY_SOC_DEV_PATTGEN,
-    OT_EARLGREY_SOC_DEV_PINMUX,
-    OT_EARLGREY_SOC_DEV_PLIC,
-    OT_EARLGREY_SOC_DEV_PWM,
-    OT_EARLGREY_SOC_DEV_PWRMGR,
-    OT_EARLGREY_SOC_DEV_SRAM_RET_CTRL,
-    OT_EARLGREY_SOC_DEV_ROM_CTRL,
-    OT_EARLGREY_SOC_DEV_RSTMGR,
-    OT_EARLGREY_SOC_DEV_RV_DM,
-    OT_EARLGREY_SOC_DEV_RV_DM_MEM,
-    OT_EARLGREY_SOC_DEV_SENSOR_CTRL,
-    OT_EARLGREY_SOC_DEV_SPI_DEVICE,
-    OT_EARLGREY_SOC_DEV_SPI_HOST0,
-    OT_EARLGREY_SOC_DEV_SPI_HOST1,
-    OT_EARLGREY_SOC_DEV_SRAM_MAIN_CTRL,
-    OT_EARLGREY_SOC_DEV_SYSRST_CTRL,
-    OT_EARLGREY_SOC_DEV_TIMER,
-    OT_EARLGREY_SOC_DEV_UART0,
-    OT_EARLGREY_SOC_DEV_UART1,
-    OT_EARLGREY_SOC_DEV_UART2,
-    OT_EARLGREY_SOC_DEV_UART3,
-    OT_EARLGREY_SOC_DEV_USBDEV,
+enum OtEGSocDevice {
+    OT_EG_SOC_DEV_ADC_CTRL,
+    OT_EG_SOC_DEV_AES,
+    OT_EG_SOC_DEV_ALERT_HANDLER,
+    OT_EG_SOC_DEV_AON_TIMER,
+    OT_EG_SOC_DEV_AST,
+    OT_EG_SOC_DEV_CLKMGR,
+    OT_EG_SOC_DEV_CSRNG,
+    OT_EG_SOC_DEV_EDN0,
+    OT_EG_SOC_DEV_EDN1,
+    OT_EG_SOC_DEV_ENTROPY_SRC,
+    OT_EG_SOC_DEV_FLASH_CTRL,
+    OT_EG_SOC_DEV_GPIO,
+    OT_EG_SOC_DEV_HART,
+    OT_EG_SOC_DEV_HMAC,
+    OT_EG_SOC_DEV_I2C0,
+    OT_EG_SOC_DEV_I2C1,
+    OT_EG_SOC_DEV_I2C2,
+    OT_EG_SOC_DEV_IBEX_WRAPPER,
+    OT_EG_SOC_DEV_KEYMGR,
+    OT_EG_SOC_DEV_KMAC,
+    OT_EG_SOC_DEV_LC_CTRL,
+    OT_EG_SOC_DEV_OTBN,
+    OT_EG_SOC_DEV_OTP_CTRL,
+    OT_EG_SOC_DEV_PATTGEN,
+    OT_EG_SOC_DEV_PINMUX,
+    OT_EG_SOC_DEV_PLIC,
+    OT_EG_SOC_DEV_PWM,
+    OT_EG_SOC_DEV_PWRMGR,
+    OT_EG_SOC_DEV_SRAM_RET_CTRL,
+    OT_EG_SOC_DEV_ROM_CTRL,
+    OT_EG_SOC_DEV_RSTMGR,
+    OT_EG_SOC_DEV_RV_DM,
+    OT_EG_SOC_DEV_RV_DM_MEM,
+    OT_EG_SOC_DEV_SENSOR_CTRL,
+    OT_EG_SOC_DEV_SPI_DEVICE,
+    OT_EG_SOC_DEV_SPI_HOST0,
+    OT_EG_SOC_DEV_SPI_HOST1,
+    OT_EG_SOC_DEV_SRAM_MAIN_CTRL,
+    OT_EG_SOC_DEV_SYSRST_CTRL,
+    OT_EG_SOC_DEV_TIMER,
+    OT_EG_SOC_DEV_UART0,
+    OT_EG_SOC_DEV_UART1,
+    OT_EG_SOC_DEV_UART2,
+    OT_EG_SOC_DEV_UART3,
+    OT_EG_SOC_DEV_USBDEV,
 };
 
 /* EarlGrey/CW310 Peripheral clock is 2.5 MHz */
-#define OT_EARLGREY_PERIPHERAL_CLK_HZ 2500000u
+#define OT_EG_PERIPHERAL_CLK_HZ 2500000u
 
 /* EarlGrey/CW310 AON clock is 250 kHz */
-#define OT_EARLGREY_AON_CLK_HZ 250000u
+#define OT_EG_AON_CLK_HZ 250000u
 
-static const uint8_t ot_earlgrey_pmp_cfgs[] = {
+static const uint8_t ot_eg_pmp_cfgs[] = {
     /* clang-format off */
     IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
     IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
@@ -158,7 +158,7 @@ static const uint8_t ot_earlgrey_pmp_cfgs[] = {
     /* clang-format on */
 };
 
-static const uint32_t ot_earlgrey_pmp_addrs[] = {
+static const uint32_t ot_eg_pmp_addrs[] = {
     /* clang-format off */
     IBEX_PMP_ADDR(0x00000000),
     IBEX_PMP_ADDR(0x00000000),
@@ -179,18 +179,18 @@ static const uint32_t ot_earlgrey_pmp_addrs[] = {
     /* clang-format on */
 };
 
-#define OT_EARLGREY_MSECCFG IBEX_MSECCFG(1, 1, 0)
+#define OT_EG_MSECCFG IBEX_MSECCFG(1, 1, 0)
 
-#define OT_EARLGREY_SOC_GPIO(_irq_, _target_, _num_) \
-    IBEX_GPIO(_irq_, OT_EARLGREY_SOC_DEV_##_target_, _num_)
+#define OT_EG_SOC_GPIO(_irq_, _target_, _num_) \
+    IBEX_GPIO(_irq_, OT_EG_SOC_DEV_##_target_, _num_)
 
-#define OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(_irq_, _target_, _num_) \
-    IBEX_GPIO_SYSBUS_IRQ(_irq_, OT_EARLGREY_SOC_DEV_##_target_, _num_)
+#define OT_EG_SOC_GPIO_SYSBUS_IRQ(_irq_, _target_, _num_) \
+    IBEX_GPIO_SYSBUS_IRQ(_irq_, OT_EG_SOC_DEV_##_target_, _num_)
 
-#define OT_EARLGREY_SOC_DEVLINK(_pname_, _target_) \
-    IBEX_DEVLINK(_pname_, OT_EARLGREY_SOC_DEV_##_target_)
+#define OT_EG_SOC_DEVLINK(_pname_, _target_) \
+    IBEX_DEVLINK(_pname_, OT_EG_SOC_DEV_##_target_)
 
-#define OT_EARLGREY_SOC_SIGNAL(_sname_, _snum_, _tgt_, _tname_, _tnum_) \
+#define OT_EG_SOC_SIGNAL(_sname_, _snum_, _tgt_, _tname_, _tnum_) \
     { \
         .out = { \
             .name = (_sname_), \
@@ -198,13 +198,13 @@ static const uint32_t ot_earlgrey_pmp_addrs[] = {
         }, \
         .in = { \
             .name = (_tname_), \
-            .index = (OT_EARLGREY_SOC_DEV_ ## _tgt_), \
+            .index = (OT_EG_SOC_DEV_ ## _tgt_), \
             .num = (_tnum_), \
         } \
     }
 
-#define OT_EARLGREY_SOC_CLKMGR_HINT(_num_) \
-    OT_EARLGREY_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
+#define OT_EG_SOC_CLKMGR_HINT(_num_) \
+    OT_EG_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
 
 /*
  * MMIO/interrupt mapping as per:
@@ -212,11 +212,11 @@ static const uint32_t ot_earlgrey_pmp_addrs[] = {
  * and
  * lowRISC/opentitan: hw/top_earlgrey/sw/autogen/top_earlgrey.h
  */
-static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
+static const IbexDeviceDef ot_eg_soc_devices[] = {
     /* clang-format off */
-    [OT_EARLGREY_SOC_DEV_HART] = {
+    [OT_EG_SOC_DEV_HART] = {
         .type = TYPE_RISCV_CPU_LOWRISC_IBEX,
-        .cfg = &ot_earlgrey_soc_hart_configure,
+        .cfg = &ot_eg_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_BOOL_PROP("pmp", true),
@@ -230,7 +230,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_RV_DM_MEM] = {
+    [OT_EG_SOC_DEV_RV_DM_MEM] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-rv_dm_mem",
         .cfg = &ibex_unimp_configure,
@@ -238,155 +238,155 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x00010000u, 0x1000u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_UART0] = {
+    [OT_EG_SOC_DEV_UART0] = {
         .type = TYPE_OT_UART,
-        .cfg = &ot_earlgrey_soc_uart_configure,
+        .cfg = &ot_eg_soc_uart_configure,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
             { 0x40000000u, 0x40u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 1),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 2),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 3),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 4),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 5),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 6),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 7),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 1),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 2),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 3),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 4),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 5),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 6),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 7),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_UART1] = {
+    [OT_EG_SOC_DEV_UART1] = {
         .type = TYPE_OT_UART,
-        .cfg = &ot_earlgrey_soc_uart_configure,
+        .cfg = &ot_eg_soc_uart_configure,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
             { 0x40010000u, 0x40u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 9),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 10),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 11),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 12),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 13),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 14),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 15),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 16)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 9),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 10),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 11),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 12),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 13),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 14),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 15),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 16)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_UART2] = {
+    [OT_EG_SOC_DEV_UART2] = {
         .type = TYPE_OT_UART,
-        .cfg = &ot_earlgrey_soc_uart_configure,
+        .cfg = &ot_eg_soc_uart_configure,
         .instance = 2,
         .memmap = MEMMAPENTRIES(
             { 0x40020000u, 0x40u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 17),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 18),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 19),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 20),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 21),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 22),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 23),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 24)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 17),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 18),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 19),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 20),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 21),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 22),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 23),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 24)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_UART3] = {
+    [OT_EG_SOC_DEV_UART3] = {
         .type = TYPE_OT_UART,
-        .cfg = &ot_earlgrey_soc_uart_configure,
+        .cfg = &ot_eg_soc_uart_configure,
         .instance = 3,
         .memmap = MEMMAPENTRIES(
             { 0x40030000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 25),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 26),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 27),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 28),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 29),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 30),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 31),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 32)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 25),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 26),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 27),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 28),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 29),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 30),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 31),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 32)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_GPIO] = {
+    [OT_EG_SOC_DEV_GPIO] = {
         .type = TYPE_OT_GPIO,
         .name = "ot-gpio",
         .memmap = MEMMAPENTRIES(
             { 0x40040000u, 0x40u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 33),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 34),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 35),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 36),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 37),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 38),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 49),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 40),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 41),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 42),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 43),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 44),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 45),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 46),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 47),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 48),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 59),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 50),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(18, PLIC, 51),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(19, PLIC, 52),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(20, PLIC, 53),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(21, PLIC, 54),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(22, PLIC, 55),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(23, PLIC, 56),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(24, PLIC, 57),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(25, PLIC, 58),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(26, PLIC, 69),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(27, PLIC, 60),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 61),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 62),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 63),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 64)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 33),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 34),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 35),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 36),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 37),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 38),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 49),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 40),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 41),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 42),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 43),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 44),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 45),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 46),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 47),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 48),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 59),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 50),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(18, PLIC, 51),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(19, PLIC, 52),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(20, PLIC, 53),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(21, PLIC, 54),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(22, PLIC, 55),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(23, PLIC, 56),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(24, PLIC, 57),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(25, PLIC, 58),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(26, PLIC, 69),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(27, PLIC, 60),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 61),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 62),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 63),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 64)
         )
     },
-    [OT_EARLGREY_SOC_DEV_SPI_DEVICE] = {
+    [OT_EG_SOC_DEV_SPI_DEVICE] = {
         .type = TYPE_OT_SPI_DEVICE,
         .memmap = MEMMAPENTRIES(
             { 0x40050000u, 0x2000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 65),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 66),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 67),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 68),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 69),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 70),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 71),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 72),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 73),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 74),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 75),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 76)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 65),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 66),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 67),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 68),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 69),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 70),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 71),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 72),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 73),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 74),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 75),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 76)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_BOOL_PROP("dpsram", true)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_I2C0] = {
+    [OT_EG_SOC_DEV_I2C0] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-i2c",
         .cfg = &ibex_unimp_configure,
@@ -395,7 +395,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40080000u, 0x80u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_I2C1] = {
+    [OT_EG_SOC_DEV_I2C1] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-i2c",
         .cfg = &ibex_unimp_configure,
@@ -404,7 +404,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40090000u, 0x80u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_I2C2] = {
+    [OT_EG_SOC_DEV_I2C2] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-i2c",
         .cfg = &ibex_unimp_configure,
@@ -413,7 +413,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x400a0000u, 0x80u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_PATTGEN] = {
+    [OT_EG_SOC_DEV_PATTGEN] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-pattgen",
         .cfg = &ibex_unimp_configure,
@@ -421,45 +421,45 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x400e0000u, 0x40u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_TIMER] = {
+    [OT_EG_SOC_DEV_TIMER] = {
         .type = TYPE_OT_TIMER,
         .memmap = MEMMAPENTRIES(
             { 0x40100000u, 0x200u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO(0, HART, IRQ_M_TIMER),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 124)
+            OT_EG_SOC_GPIO(0, HART, IRQ_M_TIMER),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 124)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_OTP_CTRL] = {
+    [OT_EG_SOC_DEV_OTP_CTRL] = {
         .type = TYPE_OT_OTP_EG,
-        .cfg = &ot_earlgrey_soc_otp_ctrl_configure,
+        .cfg = &ot_eg_soc_otp_ctrl_configure,
         .memmap = MEMMAPENTRIES(
             { 0x40130000u, 0x2000u },
             { 0x40132000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 125),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 126)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 125),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 126)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 1u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_LC_CTRL] = {
+    [OT_EG_SOC_DEV_LC_CTRL] = {
         .type = TYPE_OT_LC_CTRL,
         .memmap = MEMMAPENTRIES(
             { 0x40140000u, 0x100u }
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
-            OT_EARLGREY_SOC_DEVLINK("kmac", KMAC)
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_EG_SOC_DEVLINK("kmac", KMAC)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 4u)
@@ -472,53 +472,53 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             IBEX_DEV_UINT_PROP("kmac-app", 1u)
         )
     },
-    [OT_EARLGREY_SOC_DEV_ALERT_HANDLER] = {
+    [OT_EG_SOC_DEV_ALERT_HANDLER] = {
         .type = TYPE_OT_ALERT_EG,
         .memmap = MEMMAPENTRIES(
             { 0x40150000u, 0x800u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 128),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 129),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 130)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 128),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 129),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 130)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 4u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SPI_HOST0] = {
+    [OT_EG_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_OT_SPI_HOST,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
             { 0x40300000u, 0x40u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 131),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 131),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("bus-num", 0)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SPI_HOST1] = {
+    [OT_EG_SOC_DEV_SPI_HOST1] = {
         .type = TYPE_OT_SPI_HOST,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
             { 0x40310000u, 0x40u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 133),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 134)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 133),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 134)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("bus-num", 1)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_USBDEV] = {
+    [OT_EG_SOC_DEV_USBDEV] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-usbdev",
         .cfg = &ibex_unimp_configure,
@@ -526,20 +526,20 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40320000u, 0x1000u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_PWRMGR] = {
+    [OT_EG_SOC_DEV_PWRMGR] = {
         .type = TYPE_OT_PWRMGR,
         .memmap = MEMMAPENTRIES(
             { 0x40400000u, 0x80u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 152),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 152),
             /* loopback signal since Earlgrey OTP signal are not supported yet*/
-            OT_EARLGREY_SOC_SIGNAL(OT_PWRMGR_OTP_REQ, 0, PWRMGR,
+            OT_EG_SOC_SIGNAL(OT_PWRMGR_OTP_REQ, 0, PWRMGR,
                                    OT_PWRMGR_OTP_RSP, 0),
             /* loopback signal since Earlgrey OTP signal are not supported yet*/
-            OT_EARLGREY_SOC_SIGNAL(OT_PWRMGR_LC_REQ, 0, PWRMGR,
+            OT_EG_SOC_SIGNAL(OT_PWRMGR_LC_REQ, 0, PWRMGR,
                                    OT_PWRMGR_LC_RSP, 0),
-            OT_EARLGREY_SOC_SIGNAL(OT_PWRMGR_CPU_EN, 0, IBEX_WRAPPER,
+            OT_EG_SOC_SIGNAL(OT_PWRMGR_CPU_EN, 0, IBEX_WRAPPER,
                                      OT_IBEX_WRAPPER_CPU_EN,
                                      OT_IBEX_PWRMGR_CPU_EN)
         ),
@@ -547,26 +547,26 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             IBEX_DEV_UINT_PROP("num-rom", 1u)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("rstmgr", RSTMGR)
+            OT_EG_SOC_DEVLINK("rstmgr", RSTMGR)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_RSTMGR] = {
+    [OT_EG_SOC_DEV_RSTMGR] = {
         .type = TYPE_OT_RSTMGR,
         .memmap = MEMMAPENTRIES(
             { 0x40410000u, 0x80u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_SIGNAL(OT_RSTMGR_SW_RST, 0, PWRMGR, \
+            OT_EG_SOC_SIGNAL(OT_RSTMGR_SW_RST, 0, PWRMGR, \
                                    OT_PWRMGR_SW_RST, 0)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_CLKMGR] = {
+    [OT_EG_SOC_DEV_CLKMGR] = {
         .type = TYPE_OT_CLKMGR,
         .memmap = MEMMAPENTRIES(
             { 0x40420000u, 0x80u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SYSRST_CTRL] = {
+    [OT_EG_SOC_DEV_SYSRST_CTRL] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-sysrst_ctrl",
         .cfg = &ibex_unimp_configure,
@@ -574,7 +574,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40430000u, 0x100u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_ADC_CTRL] = {
+    [OT_EG_SOC_DEV_ADC_CTRL] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-adc_ctrl",
         .cfg = &ibex_unimp_configure,
@@ -582,7 +582,7 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40440000u, 0x80u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_PWM] = {
+    [OT_EG_SOC_DEV_PWM] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-pwm",
         .cfg = &ibex_unimp_configure,
@@ -590,44 +590,44 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40450000u, 0x80u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_PINMUX] = {
+    [OT_EG_SOC_DEV_PINMUX] = {
         .type = TYPE_OT_PINMUX,
         .memmap = MEMMAPENTRIES(
             { 0x40460000u, 0x1000u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_AON_TIMER] = {
+    [OT_EG_SOC_DEV_AON_TIMER] = {
         .type = TYPE_OT_AON_TIMER,
         .memmap = MEMMAPENTRIES(
             { 0x40470000u, 0x40u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 156),
-            OT_EARLGREY_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR, \
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 156),
+            OT_EG_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR, \
                                    OT_PWRMGR_WKUP, \
                                    OT_PWRMGR_WAKEUP_AON_TIMER),
-            OT_EARLGREY_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
+            OT_EG_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
                                    OT_PWRMGR_RST,
                                    OT_PWRMGR_RST_AON_TIMER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EARLGREY_AON_CLK_HZ)
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_AON_CLK_HZ)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_AST] = {
+    [OT_EG_SOC_DEV_AST] = {
         .type = TYPE_OT_AST_EG,
         .memmap = MEMMAPENTRIES(
             { 0x40480000u, 0x400u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SENSOR_CTRL] = {
+    [OT_EG_SOC_DEV_SENSOR_CTRL] = {
         .type = TYPE_OT_SENSOR,
         .memmap = MEMMAPENTRIES(
             { 0x40490000u, 0x40u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SRAM_RET_CTRL] = {
+    [OT_EG_SOC_DEV_SRAM_RET_CTRL] = {
         .type = TYPE_OT_SRAM_CTRL,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
@@ -635,94 +635,94 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x40600000u, 0x1000u }
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x1000u),
             IBEX_DEV_STRING_PROP("ot_id", "ret")
         ),
     },
-    [OT_EARLGREY_SOC_DEV_FLASH_CTRL] = {
+    [OT_EG_SOC_DEV_FLASH_CTRL] = {
         .type = TYPE_OT_FLASH,
-        .cfg = &ot_earlgrey_soc_flash_ctrl_configure,
+        .cfg = &ot_eg_soc_flash_ctrl_configure,
         .memmap = MEMMAPENTRIES(
             { 0x41000000u, 0x1000u },
             { 0x41008000u, 0x1000u },
             { 0x20000000u, 0x100000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 159),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 160),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 161),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 162),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 163),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 164)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 159),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 160),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 161),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 162),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 163),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 164)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_AES] = {
+    [OT_EG_SOC_DEV_AES] = {
         .type = TYPE_OT_AES,
         .memmap = MEMMAPENTRIES(
             { 0x41100000u, 0x100u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES)
+            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 5u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_HMAC] = {
+    [OT_EG_SOC_DEV_HMAC] = {
         .type = TYPE_OT_HMAC,
         .memmap = MEMMAPENTRIES(
             { 0x41110000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 165),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 166),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 167),
-            OT_EARLGREY_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 165),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 166),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 167),
+            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_KMAC] = {
+    [OT_EG_SOC_DEV_KMAC] = {
         .type = TYPE_OT_KMAC,
         .memmap = MEMMAPENTRIES(
             { 0x41120000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 168),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 169),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 170)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 168),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 169),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 170)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 3u),
             IBEX_DEV_UINT_PROP("num-app", 3u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_OTBN] = {
+    [OT_EG_SOC_DEV_OTBN] = {
         .type = TYPE_OT_OTBN,
         .memmap = MEMMAPENTRIES(
             { 0x41130000u, 0x10000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 171),
-            OT_EARLGREY_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 171),
+            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("edn-u", EDN0),
-            OT_EARLGREY_SOC_DEVLINK("edn-r", EDN1)
+            OT_EG_SOC_DEVLINK("edn-u", EDN0),
+            OT_EG_SOC_DEVLINK("edn-r", EDN1)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-u-ep", 6u),
             IBEX_DEV_UINT_PROP("edn-r-ep", 0u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_KEYMGR] = {
+    [OT_EG_SOC_DEV_KEYMGR] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-keymgr",
         .cfg = &ibex_unimp_configure,
@@ -730,73 +730,73 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x41140000u, 0x100u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_CSRNG] = {
+    [OT_EG_SOC_DEV_CSRNG] = {
         .type = TYPE_OT_CSRNG,
         .memmap = MEMMAPENTRIES(
             { 0x41150000u, 0x80u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 173),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 174),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 175),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 176)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 173),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 174),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 175),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 176)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("random_src", ENTROPY_SRC),
-            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("random_src", ENTROPY_SRC),
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_ENTROPY_SRC] = {
+    [OT_EG_SOC_DEV_ENTROPY_SRC] = {
         .type = TYPE_OT_ENTROPY_SRC,
         .memmap = MEMMAPENTRIES(
             { 0x41160000u, 0x100u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 177),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 178),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 179),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 180)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 177),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 178),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 179),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 180)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("ast", AST),
-            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("ast", AST),
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_EDN0] = {
+    [OT_EG_SOC_DEV_EDN0] = {
         .type = TYPE_OT_EDN,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
             { 0x41170000u, 0x80u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 181),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 182)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 181),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 182)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("csrng", CSRNG)
+            OT_EG_SOC_DEVLINK("csrng", CSRNG)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("csrng-app", 0u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_EDN1] = {
+    [OT_EG_SOC_DEV_EDN1] = {
         .type = TYPE_OT_EDN,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
             { 0x41180000u, 0x80u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 183),
-            OT_EARLGREY_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 184)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 183),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 184)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("csrng", CSRNG)
+            OT_EG_SOC_DEVLINK("csrng", CSRNG)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("csrng-app", 1u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_SRAM_MAIN_CTRL] = {
+    [OT_EG_SOC_DEV_SRAM_MAIN_CTRL] = {
         .type = TYPE_OT_SRAM_CTRL,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
@@ -804,14 +804,14 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x10000000u, 0x20000u }
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x20000u),
             IBEX_DEV_STRING_PROP("ot_id", "ram")
         ),
     },
-    [OT_EARLGREY_SOC_DEV_ROM_CTRL] = {
+    [OT_EG_SOC_DEV_ROM_CTRL] = {
         .type = TYPE_OT_ROM_CTRL,
         .name = "ot-rom_ctrl",
         .memmap = MEMMAPENTRIES(
@@ -819,13 +819,13 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x00008000u, 0x8000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR, \
+            OT_EG_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR, \
                                    OT_PWRMGR_ROM_GOOD, 0),
-            OT_EARLGREY_SOC_SIGNAL(OT_ROM_CTRL_DONE, 0, PWRMGR, \
+            OT_EG_SOC_SIGNAL(OT_ROM_CTRL_DONE, 0, PWRMGR, \
                                    OT_PWRMGR_ROM_DONE, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("kmac", KMAC)
+            OT_EG_SOC_DEVLINK("kmac", KMAC)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("ot_id", "rom"),
@@ -833,19 +833,19 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             IBEX_DEV_UINT_PROP("kmac-app", 2u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_IBEX_WRAPPER] = {
+    [OT_EG_SOC_DEV_IBEX_WRAPPER] = {
         .type = TYPE_OT_IBEX_WRAPPER_EG,
         .memmap = MEMMAPENTRIES(
             { 0x411f0000u, 0x100u }
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EARLGREY_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 7u)
         ),
     },
-    [OT_EARLGREY_SOC_DEV_RV_DM] = {
+    [OT_EG_SOC_DEV_RV_DM] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-rv_dm",
         .cfg = &ibex_unimp_configure,
@@ -853,13 +853,13 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
             { 0x41200000u, 0x4u }
         ),
     },
-    [OT_EARLGREY_SOC_DEV_PLIC] = {
+    [OT_EG_SOC_DEV_PLIC] = {
         .type = TYPE_SIFIVE_PLIC,
         .memmap = MEMMAPENTRIES(
             { 0x48000000u, 0x8000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EARLGREY_SOC_GPIO(1, HART, IRQ_M_EXT)
+            OT_EG_SOC_GPIO(1, HART, IRQ_M_EXT)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("hart-config", "M"),
@@ -879,35 +879,35 @@ static const IbexDeviceDef ot_earlgrey_soc_devices[] = {
     /* clang-format on */
 };
 
-enum OtEarlGreyBoardDevice {
-    OT_EARLGREY_BOARD_DEV_SOC,
-    OT_EARLGREY_BOARD_DEV_FLASH,
-    _OT_EARLGREY_BOARD_DEV_COUNT,
+enum OtEGBoardDevice {
+    OT_EG_BOARD_DEV_SOC,
+    OT_EG_BOARD_DEV_FLASH,
+    OT_EG_BOARD_DEV_COUNT,
 };
 
 /* ------------------------------------------------------------------------ */
 /* Type definitions */
 /* ------------------------------------------------------------------------ */
 
-struct OtEarlGreySoCClass {
+struct OtEGSoCClass {
     DeviceClass parent_class;
     DeviceRealize parent_realize;
     ResettablePhases parent_phases;
 };
 
-struct OtEarlGreySoCState {
+struct OtEGSoCState {
     SysBusDevice parent_obj;
 
     DeviceState **devices;
 };
 
-struct OtEarlGreyBoardState {
+struct OtEGBoardState {
     DeviceState parent_obj;
 
     DeviceState **devices;
 };
 
-struct OtEarlGreyMachineState {
+struct OtEGMachineState {
     MachineState parent_obj;
 
     bool no_epmp_cfg;
@@ -917,7 +917,7 @@ struct OtEarlGreyMachineState {
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
 
-static void ot_earlgrey_soc_flash_ctrl_configure(
+static void ot_eg_soc_flash_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
     DriveInfo *dinfo = drive_get(IF_MTD, 1, 0);
@@ -930,10 +930,10 @@ static void ot_earlgrey_soc_flash_ctrl_configure(
     }
 }
 
-static void ot_earlgrey_soc_hart_configure(
-    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                     DeviceState *parent)
 {
-    OtEarlGreyMachineState *ms = RISCV_OT_EARLGREY_MACHINE(qdev_get_machine());
+    OtEGMachineState *ms = RISCV_OT_EG_MACHINE(qdev_get_machine());
     QList *pmp_cfg, *pmp_addr;
     (void)def;
     (void)parent;
@@ -944,21 +944,21 @@ static void ot_earlgrey_soc_hart_configure(
     }
 
     pmp_cfg = qlist_new();
-    for (unsigned ix = 0; ix < ARRAY_SIZE(ot_earlgrey_pmp_cfgs); ix++) {
-        qlist_append_int(pmp_cfg, ot_earlgrey_pmp_cfgs[ix]);
+    for (unsigned ix = 0; ix < ARRAY_SIZE(ot_eg_pmp_cfgs); ix++) {
+        qlist_append_int(pmp_cfg, ot_eg_pmp_cfgs[ix]);
     }
     qdev_prop_set_array(dev, "pmp_cfg", pmp_cfg);
 
     pmp_addr = qlist_new();
-    for (unsigned ix = 0; ix < ARRAY_SIZE(ot_earlgrey_pmp_addrs); ix++) {
-        qlist_append_int(pmp_addr, ot_earlgrey_pmp_addrs[ix]);
+    for (unsigned ix = 0; ix < ARRAY_SIZE(ot_eg_pmp_addrs); ix++) {
+        qlist_append_int(pmp_addr, ot_eg_pmp_addrs[ix]);
     }
     qdev_prop_set_array(dev, "pmp_addr", pmp_addr);
 
-    qdev_prop_set_uint64(dev, "mseccfg", (uint64_t)OT_EARLGREY_MSECCFG);
+    qdev_prop_set_uint64(dev, "mseccfg", (uint64_t)OT_EG_MSECCFG);
 }
 
-static void ot_earlgrey_soc_otp_ctrl_configure(
+static void ot_eg_soc_otp_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
     DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
@@ -971,8 +971,8 @@ static void ot_earlgrey_soc_otp_ctrl_configure(
     }
 }
 
-static void ot_earlgrey_soc_uart_configure(
-    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+static void ot_eg_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                     DeviceState *parent)
 {
     (void)def;
     (void)parent;
@@ -983,114 +983,113 @@ static void ot_earlgrey_soc_uart_configure(
 /* SoC */
 /* ------------------------------------------------------------------------ */
 
-static void ot_earlgrey_soc_reset_hold(Object *obj)
+static void ot_eg_soc_reset_hold(Object *obj)
 {
-    OtEarlGreySoCClass *c = RISCV_OT_EARLGREY_SOC_GET_CLASS(obj);
-    OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(obj);
+    OtEGSoCClass *c = RISCV_OT_EG_SOC_GET_CLASS(obj);
+    OtEGSoCState *s = RISCV_OT_EG_SOC(obj);
 
     if (c->parent_phases.hold) {
         c->parent_phases.hold(obj);
     }
 
     /* keep ROM_CTRL in reset, we'll release it last */
-    resettable_assert_reset(OBJECT(s->devices[OT_EARLGREY_SOC_DEV_ROM_CTRL]),
+    resettable_assert_reset(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]),
                             RESET_TYPE_COLD);
 
     /*
      * leave hart on reset
      * power manager should release it once ROM has been validated
      */
-    CPUState *cs = CPU(s->devices[OT_EARLGREY_SOC_DEV_HART]);
+    CPUState *cs = CPU(s->devices[OT_EG_SOC_DEV_HART]);
     resettable_assert_reset(OBJECT(cs), RESET_TYPE_COLD);
 }
 
-static void ot_earlgrey_soc_reset_exit(Object *obj)
+static void ot_eg_soc_reset_exit(Object *obj)
 {
-    OtEarlGreySoCClass *c = RISCV_OT_EARLGREY_SOC_GET_CLASS(obj);
-    OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(obj);
+    OtEGSoCClass *c = RISCV_OT_EG_SOC_GET_CLASS(obj);
+    OtEGSoCState *s = RISCV_OT_EG_SOC(obj);
 
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj);
     }
 
     /* let ROM_CTRL get out of reset now */
-    resettable_release_reset(OBJECT(s->devices[OT_EARLGREY_SOC_DEV_ROM_CTRL]),
+    resettable_release_reset(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]),
                              RESET_TYPE_COLD);
 }
 
-static void ot_earlgrey_soc_realize(DeviceState *dev, Error **errp)
+static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 {
-    OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(dev);
+    OtEGSoCState *s = RISCV_OT_EG_SOC(dev);
     (void)errp;
 
     /* Link, define properties and realize devices, then connect GPIOs */
     BusState *bus = sysbus_get_default();
     ibex_configure_devices_with_id(s->devices, bus, "ot_id", "", false,
-                                   ot_earlgrey_soc_devices,
-                                   ARRAY_SIZE(ot_earlgrey_soc_devices));
+                                   ot_eg_soc_devices,
+                                   ARRAY_SIZE(ot_eg_soc_devices));
 
     MemoryRegion *mrs[] = { get_system_memory(), NULL, NULL, NULL };
-    ibex_map_devices(s->devices, mrs, ot_earlgrey_soc_devices,
-                     ARRAY_SIZE(ot_earlgrey_soc_devices));
+    ibex_map_devices(s->devices, mrs, ot_eg_soc_devices,
+                     ARRAY_SIZE(ot_eg_soc_devices));
 
     /* load kernel if provided */
     ibex_load_kernel(NULL);
 }
 
-static void ot_earlgrey_soc_init(Object *obj)
+static void ot_eg_soc_init(Object *obj)
 {
-    OtEarlGreySoCState *s = RISCV_OT_EARLGREY_SOC(obj);
+    OtEGSoCState *s = RISCV_OT_EG_SOC(obj);
 
-    s->devices =
-        ibex_create_devices(ot_earlgrey_soc_devices,
-                            ARRAY_SIZE(ot_earlgrey_soc_devices), DEVICE(s));
+    s->devices = ibex_create_devices(ot_eg_soc_devices,
+                                     ARRAY_SIZE(ot_eg_soc_devices), DEVICE(s));
 }
 
-static void ot_earlgrey_soc_class_init(ObjectClass *oc, void *data)
+static void ot_eg_soc_class_init(ObjectClass *oc, void *data)
 {
-    OtEarlGreySoCClass *sc = RISCV_OT_EARLGREY_SOC_CLASS(oc);
+    OtEGSoCClass *sc = RISCV_OT_EG_SOC_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
     ResettableClass *rc = RESETTABLE_CLASS(dc);
     (void)data;
 
-    resettable_class_set_parent_phases(rc, NULL, &ot_earlgrey_soc_reset_hold,
-                                       &ot_earlgrey_soc_reset_exit,
+    resettable_class_set_parent_phases(rc, NULL, &ot_eg_soc_reset_hold,
+                                       &ot_eg_soc_reset_exit,
                                        &sc->parent_phases);
-    dc->realize = &ot_earlgrey_soc_realize;
+    dc->realize = &ot_eg_soc_realize;
     dc->user_creatable = false;
 }
 
-static const TypeInfo ot_earlgrey_soc_type_info = {
-    .name = TYPE_RISCV_OT_EARLGREY_SOC,
+static const TypeInfo ot_eg_soc_type_info = {
+    .name = TYPE_RISCV_OT_EG_SOC,
     .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(OtEarlGreySoCState),
-    .instance_init = &ot_earlgrey_soc_init,
-    .class_init = &ot_earlgrey_soc_class_init,
-    .class_size = sizeof(OtEarlGreySoCClass),
+    .instance_size = sizeof(OtEGSoCState),
+    .instance_init = &ot_eg_soc_init,
+    .class_init = &ot_eg_soc_class_init,
+    .class_size = sizeof(OtEGSoCClass),
 };
 
-static void ot_earlgrey_soc_register_types(void)
+static void ot_eg_soc_register_types(void)
 {
-    type_register_static(&ot_earlgrey_soc_type_info);
+    type_register_static(&ot_eg_soc_type_info);
 }
 
-type_init(ot_earlgrey_soc_register_types);
+type_init(ot_eg_soc_register_types);
 
 /* ------------------------------------------------------------------------ */
 /* Board */
 /* ------------------------------------------------------------------------ */
 
-static void ot_earlgrey_board_realize(DeviceState *dev, Error **errp)
+static void ot_eg_board_realize(DeviceState *dev, Error **errp)
 {
-    OtEarlGreyBoardState *board = RISCV_OT_EARLGREY_BOARD(dev);
+    OtEGBoardState *board = RISCV_OT_EG_BOARD(dev);
 
-    DeviceState *soc = board->devices[OT_EARLGREY_BOARD_DEV_SOC];
+    DeviceState *soc = board->devices[OT_EG_BOARD_DEV_SOC];
     object_property_add_child(OBJECT(board), "soc", OBJECT(soc));
     sysbus_realize_and_unref(SYS_BUS_DEVICE(soc), &error_fatal);
 
     DeviceState *spihost =
-        RISCV_OT_EARLGREY_SOC(soc)->devices[OT_EARLGREY_SOC_DEV_SPI_HOST0];
-    DeviceState *flash = board->devices[OT_EARLGREY_BOARD_DEV_FLASH];
+        RISCV_OT_EG_SOC(soc)->devices[OT_EG_SOC_DEV_SPI_HOST0];
+    DeviceState *flash = board->devices[OT_EG_BOARD_DEV_FLASH];
     BusState *spibus = qdev_get_child_bus(spihost, "spi0");
     g_assert(spibus);
 
@@ -1106,107 +1105,103 @@ static void ot_earlgrey_board_realize(DeviceState *dev, Error **errp)
     qdev_connect_gpio_out_named(spihost, SSI_GPIO_CS, 0, cs);
 }
 
-static void ot_earlgrey_board_init(Object *obj)
+static void ot_eg_board_init(Object *obj)
 {
-    OtEarlGreyBoardState *s = RISCV_OT_EARLGREY_BOARD(obj);
+    OtEGBoardState *s = RISCV_OT_EG_BOARD(obj);
 
-    s->devices = g_new0(DeviceState *, _OT_EARLGREY_BOARD_DEV_COUNT);
-    s->devices[OT_EARLGREY_BOARD_DEV_SOC] =
-        qdev_new(TYPE_RISCV_OT_EARLGREY_SOC);
-    s->devices[OT_EARLGREY_BOARD_DEV_FLASH] = qdev_new("is25wp128");
+    s->devices = g_new0(DeviceState *, OT_EG_BOARD_DEV_COUNT);
+    s->devices[OT_EG_BOARD_DEV_SOC] = qdev_new(TYPE_RISCV_OT_EG_SOC);
+    s->devices[OT_EG_BOARD_DEV_FLASH] = qdev_new("is25wp128");
 }
 
-static void ot_earlgrey_board_class_init(ObjectClass *oc, void *data)
+static void ot_eg_board_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     (void)data;
 
-    dc->realize = &ot_earlgrey_board_realize;
+    dc->realize = &ot_eg_board_realize;
 }
 
-static const TypeInfo ot_earlgrey_board_type_info = {
-    .name = TYPE_RISCV_OT_EARLGREY_BOARD,
+static const TypeInfo ot_eg_board_type_info = {
+    .name = TYPE_RISCV_OT_EG_BOARD,
     .parent = TYPE_DEVICE,
-    .instance_size = sizeof(OtEarlGreyBoardState),
-    .instance_init = &ot_earlgrey_board_init,
-    .class_init = &ot_earlgrey_board_class_init,
+    .instance_size = sizeof(OtEGBoardState),
+    .instance_init = &ot_eg_board_init,
+    .class_init = &ot_eg_board_class_init,
 };
 
-static void ot_earlgrey_board_register_types(void)
+static void ot_eg_board_register_types(void)
 {
-    type_register_static(&ot_earlgrey_board_type_info);
+    type_register_static(&ot_eg_board_type_info);
 }
 
-type_init(ot_earlgrey_board_register_types);
+type_init(ot_eg_board_register_types);
 
 /* ------------------------------------------------------------------------ */
 /* Machine */
 /* ------------------------------------------------------------------------ */
 
-static bool ot_earlgrey_machine_get_no_epmp_cfg(Object *obj, Error **errp)
+static bool ot_eg_machine_get_no_epmp_cfg(Object *obj, Error **errp)
 {
-    OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
     (void)errp;
 
     return s->no_epmp_cfg;
 }
 
-static void
-ot_earlgrey_machine_set_no_epmp_cfg(Object *obj, bool value, Error **errp)
+static void ot_eg_machine_set_no_epmp_cfg(Object *obj, bool value, Error **errp)
 {
-    OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
     (void)errp;
 
     s->no_epmp_cfg = value;
 }
 
-static void ot_earlgrey_machine_instance_init(Object *obj)
+static void ot_eg_machine_instance_init(Object *obj)
 {
-    OtEarlGreyMachineState *s = RISCV_OT_EARLGREY_MACHINE(obj);
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
 
     s->no_epmp_cfg = false;
-    object_property_add_bool(obj, "no-epmp-cfg",
-                             &ot_earlgrey_machine_get_no_epmp_cfg,
-                             &ot_earlgrey_machine_set_no_epmp_cfg);
+    object_property_add_bool(obj, "no-epmp-cfg", &ot_eg_machine_get_no_epmp_cfg,
+                             &ot_eg_machine_set_no_epmp_cfg);
     object_property_set_description(obj, "no-epmp-cfg",
                                     "Skip default ePMP configuration");
 }
 
-static void ot_earlgrey_machine_init(MachineState *state)
+static void ot_eg_machine_init(MachineState *state)
 {
-    DeviceState *dev = qdev_new(TYPE_RISCV_OT_EARLGREY_BOARD);
+    DeviceState *dev = qdev_new(TYPE_RISCV_OT_EG_BOARD);
 
     object_property_add_child(OBJECT(state), "board", OBJECT(dev));
     qdev_realize(dev, NULL, &error_fatal);
 }
 
-static void ot_earlgrey_machine_class_init(ObjectClass *oc, void *data)
+static void ot_eg_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     (void)data;
 
     mc->desc = "RISC-V Board compatible with OpenTitan EarlGrey FPGA platform";
-    mc->init = ot_earlgrey_machine_init;
+    mc->init = ot_eg_machine_init;
     mc->max_cpus = 1u;
-    mc->default_cpu_type =
-        ot_earlgrey_soc_devices[OT_EARLGREY_SOC_DEV_HART].type;
+    mc->default_cpu_type = ot_eg_soc_devices[OT_EG_SOC_DEV_HART].type;
     const IbexDeviceDef *sram =
-        &ot_earlgrey_soc_devices[OT_EARLGREY_SOC_DEV_SRAM_MAIN_CTRL];
+        &ot_eg_soc_devices[OT_EG_SOC_DEV_SRAM_MAIN_CTRL];
     mc->default_ram_id = sram->type;
     mc->default_ram_size = sram->memmap[1].size;
 }
 
-static const TypeInfo ot_earlgrey_machine_type_info = {
-    .name = TYPE_RISCV_OT_EARLGREY_MACHINE,
+static const TypeInfo ot_eg_machine_type_info = {
+    .name = TYPE_RISCV_OT_EG_MACHINE,
     .parent = TYPE_MACHINE,
-    .instance_size = sizeof(OtEarlGreyMachineState),
-    .instance_init = &ot_earlgrey_machine_instance_init,
-    .class_init = &ot_earlgrey_machine_class_init,
+    .instance_size = sizeof(OtEGMachineState),
+    .instance_init = &ot_eg_machine_instance_init,
+    .class_init = &ot_eg_machine_class_init,
 };
 
-static void ot_earlgrey_machine_register_types(void)
+static void ot_eg_machine_register_types(void)
 {
-    type_register_static(&ot_earlgrey_machine_type_info);
+    type_register_static(&ot_eg_machine_type_info);
 }
 
-type_init(ot_earlgrey_machine_register_types);
+type_init(ot_eg_machine_register_types);

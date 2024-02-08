@@ -24,14 +24,13 @@
 
 #include "qom/object.h"
 
-#define TYPE_RISCV_OT_EARLGREY_MACHINE MACHINE_TYPE_NAME("ot-earlgrey")
-OBJECT_DECLARE_SIMPLE_TYPE(OtEarlGreyMachineState, RISCV_OT_EARLGREY_MACHINE)
+#define TYPE_RISCV_OT_EG_MACHINE MACHINE_TYPE_NAME("ot-earlgrey")
+OBJECT_DECLARE_SIMPLE_TYPE(OtEGMachineState, RISCV_OT_EG_MACHINE)
 
-#define TYPE_RISCV_OT_EARLGREY_BOARD "riscv.ot_earlgrey.board"
-OBJECT_DECLARE_SIMPLE_TYPE(OtEarlGreyBoardState, RISCV_OT_EARLGREY_BOARD)
+#define TYPE_RISCV_OT_EG_BOARD "riscv.ot_earlgrey.board"
+OBJECT_DECLARE_SIMPLE_TYPE(OtEGBoardState, RISCV_OT_EG_BOARD)
 
-#define TYPE_RISCV_OT_EARLGREY_SOC "riscv.ot_earlgrey.soc"
-OBJECT_DECLARE_TYPE(OtEarlGreySoCState, OtEarlGreySoCClass,
-                    RISCV_OT_EARLGREY_SOC)
+#define TYPE_RISCV_OT_EG_SOC "riscv.ot_earlgrey.soc"
+OBJECT_DECLARE_TYPE(OtEGSoCState, OtEGSoCClass, RISCV_OT_EG_SOC)
 
 #endif /* HW_RISCV_OT_EARLGREY_H */
