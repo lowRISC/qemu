@@ -260,6 +260,7 @@ static void riscv_dmi_tap_dtmcs_update(TAPDataHandler *tdh)
     RISCVDMIState *s = tdh->opaque;
     if (tdh->value & (1u << 16u)) {
         /* dmireset */
+        trace_riscv_dmi_dtmcs_reset();
         s->dmistat = RISCV_DEBUG_NOERR;
     }
     if (tdh->value & (1u << 17u)) {
