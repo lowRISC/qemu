@@ -55,7 +55,7 @@
  * Type definitions
  */
 
-typedef enum _TAPState {
+typedef enum {
     TEST_LOGIC_RESET,
     RUN_TEST_IDLE,
     SELECT_DR_SCAN,
@@ -74,6 +74,8 @@ typedef enum _TAPState {
     UPDATE_IR,
     _TAP_STATE_COUNT
 } TAPState;
+
+typedef enum { TAPCTRL_BYPASS = 0, TAPCTRL_IDCODE = 1 } TAPCtrlKnownIrCodes;
 
 typedef TAPDataHandler *tapctrl_data_reg_extender_t(uint64_t value);
 
@@ -96,8 +98,6 @@ typedef struct _TAPController {
     TAPDataHandler *tdh; /* Current data register handler */
     TAPDataHandler *tdhs; /* Registered handlers */
     /* buffer */
-    uint8_t *outbuf; /* TDO output */
-    size_t outpos; /* Meaningful count of bytes in outbuf */
 } TAPController;
 
 typedef struct _TAPRegisterState {
@@ -110,11 +110,6 @@ typedef struct _TAPProcess {
     uint32_t pid;
     bool attached;
 } TAPProcess;
-
-enum RSState {
-    RS_INACTIVE,
-    RS_IDLE,
-};
 
 typedef struct _TAPServerState {
     TAPController *tap;
@@ -172,15 +167,19 @@ static const char TAPFSM_NAMES[_TAP_STATE_COUNT][18U] = {
     NAME_FSMSTATE(EXIT2_IR),         NAME_FSMSTATE(UPDATE_IR),
 };
 
+static void tapctrl_idcode_capture(TAPDataHandler *tdh);
+
 /* Common TAP instructions */
 static const TAPDataHandler tapctrl_bypass = {
     .name = "bypass",
     .length = 1,
     .value = 0,
 };
+
 static const TAPDataHandler tapctrl_idcode = {
     .name = "idcode",
     .length = 32,
+    .capture = &tapctrl_idcode_capture,
 };
 
 /*
@@ -208,7 +207,13 @@ static void tapctrl_dump_register(const char *msg, uint64_t value,
     }
     buf[ix] = '\0';
 
-    trace_jtag_tapctr_dump_register(msg, value, length, buf);
+    trace_jtag_tapctrl_dump_register(msg, value, length, buf);
+}
+
+static void tapctrl_idcode_capture(TAPDataHandler *tdh)
+{
+    /* special case for ID code: opaque contains the ID code value */
+    tdh->value = (uint64_t)(uintptr_t)tdh->opaque;
 }
 
 static void tapctrl_reset(TAPController *tap)
@@ -225,7 +230,6 @@ static void tapctrl_reset(TAPController *tap)
     tap->dr = 0u;
     tap->dr_len = 0u;
     tap->tdh = &tap->tdhs[tap->ir];
-    tap->outpos = 0u;
 }
 
 static void tapctrl_register_handler(TAPController *tap, unsigned code,
@@ -241,26 +245,23 @@ static void tapctrl_register_handler(TAPController *tap, unsigned code,
 
 static void tapctrl_init(TAPController *tap, size_t irlength, uint32_t idcode)
 {
+    trace_jtag_tapctrl_init(irlength, idcode);
+
     tap->ir_len = irlength;
     tapctrl_reset(tap);
-    if (!tap->outbuf) {
-        tap->outbuf = g_new0(uint8_t, MAX_PACKET_LENGTH);
-        tap->outpos = 0;
-    }
     if (!tap->tdhs) {
         size_t irslots = 1u << irlength;
         tap->tdhs = g_new0(TAPDataHandler, irslots);
-        tapctrl_register_handler(tap, 0x00, &tapctrl_bypass);
-        tapctrl_register_handler(tap, 0x01, &tapctrl_idcode);
+        tapctrl_register_handler(tap, TAPCTRL_BYPASS, &tapctrl_bypass);
+        tapctrl_register_handler(tap, TAPCTRL_IDCODE, &tapctrl_idcode);
         tapctrl_register_handler(tap, irslots - 1u, &tapctrl_bypass);
-        tap->tdhs[0x01].value = idcode;
+        /* special case for ID code: opaque store the constant idcode value */
+        tap->tdhs[TAPCTRL_IDCODE].opaque = (void *)(uintptr_t)idcode;
     }
 }
 
 static void tapctrl_deinit(TAPController *tap)
 {
-    g_free(tap->outbuf);
-    tap->outbuf = NULL;
     if (tap->tdhs) {
         unsigned irslots = 1 << tap->ir_len;
         for (unsigned ix = 0; ix < irslots; ix++) {
@@ -272,6 +273,7 @@ static void tapctrl_deinit(TAPController *tap)
     }
     g_free(tap->tdhs);
     tap->tdhs = NULL;
+    tap->tdh = NULL;
 }
 
 static TAPState tapctrl_get_next_state(TAPController *tap, bool tms)
@@ -317,7 +319,7 @@ static void tapctrl_capture_dr(TAPController *tap, uint64_t value)
     }
 
     if (tdh != prev) {
-        trace_jtag_tapctr_select_dr(tdh->name, value);
+        trace_jtag_tapctrl_select_dr(tdh->name, value);
     }
 
     tap->tdh = tdh;
@@ -408,7 +410,7 @@ static void tapctrl_bb_blink(TAPController *tap, bool light) {}
 
 static void tapctrl_bb_read(TAPController *tap)
 {
-    tap->outbuf[tap->outpos++] = '0' + (unsigned)tap->tdo;
+    (void)tap;
 }
 
 static void tapctrl_bb_quit(TAPController *tap)
@@ -435,7 +437,7 @@ static void tapctrl_bb_reset(TAPController *tap, bool trst, bool srst)
  * TAP Server implementation
  */
 
-static void tap_read_byte(uint8_t ch)
+static bool tap_read_byte(uint8_t ch)
 {
     switch ((char)ch) {
     case 'B':
@@ -491,6 +493,9 @@ static void tap_read_byte(uint8_t ch)
                       (unsigned)ch);
         break;
     }
+
+    /* true if TDO level should be sent to the peer */
+    return (int)ch == 'R';
 }
 
 static int tap_chr_can_receive(void *opaque)
@@ -504,12 +509,11 @@ static void tap_chr_receive(void *opaque, const uint8_t *buf, int size)
     TAPServerState *s = (TAPServerState *)opaque;
 
     for (unsigned ix = 0; ix < size; ix++) {
-        tap_read_byte(buf[ix]);
-    }
-
-    if (s->tap->outpos) {
-        qemu_chr_fe_write_all(&s->chr, s->tap->outbuf, (int)s->tap->outpos);
-        s->tap->outpos = 0u;
+        if (tap_read_byte(buf[ix])) {
+            const TAPController *tap = s->tap;
+            uint8_t outbuf[1] = { '0' + (unsigned)tap->tdo };
+            qemu_chr_fe_write_all(&s->chr, outbuf, (int)sizeof(outbuf));
+        }
     }
 }
 

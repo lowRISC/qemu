@@ -1,8 +1,10 @@
-# JTAG
-jtag_tapctrl_register(unsigned code, const char *name) "register %u: %s"
-jtag_tapctrl_reset(bool tap, bool sys) "tap: %u, system: %u"
-jtag_tapctrl_change_state(const char *prev, const char *new) "%s -> %s"
+# jtag_bitbang.c
+
 jtag_tapctrl_change(const char *msg, const char *value) "%s %s"
+jtag_tapctrl_change_state(const char *prev, const char *new) "%s -> %s"
+jtag_tapctrl_dump_register(const char *msg, uint64_t val, size_t len, const char *buf) "%s: 0x%016" PRIx64 "/%zu [%s]"
+jtag_tapctrl_init(size_t irlen, uint32_t ircode) "irlength %zu, idcode 0x%08x"
+jtag_tapctrl_register(unsigned code, const char *name) "register 0x%x: %s"
+jtag_tapctrl_reset(bool tap, bool sys) "tap: %u, system: %u"
+jtag_tapctrl_select_dr(const char *name, uint64_t value) "Select DR %s 0x%02" PRIx64
 jtag_tapctrl_step(bool tck, bool tms, bool tdi) "tck:%u tms:%u tdi:%u"
-jtag_tapctr_dump_register(const char *msg, uint64_t val, size_t len, const char *buf) "%s: 0x%016" PRIx64 "/%zu [%s]"
-jtag_tapctr_select_dr(const char *name, uint64_t value) "Select DR %s 0x%02" PRIx64
