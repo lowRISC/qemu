@@ -209,6 +209,7 @@ typedef struct {
 } OtPwrMgrRomStatus;
 
 typedef enum {
+    OT_PWRMGR_NO_DOMAIN,
     OT_PWRMGR_SLOW_DOMAIN,
     OT_PWRMGR_FAST_DOMAIN,
 } OtPwrMgrClockDomain;
@@ -436,9 +437,12 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
         if (s->regs[R_RESET_STATUS]) {
             /* do nothing if a reset is already in progress */
             /* TODO: is it true for HW vs. SW request ?*/
+            trace_ot_pwrmgr_ignore_req("reset on-going");
             return;
         }
         s->regs[R_RESET_STATUS] |= rstmask;
+
+        g_assert(s->reset_req.domain == OT_PWRMGR_NO_DOMAIN);
 
         switch (irq) {
         case OT_PWRMGR_RST_SYSRST:
@@ -481,9 +485,13 @@ static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
 
         if (s->regs[R_RESET_STATUS]) {
             /* do nothing if a reset is already in progress */
+            trace_ot_pwrmgr_ignore_req("reset on-going");
             return;
         }
+
         s->regs[R_RESET_STATUS] |= rstbit;
+
+        g_assert(s->reset_req.domain == OT_PWRMGR_NO_DOMAIN);
 
         s->reset_req.req = OT_RSTMGR_RESET_SW;
         s->reset_req.domain = OT_PWRMGR_FAST_DOMAIN;
@@ -593,6 +601,7 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         PWR_CHANGE_FAST_STATE(s, RESET_WAIT);
         ot_rstmgr_reset_req(s->rstmgr, (bool)s->reset_req.domain,
                             s->reset_req.req);
+        s->reset_req.domain = OT_PWRMGR_NO_DOMAIN;
         break;
     /* NOLINTNEXTLINE */
     case OT_PWR_FAST_ST_RESET_WAIT:
