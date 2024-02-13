@@ -303,6 +303,7 @@ ot_rstmgr_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_
 ot_rstmgr_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_rstmgr_reset(void) ""
 ot_rstmgr_reset_req(const char *req, unsigned reqix, bool fastclk) "%s(%u) @%u"
+ot_rstmgr_sw_reset(const char *devpath) "SW reset %s"
 ot_rstmgr_sw_rst(const char *path, bool reset) "%s: reset:%u"
 
 # ot_sensor.c

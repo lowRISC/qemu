@@ -47,6 +47,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "sysemu/hw_accel.h"
 #include "trace.h"
 
 
@@ -151,6 +152,8 @@ struct OtRstMgrState {
     MemoryRegion mmio;
     IbexIRQ sw_reset;
     IbexIRQ alert;
+    QEMUBH *bus_reset_bh;
+    CPUState *cpu;
 
     uint32_t *regs;
 
@@ -208,16 +211,35 @@ void ot_rstmgr_reset_req(OtRstMgrState *s, bool fastclk, OtRstMgrResetReq req)
 
     trace_ot_rstmgr_reset_req(REQ_NAME(req), req, fastclk);
 
-    /*
-     * Reset all devices connected to RSTMGR parent bus, i.e. OpenTitan devices
-     * TODO: manage reset tree (depending on power domains, etc.)
-     */
-    bus_cold_reset(s->parent_obj.parent_obj.parent_bus);
+    qemu_bh_schedule(s->bus_reset_bh);
 }
 
 /* -------------------------------------------------------------------------- */
 /* Private implementation */
 /* -------------------------------------------------------------------------- */
+
+static void ot_rstmgr_reset_bus(void *opaque)
+{
+    OtRstMgrState *s = opaque;
+
+    /* request the vCPU to stop */
+    s->cpu->stop = true;
+
+    /* wait for the vCPU to stop */
+    while (!s->cpu->stopped) {
+        qemu_mutex_unlock_iothread();
+        qemu_cpu_kick(s->cpu);
+        qemu_mutex_lock_iothread();
+    }
+    qemu_notify_event();
+
+    cpu_synchronize_state(s->cpu);
+    /* Reset all OpenTitan devices connected to RSTMGR parent bus */
+    bus_cold_reset(s->parent_obj.parent_obj.parent_bus);
+    cpu_synchronize_post_reset(s->cpu);
+
+    /* TODO: manage reset tree (depending on power domains, etc.) */
+}
 
 static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
 {
@@ -249,8 +271,8 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
 
     const OtRstMgrResettable *rst = &SW_RESETTABLE_DEVICES[devix];
     if (!rst->typename) {
-        qemu_log_mask(LOG_UNIMP, "Reset for slot %u not yet implemented",
-                      devix);
+        qemu_log_mask(LOG_UNIMP, "%s: Reset for slot %u not yet implemented",
+                      __func__, devix);
         return;
     }
 
@@ -259,13 +281,15 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
     desc.path = g_strdup_printf("%s[%d]", rst->typename, rst->idx);
     desc.reset = !s->regs[R_SW_RST_CTRL_N_0 + devix];
 
+    trace_ot_rstmgr_sw_reset(desc.path);
+
     /* search for the device on the same local bus */
     int res =
         qbus_walk_children(s->parent_obj.parent_obj.parent_bus,
                            &ot_rstmgr_sw_rst_walker, NULL, NULL, NULL, &desc);
     if (res >= 0) {
-        qemu_log_mask(LOG_GUEST_ERROR, "rstmgr: unable to locate device %s",
-                      desc.path);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Unable to locate device %s",
+                      __func__, desc.path);
     }
 
     g_free(desc.path);
@@ -459,6 +483,15 @@ static void ot_rstmgr_reset(DeviceState *dev)
 
     trace_ot_rstmgr_reset();
 
+    if (!s->cpu) {
+        CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));
+        if (!cpu) {
+            error_setg(&error_fatal, "Could not find the associated vCPU");
+            g_assert_not_reached();
+        }
+        s->cpu = cpu;
+    }
+
     s->regs[R_RESET_REQ] = OT_MULTIBITBOOL4_FALSE;
     if (s->por) {
         memset(s->regs, 0, REGS_SIZE);
@@ -494,6 +527,8 @@ static void ot_rstmgr_init(Object *obj)
 
     ibex_qdev_init_irq(obj, &s->sw_reset, OT_RSTMGR_SW_RST);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+
+    s->bus_reset_bh = qemu_bh_new(&ot_rstmgr_reset_bus, s);
 }
 
 static void ot_rstmgr_class_init(ObjectClass *klass, void *data)
