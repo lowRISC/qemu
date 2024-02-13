@@ -1099,8 +1099,12 @@ static void ot_dj_soc_reset_hold(Object *obj)
                             RESET_TYPE_COLD);
 
     /*
-     * leave hart on reset
-     * power manager should release it once ROMs have been validated
+     * Power-On-Reset: leave hart on reset
+     * PowerManager takes care of managing Ibex reset when ready
+     *
+     * Note that an initial, extra single reset cycle (assert/release) is
+     * performed from the generic #riscv_cpu_realize function on machine
+     * realization.
      */
     CPUState *cs = CPU(s->devices[OT_DJ_SOC_DEV_HART]);
     resettable_assert_reset(OBJECT(cs), RESET_TYPE_COLD);
