@@ -709,6 +709,7 @@ struct OtIbexWrapperDjState {
 
     uint32_t *regs;
     OtIbexTestLogEngine *log_engine;
+    CPUState *cpu;
     uint8_t cpu_en_bm;
     bool entropy_requested;
     bool edn_connected;
@@ -1267,24 +1268,16 @@ static void ot_ibex_wrapper_dj_cpu_enable_recv(void *opaque, int n, int level)
     trace_ot_ibex_wrapper_cpu_enable(s->ot_id ?: "", n ? "PWR" : "LC",
                                      (bool)level, s->cpu_en_bm, enable);
 
-    CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));
-    if (!cpu) {
-        error_setg(&error_fatal, "Could not find the vCPU to start!");
-        g_assert_not_reached();
-    }
-
-    bool in_reset = cpu->held_in_reset;
-
     if (enable) {
-        cpu->halted = 0;
-        if (in_reset) {
-            resettable_release_reset(OBJECT(cpu), RESET_TYPE_COLD);
+        s->cpu->halted = 0;
+        if (s->cpu->held_in_reset) {
+            resettable_release_reset(OBJECT(s->cpu), RESET_TYPE_COLD);
         }
-        cpu_resume(cpu);
+        cpu_resume(s->cpu);
     } else {
-        if (!cpu->halted) {
-            cpu->halted = 1;
-            cpu_loop_exit(cpu);
+        if (!s->cpu->halted) {
+            s->cpu->halted = 1;
+            cpu_exit(s->cpu);
         }
     }
 }
@@ -1482,11 +1475,19 @@ static void ot_ibex_wrapper_dj_reset(DeviceState *dev)
 {
     OtIbexWrapperDjState *s = OT_IBEX_WRAPPER_DJ(dev);
 
-    g_assert(s->ot_id);
-
     trace_ot_ibex_wrapper_reset(s->ot_id);
 
+    g_assert(s->ot_id);
     g_assert(s->sys_mem);
+
+    if (!s->cpu) {
+        CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));
+        if (!cpu) {
+            error_setg(&error_fatal, "Could not find the associated vCPU");
+            g_assert_not_reached();
+        }
+        s->cpu = cpu;
+    }
 
     for (unsigned slot = 0; slot < PARAM_NUM_REGIONS; slot++) {
         ot_ibex_wrapper_dj_remapper_destroy(s, slot);
