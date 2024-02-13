@@ -74,17 +74,20 @@ def configure_loggers(level: int, *lognames: List[str], **kwargs) \
        :param level: level (stepping: 1)
        :param lognames: one or more loggers to configure
        :param kwargs: optional features
-       :return: configured loggers
+       :return: configured loggers or level change
     """
-    loglevel = max(DEBUG, ERROR - (10 * (level or 0)))
+    loglevel = ERROR - (10 * (level or 0))
     loglevel = min(ERROR, loglevel)
     formatter = ColorLogFormatter(**kwargs)
     logh = StreamHandler(stderr)
     logh.setFormatter(formatter)
     loggers: List[Logger] = []
-    for logname in lognames:
-        log = getLogger(logname)
-        log.setLevel(loglevel)
+    for logdef in lognames:
+        if isinstance(logdef, int):
+            loglevel += -10 * logdef
+            continue
+        log = getLogger(logdef)
+        log.setLevel(max(DEBUG, loglevel))
         log.addHandler(logh)
         loggers.append(log)
     return loggers

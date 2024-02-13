@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 
-"""QEMU GDB replay.
-"""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""QEMU GDB replay.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
 
 from argparse import ArgumentParser, FileType, Namespace
 from binascii import hexlify
 from io import BytesIO
-from logging import (Formatter, StreamHandler, CRITICAL, DEBUG, INFO, ERROR,
-                     WARNING, getLogger)
-from os import isatty, linesep
+from logging import getLogger
+from os import linesep
 from os.path import dirname, isfile, join as joinpath, normpath
 from re import compile as re_compile
 from socket import (SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR, socket,
                     timeout as LegacyTimeoutError)
 from string import ascii_uppercase
-from sys import exit as sysexit, modules, stderr, stdout
+from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from typing import (BinaryIO, Dict, Iterator, List, Optional, TextIO, Tuple,
                     Union)
 
+from ot.util.log import configure_loggers
 
 try:
     from elftools.common.exceptions import ELFError
@@ -31,40 +33,6 @@ except ImportError:
     ELFError = None
     ELFFile = None
     Segment = None
-
-
-class CustomFormatter(Formatter):
-    """Custom log formatter for ANSI terminals. Colorize log levels.
-    """
-
-    GREY = "\x1b[38;20m"
-    YELLOW = "\x1b[33;1m"
-    RED = "\x1b[31;1m"
-    MAGENTA = "\x1b[35;1m"
-    WHITE = "\x1b[37;1m"
-    RESET = "\x1b[0m"
-    FORMAT_LEVEL = '%(levelname)8s'
-    FORMAT_TRAIL = ' %(name)-10s %(message)s'
-
-    COLOR_FORMATS = {
-        DEBUG: f'{GREY}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        INFO: f'{WHITE}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        WARNING: f'{YELLOW}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        ERROR: f'{RED}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        CRITICAL: f'{MAGENTA}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-    }
-
-    PLAIN_FORMAT = f'{FORMAT_LEVEL}{FORMAT_TRAIL}'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._istty = isatty(stdout.fileno())
-
-    def format(self, record):
-        log_fmt = self.COLOR_FORMATS[record.levelno] if self._istty \
-                  else self.PLAIN_FORMAT
-        formatter = Formatter(log_fmt)
-        return formatter.format(record)
 
 
 class ElfBlob:
@@ -857,14 +825,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
-        loglevel = min(ERROR, loglevel)
-        formatter = CustomFormatter()
-        log = getLogger('gdbrp')
-        logh = StreamHandler(stderr)
-        logh.setFormatter(formatter)
-        log.setLevel(loglevel)
-        log.addHandler(logh)
+        configure_loggers(args.verbose, 'gdbrp')
 
         acount = len(args.address or [])
         bcount = len(args.bin or [])

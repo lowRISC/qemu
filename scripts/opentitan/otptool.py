@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 
-"""QEMU OT tool to manage OTP files.
-"""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""QEMU OT tool to manage OTP files.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
 
 from argparse import ArgumentParser, FileType
 from binascii import hexlify, unhexlify
 from io import BytesIO, StringIO
-from logging import DEBUG, ERROR, getLogger, Formatter, StreamHandler
+from logging import getLogger
 from os.path import basename
 from re import match as re_match, sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
@@ -18,6 +20,8 @@ from textwrap import fill
 from traceback import format_exc
 from typing import (Any, BinaryIO, Dict, Iterator, List, Optional, Set, TextIO,
                     Tuple, Union)
+
+from ot.util.log import configure_loggers
 
 try:
     # try to load HJSON if available
@@ -997,14 +1001,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
-        loglevel = min(ERROR, loglevel)
-        formatter = Formatter('%(levelname)8s %(name)-10s %(message)s')
-        log = getLogger('otptool')
-        logh = StreamHandler(stderr)
-        logh.setFormatter(formatter)
-        log.setLevel(loglevel)
-        log.addHandler(logh)
+        configure_loggers(args.verbose, 'otptool')
 
         otp = OtpImage(args.ecc)
 

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
-"""OpenTitan exit code generator for QEMU."""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""OpenTitan exit code generator for QEMU.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
 
 from argparse import ArgumentParser, FileType
 from struct import pack as spack

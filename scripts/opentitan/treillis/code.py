@@ -1,12 +1,17 @@
+# Copyright (c) 2023-2024 Rivos, Inc.
+# SPDX-License-Identifier: Apache2
+
 """Simple CircuitPython script (which is stuck with Python 3.4) that maps
    QEMU GPIO chardev backend device onto a NeoTreillis M4 Express device.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-#pylint: disable=import-error
-#pylint: disable=invalid-name
-#pylint: disable=missing-function-docstring
-#pylint: disable=consider-using-f-string
-#pylint: disable=missing-class-docstring
+# pylint: disable=import-error
+# pylint: disable=invalid-name
+# pylint: disable=missing-function-docstring
+# pylint: disable=consider-using-f-string
+# pylint: disable=missing-class-docstring
 
 
 try:
@@ -18,6 +23,7 @@ except ImportError:
           'CircuitPython')
     raise
 
+
 class OtGPIO:
     """OpenTitan GPIO interface with an Adafruit NeoTrellis M4 Express.
 
@@ -25,7 +31,7 @@ class OtGPIO:
     """
 
     GPO_ON = (20, 0, 0)  # red
-    GPO_OFF = (0, 20, 0) # green
+    GPO_OFF = (0, 20, 0)  # green
     GPI_ON = (0, 0, 80)  # bright blue
     GPI_OFF = (2, 2, 2)  # greyish
 
@@ -42,7 +48,7 @@ class OtGPIO:
         self._lock_in = 0  # locked keys
         self._lock_time = {}  # when key has been first pressed (ns timestamp)
 
-    def _update_input(self, newval, force=False):
+    def _update_input(self, newval):
         ts = now()
         change = self._kin ^ newval
         self._kin = newval

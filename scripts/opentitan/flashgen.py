@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 
-"""Create/update an OpenTitan backend flash file.
-"""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""Create/update an OpenTitan backend flash file.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
 
 from argparse import ArgumentParser, FileType
 from binascii import hexlify
 from hashlib import sha256
 from itertools import repeat
 from io import BytesIO
-from logging import DEBUG, ERROR, getLogger, Formatter, StreamHandler
+from logging import getLogger
 from os import SEEK_END, SEEK_SET, rename, stat
 from os.path import abspath, basename, exists, isfile
 from re import sub as re_sub
@@ -20,6 +22,8 @@ from sys import exit as sysexit, modules, stderr, version_info
 from traceback import format_exc
 from typing import (Any, BinaryIO, Dict, Iterator, List, NamedTuple, Optional,
                     Tuple, Union)
+
+from ot.util.log import configure_loggers
 
 try:
     # note: pyelftools package is an OpenTitan toolchain requirement, see
@@ -826,15 +830,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
-        loglevel = min(ERROR, loglevel)
-        formatter = Formatter('%(levelname)8s [%(lineno)d] %(name)-12s '
-                              '%(message)s')
-        log = getLogger('flashgen')
-        logh = StreamHandler(stderr)
-        logh.setFormatter(formatter)
-        log.setLevel(loglevel)
-        log.addHandler(logh)
+        configure_loggers(args.verbose, 'flashgen')
 
         use_bl0 = bool(args.boot) or len(args.otdesc) > 1
         gen = FlashGen(args.offset if use_bl0 else 0, bool(args.unsafe_elf),

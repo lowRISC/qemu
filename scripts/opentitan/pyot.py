@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
-"""OpenTitan QEMU test sequencer.
-"""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""OpenTitan QEMU unit test sequencer.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
 
 from argparse import ArgumentParser, FileType, Namespace
 from atexit import register
@@ -18,23 +20,23 @@ try:
 except ImportError:
     # fallback on legacy JSON syntax otherwise
     from json import load as jload
-from logging import (Formatter, StreamHandler, CRITICAL, DEBUG, INFO, ERROR,
-                     WARNING, getLogger)
-from os import (close, curdir, environ, getcwd, isatty, linesep, pardir, sep,
-                unlink)
+from logging import CRITICAL, DEBUG, INFO, ERROR, getLogger
+from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
 from os.path import (abspath, basename, dirname, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
 from re import Match, compile as re_compile, sub as re_sub
 from shutil import rmtree
 from socket import socket, timeout as LegacyTimeoutError
 from subprocess import Popen, PIPE, TimeoutExpired
-from sys import argv, exit as sysexit, modules, stderr, stdout
+from sys import argv, exit as sysexit, modules, stderr
 from threading import Thread
 from tempfile import mkdtemp, mkstemp
 from time import time as now
 from traceback import format_exc
 from typing import (Any, Deque, Dict, Iterator, List, NamedTuple, Optional, Set,
                     Tuple)
+
+from ot.util.log import configure_loggers
 
 
 DEFAULT_MACHINE = 'ot-earlgrey'
@@ -59,40 +61,6 @@ class TestResult(NamedTuple):
     time: ExecTime
     icount: int
     error: str
-
-
-class CustomFormatter(Formatter):
-    """Custom log formatter for ANSI terminals. Colorize log levels.
-    """
-
-    GREY = "\x1b[38;20m"
-    YELLOW = "\x1b[33;1m"
-    RED = "\x1b[31;1m"
-    MAGENTA = "\x1b[35;1m"
-    WHITE = "\x1b[37;1m"
-    RESET = "\x1b[0m"
-    FORMAT_LEVEL = '%(levelname)8s'
-    FORMAT_TRAIL = ' %(name)-10s %(message)s'
-
-    COLOR_FORMATS = {
-        DEBUG: f'{GREY}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        INFO: f'{WHITE}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        WARNING: f'{YELLOW}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        ERROR: f'{RED}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-        CRITICAL: f'{MAGENTA}{FORMAT_LEVEL}{RESET}{FORMAT_TRAIL}',
-    }
-
-    PLAIN_FORMAT = f'{FORMAT_LEVEL}{FORMAT_TRAIL}'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._istty = isatty(stdout.fileno())
-
-    def format(self, record):
-        log_fmt = self.COLOR_FORMATS[record.levelno] if self._istty \
-                  else self.PLAIN_FORMAT
-        formatter = Formatter(log_fmt)
-        return formatter.format(record)
 
 
 class ResultFormatter:
@@ -737,7 +705,7 @@ class QEMUContextWorker:
 
     def _run(self):
         self._resume = True
-        #pylint: disable=consider-using-with
+        # pylint: disable=consider-using-with
         proc = Popen(self._cmd,  bufsize=1, stdout=PIPE, stderr=PIPE,
                      shell=True, env=self._env, encoding='utf-8',
                      errors='ignore', text=True)
@@ -941,6 +909,11 @@ class QEMUExecuter:
         QEMUWrapper.NO_MATCH_RETURN_CODE: 'UNKNOWN',
     }
 
+    DEFAULT_START_DELAY = 1.0
+    """Default start up delay to let QEMU initialize before connecting the
+       virtual UART port.
+    """
+
     def __init__(self, qfm: QEMUFileManager, config: Dict[str, any],
                  args: Namespace):
         self._log = getLogger('pyot.exec')
@@ -993,7 +966,8 @@ class QEMUExecuter:
                                                       DEFAULT_TIMEOUT_FACTOR))))
                 self._log.debug('Execute %s', basename(self._argdict['exec']))
                 ret, xtime, err = qot.run(self._qemu_cmd, timeout,
-                                          self.get_test_radix(app), None)
+                                          self.get_test_radix(app), None,
+                                          self.DEFAULT_START_DELAY)
                 results[ret] += 1
                 sret = self.RESULT_MAP.get(ret, ret)
                 icount = self._argdict.get('icount')
@@ -1156,8 +1130,8 @@ class QEMUExecuter:
             if not isfile(args.flash):
                 raise ValueError(f'No such flash file: {args.flash}')
             if any((args.exec, args.boot)):
-                raise ValueError('Flash file argument is mutually exclusive with'
-                                 ' bootloader or rom extension')
+                raise ValueError('Flash file argument is mutually exclusive '
+                                 'with bootloader or rom extension')
             flash_path = self.abspath(args.flash)
             qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_path},'
                                         f'format=raw'))
@@ -1188,7 +1162,8 @@ class QEMUExecuter:
                 qemu_args.extend(('-icount', f'{args.icount}'))
         mux = f'mux={"on" if args.muxserial else "off"}'
         try:
-            start_delay = float(getattr(args, 'start_delay') or 1.0)
+            start_delay = float(getattr(args, 'start_delay') or\
+                                self.DEFAULT_START_DELAY)
         except ValueError as exc:
             raise ValueError(f'Invalid start up delay {args.start_delay}') \
                 from exc
@@ -1475,14 +1450,7 @@ def main():
             close(tmpfd)
             args.result = tmp_result
 
-        loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
-        loglevel = min(ERROR, loglevel)
-        formatter = CustomFormatter()
-        log = getLogger('pyot')
-        logh = StreamHandler(stderr)
-        logh.setFormatter(formatter)
-        log.setLevel(loglevel)
-        log.addHandler(logh)
+        log = configure_loggers(args.verbose, 'pyot')[0]
 
         qfm = QEMUFileManager(args.keep_tmp)
 

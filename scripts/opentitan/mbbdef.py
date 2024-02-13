@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 
-"""Find and report multi-bit boolean definitions from HJSON configuration file.
-"""
-
 # Copyright (c) 2024, Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
+"""Find and report multi-bit boolean definitions from HJSON configuration file.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
+
 from argparse import ArgumentParser
-from logging import DEBUG, ERROR, getLogger, Formatter, StreamHandler
+from logging import getLogger
 from os import walk
 from os.path import basename, dirname, join as joinpath, splitext
 from pprint import pprint
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from typing import Dict, Iterator, List, TextIO
+
+from ot.util.log import configure_loggers
 
 
 try:
@@ -122,14 +126,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
-        loglevel = min(ERROR, loglevel)
-        formatter = Formatter('%(levelname)8s %(name)-10s %(message)s')
-        log = getLogger('mbb')
-        logh = StreamHandler(stderr)
-        logh.setFormatter(formatter)
-        log.setLevel(loglevel)
-        log.addHandler(logh)
+        configure_loggers(args.verbose, 'mbb')
 
         for hjson in args.ot:
             mbb = MbbChecker()

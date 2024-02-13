@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 
-"""Verify register definitions.
-"""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
+"""Verify register definitions.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
+
 from argparse import ArgumentParser, FileType
-from logging import DEBUG, ERROR, getLogger, Formatter, StreamHandler
+from logging import getLogger
 from os.path import basename, splitext
 from re import compile as re_compile, sub as re_sub
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from typing import Dict, TextIO, Tuple
+
+from ot.util.log import configure_loggers
 
 
 REG_CRE = re_compile(r'^#define ([A-Z][\w]+)_REG_(OFFSET|RESVAL)\s+'
@@ -99,15 +103,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
-        loglevel = min(ERROR, loglevel)
-        formatter = Formatter('%(asctime)s.%(msecs)03d %(levelname)8s '
-                              '%(name)-10s %(message)s', '%H:%M:%S')
-        log = getLogger('ot')
-        logh = StreamHandler(stderr)
-        logh.setFormatter(formatter)
-        log.setLevel(loglevel)
-        log.addHandler(logh)
+        configure_loggers(args.verbose, 'ot', ms=True)
 
         defs = parse_defs(args.reg) if args.reg else {}
         check(args.log[0], args.component, defs)

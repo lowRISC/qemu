@@ -1,8 +1,10 @@
-"""Device proxy for OpenTitan devices and peripherals
-"""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""Device proxy for OpenTitan devices and peripherals
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
 
 from binascii import hexlify, unhexlify
 from collections import deque

@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
 
-"""OpenTitan OTP HJSON helper
-"""
-
-# Copyright (c) 2023 Rivos, Inc.
+# Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-from argparse import ArgumentParser, FileType, Namespace
+"""OpenTitan OTP HJSON helper.
+
+   :note: this script is deprecated and should be merged into otptool.py
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
+
+
+from argparse import ArgumentParser, FileType
 try:
     # try to use HJSON if available
     from hjson import load as jload
 except ImportError as _exc:
     raise ImportError("HJSON Python module required") from _exc
-from logging import (Formatter, StreamHandler, CRITICAL, DEBUG, INFO, ERROR,
-                     WARNING, getLogger)
+from logging import getLogger
 from os import linesep
 from pprint import pprint
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
-from typing import BinaryIO, Optional
+from typing import BinaryIO
+
+from ot.util.log import configure_loggers
 
 
 class OtpHelper:
@@ -132,15 +138,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        loglevel = max(DEBUG, ERROR - (10 * (args.verbose or 0)))
-        loglevel = min(ERROR, loglevel)
-        formatter = Formatter('%(levelname)8s [%(lineno)d] %(name)-12s '
-                              '%(message)s')
-        log = getLogger('otp')
-        logh = StreamHandler(stderr)
-        logh.setFormatter(formatter)
-        log.setLevel(loglevel)
-        log.addHandler(logh)
+        configure_loggers('otp', args.verbose, name_width=12, lineno=True)
 
         otp = OtpHelper()
         otp.load(args.config)
