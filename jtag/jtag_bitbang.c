@@ -55,6 +55,8 @@
  * Type definitions
  */
 
+/* clang-format off */
+
 typedef enum {
     TEST_LOGIC_RESET,
     RUN_TEST_IDLE,
@@ -77,6 +79,8 @@ typedef enum {
 
 typedef enum { TAPCTRL_BYPASS = 0, TAPCTRL_IDCODE = 1 } TAPCtrlKnownIrCodes;
 
+/* clang-format on */
+
 typedef TAPDataHandler *tapctrl_data_reg_extender_t(uint64_t value);
 
 typedef struct _TAPController {
@@ -96,7 +100,7 @@ typedef struct _TAPController {
     size_t dr_len; /* count of meaningful bits in dr */
     /* handlers */
     TAPDataHandler *tdh; /* Current data register handler */
-    TAPDataHandler *tdhs; /* Registered handlers */
+    GHashTable *tdhtable; /* Registered handlers */
     /* buffer */
 } TAPController;
 
@@ -210,6 +214,20 @@ static void tapctrl_dump_register(const char *msg, uint64_t value,
     trace_jtag_tapctrl_dump_register(msg, value, length, buf);
 }
 
+static bool tapctrl_has_data_handler(TAPController *tap, unsigned code)
+{
+    return (bool)g_hash_table_contains(tap->tdhtable, GINT_TO_POINTER(code));
+}
+
+static TAPDataHandler *
+tapctrl_get_data_handler(TAPController *tap, unsigned code)
+{
+    TAPDataHandler *tdh;
+    tdh = (TAPDataHandler *)g_hash_table_lookup(tap->tdhtable,
+                                                GINT_TO_POINTER(code));
+    return tdh;
+}
+
 static void tapctrl_idcode_capture(TAPDataHandler *tdh)
 {
     /* special case for ID code: opaque contains the ID code value */
@@ -229,50 +247,63 @@ static void tapctrl_reset(TAPController *tap)
     tap->ir_hold = 0b01;
     tap->dr = 0u;
     tap->dr_len = 0u;
-    tap->tdh = &tap->tdhs[tap->ir];
+    tap->tdh = tapctrl_get_data_handler(tap, TAPCTRL_IDCODE);
+    g_assert(tap->tdh);
 }
 
 static void tapctrl_register_handler(TAPController *tap, unsigned code,
                                      const TAPDataHandler *tdh)
 {
-    memcpy(&tap->tdhs[code], tdh, sizeof(*tdh));
     if (code >= (1 << tap->ir_len)) {
         error_setg(&error_fatal, "JTAG: Invalid IR code: 0x%x", code);
+        g_assert_not_reached();
     }
-    tap->tdhs[code].name = g_strdup(tdh->name);
-    trace_jtag_tapctrl_register(code, tap->tdhs[code].name);
+    if (tapctrl_has_data_handler(tap, code)) {
+        warn_report("JTAG: IR code already registered: 0x%x", code);
+        /* resume and override */
+    }
+    TAPDataHandler *ltdh = g_new0(TAPDataHandler, 1u);
+    memcpy(ltdh, tdh, sizeof(*tdh));
+    ltdh->name = g_strdup(tdh->name);
+    g_hash_table_insert(tap->tdhtable, GINT_TO_POINTER(code), ltdh);
+    trace_jtag_tapctrl_register(code, ltdh->name);
+}
+
+static void tapctrl_free_data_handler(gpointer entry)
+{
+    TAPDataHandler *tdh = entry;
+    if (!entry) {
+        return;
+    }
+    g_free((char *)tdh->name);
+    g_free(tdh);
 }
 
 static void tapctrl_init(TAPController *tap, size_t irlength, uint32_t idcode)
 {
     trace_jtag_tapctrl_init(irlength, idcode);
-
     tap->ir_len = irlength;
-    tapctrl_reset(tap);
-    if (!tap->tdhs) {
+    if (!tap->tdhtable) {
         size_t irslots = 1u << irlength;
-        tap->tdhs = g_new0(TAPDataHandler, irslots);
+        tap->tdhtable = g_hash_table_new_full(g_direct_hash, g_direct_equal,
+                                              NULL, tapctrl_free_data_handler);
         tapctrl_register_handler(tap, TAPCTRL_BYPASS, &tapctrl_bypass);
         tapctrl_register_handler(tap, TAPCTRL_IDCODE, &tapctrl_idcode);
         tapctrl_register_handler(tap, irslots - 1u, &tapctrl_bypass);
         /* special case for ID code: opaque store the constant idcode value */
-        tap->tdhs[TAPCTRL_IDCODE].opaque = (void *)(uintptr_t)idcode;
+        TAPDataHandler *tdh = tapctrl_get_data_handler(tap, TAPCTRL_IDCODE);
+        g_assert(tdh);
+        tdh->opaque = (void *)(uintptr_t)idcode;
     }
+    tapctrl_reset(tap);
 }
 
 static void tapctrl_deinit(TAPController *tap)
 {
-    if (tap->tdhs) {
-        unsigned irslots = 1 << tap->ir_len;
-        for (unsigned ix = 0; ix < irslots; ix++) {
-            if (tap->tdhs[ix].name) {
-                g_free((char *)tap->tdhs[ix].name);
-                tap->tdhs[ix].name = NULL;
-            }
-        }
+    if (tap->tdhtable) {
+        g_hash_table_destroy(tap->tdhtable);
+        tap->tdhtable = NULL;
     }
-    g_free(tap->tdhs);
-    tap->tdhs = NULL;
     tap->tdh = NULL;
 }
 
@@ -284,7 +315,7 @@ static TAPState tapctrl_get_next_state(TAPController *tap, bool tms)
 
 static void tapctrl_capture_ir(TAPController *tap)
 {
-    tap->ir = 0b01;
+    tap->ir = TAPCTRL_IDCODE;
 }
 
 static void tapctrl_shift_ir(TAPController *tap, bool tdi)
@@ -299,27 +330,26 @@ static void tapctrl_update_ir(TAPController *tap)
     tapctrl_dump_register("Update IR", tap->ir_hold, tap->ir_len);
 }
 
-static void tapctrl_capture_dr(TAPController *tap, uint64_t value)
+static void tapctrl_capture_dr(TAPController *tap)
 {
     TAPDataHandler *prev = tap->tdh;
 
-    if (value >= (1 << tap->ir_len)) {
-        qemu_log_mask(LOG_UNIMP, "%s: Invalid IR 0x%02x\n", __func__,
-                      (unsigned)value);
-        abort();
-        return;
+    if (tap->ir_hold >= (1 << tap->ir_len)) {
+        /* internal error, should never happen */
+        error_setg(&error_fatal, "Invalid IR 0x%02x\n", (unsigned)tap->ir_hold);
+        g_assert_not_reached();
     }
 
-    TAPDataHandler *tdh = &tap->tdhs[value];
-    if (!tdh->length) {
-        qemu_log_mask(LOG_UNIMP, "%s: Unknown IR 0x%02x\n", __func__,
-                      (unsigned)value);
-        abort();
+    TAPDataHandler *tdh = tapctrl_get_data_handler(tap, tap->ir_hold);
+    if (!tdh) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Unknown IR 0x%02x\n", __func__,
+                      (unsigned)tap->ir_hold);
+        tap->dr = 0;
         return;
     }
 
     if (tdh != prev) {
-        trace_jtag_tapctrl_select_dr(tdh->name, value);
+        trace_jtag_tapctrl_select_dr(tdh->name, tap->ir_hold);
     }
 
     tap->tdh = tdh;
@@ -379,7 +409,7 @@ static void tapctrl_step(TAPController *tap, bool tck, bool tms, bool tdi)
             tapctrl_reset(tap);
             break;
         case CAPTURE_DR:
-            tapctrl_capture_dr(tap, tap->ir_hold);
+            tapctrl_capture_dr(tap);
             break;
         case SHIFT_DR:
             tap->tdo = tap->dr & 0b1;
