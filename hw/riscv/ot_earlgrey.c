@@ -203,6 +203,15 @@ static const uint32_t ot_eg_pmp_addrs[] = {
         } \
     }
 
+/* Request link */
+#define OT_EG_SOC_REQ(_req_, _tgt_) \
+    OT_EG_SOC_SIGNAL(_req_##_REQ, 0, _tgt_, _req_##_REQ, 0)
+
+/* Response link */
+#define OT_EG_SOC_RSP(_rsp_, _tgt_) \
+    OT_EG_SOC_SIGNAL(_rsp_##_RSP, 0, _tgt_, _rsp_##_RSP, 0)
+
+
 #define OT_EG_SOC_CLKMGR_HINT(_num_) \
     OT_EG_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
 
@@ -457,6 +466,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x40140000u, 0x100u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_RSP(OT_PWRMGR_LC, PWRMGR)
+        ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
             OT_EG_SOC_DEVLINK("kmac", KMAC)
@@ -536,9 +548,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             /* loopback signal since Earlgrey OTP signal are not supported yet*/
             OT_EG_SOC_SIGNAL(OT_PWRMGR_OTP_REQ, 0, PWRMGR,
                                    OT_PWRMGR_OTP_RSP, 0),
-            /* loopback signal since Earlgrey OTP signal are not supported yet*/
-            OT_EG_SOC_SIGNAL(OT_PWRMGR_LC_REQ, 0, PWRMGR,
-                                   OT_PWRMGR_LC_RSP, 0),
+            OT_EG_SOC_REQ(OT_PWRMGR_LC, LC_CTRL),
             OT_EG_SOC_SIGNAL(OT_PWRMGR_CPU_EN, 0, IBEX_WRAPPER,
                                      OT_IBEX_WRAPPER_CPU_EN,
                                      OT_IBEX_PWRMGR_CPU_EN)
