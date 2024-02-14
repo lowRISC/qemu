@@ -210,13 +210,6 @@ static_assert(OT_CSRNG_AES_BLOCK_SIZE + OT_CSRNG_AES_KEY_SIZE ==
 
 #define SW_INSTANCE_ID OT_CSRNG_HW_APP_MAX
 
-#define CMD_EXECUTE_DELAY_NS 500000u /* 500 us */
-
-#define MAX_GENERATION_DELAY_NS 700000000u /* 0.7 s */
-#define MAX_GENERATION_COUNT    4096u
-/* no need for rounding up, as processing takes time anyway */
-#define PACKET_GENERATION_DELAY_NS \
-    (MAX_GENERATION_DELAY_NS / MAX_GENERATION_COUNT)
 #define ENTROPY_SRC_INITIAL_REQUEST_COUNT 5u
 
 enum {
@@ -293,7 +286,7 @@ struct OtCSRNGState {
     IbexIRQ irqs[PARAM_NUM_IRQS];
     IbexIRQ alerts[PARAM_NUM_ALERTS];
     qemu_irq entropy_state;
-    QEMUTimer *cmd_scheduler;
+    QEMUBH *cmd_scheduler;
 
     uint32_t *regs;
     bool enabled;
@@ -441,7 +434,7 @@ int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
                             cmd_request);
 
             if (QSIMPLEQ_EMPTY(&s->cmd_requests)) {
-                timer_del(s->cmd_scheduler);
+                qemu_bh_cancel(s->cmd_scheduler);
             }
         }
     }
@@ -818,7 +811,7 @@ static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
     QSIMPLEQ_REMOVE(&s->cmd_requests, inst, OtCSRNGInstance, cmd_request);
 
     if (QSIMPLEQ_EMPTY(&s->cmd_requests)) {
-        timer_del(s->cmd_scheduler);
+        qemu_bh_cancel(s->cmd_scheduler);
     }
 
     trace_ot_csrng_instanciate(slot, false);
@@ -891,7 +884,7 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
         xtrace_ot_csrng_info("disable: last RS generation", s->entropy_gennum);
 
         /* cancel any outstanding asynchronous request */
-        timer_del(s->cmd_scheduler);
+        qemu_bh_cancel(s->cmd_scheduler);
 
         /* discard any on-going command request */
         OtCSRNGInstance *inst, *next;
@@ -1376,14 +1369,8 @@ static void ot_csrng_command_schedule(OtCSRNGState *s, OtCSRNGInstance *inst)
 
     QSIMPLEQ_INSERT_TAIL(&s->cmd_requests, inst, cmd_request);
 
-    if (timer_pending(s->cmd_scheduler)) {
-        xtrace_ot_csrng_info("command scheduler already active", 0);
-        return;
-    }
-
     trace_ot_csrng_schedule(ot_csrng_get_slot(inst), "command");
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    timer_mod(s->cmd_scheduler, (int64_t)(now + CMD_EXECUTE_DELAY_NS));
+    qemu_bh_schedule(s->cmd_scheduler);
 }
 
 static void ot_csrng_command_scheduler(void *opaque)
@@ -1465,8 +1452,7 @@ static void ot_csrng_command_scheduler(void *opaque)
     if (!QSIMPLEQ_EMPTY(&s->cmd_requests)) {
         if (s->state != CSRNG_ERROR) {
             xtrace_ot_csrng_info("scheduling new command", 0);
-            uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-            timer_mod(s->cmd_scheduler, (int64_t)(now + CMD_EXECUTE_DELAY_NS));
+            qemu_bh_schedule(s->cmd_scheduler);
         } else {
             xtrace_ot_csrng_error("cannot schedule new command on error");
         }
@@ -1768,7 +1754,7 @@ static void ot_csrng_reset(DeviceState *dev)
     OBJECT_CHECK(OtRandomSrcIf, s->random_src, TYPE_OT_RANDOM_SRC_IF);
     g_assert(s->otp_ctrl);
 
-    timer_del(s->cmd_scheduler);
+    qemu_bh_cancel(s->cmd_scheduler);
 
     memset(s->regs, 0, REGS_SIZE);
 
@@ -1845,8 +1831,7 @@ static void ot_csrng_init(Object *obj)
     /* current instance is the SW instance */
     ot_fifo32_create(&inst->sw.bits_fifo, OT_CSRNG_PACKET_WORD_COUNT);
 
-    s->cmd_scheduler =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_csrng_command_scheduler, s);
+    s->cmd_scheduler = qemu_bh_new(&ot_csrng_command_scheduler, s);
 
     QSIMPLEQ_INIT(&s->cmd_requests);
 }
