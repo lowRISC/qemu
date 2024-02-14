@@ -52,9 +52,6 @@
 #include "sysemu/block-backend.h"
 #include "trace.h"
 
-/* set to abort QEMU whenever guest code disable flash access */
-#define ABORT_ON_DISABLEMENT 1
-
 /* set to use I/O to access the flash partition */
 #define DATA_PART_USE_IO_OPS 0
 
@@ -1059,14 +1056,10 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_DIS_VAL_MASK;
         s->regs[reg] = ot_multibitbool_w1s_write(s->regs[reg], val32, 4u);
         if (ot_flash_is_disabled(s)) {
-#if ABORT_ON_DISABLEMENT
-            error_setg(&error_fatal, "flash controller disabled by SW");
-#else
             xtrace_ot_flash_error("flash controller disabled by SW");
             memory_region_set_enabled(&s->mmio.mem, false);
             memory_region_set_enabled(&s->mmio.csrs, false);
             memory_region_set_enabled(&s->mmio.regs, false);
-#endif
         }
         break;
     case R_INIT:
