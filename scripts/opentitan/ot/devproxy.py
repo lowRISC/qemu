@@ -17,6 +17,8 @@ from time import time as now
 from typing import (Any, Callable, Dict, Iterator, List, NamedTuple, Optional,
                     Tuple, Union)
 
+from .mailbox.doe import DOEHeader
+
 try:
     from serial import Serial, serial_for_url
 except ImportError:
@@ -86,80 +88,6 @@ class ProxyDeviceError(ProxyCommandError):
 
     def __init__(self):
         super().__init__(0x201, 'Device On Error')
-
-
-class DOEHeader:
-    """Container/helper for DOE headers.
-
-       :param vid: vendor identifier
-       :param objtype: object type
-       :param dwlength: count of 32-bit words in the DOE packet (incl. the
-                        header 2x 32-bit words)
-    """
-
-    FORMAT = '<HBxI'
-    """Encoding format."""
-
-    SIZE = scalc(FORMAT)
-    """Size of encoded content in bytes."""
-
-    DWSIZE = SIZE//4
-    """Size of encoded content in double word."""
-
-    def __init__(self, vid: int, objtype: int, dwlength: int = 0):
-        if not isinstance(vid, int) or not 0 <= vid <= 0xffff:
-            raise ValueError('Invalid VID')
-        if not isinstance(objtype, int) or not 0 <= objtype <= 0xff:
-            raise ValueError('Invalid objtype')
-        if not isinstance(dwlength, int) or not 0 <= dwlength <= 0x3ff:
-            raise ValueError('Invalid dwlength')
-        self._vid = vid
-        self._objtype = objtype
-        self._dwlength = dwlength
-
-    def __str__(self) -> str:
-        return f'vid:0x{self._vid:04x}, objtype:0x{self._objtype:02x}'
-
-    def __repr__(self) -> str:
-        return f'{self.__class__.__name__} ' \
-               f'0x{self._vid:04x},0x{self._objtype:02x}'
-
-    def set_dwlength(self, dwlength: int) -> None:
-        """Set the actual 32-bit word length of the DOE packet."""
-        if not isinstance(dwlength, int) or not 0 <= dwlength <= 0x3ff:
-            raise ValueError('Invalid dwlength')
-        self._dwlength = dwlength
-
-    @property
-    def vid(self):
-        """Report the stored vendor identifier."""
-        return self._vid
-
-    @property
-    def objtype(self):
-        """Report the stored object type."""
-        return self._objtype
-
-    @property
-    def dwlength(self):
-        """Report the count of double words (i.e. 32 bit words) including
-           the two double words from this very header in the DOE packet.
-        """
-        return self._dwlength
-
-    @classmethod
-    def decode(cls, buf: bytes) -> 'DOEHeader':
-        """Decode a byte buffer into a DOE header."""
-        if len(buf) < cls.SIZE:
-            raise ValueError('Too short a buffer')
-        vid, objtype, length = sunpack(cls.FORMAT, buf)
-        length &= 0x3ff
-        return cls(vid, objtype, length)
-
-    def encode(self) -> bytes:
-        """Encode this DOE header into a byte sequence."""
-        buf = spack(self.FORMAT, self._vid, self._objtype, self._dwlength)
-        return buf
 
 
 class MemoryRoot(NamedTuple):
