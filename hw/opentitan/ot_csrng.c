@@ -253,6 +253,7 @@ typedef struct {
     unsigned reseed_counter;
     unsigned rem_packet_count; /* remaining packets to generate */
     bool instantiated;
+    bool seeded; /* ready to generate randomness */
     bool fips;
 } OtCSRNGDrng;
 
@@ -285,7 +286,6 @@ struct OtCSRNGState {
     MemoryRegion mmio;
     IbexIRQ irqs[PARAM_NUM_IRQS];
     IbexIRQ alerts[PARAM_NUM_ALERTS];
-    qemu_irq entropy_state;
     QEMUBH *cmd_scheduler;
 
     uint32_t *regs;
@@ -528,7 +528,7 @@ static void ot_csrng_drng_increment(OtCSRNGDrng *drng)
     }
 }
 
-static OtCSRNDCmdResult ot_csrng_drng_instanciate(
+static OtCSRNDCmdResult ot_csrng_drng_instantiate(
     OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
 {
     OtCSRNGDrng *drng = &inst->drng;
@@ -553,6 +553,17 @@ static OtCSRNDCmdResult ot_csrng_drng_instanciate(
     res = ot_csrng_drng_reseed(inst, rand_dev, flag0);
     if (res) {
         drng->instantiated = false;
+        return res;
+    }
+
+    if (inst->hw.genbits_ready) {
+        /*
+         * a HW client app of this instance has already requested randomness
+         * through #ot_csrng_hwapp_ready_irq. This request had been deferred
+         * till the instanciation stage has completed, it is now safe to
+         * schedule the actual generation
+         */
+        qemu_bh_schedule(inst->hw.filler_bh);
     }
 
     return res;
@@ -567,6 +578,7 @@ static void ot_csrng_drng_uninstantiate(OtCSRNGInstance *inst)
     }
 
     drng->instantiated = false;
+    drng->seeded = false;
     drng->fips = false;
     drng->rem_packet_count = 0;
 
@@ -574,7 +586,7 @@ static void ot_csrng_drng_uninstantiate(OtCSRNGInstance *inst)
     memset(drng->v_counter, 0, sizeof(drng->v_counter));
 }
 
-static int ot_csrng_drng_update(OtCSRNGInstance *inst)
+static void ot_csrng_drng_update(OtCSRNGInstance *inst)
 {
     OtCSRNGDrng *drng = &inst->drng;
 
@@ -620,8 +632,6 @@ static int ot_csrng_drng_update(OtCSRNGInstance *inst)
                                 OT_CSRNG_AES_KEY_SIZE);
     xtrace_ot_csrng_show_buffer(appid, "n-V", drng->v_counter,
                                 OT_CSRNG_AES_BLOCK_SIZE);
-
-    return 0;
 }
 
 static OtCSRNDCmdResult
@@ -629,6 +639,8 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
 {
     OtCSRNGDrng *drng = &inst->drng;
     g_assert(drng->instantiated);
+
+    drng->seeded = false;
 
     if (!flag0) {
         if (!inst->parent->es_available) {
@@ -647,13 +659,16 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
         uint64_t entropy[OT_RANDOM_SRC_DWORD_COUNT];
         int res;
         bool fips;
-        xtrace_ot_csrng_info("request ES entropy w/ generation",
-                             s->entropy_gennum);
-
+        trace_ot_csrng_request_entropy(ot_csrng_get_slot(inst),
+                                       s->entropy_gennum);
         OtRandomSrcIfClass *cls = OT_RANDOM_SRC_IF_GET_CLASS(rand_dev);
         OtRandomSrcIf *randif = OT_RANDOM_SRC_IF(rand_dev);
         res = cls->get_random_values(randif, s->entropy_gennum, entropy, &fips);
         if (res) {
+            trace_ot_csrng_entropy_rejected(ot_csrng_get_slot(inst),
+                                            res < 0 ? (res == -2 ? "stalled" :
+                                                                   "error") :
+                                                      "not ready");
             return res < 0 ? (res == -2 ? CSRNG_CMD_STALLED : CSRNG_CMD_ERROR) :
                              CSRNG_CMD_RETRY;
         }
@@ -671,6 +686,8 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
     }
 
     drng->reseed_counter = 1u;
+
+    drng->seeded = true;
 
     return CSRNG_CMD_OK;
 }
@@ -792,7 +809,7 @@ static bool ot_csrng_is_in_queue(OtCSRNGInstance *inst)
 
 static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
 {
-    /* check if the instance has been flagged for uninstanciation */
+    /* check if the instance has been flagged for uninstantiation */
     if (ot_fifo32_is_empty(&inst->cmd_fifo)) {
         return false;
     }
@@ -814,7 +831,7 @@ static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
         qemu_bh_cancel(s->cmd_scheduler);
     }
 
-    trace_ot_csrng_instanciate(slot, false);
+    trace_ot_csrng_instantiate(slot, false);
     ot_csrng_drng_uninstantiate(inst);
     ot_csrng_complete_command(inst, 0);
 
@@ -994,7 +1011,7 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
 {
     OtCSRNGInstance *inst = &s->instances[slot];
 
-    trace_ot_csrng_instanciate(slot, true);
+    trace_ot_csrng_instantiate(slot, true);
 
     uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
     uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
@@ -1018,7 +1035,7 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
 
     int res;
 
-    res = ot_csrng_drng_instanciate(inst, s->random_src, flag0);
+    res = ot_csrng_drng_instantiate(inst, s->random_src, flag0);
     if ((res == CSRNG_CMD_OK) && !flag0) {
         /* if flag0 is set, entropy source is not used for reseeding */
         s->regs[R_INTR_STATE] |= INTR_CS_ENTROPY_REQ_MASK;
@@ -1033,7 +1050,7 @@ ot_csrng_handle_uninstantiate(OtCSRNGState *s, unsigned slot)
 {
     OtCSRNGInstance *inst = &s->instances[slot];
 
-    trace_ot_csrng_instanciate(slot, false);
+    trace_ot_csrng_instantiate(slot, false);
 
     ot_csrng_drng_uninstantiate(inst);
 
@@ -1169,7 +1186,15 @@ static void ot_csrng_hwapp_ready_irq(void *opaque, int n, int level)
                                ot_csrng_drng_remaining_count(inst));
 
     if (ready) {
-        qemu_bh_schedule(inst->hw.filler_bh);
+        if (!inst->drng.seeded) {
+            /*
+             * instanciation has not completed yet, wait for generation.
+             * see #ot_csrng_drng_instanciate
+             */
+            trace_ot_csrng_defer_generation(slot);
+        } else {
+            qemu_bh_schedule(inst->hw.filler_bh);
+        }
     }
 }
 
@@ -1211,8 +1236,6 @@ static void ot_csrng_hwapp_filler_bh(void *opaque)
          * its readiness status (only generate commands complete async.)
          */
         if (!ot_csrng_drng_remaining_count(inst)) {
-            unsigned slot = ot_csrng_get_slot(inst);
-            xtrace_ot_csrng_info("complete deferred generation", slot);
             ot_csrng_complete_command(inst, 0);
         }
     }
@@ -1237,8 +1260,6 @@ static void ot_csrng_swapp_fill(OtCSRNGInstance *inst)
     } else {
         /* check if the instance is running an deferred completion command */
         if (inst->defer_completion) {
-            unsigned slot = ot_csrng_get_slot(inst);
-            xtrace_ot_csrng_info("complete deferred generation", slot);
             ot_csrng_complete_command(inst, 0);
         }
     }
@@ -1361,7 +1382,9 @@ static void ot_csrng_command_schedule(OtCSRNGState *s, OtCSRNGInstance *inst)
 {
     bool queued = ot_csrng_is_in_queue(inst);
     if (queued) {
-        xtrace_ot_csrng_error("instance executing several commands at once");
+        /* execution resumes, but this is likely internal bug...*/
+        error_report("%s: instance executing several commands at once",
+                     __func__);
         s->regs[R_INTR_STATE] |= INTR_CS_HW_INST_EXC_MASK;
         ot_csrng_update_irqs(s);
         return;
@@ -1451,7 +1474,7 @@ static void ot_csrng_command_scheduler(void *opaque)
 
     if (!QSIMPLEQ_EMPTY(&s->cmd_requests)) {
         if (s->state != CSRNG_ERROR) {
-            xtrace_ot_csrng_info("scheduling new command", 0);
+            trace_ot_csrng_scheduling_command(slot);
             qemu_bh_schedule(s->cmd_scheduler);
         } else {
             xtrace_ot_csrng_error("cannot schedule new command on error");
@@ -1802,7 +1825,7 @@ static void ot_csrng_init(Object *obj)
     /* aes_desc is defined in libtomcrypt */
     s->aes_cipher = register_cipher(&aes_desc);
     if (s->aes_cipher < 0) {
-        error_report("OpenTitan AES: Unable to use libtomcrypt AES API");
+        error_report("%s: unable to use libtomcrypt AES API", __func__);
     }
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
