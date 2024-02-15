@@ -669,7 +669,7 @@ struct OtFlashState {
 static void ot_flash_update_irqs(OtFlashState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
-    trace_ot_csrng_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE], level);
+    trace_ot_flash_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE], level);
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
