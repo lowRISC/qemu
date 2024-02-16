@@ -71,6 +71,8 @@ struct OtRandomSrcIfClass {
      * @random the buffer to fill in with random data
      * @fips on success, updated to @true if random data are FIPS-compliant
      * @return 0 on success,
+     *         >=1 if the source is initializing, if >1, indicates the hint on
+     *         how many ns to wait before retrying,
      *         -1 if the random source is not available, i.e. if the module is
      *          not enabled or if the selected route is not the HW one,
      *         -2 if the generation ID does not match and execution cannot

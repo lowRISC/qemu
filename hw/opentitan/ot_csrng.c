@@ -221,7 +221,7 @@ typedef enum {
     CSRNG_CMD_STALLED = -2, /* entropy stack is stalled */
     CSRNG_CMD_ERROR = -1, /* command error, not recoverable */
     CSRNG_CMD_OK = 0, /* command completed ok */
-    CSRNG_CMD_RETRY = 1, /* command cannot be executed at the moment */
+    CSRNG_CMD_RETRY = 1, /* command cannot be executed for now */
     CSRNG_CMD_DEFERRED = 2, /* command completion deferred */
 } OtCSRNDCmdResult;
 
@@ -287,6 +287,7 @@ struct OtCSRNGState {
     IbexIRQ irqs[PARAM_NUM_IRQS];
     IbexIRQ alerts[PARAM_NUM_ALERTS];
     QEMUBH *cmd_scheduler;
+    QEMUTimer *entropy_scheduler;
 
     uint32_t *regs;
     bool enabled;
@@ -294,6 +295,7 @@ struct OtCSRNGState {
     bool read_int_granted;
     bool es_available;
     uint32_t scheduled_cmd;
+    unsigned entropy_delay;
     unsigned es_retry_count;
     unsigned state_db_ix;
     int entropy_gennum;
@@ -435,6 +437,7 @@ int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
 
             if (QSIMPLEQ_EMPTY(&s->cmd_requests)) {
                 qemu_bh_cancel(s->cmd_scheduler);
+                timer_del(s->entropy_scheduler);
             }
         }
     }
@@ -665,10 +668,12 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
         OtRandomSrcIf *randif = OT_RANDOM_SRC_IF(rand_dev);
         res = cls->get_random_values(randif, s->entropy_gennum, entropy, &fips);
         if (res) {
+            s->entropy_delay = (res > 1) ? (unsigned)res : 0;
             trace_ot_csrng_entropy_rejected(ot_csrng_get_slot(inst),
                                             res < 0 ? (res == -2 ? "stalled" :
                                                                    "error") :
-                                                      "not ready");
+                                                      "not ready",
+                                            res);
             return res < 0 ? (res == -2 ? CSRNG_CMD_STALLED : CSRNG_CMD_ERROR) :
                              CSRNG_CMD_RETRY;
         }
@@ -829,6 +834,7 @@ static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
 
     if (QSIMPLEQ_EMPTY(&s->cmd_requests)) {
         qemu_bh_cancel(s->cmd_scheduler);
+        timer_del(s->entropy_scheduler);
     }
 
     trace_ot_csrng_instantiate(slot, false);
@@ -845,7 +851,6 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
      * "CSRNG may only be enabled if ENTROPY_SRC is enabled. CSRNG may only be
      *  disabled if all EDNs are disabled. Once disabled, CSRNG may only be
      *  re-enabled after ENTROPY_SRC has been disabled and re-enabled."
-     * ...
      */
     OtRandomSrcIfClass *cls = OT_RANDOM_SRC_IF_GET_CLASS(s->random_src);
     OtRandomSrcIf *randif = OT_RANDOM_SRC_IF(s->random_src);
@@ -853,25 +858,26 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
     if (ot_csrng_is_ctrl_enabled(s)) {
         xtrace_ot_csrng_info("enabling CSRNG", 0);
         int gennum = cls->get_random_generation(randif);
-        /*
-         * ... however it is not re-enabling CSRNG w/o cycling the entropy_src
-         * that is prohibited, but to request entropy from it. The check is
-         * therefore deferred to the reseed handling which makes use of the
-         * entropy_src only if flag0 is not set.
-         */
         if (gennum >= 0) {
+            /*
+             * however it is not re-enabling CSRNG w/o cycling the entropy_src
+             * that is prohibited, but to request entropy from it. The check is
+             * therefore deferred to the reseed handling which makes use of the
+             * entropy_src only if flag0 is not set.
+             */
             s->es_available = gennum > s->entropy_gennum;
-            s->enabled = true;
-            s->es_retry_count = ENTROPY_SRC_INITIAL_REQUEST_COUNT;
-            s->entropy_gennum = gennum;
-            xtrace_ot_csrng_info("enable: new RS generation", gennum);
+            xtrace_ot_csrng_info("enable: new ES generation", gennum);
         } else {
+            /*
+             * tracking enablement/disablement order is not supported by the
+             * entropy source (such as on Darjeeling)
+             */
             s->es_available = true;
-            s->enabled = true;
-            s->es_retry_count = ENTROPY_SRC_INITIAL_REQUEST_COUNT;
-            s->entropy_gennum = gennum;
-            xtrace_ot_csrng_info("enable: unique RS generation", gennum);
+            xtrace_ot_csrng_info("enable: no ES gen tracking", gennum);
         }
+        s->enabled = true;
+        s->es_retry_count = ENTROPY_SRC_INITIAL_REQUEST_COUNT;
+        s->entropy_gennum = gennum;
     }
 
     if (ot_csrng_is_ctrl_disabled(s)) {
@@ -902,6 +908,7 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
 
         /* cancel any outstanding asynchronous request */
         qemu_bh_cancel(s->cmd_scheduler);
+        timer_del(s->entropy_scheduler);
 
         /* discard any on-going command request */
         OtCSRNGInstance *inst, *next;
@@ -1393,6 +1400,7 @@ static void ot_csrng_command_schedule(OtCSRNGState *s, OtCSRNGInstance *inst)
     QSIMPLEQ_INSERT_TAIL(&s->cmd_requests, inst, cmd_request);
 
     trace_ot_csrng_schedule(ot_csrng_get_slot(inst), "command");
+    timer_del(s->entropy_scheduler);
     qemu_bh_schedule(s->cmd_scheduler);
 }
 
@@ -1475,7 +1483,14 @@ static void ot_csrng_command_scheduler(void *opaque)
     if (!QSIMPLEQ_EMPTY(&s->cmd_requests)) {
         if (s->state != CSRNG_ERROR) {
             trace_ot_csrng_scheduling_command(slot);
-            qemu_bh_schedule(s->cmd_scheduler);
+            if (CSRNG_CMD_RETRY == res && s->entropy_delay) {
+                timer_mod(s->entropy_scheduler,
+                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT) +
+                              (int64_t)s->entropy_delay);
+                s->entropy_delay = 0;
+            } else {
+                qemu_bh_schedule(s->cmd_scheduler);
+            }
         } else {
             xtrace_ot_csrng_error("cannot schedule new command on error");
         }
@@ -1773,11 +1788,14 @@ static void ot_csrng_reset(DeviceState *dev)
 {
     OtCSRNGState *s = OT_CSRNG(dev);
 
+    trace_ot_csrng_reset();
+
     g_assert(s->random_src);
     OBJECT_CHECK(OtRandomSrcIf, s->random_src, TYPE_OT_RANDOM_SRC_IF);
     g_assert(s->otp_ctrl);
 
-    qemu_bh_cancel(s->cmd_scheduler);
+    timer_del(s->entropy_scheduler);
+    s->entropy_delay = 0;
 
     memset(s->regs, 0, REGS_SIZE);
 
@@ -1855,6 +1873,8 @@ static void ot_csrng_init(Object *obj)
     ot_fifo32_create(&inst->sw.bits_fifo, OT_CSRNG_PACKET_WORD_COUNT);
 
     s->cmd_scheduler = qemu_bh_new(&ot_csrng_command_scheduler, s);
+    s->entropy_scheduler =
+        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_csrng_command_scheduler, s);
 
     QSIMPLEQ_INIT(&s->cmd_requests);
 }
