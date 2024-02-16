@@ -222,6 +222,7 @@ typedef union {
         uint8_t sw_reset : 1; /* SW reset request */
         uint8_t otp_done : 1;
         uint8_t lc_done : 1;
+        uint8_t holdon_fetch : 1; /* custom extension */
         uint8_t rom_good; /* up to 8 ROMs */
         uint8_t rom_done; /* up to 8 ROMs */
     };
@@ -252,6 +253,7 @@ struct OtPwrMgrState {
     char *ot_id;
     OtRstMgrState *rstmgr;
     uint8_t num_rom;
+    bool fetch_ctrl;
 };
 
 #define PWRMGR_NAME_ENTRY(_pre_, _name_) [_pre_##_##_name_] = stringify(_name_)
@@ -560,7 +562,8 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         }
         break;
     case OT_PWR_FAST_ST_ROM_CHECK_GOOD:
-        if (s->fsm_events.rom_good == (1u << s->num_rom) - 1u) {
+        if ((s->fsm_events.rom_good == (1u << s->num_rom) - 1u) &&
+            !s->fsm_events.holdon_fetch) {
             PWR_CHANGE_FAST_STATE(s, ACTIVE);
         }
         break;
@@ -641,6 +644,16 @@ static void ot_pwrmgr_pwr_otp_rsp(void *opaque, int n, int level)
         s->fsm_events.otp_done = true;
         ot_pwrmgr_schedule_fsm(s);
     }
+}
+
+static void ot_pwrmgr_holdon_fetch(void *opaque, int n, int level)
+{
+    OtPwrMgrState *s = opaque;
+
+    g_assert(n == 0);
+
+    s->fsm_events.holdon_fetch = (bool)level;
+    ot_pwrmgr_schedule_fsm(s);
 }
 
 static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -784,6 +797,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtPwrMgrState, ot_id),
     DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
+    DEFINE_PROP_BOOL("fetch-ctrl", OtPwrMgrState, fetch_ctrl, false),
     DEFINE_PROP_LINK("rstmgr", OtPwrMgrState, rstmgr, TYPE_OT_RSTMGR,
                      OtRstMgrState *),
     DEFINE_PROP_END_OF_LIST(),
@@ -815,6 +829,7 @@ static void ot_pwrmgr_reset(DeviceState *dev)
     s->regs[R_WAKEUP_EN_REGWEN] = 0x1u;
     s->regs[R_RESET_EN_REGWEN] = 0x1u;
     s->fsm_events.bitmap = 0;
+    s->fsm_events.holdon_fetch = s->fetch_ctrl;
 
     PWR_CHANGE_FAST_STATE(s, LOW_POWER);
     PWR_CHANGE_SLOW_STATE(s, RESET);
@@ -842,6 +857,10 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
                                 s->num_rom);
         qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_done, OT_PWRMGR_ROM_DONE,
                                 s->num_rom);
+        if (s->fetch_ctrl) {
+            qdev_init_gpio_in_named(dev, &ot_pwrmgr_holdon_fetch,
+                                    OT_PWRMGR_HOLDON_FETCH, 1u);
+        }
     }
 }
 

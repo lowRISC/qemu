@@ -67,4 +67,7 @@ typedef enum {
 #define OT_PWRMGR_ROM_GOOD TYPE_OT_PWRMGR "-rom-good"
 #define OT_PWRMGR_ROM_DONE TYPE_OT_PWRMGR "-rom-done"
 
+/* custom extension */
+#define OT_PWRMGR_HOLDON_FETCH TYPE_OT_PWRMGR "-holdon-fetch"
+
 #endif /* HW_OPENTITAN_OT_PWRMGR_H */
