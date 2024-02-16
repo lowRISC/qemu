@@ -821,7 +821,7 @@ static void ot_edn_dispatch(OtEDNState *s)
     }
 }
 
-static void ot_edn_clean_up(OtEDNState *s)
+static void ot_edn_clean_up(OtEDNState *s, bool discard_requests)
 {
     OtEDNCSRNG *c = &s->rng;
 
@@ -836,12 +836,14 @@ static void ot_edn_clean_up(OtEDNState *s)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], 0);
     }
-#ifdef EDN_DISCARD_PENDING_REQUEST_ON_DISABLE
-    /* clear all pending end point requests */
-    while (QSIMPLEQ_FIRST(&s->ep_requests)) {
-        QSIMPLEQ_REMOVE_HEAD(&s->ep_requests, request);
+
+    if (discard_requests) {
+        /* clear all pending end point requests */
+        while (QSIMPLEQ_FIRST(&s->ep_requests)) {
+            QSIMPLEQ_REMOVE_HEAD(&s->ep_requests, request);
+        }
     }
-#endif
+
     for (unsigned epix = 0; epix < ARRAY_SIZE(s->endpoints); epix++) {
         ot_fifo32_reset(&s->endpoints[epix].fifo);
         s->endpoints[epix].fips = false;
@@ -1000,7 +1002,11 @@ static void ot_edn_csrng_ack_irq(void *opaque, int n, int level)
         if (ot_edn_is_sw_port_mode(s)) {
             ot_edn_complete_sw_req(s);
         }
-        ot_edn_clean_up(s);
+#ifdef EDN_DISCARD_PENDING_REQUEST_ON_DISABLE
+        ot_edn_clean_up(s, true);
+#else
+        ot_edn_clean_up(s, false);
+#endif
         return;
     default:
         break;
@@ -1273,13 +1279,15 @@ static void ot_edn_reset(DeviceState *dev)
     OtEDNState *s = OT_EDN(dev);
     OtEDNCSRNG *c = &s->rng;
 
+    trace_ot_edn_reset(s->rng.appid);
+
     memset(s->regs, 0, REGS_SIZE);
     s->regs[R_REGWEN] = 0x1u;
     s->regs[R_CTRL] = 0x9999u;
     s->regs[R_BOOT_INS_CMD] = 0x901u;
     s->regs[R_BOOT_GEN_CMD] = 0xfff003u;
 
-    ot_edn_clean_up(s);
+    ot_edn_clean_up(s, true);
 
     /* do not reset connection info since reset order is not known */
     (void)c->genbits_ready;
