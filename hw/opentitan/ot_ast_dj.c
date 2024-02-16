@@ -175,8 +175,17 @@ static int ot_ast_dj_get_random(OtRandomSrcIf *dev, int genid,
     }
 
     if (!rnd->avail) {
+        /* not ready */
         trace_ot_ast_no_entropy(0);
-        return 1;
+        int wait_ns;
+        if (timer_pending(s->random.timer)) {
+            wait_ns = 1;
+        } else {
+            /* computed delay fits into a 31-bit value */
+            wait_ns = (int)(timer_expire_time_ns(s->random.timer) -
+                            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT));
+        }
+        return wait_ns;
     }
 
     memcpy(random, rnd->buffer, OT_RANDOM_SRC_DWORD_COUNT * sizeof(uint64_t));
@@ -185,7 +194,7 @@ static int ot_ast_dj_get_random(OtRandomSrcIf *dev, int genid,
     /* note: fips compliancy is only simulated here for now */
     *fips = true;
 
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
     timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
 
     return 0;
@@ -403,7 +412,7 @@ static void ot_ast_dj_reset(DeviceState *dev)
     s->regsa[R_REGA37] = 0x25u;
     s->regsa[R_REGAL] = 0x26u;
 
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
     timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
 }
 
@@ -421,7 +430,7 @@ static void ot_ast_dj_init(Object *obj)
     OtASTDjRandom *rnd = &s->random;
 
     rnd->timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_ast_dj_random_scheduler, s);
+        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_ast_dj_random_scheduler, s);
     rnd->buffer = g_new0(uint64_t, OT_RANDOM_SRC_DWORD_COUNT);
 }
 
