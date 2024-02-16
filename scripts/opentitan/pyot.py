@@ -211,7 +211,7 @@ class QEMUWrapper:
             try:
                 # ensure that QEMU starts and give some time for it to set up
                 # its VCP before attempting to connect to it
-                self._log.debug(f'Waiting {start_delay:.1f}s for VM init')
+                self._log.debug('Waiting %.1fs for VM init', start_delay)
                 proc.wait(start_delay)
             except TimeoutExpired:
                 pass
@@ -1188,7 +1188,7 @@ class QEMUExecuter:
                 qemu_args.extend(('-icount', f'{args.icount}'))
         mux = f'mux={"on" if args.muxserial else "off"}'
         try:
-            start_delay = float(getattr(args, 'start_delay', 1.0))
+            start_delay = float(getattr(args, 'start_delay') or 1.0)
         except ValueError as exc:
             raise ValueError(f'Invalid start up delay {args.start_delay}') \
                 from exc
