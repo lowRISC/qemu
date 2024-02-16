@@ -502,9 +502,20 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
     case ENTROPY_SRC_STARTUP_HT_START:
     case ENTROPY_SRC_STARTUP_PHASE1:
     case ENTROPY_SRC_STARTUP_PASS1:
-    case ENTROPY_SRC_STARTUP_FAIL1:
-        trace_ot_entropy_src_init_ongoing(STATE_NAME(s->state), s->state);
-        return 1; /* not ready */
+    case ENTROPY_SRC_STARTUP_FAIL1: {
+        int wait_ns;
+        if (timer_pending(s->scheduler)) {
+            wait_ns = 1;
+        } else {
+            /* computed delay fits into a 31-bit value */
+            wait_ns = (int)(timer_expire_time_ns(s->scheduler) -
+                            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT));
+        }
+        trace_ot_entropy_src_init_ongoing(STATE_NAME(s->state), s->state,
+                                          wait_ns);
+        /* not ready */
+        return wait_ns;
+    }
     case ENTROPY_SRC_IDLE:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: module is not enabled\n", __func__);
         return -1;
@@ -766,7 +777,7 @@ static void ot_entropy_src_update_filler(OtEntropySrcState *s)
          */
         if (!timer_pending(s->scheduler)) {
             trace_ot_entropy_src_info("reschedule");
-            uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+            uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
             timer_mod(s->scheduler, (int64_t)(now + (uint64_t)ES_FILL_RATE_NS));
         }
     }
@@ -1320,7 +1331,7 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                     /* boot phase */
                     ot_entropy_src_change_state(s, ENTROPY_SRC_BOOT_HT_RUNNING);
                 }
-                uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+                uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
                 timer_mod(s->scheduler,
                           (int64_t)(now +
                                     (uint64_t)OT_ENTROPY_SRC_BOOT_DELAY_NS));
@@ -1533,6 +1544,8 @@ static void ot_entropy_src_reset(DeviceState *dev)
 {
     OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
 
+    trace_ot_entropy_src_reset();
+
     g_assert(s->ast);
     g_assert(s->otp_ctrl);
 
@@ -1619,7 +1632,7 @@ static void ot_entropy_src_init(Object *obj)
     ot_fifo32_create(&s->final_fifo, ES_FINAL_FIFO_WORD_COUNT);
 
     s->scheduler =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_entropy_src_scheduler, s);
+        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_entropy_src_scheduler, s);
 }
 
 static void ot_entropy_src_class_init(ObjectClass *klass, void *data)
