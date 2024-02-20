@@ -76,6 +76,13 @@ static inline void ibex_qdev_init_irq(Object *obj, IbexIRQ *irq,
     qdev_init_gpio_out_named(DEVICE(obj), &irq->irq, name, 1);
 }
 
+static inline void ibex_qdev_init_irq_default(Object *obj, IbexIRQ *irq,
+                                              const char *name, int level)
+{
+    irq->level = level;
+    qdev_init_gpio_out_named(DEVICE(obj), &irq->irq, name, 1);
+}
+
 static inline void ibex_qdev_init_irqs(Object *obj, IbexIRQ *irqs,
                                        const char *name, unsigned count)
 {
