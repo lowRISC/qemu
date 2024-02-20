@@ -317,8 +317,8 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
             memcpy(&entry->desc[2u], item->caps.mr->name, slen);
             entry->desc[2u + slen] = (char)('0' + mrcount++);
         } else {
-            qemu_log("ignoring discovered device: %s\n",
-                     object_get_typename(item->obj));
+            warn_report("%s: ignoring discovered device: %s\n", __func__,
+                        object_get_typename(item->obj));
             continue;
         }
         entry->header = ix << 16u;
@@ -1301,7 +1301,7 @@ static void ot_dev_proxy_receive(void *opaque, const uint8_t *buf, int size)
     OtDevProxyState *s = opaque;
 
     if (fifo8_num_free(&s->rx_fifo) < size) {
-        qemu_log("Incoherent chardev receive\n");
+        error_report("%s: Unexpected chardev receive\n", __func__);
         return;
     }
 
