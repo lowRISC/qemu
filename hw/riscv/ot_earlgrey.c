@@ -131,6 +131,13 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_USBDEV,
 };
 
+enum OtEgResetRequest {
+    OT_EG_RESET_SYSRST_CTRL,
+    OT_EG_RESET_AON_TIMER,
+    OT_EG_RESET_SENSOR_CTRL,
+    OT_EG_RESET_COUNT
+};
+
 /* EarlGrey/CW310 Peripheral clock is 2.5 MHz */
 #define OT_EG_PERIPHERAL_CLK_HZ 2500000u
 
@@ -554,7 +561,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                                      OT_IBEX_PWRMGR_CPU_EN)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-rom", 1u)
+            IBEX_DEV_UINT_PROP("num-rom", 1u),
+            IBEX_DEV_UINT_PROP("version", OT_PWMGR_VERSION_EG)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("rstmgr", RSTMGR)
@@ -615,11 +623,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 156),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR, \
-                                   OT_PWRMGR_WKUP, \
-                                   OT_PWRMGR_WAKEUP_AON_TIMER),
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
-                                   OT_PWRMGR_RST,
-                                   OT_PWRMGR_RST_AON_TIMER)
+                             OT_PWRMGR_RST, OT_EG_RESET_AON_TIMER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_AON_CLK_HZ)

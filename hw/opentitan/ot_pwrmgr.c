@@ -119,6 +119,9 @@ REG32(FAULT_STATUS, 0x40u)
 
 #define CDC_SYNC_PULSE_DURATION_NS 100000u /* 100us */
 
+#define PWRMGR_WAKEUP_MAX 6u
+#define PWRMGR_RESET_MAX  3u
+
 /* Verbatim definitions from RTL */
 #define NUM_SW_RST_REQ 1u
 #define HW_RESET_WIDTH \
@@ -211,8 +214,8 @@ typedef enum {
 } OtPwrMgrClockDomain;
 
 typedef struct {
-    OtRstMgrResetReq req;
     OtPwrMgrClockDomain domain;
+    int req;
 } OtPwrMgrResetReq;
 
 typedef union {
@@ -253,6 +256,7 @@ struct OtPwrMgrState {
     char *ot_id;
     OtRstMgrState *rstmgr;
     uint8_t num_rom;
+    uint8_t version;
     bool fetch_ctrl;
 };
 
@@ -312,31 +316,77 @@ static const char *SLOW_ST_NAMES[] = {
 #define SST_NAME(_st_) \
     ((_st_) < ARRAY_SIZE(SLOW_ST_NAMES) ? SLOW_ST_NAMES[(_st_)] : "?")
 
-#define WAKEUP_NAME_ENTRY(_name_) PWRMGR_NAME_ENTRY(OT_PWRMGR_WAKEUP, _name_)
-/* clang-format off */
-static const char *WAKEUP_NAMES[] = {
-    WAKEUP_NAME_ENTRY(SYSRST),
-    WAKEUP_NAME_ENTRY(ADC_CTRL),
-    WAKEUP_NAME_ENTRY(PINMUX),
-    WAKEUP_NAME_ENTRY(USBDEV),
-    WAKEUP_NAME_ENTRY(AON_TIMER),
-    WAKEUP_NAME_ENTRY(SENSOR),
-};
-/* clang-format on */
-#undef WAKEUP_NAME_ENTRY
-#define WAKEUP_NAME(_clk_) \
-    ((_clk_) < ARRAY_SIZE(WAKEUP_NAMES) ? WAKEUP_NAMES[(_clk_)] : "?")
+typedef struct {
+    unsigned wakeup_count;
+    unsigned reset_count;
+} OtPwrMgrConfig;
 
-#define RESET_NAME_ENTRY(_name_) PWRMGR_NAME_ENTRY(OT_PWRMGR_RST, _name_)
 /* clang-format off */
-static const char *RST_NAMES[] = {
-    RESET_NAME_ENTRY(SYSRST),
-    RESET_NAME_ENTRY(AON_TIMER),
+static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWMGR_VERSION_COUNT] = {
+    [OT_PWMGR_VERSION_EG] = {
+        .wakeup_count = 6u,
+        .reset_count = 3u,
+    },
+    [OT_PWMGR_VERSION_DJ] = {
+        .wakeup_count = 6u,
+        .reset_count = 2u,
+    },
+};
+
+static int PWRMGR_RESET_DISPATCH[OT_PWMGR_VERSION_COUNT][PWRMGR_RESET_MAX] = {
+    [OT_PWMGR_VERSION_EG] = {
+        [0] = OT_RSTMGR_RESET_SYSCTRL,
+        [1] = OT_RSTMGR_RESET_AON_TIMER,
+        [2] = -1
+    },
+    [OT_PWMGR_VERSION_DJ] = {
+        [0] = OT_RSTMGR_RESET_AON_TIMER,
+        [1] = -1,
+        [2] = -1,
+    },
+};
+
+static const char *
+PWRMGR_WAKEUP_NAMES[OT_PWMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
+    [OT_PWMGR_VERSION_EG] = {
+        [0] = "SYSRST",
+        [1] = "ADC_CTRL",
+        [2] = "PINMUX",
+        [3] = "USBDEV",
+        [4] = "AON_TIMER",
+        [5] = "SENSOR",
+    },
+    [OT_PWMGR_VERSION_DJ] = {
+        [0] = "PINMUX",
+        [1] = "USBDEV",
+        [2] = "AON_TIMER",
+        [3] = "SENSOR",
+        [4] = "SOC_PROXY_INT",
+        [5] = "SOC_PROXY_EXT",
+    },
+};
+
+static const char *PWRMGR_RST_NAMES[OT_PWMGR_VERSION_COUNT][PWRMGR_RESET_MAX] = {
+    [OT_PWMGR_VERSION_EG] = {
+        [0] = "SYSRST",
+        [1] = "AON_TIMER",
+        [2] = "SENSOR",
+    },
+    [OT_PWMGR_VERSION_DJ] = {
+        [0] = "AON_TIMER",
+        [1] = "SOC_PROXY",
+    }
 };
 /* clang-format on */
-#undef RESET_NAME_ENTRY
-#define RST_NAME(_clk_) \
-    ((_clk_) < ARRAY_SIZE(RST_NAMES) ? RST_NAMES[(_clk_)] : "?")
+
+#define WAKEUP_NAME(_s_, _w_) \
+    ((_w_) < PWRMGR_CONFIG[(_s_)->version].wakeup_count ? \
+         PWRMGR_WAKEUP_NAMES[(_s_)->version][(_w_)] : \
+         "?")
+#define RST_NAME(_s_, _r_) \
+    ((_r_) < PWRMGR_CONFIG[(_s_)->version].reset_count ? \
+         PWRMGR_RST_NAMES[(_s_)->version][(_r_)] : \
+         "?")
 
 #undef PWRMGR_NAME_ENTRY
 
@@ -421,11 +471,9 @@ static void ot_pwrmgr_wkup(void *opaque, int irq, int level)
     OtPwrMgrState *s = opaque;
     unsigned src = (unsigned)irq;
 
-    assert(src < OT_PWRMGR_WAKEUP_COUNT);
+    assert(src < PWRMGR_WAKEUP_MAX);
 
-    qemu_log_mask(LOG_UNIMP, "%s", __func__);
-
-    trace_ot_pwrmgr_wkup(s->ot_id, WAKEUP_NAME(src), src, (bool)level);
+    trace_ot_pwrmgr_wkup(s->ot_id, WAKEUP_NAME(s, src), src, (bool)level);
 }
 
 static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
@@ -433,12 +481,12 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
     OtPwrMgrState *s = opaque;
 
     unsigned src = (unsigned)irq;
-    g_assert(src < OT_PWRMGR_RST_COUNT);
+    g_assert(src < PWRMGR_CONFIG[s->version].reset_count);
 
     uint32_t rstmask = 1u << src; /* rst_req are stored in the LSBs */
 
     if (level) {
-        trace_ot_pwrmgr_rst_req(s->ot_id, RST_NAME(src), src);
+        trace_ot_pwrmgr_rst_req(s->ot_id, RST_NAME(s, src), src);
 
         if (s->regs[R_RESET_STATUS]) {
             /* do nothing if a reset is already in progress */
@@ -450,19 +498,14 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
 
         g_assert(s->reset_req.domain == OT_PWRMGR_NO_DOMAIN);
 
-        switch (irq) {
-        case OT_PWRMGR_RST_SYSRST:
-            s->reset_req.req = OT_RSTMGR_RESET_SYSCTRL;
-            s->reset_req.domain = OT_PWRMGR_SLOW_DOMAIN;
-            break;
-        case OT_PWRMGR_RST_AON_TIMER:
-            s->reset_req.req = OT_RSTMGR_RESET_AON_TIMER;
-            s->reset_req.domain = OT_PWRMGR_SLOW_DOMAIN;
-            break;
-        default:
+        s->reset_req.domain = OT_PWRMGR_SLOW_DOMAIN;
+
+        int req = PWRMGR_RESET_DISPATCH[s->version][src];
+        if (req < 0) {
+            /* not yet implemented */
             g_assert_not_reached();
-            break;
         }
+        s->reset_req.req = req;
 
         trace_ot_pwrmgr_reset_req(s->ot_id, "scheduling reset", src);
 
@@ -802,6 +845,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtPwrMgrState, ot_id),
     DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
+    DEFINE_PROP_UINT8("version", OtPwrMgrState, version, UINT8_MAX),
     DEFINE_PROP_BOOL("fetch-ctrl", OtPwrMgrState, fetch_ctrl, false),
     DEFINE_PROP_LINK("rstmgr", OtPwrMgrState, rstmgr, TYPE_OT_RSTMGR,
                      OtRstMgrState *),
@@ -822,6 +866,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     OtPwrMgrState *s = OT_PWRMGR(obj);
 
     g_assert(s->ot_id);
+    g_assert(s->version < OT_PWMGR_VERSION_COUNT);
 
     trace_ot_pwrmgr_reset(s->ot_id, "enter");
 
@@ -905,9 +950,9 @@ static void ot_pwrmgr_init(Object *obj)
     s->cdc_sync = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_pwrmgr_cdc_sync, s);
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_wkup, OT_PWRMGR_WKUP,
-                            OT_PWRMGR_WAKEUP_COUNT);
+                            PWRMGR_WAKEUP_MAX);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rst_req, OT_PWRMGR_RST,
-                            OT_PWRMGR_RST_COUNT);
+                            PWRMGR_RESET_MAX);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_sw_rst_req,
                             OT_PWRMGR_SW_RST, NUM_SW_RST_REQ);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_pwr_lc_rsp,

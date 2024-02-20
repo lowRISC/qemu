@@ -34,6 +34,13 @@
 #define TYPE_OT_PWRMGR "ot-pwrmgr"
 OBJECT_DECLARE_TYPE(OtPwrMgrState, OtPwrMgrClass, OT_PWRMGR)
 
+/* Supported PowerManager versions */
+typedef enum {
+    OT_PWMGR_VERSION_EG,
+    OT_PWMGR_VERSION_DJ,
+    OT_PWMGR_VERSION_COUNT,
+} OtPwrMgrVersion;
+
 /* Match PWRMGR_PARAM_*_WKUP_REQ_IDX definitions */
 typedef enum {
     OT_PWRMGR_WAKEUP_SYSRST,
@@ -44,12 +51,6 @@ typedef enum {
     OT_PWRMGR_WAKEUP_SENSOR,
     OT_PWRMGR_WAKEUP_COUNT,
 } OtPwrMgrWakeup;
-
-typedef enum {
-    OT_PWRMGR_RST_SYSRST,
-    OT_PWRMGR_RST_AON_TIMER, /* watchdog bite */
-    OT_PWRMGR_RST_COUNT,
-} OtPwrMgrRst;
 
 /* output lines */
 #define OT_PWRMGR_LC_REQ  TYPE_OT_PWRMGR "-lc-req"

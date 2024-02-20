@@ -152,6 +152,22 @@ enum OtDjSocDevice {
     OT_DJ_SOC_SPLITTER_LC_ESCALATE,
 };
 
+enum OtDjResetRequest {
+    OT_DJ_RESET_AON_TIMER,
+    OT_DJ_RESET_SOC_PROXY,
+    OT_DJ_RESET_COUNT,
+};
+
+enum OtDjResetWakeup {
+    OT_DJ_WAKEUP_PINMUX_AON_PIN,
+    OT_DJ_WAKEUP_PINMUX_AON_USB,
+    OT_DJ_WAKEUP_AON_TIMER_AON,
+    OT_DJ_WAKEUP_SENSOR_CTRL,
+    OT_DJ_WAKEUP_SOC_PROXY_INTERNAL,
+    OT_DJ_WAKEUP_SOC_PROXY_EXTERNAL,
+    OT_DJ_WAKEUP_COUNT,
+};
+
 /* Darjeeling Peripheral clock is 62.5 MHz */
 #define OT_DJ_PERIPHERAL_CLK_HZ 62500000u
 
@@ -899,7 +915,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("rstmgr", RSTMGR)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-rom", 2u)
+            IBEX_DEV_UINT_PROP("num-rom", 2u),
+            IBEX_DEV_UINT_PROP("version", OT_PWMGR_VERSION_DJ)
         ),
     },
     [OT_DJ_SOC_DEV_RSTMGR] = {
@@ -933,11 +950,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 79),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 80),
             OT_DJ_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR,
-                                     OT_PWRMGR_WKUP,
-                                     OT_PWRMGR_WAKEUP_AON_TIMER),
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
             OT_DJ_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR,
-                                     OT_PWRMGR_RST,
-                                     OT_PWRMGR_RST_AON_TIMER)
+                             OT_PWRMGR_RST, OT_DJ_RESET_AON_TIMER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_DJ_AON_CLK_HZ)
