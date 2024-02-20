@@ -34,6 +34,7 @@
 #include "qemu/timer.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_aon_timer.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -200,7 +201,7 @@ static void ot_aon_timer_update_irqs(OtAonTimerState *s)
 
 static void ot_aon_timer_rearm_wkup(OtAonTimerState *s, bool reset_origin)
 {
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+    int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
 
     if (reset_origin) {
         s->wkup_origin_ns = now;
@@ -239,7 +240,7 @@ static void ot_aon_timer_wkup_cb(void *opaque)
 
 static void ot_aon_timer_rearm_wdog(OtAonTimerState *s, bool reset_origin)
 {
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+    int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
 
     if (reset_origin) {
         s->wdog_origin_ns = now;
@@ -306,14 +307,14 @@ static uint64_t ot_aon_timer_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_WKUP_COUNT: {
         uint64_t now = ot_aon_timer_is_wkup_enabled(s) ?
-                           qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT) :
+                           qemu_clock_get_ns(OT_VIRTUAL_CLOCK) :
                            s->wkup_origin_ns;
         val32 = ot_aon_timer_get_wkup_count(s, now);
         break;
     }
     case R_WDOG_COUNT: {
         uint64_t now = ot_aon_timer_is_wdog_enabled(s) ?
-                           qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT) :
+                           qemu_clock_get_ns(OT_VIRTUAL_CLOCK) :
                            s->wdog_origin_ns;
         val32 = ot_aon_timer_get_wdog_count(s, now);
         break;
@@ -368,7 +369,7 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
                 /* stop timer */
                 timer_del(s->wkup_timer);
                 /* save current count */
-                uint32_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+                uint32_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                 s->regs[R_WKUP_COUNT] = ot_aon_timer_get_wkup_count(s, now);
                 s->wkup_origin_ns = now;
             }
@@ -401,7 +402,7 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
                     /* stop timer */
                     timer_del(s->wdog_timer);
                     /* save current count */
-                    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+                    int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                     s->regs[R_WDOG_COUNT] = ot_aon_timer_get_wdog_count(s, now);
                     s->wdog_origin_ns = now;
                 }
@@ -435,7 +436,7 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
          * schedule the timer for the next peripheral clock tick to check again
          * for interrupt condition
          */
-        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+        int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
         int64_t next = ot_aon_timer_compute_next_timeout(s, now, 0);
         if (change & INTR_WKUP_TIMER_EXPIRED_MASK) {
             timer_mod_anticipate(s->wkup_timer, next);
@@ -503,10 +504,8 @@ static void ot_aon_timer_init(Object *obj)
                           TYPE_OT_AON_TIMER, REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 
-    s->wkup_timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_aon_timer_wkup_cb, s);
-    s->wdog_timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_aon_timer_wdog_cb, s);
+    s->wkup_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_aon_timer_wkup_cb, s);
+    s->wdog_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_aon_timer_wdog_cb, s);
 }
 
 static void ot_aon_timer_class_init(ObjectClass *klass, void *data)

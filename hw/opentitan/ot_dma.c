@@ -880,7 +880,7 @@ static bool ot_dma_go(OtDMAState *s)
     s->regs[R_STATUS] |= R_STATUS_BUSY_MASK;
 
     timer_del(s->timer);
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
 
     return true;
@@ -899,7 +899,7 @@ static void ot_dma_abort(OtDMAState *s)
 
     /* simulate a delayed response */
     timer_del(s->timer);
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
 }
 
@@ -1014,7 +1014,7 @@ static void ot_dma_transfer(void *opaque)
 
             if (op->size) {
                 /* schedule next block if any */
-                uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+                uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                 timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
                 return;
             }
@@ -1345,7 +1345,7 @@ static void ot_dma_init(Object *obj)
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
 
-    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_dma_transfer, s);
+    s->timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_dma_transfer, s);
 }
 
 static void ot_dma_class_init(ObjectClass *klass, void *data)

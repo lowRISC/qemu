@@ -45,6 +45,7 @@
 #include "hw/hw.h"
 #include "hw/irq.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -840,7 +841,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     headcmd->ongoing = ongoing;
 
     timer_mod(s->fsm_delay,
-              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + FSM_TRIGGER_DELAY_NS);
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + FSM_TRIGGER_DELAY_NS);
 
     ot_spi_host_trace_status("S<", ot_spi_host_get_status(s));
 }
@@ -1277,7 +1278,7 @@ static void ot_spi_host_instance_init(Object *obj)
     cmdfifo_create(s->cmd_fifo, CMDFIFO_LEN);
 
     s->fsm_bh = qemu_bh_new(&ot_spi_host_schedule_fsm, s);
-    s->fsm_delay = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_spi_host_post_fsm, s);
+    s->fsm_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_host_post_fsm, s);
 }
 
 static void ot_spi_host_class_init(ObjectClass *klass, void *data)

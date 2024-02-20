@@ -38,6 +38,7 @@
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_otbn.h"
@@ -253,7 +254,7 @@ static void ot_otbn_proxy_completion_bh(void *opaque)
              */
             timer_del(s->proxy_defer);
             timer_mod(s->proxy_defer,
-                      qemu_clock_get_us(QEMU_CLOCK_VIRTUAL) + 100u);
+                      qemu_clock_get_us(OT_VIRTUAL_CLOCK) + 100u);
         } else {
             ot_otbn_post_execute(s);
         }
@@ -676,7 +677,7 @@ static void ot_otbn_init(Object *obj)
     }
 
     s->proxy_completion_bh = qemu_bh_new(&ot_otbn_proxy_completion_bh, s);
-    s->proxy_defer = timer_new_us(QEMU_CLOCK_VIRTUAL, &ot_otbn_post_execute, s);
+    s->proxy_defer = timer_new_us(OT_VIRTUAL_CLOCK, &ot_otbn_post_execute, s);
     s->proxy =
         ot_otbn_proxy_new(&ot_otbn_trigger_entropy_req, &s->rnds[OT_OTBN_URND],
                           &ot_otbn_trigger_entropy_req, &s->rnds[OT_OTBN_RND],

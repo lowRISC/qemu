@@ -737,7 +737,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_CFG_CDC_SYNC_SYNC_MASK;
         s->regs[reg] |= val32; /* not described as RW1S, but looks like it */
         if (val32) {
-            timer_mod(s->cdc_sync, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+            timer_mod(s->cdc_sync, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
                                        CDC_SYNC_PULSE_DURATION_NS);
         }
         break;
@@ -868,7 +868,7 @@ static void ot_pwrmgr_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->pwr_otp_req, OT_PWRMGR_OTP_REQ);
     ibex_qdev_init_irq(obj, &s->cpu_enable, OT_PWRMGR_CPU_EN);
 
-    s->cdc_sync = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_pwrmgr_cdc_sync, s);
+    s->cdc_sync = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_pwrmgr_cdc_sync, s);
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_wkup, OT_PWRMGR_WKUP,
                             OT_PWRMGR_WAKEUP_COUNT);

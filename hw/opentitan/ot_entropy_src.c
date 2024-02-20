@@ -509,7 +509,7 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
         } else {
             /* computed delay fits into a 31-bit value */
             wait_ns = (int)(timer_expire_time_ns(s->scheduler) -
-                            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT));
+                            qemu_clock_get_ns(OT_VIRTUAL_CLOCK));
         }
         trace_ot_entropy_src_init_ongoing(STATE_NAME(s->state), s->state,
                                           wait_ns);
@@ -777,7 +777,7 @@ static void ot_entropy_src_update_filler(OtEntropySrcState *s)
          */
         if (!timer_pending(s->scheduler)) {
             trace_ot_entropy_src_info("reschedule");
-            uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+            uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
             timer_mod(s->scheduler, (int64_t)(now + (uint64_t)ES_FILL_RATE_NS));
         }
     }
@@ -1331,7 +1331,7 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                     /* boot phase */
                     ot_entropy_src_change_state(s, ENTROPY_SRC_BOOT_HT_RUNNING);
                 }
-                uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+                uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                 timer_mod(s->scheduler,
                           (int64_t)(now +
                                     (uint64_t)OT_ENTROPY_SRC_BOOT_DELAY_NS));
@@ -1631,8 +1631,7 @@ static void ot_entropy_src_init(Object *obj)
     ot_fifo32_create(&s->swread_fifo, ES_SWREAD_FIFO_WORD_COUNT);
     ot_fifo32_create(&s->final_fifo, ES_FINAL_FIFO_WORD_COUNT);
 
-    s->scheduler =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_entropy_src_scheduler, s);
+    s->scheduler = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_entropy_src_scheduler, s);
 }
 
 static void ot_entropy_src_class_init(ObjectClass *klass, void *data)

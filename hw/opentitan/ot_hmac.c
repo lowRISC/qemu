@@ -34,6 +34,7 @@
 #include "hw/irq.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -465,7 +466,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             timer_del(s->fifo_trigger_handle);
             ibex_irq_set(&s->clkmgr, true);
             timer_mod(s->fifo_trigger_handle,
-                      qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                      qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
                           FIFO_TRIGGER_DELAY_NS);
         }
         break;
@@ -566,7 +567,7 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
     /* trigger delayed processing of FIFO */
     timer_del(s->fifo_trigger_handle);
     timer_mod(s->fifo_trigger_handle,
-              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + FIFO_TRIGGER_DELAY_NS);
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + FIFO_TRIGGER_DELAY_NS);
 }
 
 static Property ot_hmac_properties[] = {
@@ -619,7 +620,7 @@ static void ot_hmac_init(Object *obj)
 
     /* setup FIFO Interrupt Timer */
     s->fifo_trigger_handle =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_hmac_fifo_trigger_update, s);
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_hmac_fifo_trigger_update, s);
 
     /* FIFO sizes as per OT Spec */
     fifo8_create(&s->input_fifo, OT_HMAC_FIFO_LENGTH);

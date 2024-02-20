@@ -905,7 +905,7 @@ static void ot_aes_process_cond(OtAESState *s)
                  * AES throughput.
                  */
                 timer_del(s->retard_timer);
-                uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+                uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                 timer_mod(s->retard_timer,
                           (int64_t)(now + OT_AES_RETARD_DELAY_NS));
             } else {
@@ -1278,8 +1278,7 @@ static void ot_aes_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
 
     s->process_bh = qemu_bh_new(&ot_aes_handle_process, s);
-    s->retard_timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_aes_handle_process, s);
+    s->retard_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_aes_handle_process, s);
 }
 
 static void ot_aes_class_init(ObjectClass *klass, void *data)

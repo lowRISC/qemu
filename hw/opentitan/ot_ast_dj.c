@@ -36,6 +36,7 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_ast_dj.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_random_src.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -194,7 +195,7 @@ static int ot_ast_dj_get_random(OtRandomSrcIf *dev, int genid,
     /* note: fips compliancy is only simulated here for now */
     *fips = true;
 
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
 
     return 0;
@@ -412,7 +413,7 @@ static void ot_ast_dj_reset(DeviceState *dev)
     s->regsa[R_REGA37] = 0x25u;
     s->regsa[R_REGAL] = 0x26u;
 
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
+    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
 }
 
@@ -429,8 +430,7 @@ static void ot_ast_dj_init(Object *obj)
 
     OtASTDjRandom *rnd = &s->random;
 
-    rnd->timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_ast_dj_random_scheduler, s);
+    rnd->timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_ast_dj_random_scheduler, s);
     rnd->buffer = g_new0(uint64_t, OT_RANDOM_SRC_DWORD_COUNT);
 }
 

@@ -677,7 +677,7 @@ static void ot_otp_eg_direct_read(OtOTPEgState *s)
 
     if (!ot_otp_eg_is_buffered(partition)) {
         timer_mod(s->dai_delay,
-                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + DAI_DELAY_NS);
+                  qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_DELAY_NS);
         return;
     }
 
@@ -1384,7 +1384,7 @@ static void ot_otp_eg_init(Object *obj)
 
     s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
     s->entropy_cfg = g_new0(OtOTPEntropyCfg, 1u);
-    s->dai_delay = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_otp_eg_complete_dai, s);
+    s->dai_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_eg_complete_dai, s);
 }
 
 static void ot_otp_eg_class_init(ObjectClass *klass, void *data)

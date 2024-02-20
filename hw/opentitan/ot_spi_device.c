@@ -1100,7 +1100,7 @@ static void ot_spi_device_flash_pace_spibus(OtSPIDeviceState *s)
     SpiDeviceFlash *f = &s->flash;
 
     timer_del(f->irq_timer);
-    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     trace_ot_spi_device_flash_pace("set", timer_pending(f->irq_timer));
     timer_mod(f->irq_timer, (int64_t)(now + SPI_BUS_FLASH_READ_DELAY_NS));
 }
@@ -2359,7 +2359,7 @@ static void ot_spi_device_chr_recv_generic(OtSPIDeviceState *s,
         count--;
     }
     if (!fifo8_is_empty(&g->rx_fifo) && bus->byte_count) {
-        uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
         /* todo: use R_CFG_TIMER_V field to change the timeout */
         timer_mod(g->rx_timer, (int64_t)(now + SPI_BUS_TIMEOUT_NS));
     }
@@ -2673,9 +2673,9 @@ static void ot_spi_device_init(Object *obj)
      * co-operative multitasking between the vCPU and the IO thread
      */
     f->irq_timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_spi_device_flash_resume_read, s);
-    g->rx_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
-                               &ot_spi_device_recv_generic_timeout, s);
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_device_flash_resume_read, s);
+    g->rx_timer =
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_device_recv_generic_timeout, s);
 }
 
 static void ot_spi_device_class_init(ObjectClass *klass, void *data)

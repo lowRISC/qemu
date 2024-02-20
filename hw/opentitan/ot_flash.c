@@ -721,7 +721,7 @@ static void ot_flash_initialize(OtFlashState *s)
     s->regs[R_PHY_STATUS] =
         FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
     timer_mod(s->op_delay,
-              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + OP_INIT_DURATION_NS);
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
 }
 
 static bool ot_flash_fifo_in_reset(OtFlashState *s)
@@ -1824,7 +1824,7 @@ static void ot_flash_init(Object *obj)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
-    s->op_delay = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_flash_op_signal, s);
+    s->op_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_op_signal, s);
 }
 
 static void ot_flash_class_init(ObjectClass *klass, void *data)

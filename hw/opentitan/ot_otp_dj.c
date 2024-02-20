@@ -1671,7 +1671,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
     if (!ot_otp_dj_is_buffered(partition)) {
         /* fake slow access to OTP cell */
         timer_mod(s->dai.delay,
-                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + DAI_READ_DELAY_NS);
+                  qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_READ_DELAY_NS);
     } else {
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
     }
@@ -1785,7 +1785,7 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
     timer_mod(s->dai.delay,
-              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + DAI_WRITE_DELAY_NS);
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
 }
 
 static void ot_otp_dj_dai_digest(OtOTPDjState *s)
@@ -1866,7 +1866,7 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 
     /* fake slow access to OTP cell */
     timer_mod(s->dai.delay,
-              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + DAI_DIGEST_DELAY_NS);
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_DIGEST_DELAY_NS);
 }
 
 static void ot_otp_dj_dai_write_digest(void *opaque)
@@ -1897,7 +1897,7 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
         DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
         timer_mod(s->dai.delay,
-                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + DAI_WRITE_DELAY_NS);
+                  qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
     } else {
         /* TODO: no idea on how to report the error since partition is undef */
         ot_otp_dj_dai_set_error(s, error);
@@ -2977,7 +2977,7 @@ static void ot_otp_dj_lci_write_word(void *opaque)
     lci->hpos += 1;
 
     timer_mod(lci->prog_delay,
-              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + LCI_PROG_DELAY_NS);
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + LCI_PROG_DELAY_NS);
 
     LCI_CHANGE_STATE(s, OTP_LCI_WRITE_WAIT);
 }
@@ -3278,10 +3278,10 @@ static void ot_otp_dj_init(Object *obj)
 
     s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
     s->tokens = g_new0(OtOTPTokens, 1u);
-    s->dai.delay = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_otp_dj_dai_complete, s);
+    s->dai.delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_dai_complete, s);
     s->dai.digest_bh = qemu_bh_new(&ot_otp_dj_dai_write_digest, s);
     s->lci.prog_delay =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_otp_dj_lci_write_word, s);
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_lci_write_word, s);
     s->lci.prog_bh = qemu_bh_new(&ot_otp_dj_lci_write_word, s);
 }
 

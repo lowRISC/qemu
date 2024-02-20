@@ -1485,7 +1485,7 @@ static void ot_csrng_command_scheduler(void *opaque)
             trace_ot_csrng_scheduling_command(slot);
             if (CSRNG_CMD_RETRY == res && s->entropy_delay) {
                 timer_mod(s->entropy_scheduler,
-                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT) +
+                          qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
                               (int64_t)s->entropy_delay);
                 s->entropy_delay = 0;
             } else {
@@ -1874,7 +1874,7 @@ static void ot_csrng_init(Object *obj)
 
     s->cmd_scheduler = qemu_bh_new(&ot_csrng_command_scheduler, s);
     s->entropy_scheduler =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL_RT, &ot_csrng_command_scheduler, s);
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_csrng_command_scheduler, s);
 
     QSIMPLEQ_INIT(&s->cmd_requests);
 }
