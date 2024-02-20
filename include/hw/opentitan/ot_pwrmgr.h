@@ -32,7 +32,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_PWRMGR "ot-pwrmgr"
-OBJECT_DECLARE_SIMPLE_TYPE(OtPwrMgrState, OT_PWRMGR)
+OBJECT_DECLARE_TYPE(OtPwrMgrState, OtPwrMgrClass, OT_PWRMGR)
 
 /* Match PWRMGR_PARAM_*_WKUP_REQ_IDX definitions */
 typedef enum {

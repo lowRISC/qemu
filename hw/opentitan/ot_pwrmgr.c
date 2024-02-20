@@ -256,6 +256,11 @@ struct OtPwrMgrState {
     bool fetch_ctrl;
 };
 
+struct OtPwrMgrClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 #define PWRMGR_NAME_ENTRY(_pre_, _name_) [_pre_##_##_name_] = stringify(_name_)
 
 #define FAST_ST_NAME_ENTRY(_name_) PWRMGR_NAME_ENTRY(OT_PWR_FAST_ST, _name_)
@@ -372,7 +377,7 @@ static void ot_pwrmgr_update_irq(OtPwrMgrState *s)
 static void ot_pwrmgr_xschedule_fsm(OtPwrMgrState *s, const char *func,
                                     int line)
 {
-    trace_ot_pwrmgr_schedule_fsm(func, line);
+    trace_ot_pwrmgr_schedule_fsm(s->ot_id, func, line);
     qemu_bh_schedule(s->fsm_tick_bh);
 }
 
@@ -811,13 +816,18 @@ static const MemoryRegionOps ot_pwrmgr_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_pwrmgr_reset(DeviceState *dev)
+static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
 {
-    OtPwrMgrState *s = OT_PWRMGR(dev);
+    OtPwrMgrClass *c = OT_PWRMGR_GET_CLASS(obj);
+    OtPwrMgrState *s = OT_PWRMGR(obj);
 
     g_assert(s->ot_id);
 
-    trace_ot_pwrmgr_reset(s->ot_id);
+    trace_ot_pwrmgr_reset(s->ot_id, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     assert(s->rstmgr);
 
@@ -839,6 +849,18 @@ static void ot_pwrmgr_reset(DeviceState *dev)
     ibex_irq_set(&s->pwr_otp_req, 0);
     ibex_irq_set(&s->pwr_lc_req, 0);
     ibex_irq_set(&s->alert, 0);
+}
+
+static void ot_pwrmgr_reset_exit(Object *obj)
+{
+    OtPwrMgrClass *c = OT_PWRMGR_GET_CLASS(obj);
+    OtPwrMgrState *s = OT_PWRMGR(obj);
+
+    trace_ot_pwrmgr_reset(s->ot_id, "exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj);
+    }
 
     ot_pwrmgr_schedule_fsm(s);
 }
@@ -857,10 +879,11 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
                                 s->num_rom);
         qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_done, OT_PWRMGR_ROM_DONE,
                                 s->num_rom);
-        if (s->fetch_ctrl) {
-            qdev_init_gpio_in_named(dev, &ot_pwrmgr_holdon_fetch,
-                                    OT_PWRMGR_HOLDON_FETCH, 1u);
-        }
+    }
+
+    if (s->fetch_ctrl) {
+        qdev_init_gpio_in_named(dev, &ot_pwrmgr_holdon_fetch,
+                                OT_PWRMGR_HOLDON_FETCH, 1u);
     }
 }
 
@@ -901,9 +924,14 @@ static void ot_pwrmgr_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->realize = &ot_pwrmgr_realize;
-    dc->reset = &ot_pwrmgr_reset;
     device_class_set_props(dc, ot_pwrmgr_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(dc);
+    OtPwrMgrClass *pc = OT_PWRMGR_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_pwrmgr_reset_enter, NULL,
+                                       &ot_pwrmgr_reset_exit,
+                                       &pc->parent_phases);
 }
 
 static const TypeInfo ot_pwrmgr_info = {
@@ -912,6 +940,7 @@ static const TypeInfo ot_pwrmgr_info = {
     .instance_size = sizeof(OtPwrMgrState),
     .instance_init = &ot_pwrmgr_init,
     .class_init = &ot_pwrmgr_class_init,
+    .class_size = sizeof(OtPwrMgrClass)
 };
 
 static void ot_pwrmgr_register_types(void)
