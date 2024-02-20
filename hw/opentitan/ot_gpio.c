@@ -358,7 +358,7 @@ static void ot_gpio_chr_receive(void *opaque, const uint8_t *buf, int size)
     OtGpioState *s = opaque;
 
     if (s->ipos + (unsigned)size > sizeof(s->ibuf)) {
-        qemu_log("%s: Incoherent chardev receive\n", __func__);
+        error_report("%s: Unexpected chardev receive\n", __func__);
         return;
     }
 
