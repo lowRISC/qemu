@@ -716,6 +716,7 @@ struct OtIbexWrapperDjState {
 
     /* Optional properties */
     char *ot_id;
+    char *lc_ignore_ids;
     OtEDNState *edn;
     uint8_t edn_ep;
     bool lc_ignore;
@@ -1459,6 +1460,7 @@ static Property ot_ibex_wrapper_dj_properties[] = {
                      OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtIbexWrapperDjState, edn_ep, UINT8_MAX),
     DEFINE_PROP_BOOL("lc-ignore", OtIbexWrapperDjState, lc_ignore, false),
+    DEFINE_PROP_STRING("lc-ignore-ids", OtIbexWrapperDjState, lc_ignore_ids),
     DEFINE_PROP_CHR("logdev", OtIbexWrapperDjState, chr),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -1479,6 +1481,18 @@ static void ot_ibex_wrapper_dj_reset(DeviceState *dev)
 
     g_assert(s->ot_id);
     g_assert(s->sys_mem);
+
+    if (s->lc_ignore_ids) {
+        char *ign = g_strdup(s->lc_ignore_ids);
+        char *token = strtok(ign, ",");
+        while (token) {
+            if (!strcmp(token, s->ot_id)) {
+                s->lc_ignore = true;
+            }
+            token = strtok(NULL, ",");
+        }
+        g_free(ign);
+    }
 
     if (!s->cpu) {
         CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));

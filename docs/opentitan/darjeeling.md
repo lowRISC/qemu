@@ -143,6 +143,12 @@ See [`tools.md`](tools.md)
   alternative to allow the Ibex core to execute guest code is to provide a valid OTP image with one
   of the expected LifeCycle state, such as TestUnlock*, Dev, Prod or RMA.
 
+* `-global ot-ibex_wrapper-dj.lc-ignore-ids=<ids>` acts as `lc-ignore`, enabling the selection of
+  specific ibex wrapper instance based on their unique identifiers. See `ot_id` property in the
+  machine definition file for a list of valid identifiers. `<ids>` should be defined as a comma-
+  separated list of valid identifiers. It is only possible to ignore LifeCycle states with this
+  option, not to enforce them.
+
 * `-cpu lowrisc-ibex,x-zbr=false` can be used to force disable the Zbr experimental-and-deprecated
   RISC-V bitmap extension for CRC32 extension.
 
