@@ -88,7 +88,7 @@ ot_dev_proxy_write_reg(const char *prefix, unsigned devix, unsigned offset, unsi
 
 ot_dm_tl_invalid_addr(uint32_t addr) "0x%x"
 ot_dm_tl_update(uint32_t addr, uint32_t value, const char *msg, uint32_t res) "0x%x: 0x%x (%s): %u"
-ot_dm_tl_capture(uint32_t addr, uint32_t value) "0x%x: %u"
+ot_dm_tl_capture(uint32_t addr, uint32_t value) "0x%x: 0x%08x"
 
 # ot_dma.c
 
