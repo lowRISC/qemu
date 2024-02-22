@@ -86,18 +86,21 @@ REG64(DMI, 0x11u)
     FIELD(DMI, DATA, 2u, 32u)
     FIELD(DMI, ADDRESS, 34u, 64u-34u) /* real width is a runtime property */
 
-/*
- * Macros
- */
-
 #define xtrace_riscv_dtm_error(_msg_) \
     trace_riscv_dtm_error(__func__, __LINE__, _msg_)
 #define xtrace_riscv_dtm_info(_msg_, _val_) \
     trace_riscv_dtm_info(__func__, __LINE__, _msg_, _val_)
 
 /*
- * Type definitions
+ * DMI register operations
+ * see RISC-V debug spec secttion 6.1.5 Debug Module Interface Access
  */
+typedef enum {
+    DMI_IGNORE,
+    DMI_READ,
+    DMI_WRITE,
+    DMI_RESERVED,
+} RISCVDMIOperation;
 
 typedef QLIST_HEAD(, RISCVDebugModule) RISCVDebugModuleList;
 
@@ -142,9 +145,9 @@ static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh);
  * Constants
  */
 
-#define RISCV_DEBUG_DMI_VERSION 1u /* RISC-V Debug spec 0.13.x & 1.0 */
-#define RISCVDMI_DTMCS_IR           0x10u
-#define RISCVDMI_DMI_IR             0x11u
+#define RISCV_DEBUG_DMI_VERSION  1u /* RISC-V Debug spec 0.13.x & 1.0 */
+#define RISCVDMI_DTMCS_IR        0x10u
+#define RISCVDMI_DMI_IR          0x11u
 
 static const TAPDataHandler RISCVDMI_DTMCS = {
     .name = "dtmcs",
@@ -274,20 +277,21 @@ static void riscv_dtm_tap_dmi_capture(TAPDataHandler *tdh)
     RISCVDTMState *s = tdh->opaque;
 
     uint32_t addr = s->address;
-    uint32_t value;
+    uint32_t value = 0;
 
     if (s->dmistat == RISCV_DEBUG_NOERR) {
-        RISCVDebugModule *dm = riscv_dtm_get_dm(s, addr);
-        if (!dm) {
-            s->dmistat = RISCV_DEBUG_FAILED;
-            value = 0;
-            qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n", __func__,
-                          addr);
-        } else {
-            value = dm->dc->read_value(dm->dev);
+        unsigned op = (unsigned)(tdh->value & 0b11);
+        if (op == DMI_READ) {
+            RISCVDebugModule *dm = riscv_dtm_get_dm(s, addr);
+            if (!dm) {
+                s->dmistat = RISCV_DEBUG_FAILED;
+                value = 0;
+                qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n", __func__,
+                              addr);
+            } else {
+                value = dm->dc->read_value(dm->dev);
+            }
         }
-    } else {
-        value = 0;
     }
 
     /*
@@ -307,14 +311,23 @@ static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh)
         (uint32_t)extract64(tdh->value, R_DMI_ADDRESS_SHIFT, (int)s->abits);
     unsigned op = (unsigned)(tdh->value & 0b11);
 
+    if (op == DMI_IGNORE) {
+        /*
+         * Don’t send anything over the DMI during Update-DR. This operation
+         * should never result in a busy or error response. The address and data
+         * reported in the following Capture-DR are undefined.
+         */
+        return;
+    }
+
     /* store address for next read back */
     s->address = addr;
 
     RISCVDebugModule *dm = riscv_dtm_get_dm(s, addr);
     if (!dm) {
         s->dmistat = RISCV_DEBUG_FAILED;
-        qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n", __func__,
-                      addr);
+        qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x, op %u\n",
+                      __func__, addr, op);
         return;
     }
 
@@ -323,21 +336,17 @@ static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh)
      * current status reported in op is sticky.
      */
     switch (op) {
-    case 0: /* NOP */
-        /*
-         * Don’t send anything over the DMI during Update-DR. This operation
-         * should never result in a busy or error response. The address and data
-         * reported in the following Capture-DR are undefined.
-         */
+    case DMI_IGNORE: /* NOP */
+        g_assert_not_reached();
         return;
-    case 1: /* READ from address */
+    case DMI_READ:
         s->dmistat = dm->dc->read_rq(dm->dev, addr - dm->base);
         break;
-    case 2: /* WRITE to address */
+    case DMI_WRITE:
         value = (uint32_t)FIELD_EX64(tdh->value, DMI, DATA);
         s->dmistat = dm->dc->write_rq(dm->dev, addr - dm->base, value);
         break;
-    case 3:
+    case DMI_RESERVED:
     default:
         s->dmistat = RISCV_DEBUG_FAILED;
         qemu_log_mask(LOG_UNIMP, "%s: Unknown operation %u\n", __func__, op);
@@ -453,11 +462,6 @@ static void riscv_dtm_reset(DeviceState *dev)
 
     s->address = 0;
     s->last_dm = NULL;
-
-    if (!s->jtag_ok) {
-        /* JTAG not enabled, nothing more can be done for this session */
-        return;
-    }
 }
 
 static void riscv_dtm_realize(DeviceState *dev, Error **errp)
