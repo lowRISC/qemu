@@ -67,7 +67,7 @@
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
-#include "hw/riscv/dmi.h"
+#include "hw/riscv/dtm.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_darjeeling.h"
 #include "hw/ssi/ssi.h"
@@ -106,7 +106,7 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_DM_TL_LC_CTRL,
     OT_DJ_SOC_DEV_DM_TL_MBX,
     OT_DJ_SOC_DEV_DMA,
-    OT_DJ_SOC_DEV_DMI,
+    OT_DJ_SOC_DEV_DTM,
     OT_DJ_SOC_DEV_EDN0,
     OT_DJ_SOC_DEV_EDN1,
     OT_DJ_SOC_DEV_GPIO,
@@ -356,8 +356,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
-    [OT_DJ_SOC_DEV_DMI] = {
-        .type = TYPE_RISCV_DMI,
+    [OT_DJ_SOC_DEV_DTM] = {
+        .type = TYPE_RISCV_DTM,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("abits", 12u)
         ),
@@ -366,7 +366,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .type = TYPE_OT_DM_TL,
         .instance = 0,
         .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("dmi", DMI),
+            OT_DJ_SOC_DEVLINK("dtm", DTM),
             OT_DJ_SOC_DEVLINK("tl_dev", LC_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
@@ -380,7 +380,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .type = TYPE_OT_DM_TL,
         .instance = 1,
         .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("dmi", DMI),
+            OT_DJ_SOC_DEVLINK("dtm", DTM),
             OT_DJ_SOC_DEVLINK("tl_dev", MBX_JTAG)
         ),
         .prop = IBEXDEVICEPROPDEFS(
@@ -1130,7 +1130,7 @@ static void ot_dj_soc_reset_hold(Object *obj)
         c->parent_phases.hold(obj);
     }
 
-    Object *dmi = OBJECT(s->devices[OT_DJ_SOC_DEV_DMI]);
+    Object *dmi = OBJECT(s->devices[OT_DJ_SOC_DEV_DTM]);
     resettable_reset(dmi, RESET_TYPE_COLD);
 
     // TODO: not sure where Reset is plugged here...

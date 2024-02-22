@@ -44,7 +44,7 @@ config OT_DARJEELING
     select OT_SRAM_CTRL
     select OT_TIMER
     select OT_UART
-    select RISCV_DMI
+    select RISCV_DTM
     select SIFIVE_PLIC
     select SPLIT_IRQ
 

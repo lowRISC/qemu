@@ -38,7 +38,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/debug.h"
-#include "hw/riscv/dmi.h"
+#include "hw/riscv/dtm.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/sysbus.h"
 #include "trace.h"
@@ -50,9 +50,9 @@ struct OtDMTLState {
     hwaddr tl_offset;
     uint32_t value;
     MemTxAttrs attrs;
-    bool dmi_ok; /* DMI is available */
+    bool dtm_ok; /* DTM is available */
 
-    RISCVDMIState *dmi;
+    RISCVDTMState *dtm;
     SysBusDevice *tl_dev;
     char *tl_as_name;
     uint64_t tl_base;
@@ -62,7 +62,7 @@ struct OtDMTLState {
 };
 
 /* -------------------------------------------------------------------------- */
-/* DMI interface implementation */
+/* DTM interface implementation */
 /* -------------------------------------------------------------------------- */
 
 static RISCVDebugResult
@@ -124,7 +124,7 @@ static uint32_t ot_dm_tl_read_value(RISCVDebugDeviceState *dev)
 }
 
 static Property ot_dm_tl_properties[] = {
-    DEFINE_PROP_LINK("dmi", OtDMTLState, dmi, TYPE_RISCV_DMI, RISCVDMIState *),
+    DEFINE_PROP_LINK("dtm", OtDMTLState, dtm, TYPE_RISCV_DTM, RISCVDTMState *),
     DEFINE_PROP_UINT32("dmi_addr", OtDMTLState, dmi_addr, 0),
     DEFINE_PROP_UINT32("dmi_size", OtDMTLState, dmi_size, 0),
     DEFINE_PROP_STRING("tl_as_name", OtDMTLState, tl_as_name),
@@ -139,14 +139,14 @@ static void ot_dm_tl_reset(DeviceState *dev)
 {
     OtDMTLState *dmtl = OT_DM_TL(dev);
 
-    g_assert(dmtl->dmi != NULL);
+    g_assert(dmtl->dtm != NULL);
     g_assert(dmtl->dmi_size);
 
-    dmtl->dmi_ok =
-        riscv_dmi_register_dm(DEVICE(dmtl->dmi), RISCV_DEBUG_DEVICE(dev),
+    dmtl->dtm_ok =
+        riscv_dtm_register_dm(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(dev),
                               dmtl->dmi_addr, dmtl->dmi_size);
 
-    if (dmtl->dmi_ok) {
+    if (dmtl->dtm_ok) {
         Object *soc = OBJECT(dev)->parent;
         Object *obj;
         OtAddressSpaceState *oas;
