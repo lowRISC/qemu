@@ -463,7 +463,7 @@ class QEMUGDBReplay:
 
     # Trace 0: 0x280003d00 [00000000/00008c9a/00101003/ff020000] _boot_start
     TCRE = re_compile(r'^Trace\s(\d+):\s0x[0-9a-f]+\s\[[0-9a-f]+/([0-9a-f]+)'
-                     r'/[0-9a-f]+/[0-9a-f]+\]\s(\w+)\s*$')
+                      r'/[0-9a-f]+/[0-9a-f]+\](?:\s([&,<>\s\w:]+))?\s*$')
     """Regex to parse QEMU execution trace from a QEMU log file."""
 
     SIGNALS = {
@@ -495,21 +495,26 @@ class QEMUGDBReplay:
         """
         return self._xlen or 4
 
-    def load(self, qfp: TextIO) -> None:
+    def load(self, qfp: TextIO, cpus: Optional[List[int]] = None) -> None:
         """Load a recorded execution stream from a QEMU log file.
            see QEMU `-d exec` option.
 
            :param qfp: text stream to parse
         """
+        threshold = 10
         for lno, line in enumerate(qfp, start=1):
             tmo = self.TCRE.match(line)
             if not tmo:
                 continue
             scpu, spc, func = tmo.groups()
-            xcpu = int(scpu)
-            xpc = int(spc, 16)
-            if not lno % 10000:
+            if lno > threshold:
+                threshold *= 10
+            if not lno % threshold:
                 self._log.debug('Parsed %d lines', lno)
+            xcpu = int(scpu)
+            if cpus and xcpu not in cpus:
+                continue
+            xpc = int(spc, 16)
             if xcpu not in self._vcpus:
                 self._vcpus[xcpu] = QEMUVCPU(self._memctrl)
             self._vcpus[xcpu].record(xpc, func)
@@ -832,6 +837,8 @@ def main():
         argparser.add_argument('-e', '--elf', action='append',
                                type=FileType('rb'),
                                help='ELF application')
+        argparser.add_argument('-c', '--cpu', action='append', type=int,
+                               help='Only consider selected CPUs')
         argparser.add_argument('-a', '--address', action='append',
                                type=lambda x: int(x, 16 if x[1:2].lower() == 'x'
                                                   else 10),
@@ -874,7 +881,7 @@ def main():
             for addr, blob in zip(args.address, args.bin):
                 gdbr.load_bin(addr, blob)
         if args.trace:
-            gdbr.load(args.trace)
+            gdbr.load(args.trace, args.cpu)
 
         gdbr.serve(args.gdb)
 
