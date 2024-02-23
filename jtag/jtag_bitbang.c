@@ -36,6 +36,7 @@
 #include "qemu/module.h"
 #include "qemu/sockets.h"
 #include "qapi/error.h"
+#include "qom/object.h"
 #include "chardev/char-fe.h"
 #include "chardev/char.h"
 #include "exec/gdbstub.h"
@@ -43,6 +44,7 @@
 #include "exec/jtagstub.h"
 #include "hw/boards.h"
 #include "hw/cpu/cluster.h"
+#include "hw/resettable.h"
 #include "monitor/monitor.h"
 #include "semihosting/semihost.h"
 #include "sysemu/hw_accel.h"
@@ -253,6 +255,22 @@ static void tapctrl_reset(TAPController *tap)
     tap->dr_len = 0u;
     tap->tdh = tapctrl_get_data_handler(tap, TAPCTRL_IDCODE);
     g_assert(tap->tdh);
+}
+
+static void tapctrl_system_reset(TAPController *tap)
+{
+    Object *mc = qdev_get_machine();
+    ObjectClass *oc = object_get_class(mc);
+    (void)tap;
+
+    if (!object_class_dynamic_cast(oc, TYPE_RESETTABLE_INTERFACE)) {
+        qemu_log_mask(LOG_UNIMP, "%s: Machine %s is not resettable\n", __func__,
+                      object_get_typename(mc));
+        return;
+    }
+
+    trace_jtag_tapctrl_system_reset();
+    resettable_reset(mc, RESET_TYPE_COLD);
 }
 
 static void tapctrl_register_handler(TAPController *tap, unsigned code,
@@ -466,6 +484,9 @@ static void tapctrl_bb_reset(TAPController *tap, bool trst, bool srst)
     trace_jtag_tapctrl_reset(trst, srst);
     if (trst) {
         tapctrl_reset(tap);
+    }
+    if (srst) {
+        tapctrl_system_reset(tap);
     }
     tap->trst = trst;
     tap->srst = srst;

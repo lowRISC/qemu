@@ -9,3 +9,4 @@ jtag_tapctrl_register(unsigned code, const char *name) "register 0x%x: %s"
 jtag_tapctrl_reset(bool tap, bool sys) "tap: %u, system: %u"
 jtag_tapctrl_select_dr(const char *name, uint64_t value) "Select DR %s 0x%02" PRIx64
 jtag_tapctrl_step(bool tck, bool tms, bool tdi) "tck:%u tms:%u tdi:%u"
+jtag_tapctrl_system_reset(void) "SYSTEM RESET"
