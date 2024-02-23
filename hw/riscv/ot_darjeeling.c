@@ -72,6 +72,7 @@
 #include "hw/riscv/ot_darjeeling.h"
 #include "hw/ssi/ssi.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/reset.h"
 #include "sysemu/sysemu.h"
 
 /* ------------------------------------------------------------------------ */
@@ -1033,6 +1034,8 @@ struct OtDjBoardState {
 struct OtDjMachineState {
     MachineState parent_obj;
 
+    ResettableState reset;
+
     bool no_epmp_cfg;
 };
 
@@ -1372,6 +1375,27 @@ static void ot_dj_machine_set_no_epmp_cfg(Object *obj, bool value, Error **errp)
     s->no_epmp_cfg = value;
 }
 
+static void ot_dj_machine_transitional_reset(Object *obj)
+{
+    (void)obj;
+
+    qemu_devices_reset(SHUTDOWN_CAUSE_GUEST_RESET);
+}
+
+static ResettableTrFunction ot_dj_get_transitional_reset(Object *obj)
+{
+    (void)obj;
+
+    return ot_dj_machine_transitional_reset;
+}
+
+static ResettableState *ot_dj_get_reset_state(Object *obj)
+{
+    OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
+
+    return &s->reset;
+}
+
 static void ot_dj_machine_instance_init(Object *obj)
 {
     OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
@@ -1400,6 +1424,11 @@ static void ot_dj_machine_class_init(ObjectClass *oc, void *data)
     mc->init = ot_dj_machine_init;
     mc->max_cpus = 1u;
     mc->default_cpus = 1u;
+
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
+
+    rc->get_state = &ot_dj_get_reset_state;
+    rc->get_transitional_function = &ot_dj_get_transitional_reset;
 }
 
 static const TypeInfo ot_dj_machine_type_info = {
@@ -1408,6 +1437,7 @@ static const TypeInfo ot_dj_machine_type_info = {
     .instance_size = sizeof(OtDjMachineState),
     .instance_init = &ot_dj_machine_instance_init,
     .class_init = &ot_dj_machine_class_init,
+    .interfaces = (InterfaceInfo[]){ { TYPE_RESETTABLE_INTERFACE }, {} },
 };
 
 static void ot_dj_machine_register_types(void)
