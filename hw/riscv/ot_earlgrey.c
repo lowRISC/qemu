@@ -24,14 +24,14 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/cutils.h"
-#include "qemu/units.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qlist.h"
 #include "cpu.h"
 #include "exec/address-spaces.h"
+#include "exec/jtagstub.h"
 #include "hw/boards.h"
 #include "hw/intc/sifive_plic.h"
+#include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert_eg.h"
@@ -60,6 +60,8 @@
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties.h"
+#include "hw/riscv/dm.h"
+#include "hw/riscv/dtm.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_earlgrey.h"
 #include "hw/ssi/ssi.h"
@@ -70,6 +72,8 @@
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
 
+static void ot_eg_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                   DeviceState *parent);
 static void ot_eg_soc_flash_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
@@ -91,6 +95,8 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_AST,
     OT_EG_SOC_DEV_CLKMGR,
     OT_EG_SOC_DEV_CSRNG,
+    OT_EG_SOC_DEV_DM,
+    OT_EG_SOC_DEV_DTM,
     OT_EG_SOC_DEV_EDN0,
     OT_EG_SOC_DEV_EDN1,
     OT_EG_SOC_DEV_ENTROPY_SRC,
@@ -222,6 +228,24 @@ static const uint32_t ot_eg_pmp_addrs[] = {
 #define OT_EG_SOC_CLKMGR_HINT(_num_) \
     OT_EG_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
 
+#define OT_EG_SOC_DM_CONNECTION(_dst_dev_, _num_) \
+    { \
+        .out = { \
+            .name = PULP_RV_DM_ACK_OUT_LINES, \
+            .num = (_num_), \
+        }, \
+        .in = { \
+            .name = RISCV_DM_ACK_LINES, \
+            .index = (_dst_dev_), \
+            .num = (_num_), \
+        } \
+    }
+
+/* Earlgrey M2.5.2-RC0 RV DM */
+#define EG_TAP_IDCODE IBEX_JTAG_IDCODE(0, 1, 0)
+
+#define PULP_DM_BASE 0x00010000u
+
 /*
  * MMIO/interrupt mapping as per:
  * lowRISC/opentitan: hw/top_earlgrey/sw/autogen/top_earlgrey_memory.h
@@ -243,15 +267,45 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("smepmp", true),
             IBEX_DEV_BOOL_PROP("x-zbr", true),
             IBEX_DEV_UINT_PROP("resetvec", 0x8080u),
+            IBEX_DEV_UINT_PROP("mtvec", 0x8001u),
+            IBEX_DEV_UINT_PROP("dmhaltvec", PULP_DM_BASE +
+                PULP_RV_DM_ROM_BASE + PULP_RV_DM_HALT_OFFSET),
+            IBEX_DEV_UINT_PROP("dmexcpvec", PULP_DM_BASE +
+                PULP_RV_DM_ROM_BASE + PULP_RV_DM_EXCEPTION_OFFSET),
             IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
-    [OT_EG_SOC_DEV_RV_DM_MEM] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-rv_dm_mem",
-        .cfg = &ibex_unimp_configure,
-        .memmap = MEMMAPENTRIES(
-            { 0x00010000u, 0x1000u }
+    [OT_EG_SOC_DEV_DTM] = {
+        .type = TYPE_RISCV_DTM,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("abits", 7u)
+        ),
+    },
+    [OT_EG_SOC_DEV_DM] = {
+        .type = TYPE_RISCV_DM,
+        .cfg = &ot_eg_soc_dm_configure,
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("dtm", DTM)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("nscratch", PULP_RV_DM_NSCRATCH_COUNT),
+            IBEX_DEV_UINT_PROP("progbuf_count",
+                PULP_RV_DM_PROGRAM_BUFFER_COUNT),
+            IBEX_DEV_UINT_PROP("data_count", PULP_RV_DM_DATA_COUNT),
+            IBEX_DEV_UINT_PROP("abstractcmd_count",
+                PULP_RV_DM_ABSTRACTCMD_COUNT),
+            IBEX_DEV_UINT_PROP("dm_phyaddr", PULP_DM_BASE),
+            IBEX_DEV_UINT_PROP("rom_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_ROM_BASE),
+            IBEX_DEV_UINT_PROP("whereto_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_WHERETO_OFFSET),
+            IBEX_DEV_UINT_PROP("data_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_DATAADDR_OFFSET),
+            IBEX_DEV_UINT_PROP("progbuf_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_PROGRAM_BUFFER_OFFSET),
+            IBEX_DEV_UINT_PROP("resume_offset", PULP_RV_DM_RESUME_OFFSET),
+            IBEX_DEV_BOOL_PROP("sysbus_access", true),
+            IBEX_DEV_BOOL_PROP("abstractauto", false)
         ),
     },
     [OT_EG_SOC_DEV_UART0] = {
@@ -862,11 +916,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_RV_DM] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-rv_dm",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_PULP_RV_DM,
         .memmap = MEMMAPENTRIES(
-            { 0x41200000u, 0x4u }
+            { PULP_DM_BASE, 0x1000u },
+            { 0x41200000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 0),
+            OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 1),
+            OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 2),
+            OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 3)
         ),
     },
     [OT_EG_SOC_DEV_PLIC] = {
@@ -932,6 +991,16 @@ struct OtEGMachineState {
 /* ------------------------------------------------------------------------ */
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
+
+static void ot_eg_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                   DeviceState *parent)
+{
+    (void)def;
+    (void)parent;
+    QList *hart = qlist_new();
+    qlist_append_int(hart, 0);
+    qdev_prop_set_array(dev, "hart", hart);
+}
 
 static void ot_eg_soc_flash_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
@@ -1008,6 +1077,12 @@ static void ot_eg_soc_reset_hold(Object *obj)
         c->parent_phases.hold(obj);
     }
 
+    Object *dtm = OBJECT(s->devices[OT_EG_SOC_DEV_DTM]);
+    resettable_reset(dtm, RESET_TYPE_COLD);
+
+    Object *dm = OBJECT(s->devices[OT_EG_SOC_DEV_DM]);
+    resettable_reset(dm, RESET_TYPE_COLD);
+
     /* keep ROM_CTRL in reset, we'll release it last */
     resettable_assert_reset(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]),
                             RESET_TYPE_COLD);
@@ -1060,6 +1135,8 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 static void ot_eg_soc_init(Object *obj)
 {
     OtEGSoCState *s = RISCV_OT_EG_SOC(obj);
+
+    jtag_configure_tap(IBEX_TAP_IR_LENGTH, EG_TAP_IDCODE);
 
     s->devices = ibex_create_devices(ot_eg_soc_devices,
                                      ARRAY_SIZE(ot_eg_soc_devices), DEVICE(s));
