@@ -41,6 +41,12 @@ directory to help with these tasks.
   HW digest verification.
 * `treillis/` directory contains the test application to test the [GPIO](gpio.md) device.
 
+## Python modules
+
+* Available from `scripts/jtag` and `scripts/opentitan/ot`
+* [JTAG mailbox](jtagmbx.md) provides an API to access the system side of the mailbox over JTAG/DMI
+* [LC DMI](lc_ctrl_dmi.md) provides an API to control the Life Cycle controller over JTAG/DMI
+
 ## Configuration files
 
 * `darjeeling-ocd.cfg` is a sample configuration file for OpenOCD to connect to the JTAG interface

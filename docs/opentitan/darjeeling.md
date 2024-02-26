@@ -50,6 +50,7 @@ Devices in this group implement subset(s) of the real HW.
 * KMAC
   * Side loading is not supported
 * Lifecycle controller
+  * [LC controller](lc_ctrl_dmi.md) can be accessed through JTAG using a DM-TL bridge
   * Escalation is not supported
 * Power Manager
   * Fast FSM is partially supported, Slow FSM is bypassed
