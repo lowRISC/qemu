@@ -90,14 +90,11 @@ static void ot_dj_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
 /* Constants */
 /* ------------------------------------------------------------------------ */
 
-
-/* CTN address space */
-#define OT_DJ_CTN_REGION_OFFSET 0x40000000u
-#define OT_DJ_CTN_REGION_SIZE   (1u << 30u)
-
-/* CTN RAM (1MB) */
-#define OT_DJ_CTN_RAM_ADDR 0x01000000u
-#define OT_DJ_CTN_RAM_SIZE (2u << 20u)
+enum OtDjMemoryRegion {
+    OT_DJ_DEFAULT_MEMORY_REGION,
+    OT_DJ_CTN_MEMORY_REGION,
+    OT_DJ_DEBUG_MEMORY_REGION,
+};
 
 enum OtDjSocDevice {
     OT_DJ_SOC_DEV_AES,
@@ -106,7 +103,7 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_AST,
     OT_DJ_SOC_DEV_CLKMGR,
     OT_DJ_SOC_DEV_CSRNG,
-    OT_DJ_SOC_DEV_DM_TL_MBOX,
+    OT_DJ_SOC_DEV_DM_TL_MBX,
     OT_DJ_SOC_DEV_DMA,
     OT_DJ_SOC_DEV_DMI,
     OT_DJ_SOC_DEV_EDN0,
@@ -169,14 +166,25 @@ enum OtDjResetWakeup {
     OT_DJ_WAKEUP_COUNT,
 };
 
-/* Darjeeling Peripheral clock is 62.5 MHz */
+/* CTN address space */
+#define OT_DJ_CTN_REGION_OFFSET 0x40000000u
+#define OT_DJ_CTN_REGION_SIZE   (1u << 30u)
+
+/* CTN RAM (1MB) */
+#define OT_DJ_CTN_RAM_ADDR 0x01000000u
+#define OT_DJ_CTN_RAM_SIZE (2u << 20u)
+
+/* DEBUG address space */
+#define OT_DJ_DEBUG_RV_DM_ADDR       0x2000u
+#define OT_DJ_DEBUG_MBX_JTAG_ADDR    0x2200u
+#define OT_DJ_DEBUG_SOCDBG_CTRL_ADDR 0x2300u
+#define OT_DJ_DEBUG_LC_CTRL_ADDR     0x3000u
+#define OT_DJ_DEBUG_LC_CTRL_SIZE     0x400u
+#define OT_DJ_DBG_XBAR_SIZE          0x4000u
+
 #define OT_DJ_PERIPHERAL_CLK_HZ 62500000u
-
-/* Darjeeling SPI host clock is 250 MHz */
-#define OT_DJ_SPIHOST_CLK_HZ 250000000u
-
-/* Darjeeling AON clock is 62.5 MHz */
-#define OT_DJ_AON_CLK_HZ 62500000u
+#define OT_DJ_SPIHOST_CLK_HZ    250000000u
+#define OT_DJ_AON_CLK_HZ        62500000u
 
 static const uint8_t ot_dj_pmp_cfgs[] = {
     /* clang-format off */
@@ -221,12 +229,6 @@ static const uint32_t ot_dj_pmp_addrs[] = {
 };
 
 #define OT_DJ_MSECCFG IBEX_MSECCFG(1, 1, 0)
-
-enum OtDjMemoryRegion {
-    OT_DJ_DEFAULT_MEMORY_REGION,
-    OT_DJ_CTN_MEMORY_REGION,
-    OT_DJ_DEBUG_MEMORY_REGION,
-};
 
 #define OT_DJ_SOC_GPIO(_irq_, _target_, _num_) \
     IBEX_GPIO(_irq_, OT_DJ_SOC_DEV_##_target_, _num_)
@@ -309,10 +311,18 @@ enum OtDjMemoryRegion {
 #define OT_DJ_XPORT_MEMORY(_addr_) \
     IBEX_MEMMAP_MAKE_REG((_addr_), OT_DJ_CTN_MEMORY_REGION)
 
-#define OT_DJ_DBG_XBAR_APERTURE 0x2000u
-
 #define DEBUG_MEMORY(_addr_) \
     IBEX_MEMMAP_MAKE_REG((_addr_), OT_DJ_DEBUG_MEMORY_REGION)
+
+#define OT_DJ_DEBUG_TL_TO_DMI(_val_) ((_val_) / sizeof(uint32_t))
+
+#define OT_DJ_DEBUG_LC_CTRL_DMI_ADDR \
+    OT_DJ_DEBUG_TL_TO_DMI(OT_DJ_DEBUG_LC_CTRL_ADDR)
+#define OT_DJ_DEBUG_LC_CTRL_DMI_SIZE \
+    OT_DJ_DEBUG_TL_TO_DMI(OT_DJ_DEBUG_LC_CTRL_SIZE)
+#define OT_DJ_DEBUG_MBX_JTAG_DMI_ADDR \
+    OT_DJ_DEBUG_TL_TO_DMI(OT_DJ_DEBUG_MBX_JTAG_ADDR)
+#define OT_DJ_DEBUG_MBX_JTAG_DMI_SIZE (OT_MBX_SYS_APERTURE / sizeof(uint32_t))
 
 /*
  * Darjeeling RV DM
@@ -351,16 +361,16 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("abits", 12u)
         ),
     },
-    [OT_DJ_SOC_DEV_DM_TL_MBOX] = {
+    [OT_DJ_SOC_DEV_DM_TL_MBX] = {
         .type = TYPE_OT_DM_TL,
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("dmi", DMI),
             OT_DJ_SOC_DEVLINK("tl_dev", MBX_JTAG)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("dmi_addr", 0x400u),
-            IBEX_DEV_UINT_PROP("dmi_size", OT_MBX_SYS_REGS_COUNT),
-            IBEX_DEV_UINT_PROP("tl_addr", 0x1000u),
+            IBEX_DEV_UINT_PROP("dmi_addr", OT_DJ_DEBUG_MBX_JTAG_DMI_ADDR),
+            IBEX_DEV_UINT_PROP("dmi_size", OT_DJ_DEBUG_MBX_JTAG_DMI_SIZE),
+            IBEX_DEV_UINT_PROP("tl_addr", OT_DJ_DEBUG_MBX_JTAG_ADDR),
             IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
         )
     },
@@ -602,7 +612,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_MBX_JTAG] = {
         OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, 155,
-		                               DEBUG_MEMORY(0x1000)),
+		                       DEBUG_MEMORY(OT_DJ_DEBUG_MBX_JTAG_ADDR)),
     },
     [OT_DJ_SOC_DEV_DMA] = {
         .type = TYPE_OT_DMA,
@@ -809,7 +819,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     [OT_DJ_SOC_DEV_LC_CTRL] = {
         .type = TYPE_OT_LC_CTRL,
         .memmap = MEMMAPENTRIES(
-            { 0x30140000u, 0x100u }
+            { 0x30140000u, 0x100u },
+            { DEBUG_MEMORY(OT_DJ_DEBUG_LC_CTRL_ADDR), OT_DJ_DEBUG_LC_CTRL_SIZE }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN,
@@ -1106,7 +1117,7 @@ static void ot_dj_soc_reset_hold(Object *obj)
     Object *dmi = OBJECT(s->devices[OT_DJ_SOC_DEV_DMI]);
     resettable_reset(dmi, RESET_TYPE_COLD);
 
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_TL_MBOX]),
+    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_TL_MBX]),
                      RESET_TYPE_COLD);
 
     /* keep ROM_CTRLs in reset, we'll release them last */
@@ -1164,8 +1175,7 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
     AddressSpace *ctn_as = ot_address_space_get(OT_ADDRESS_SPACE(oas));
 
     MemoryRegion *dbg_mr = g_new0(MemoryRegion, 1u);
-    memory_region_init(dbg_mr, OBJECT(dev), "dbg-xbar",
-                       OT_DJ_DBG_XBAR_APERTURE);
+    memory_region_init(dbg_mr, OBJECT(dev), "dbg-xbar", OT_DJ_DBG_XBAR_SIZE);
 
     MemoryRegion *mrs[IBEX_MEMMAP_REGIDX_COUNT] = {
         [OT_DJ_DEFAULT_MEMORY_REGION] = cpu->memory,
