@@ -1,6 +1,8 @@
-# Debug Module Interface
-riscv_dmi_dtmcs_reset(void) ""
-riscv_dmi_error(const char *func, int line, const char *msg) "%s:%d %s"
-riscv_dmi_info(const char *func, int line, const char *msg, uint32_t val) "%s:%d %s 0x%08x"
-riscv_dmi_register_dm(unsigned count, uint64_t first, uint64_t last, bool ok) "#%u 0x%" PRIx64 "..0x%" PRIx64 ": %u"
-riscv_dmi_vm_state_change(const char *name, unsigned state) "VM state: %s[%u]"
+# See documentation at docs/devel/tracing.rst
+
+# Debug Transport Module
+riscv_dtm_dtmcs_reset(void) ""
+riscv_dtm_error(const char *func, int line, const char *msg) "%s:%d %s"
+riscv_dtm_info(const char *func, int line, const char *msg, uint32_t val) "%s:%d %s 0x%08x"
+riscv_dtm_register_dm(unsigned count, uint64_t first, uint64_t last, bool ok) "#%u 0x%" PRIx64 "..0x%" PRIx64 ": %u"
+riscv_dtm_vm_state_change(const char *name, unsigned state) "VM state: %s[%u]"

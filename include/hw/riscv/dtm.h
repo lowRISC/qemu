@@ -1,7 +1,7 @@
 /*
- * QEMU RISC-V Debug Module Interface and Controller
+ * QEMU RISC-V Debug Tranport Module
  *
- * Copyright (c) 2022-2023 Rivos, Inc.
+ * Copyright (c) 2022-2024 Rivos, Inc.
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
@@ -24,27 +24,27 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_RISCV_DMI_H
-#define HW_RISCV_DMI_H
+#ifndef HW_RISCV_DTM_H
+#define HW_RISCV_DTM_H
 
 #include "exec/hwaddr.h"
 #include "hw/riscv/debug.h"
 
-#define TYPE_RISCV_DMI "riscv-dmi"
-OBJECT_DECLARE_SIMPLE_TYPE(RISCVDMIState, RISCV_DMI)
+#define TYPE_RISCV_DTM "riscv.dtm"
+OBJECT_DECLARE_SIMPLE_TYPE(RISCVDTMState, RISCV_DTM)
 
 /**
- * Register a debug module on the Debug Module Interface.
+ * Register a debug module on the Debug Transport Module.
  * It is valid to register the same module multiple time, as long as base_addr
  * and size are not modified.
  *
- * @dev the DMI instance
+ * @dev the DTM instance
  * @dmif the DM to register
  * @base_addr the address of the first DM register
  * @size the count of DM registers
- * @return @c true if DMI is enabled, @c false otherwise
+ * @return @c true if DTM is enabled, @c false otherwise
  */
-bool riscv_dmi_register_dm(DeviceState *dev, RISCVDebugDeviceState *dmif,
+bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dmif,
                            hwaddr base_addr, hwaddr size);
 
-#endif /* HW_RISCV_DMI_H */
+#endif /* HW_RISCV_DTM_H */

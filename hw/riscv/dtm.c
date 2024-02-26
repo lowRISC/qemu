@@ -1,5 +1,5 @@
 /*
- * QEMU Debug Module Interface and Controller
+ * QEMU Debug Transport Module
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
  * Author(s):
@@ -25,7 +25,7 @@
  *
  * Generated code for absract commands has been extracted from the PULP Debug
  * module whose file (dm_mem.sv) contains the following copyright. This piece of
- * code is self contained within the `riscv_dmi_dm_access_register` function:
+ * code is self contained within the `riscv_dtm_dm_access_register` function:
  *
  *   Copyright and related rights are licensed under the Solderpad Hardware
  *   License, Version 0.51 (the “License”); you may not use this file except in
@@ -57,7 +57,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/debug.h"
-#include "hw/riscv/dmi.h"
+#include "hw/riscv/dtm.h"
 #include "hw/sysbus.h"
 #include "sysemu/cpus.h"
 #include "sysemu/hw_accel.h"
@@ -90,10 +90,10 @@ REG64(DMI, 0x11u)
  * Macros
  */
 
-#define xtrace_riscv_dmi_error(_msg_) \
-    trace_riscv_dmi_error(__func__, __LINE__, _msg_)
-#define xtrace_riscv_dmi_info(_msg_, _val_) \
-    trace_riscv_dmi_info(__func__, __LINE__, _msg_, _val_)
+#define xtrace_riscv_dtm_error(_msg_) \
+    trace_riscv_dtm_error(__func__, __LINE__, _msg_)
+#define xtrace_riscv_dtm_info(_msg_, _val_) \
+    trace_riscv_dtm_info(__func__, __LINE__, _msg_, _val_)
 
 /*
  * Type definitions
@@ -110,7 +110,7 @@ typedef struct RISCVDebugModule {
 } RISCVDebugModule;
 
 /** Debug Module Interface */
-struct RISCVDMIState {
+struct RISCVDTMState {
     DeviceState parent;
 
     RISCVDebugModuleList dms;
@@ -129,14 +129,14 @@ struct RISCVDMIState {
  * Forward declarations
  */
 
-static void riscv_dmi_reset(DeviceState *dev);
-static RISCVDebugModule* riscv_dmi_get_dm(RISCVDMIState *s, uint32_t addr);
-static void riscv_dmi_sort_dms(RISCVDMIState *s);
+static void riscv_dtm_reset(DeviceState *dev);
+static RISCVDebugModule* riscv_dtm_get_dm(RISCVDTMState *s, uint32_t addr);
+static void riscv_dtm_sort_dms(RISCVDTMState *s);
 
-static void riscv_dmi_tap_dtmcs_capture(TAPDataHandler *tdh);
-static void riscv_dmi_tap_dtmcs_update(TAPDataHandler *tdh);
-static void riscv_dmi_tap_dmi_capture(TAPDataHandler *tdh);
-static void riscv_dmi_tap_dmi_update(TAPDataHandler *tdh);
+static void riscv_dtm_tap_dtmcs_capture(TAPDataHandler *tdh);
+static void riscv_dtm_tap_dtmcs_update(TAPDataHandler *tdh);
+static void riscv_dtm_tap_dmi_capture(TAPDataHandler *tdh);
+static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh);
 
 /*
  * Constants
@@ -150,16 +150,16 @@ static const TAPDataHandler RISCVDMI_DTMCS = {
     .name = "dtmcs",
     .length = 32u,
     .value = RISCV_DEBUG_DMI_VERSION, /* abits updated at runtime */
-    .capture = &riscv_dmi_tap_dtmcs_capture,
-    .update = &riscv_dmi_tap_dtmcs_update,
+    .capture = &riscv_dtm_tap_dtmcs_capture,
+    .update = &riscv_dtm_tap_dtmcs_update,
 };
 
 static const TAPDataHandler RISCVDMI_DMI = {
     .name = "dmi",
     /* data, op; abits updated at runtime */
     .length = R_DMI_OP_LENGTH + R_DMI_DATA_LENGTH,
-    .capture = &riscv_dmi_tap_dmi_capture,
-    .update = &riscv_dmi_tap_dmi_update,
+    .capture = &riscv_dtm_tap_dmi_capture,
+    .update = &riscv_dtm_tap_dmi_update,
 };
 
 #define MAKE_RUNSTATE_ENTRY(_ent_) [RUN_STATE_##_ent_] = stringify(_ent_)
@@ -194,10 +194,10 @@ static const char *RISCVDMI_RUNSTATE_NAMES[] = {
 /* Public API */
 /* -------------------------------------------------------------------------- */
 
-bool riscv_dmi_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
+bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
                            hwaddr base_addr, hwaddr size)
 {
-    RISCVDMIState *s = RISCV_DMI(dev);
+    RISCVDTMState *s = RISCV_DTM(dev);
 
     if ((base_addr + size - 1u) > (1u << s->abits)) {
         error_setg(&error_fatal,
@@ -235,10 +235,10 @@ bool riscv_dmi_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
     QLIST_INSERT_HEAD(&s->dms, dm, entry);
     s->last_dm = dm;
 
-    trace_riscv_dmi_register_dm(count, base_addr, base_addr + size - 1u,
+    trace_riscv_dtm_register_dm(count, base_addr, base_addr + size - 1u,
                                 s->jtag_ok);
 
-    riscv_dmi_sort_dms(s);
+    riscv_dtm_sort_dms(s);
 
     return s->jtag_ok;
 }
@@ -247,20 +247,20 @@ bool riscv_dmi_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
 /* DTMCS/DMI implementation */
 /* -------------------------------------------------------------------------- */
 
-static void riscv_dmi_tap_dtmcs_capture(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dtmcs_capture(TAPDataHandler *tdh)
 {
-    RISCVDMIState *s = tdh->opaque;
+    RISCVDTMState *s = tdh->opaque;
 
     tdh->value = (s->abits << 4u) | (RISCV_DEBUG_DMI_VERSION << 0u) |
                  ((uint64_t)s->dmistat << 10u); /* see DMI op result */
 }
 
-static void riscv_dmi_tap_dtmcs_update(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dtmcs_update(TAPDataHandler *tdh)
 {
-    RISCVDMIState *s = tdh->opaque;
+    RISCVDTMState *s = tdh->opaque;
     if (tdh->value & (1u << 16u)) {
         /* dmireset */
-        trace_riscv_dmi_dtmcs_reset();
+        trace_riscv_dtm_dtmcs_reset();
         s->dmistat = RISCV_DEBUG_NOERR;
     }
     if (tdh->value & (1u << 17u)) {
@@ -269,15 +269,15 @@ static void riscv_dmi_tap_dtmcs_update(TAPDataHandler *tdh)
     }
 }
 
-static void riscv_dmi_tap_dmi_capture(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dmi_capture(TAPDataHandler *tdh)
 {
-    RISCVDMIState *s = tdh->opaque;
+    RISCVDTMState *s = tdh->opaque;
 
     uint32_t addr = s->address;
     uint32_t value;
 
     if (s->dmistat == RISCV_DEBUG_NOERR) {
-        RISCVDebugModule *dm = riscv_dmi_get_dm(s, addr);
+        RISCVDebugModule *dm = riscv_dtm_get_dm(s, addr);
         if (!dm) {
             s->dmistat = RISCV_DEBUG_FAILED;
             value = 0;
@@ -298,9 +298,9 @@ static void riscv_dmi_tap_dmi_capture(TAPDataHandler *tdh)
                  ((uint64_t)(s->dmistat & 0b11));
 }
 
-static void riscv_dmi_tap_dmi_update(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh)
 {
-    RISCVDMIState *s = tdh->opaque;
+    RISCVDTMState *s = tdh->opaque;
 
     uint32_t value;
     uint32_t addr =
@@ -310,7 +310,7 @@ static void riscv_dmi_tap_dmi_update(TAPDataHandler *tdh)
     /* store address for next read back */
     s->address = addr;
 
-    RISCVDebugModule *dm = riscv_dmi_get_dm(s, addr);
+    RISCVDebugModule *dm = riscv_dtm_get_dm(s, addr);
     if (!dm) {
         s->dmistat = RISCV_DEBUG_FAILED;
         qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n", __func__,
@@ -344,7 +344,7 @@ static void riscv_dmi_tap_dmi_update(TAPDataHandler *tdh)
     }
 }
 
-static void riscv_dmi_register_tap_handlers(RISCVDMIState *s)
+static void riscv_dtm_register_tap_handlers(RISCVDTMState *s)
 {
     /*
      * copy the template to update the opaque value
@@ -356,7 +356,7 @@ static void riscv_dmi_register_tap_handlers(RISCVDMIState *s)
     tdh.value |= s->abits << 4u; /* add address bit count */
     tdh.opaque = s;
     if (jtag_register_handler(RISCVDMI_DTMCS_IR, &tdh)) {
-        xtrace_riscv_dmi_error("cannot register DMTCS");
+        xtrace_riscv_dtm_error("cannot register DMTCS");
         return;
     }
 
@@ -365,12 +365,12 @@ static void riscv_dmi_register_tap_handlers(RISCVDMIState *s)
     tdh.opaque = s;
     /* the data handler is copied by the TAP controller */
     if (jtag_register_handler(RISCVDMI_DMI_IR, &tdh)) {
-        xtrace_riscv_dmi_error("cannot register DMI");
+        xtrace_riscv_dtm_error("cannot register DMI");
         return;
     }
 }
 
-static RISCVDebugModule *riscv_dmi_get_dm(RISCVDMIState *s, uint32_t addr)
+static RISCVDebugModule *riscv_dtm_get_dm(RISCVDTMState *s, uint32_t addr)
 {
     RISCVDebugModule *dm = s->last_dm;
 
@@ -389,21 +389,21 @@ static RISCVDebugModule *riscv_dmi_get_dm(RISCVDMIState *s, uint32_t addr)
     return NULL;
 }
 
-static void riscv_dmi_vm_state_change(void *opaque, bool running,
+static void riscv_dtm_vm_state_change(void *opaque, bool running,
                                       RunState state)
 {
     (void)opaque;
     (void)running;
-    trace_riscv_dmi_vm_state_change(RUNSTATE_NAME(state), state);
+    trace_riscv_dtm_vm_state_change(RUNSTATE_NAME(state), state);
 }
 
-static int riscv_dmi_order_dm(const void *pdm1, const void *pdm2)
+static int riscv_dtm_order_dm(const void *pdm1, const void *pdm2)
 {
     return ((int)(*(RISCVDebugModule **)pdm1)->base) -
            ((int)(*(RISCVDebugModule **)pdm2)->base);
 }
 
-static void riscv_dmi_sort_dms(RISCVDMIState *s)
+static void riscv_dtm_sort_dms(RISCVDTMState *s)
 {
     RISCVDebugModule *dm;
 
@@ -421,7 +421,7 @@ static void riscv_dmi_sort_dms(RISCVDMIState *s)
     }
 
     /* sort DM reference by increasing base address */
-    qsort(dma, count, sizeof(RISCVDebugModule *), &riscv_dmi_order_dm);
+    qsort(dma, count, sizeof(RISCVDebugModule *), &riscv_dtm_order_dm);
 
     /* create a new list of ordered, managed DMs */
     RISCVDebugModuleList sorted;
@@ -442,14 +442,14 @@ static void riscv_dmi_sort_dms(RISCVDMIState *s)
     g_free(dma);
 }
 
-static Property riscv_dmi_properties[] = {
-    DEFINE_PROP_UINT32("abits", RISCVDMIState, abits, 0x7u),
+static Property riscv_dtm_properties[] = {
+    DEFINE_PROP_UINT32("abits", RISCVDTMState, abits, 0x7u),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void riscv_dmi_reset(DeviceState *dev)
+static void riscv_dtm_reset(DeviceState *dev)
 {
-    RISCVDMIState *s = RISCV_DMI(dev);
+    RISCVDTMState *s = RISCV_DTM(dev);
 
     s->address = 0;
     s->last_dm = NULL;
@@ -460,9 +460,9 @@ static void riscv_dmi_reset(DeviceState *dev)
     }
 }
 
-static void riscv_dmi_realize(DeviceState *dev, Error **errp)
+static void riscv_dtm_realize(DeviceState *dev, Error **errp)
 {
-    RISCVDMIState *s = RISCV_DMI(dev);
+    RISCVDTMState *s = RISCV_DTM(dev);
 
     if (s->abits < 7u || s->abits > 30u) {
         error_setg(errp, "Invalid address bit count");
@@ -473,41 +473,41 @@ static void riscv_dmi_realize(DeviceState *dev, Error **errp)
     s->jtag_ok = jtag_tap_enabled();
 
     if (s->jtag_ok) {
-        (void)riscv_dmi_register_tap_handlers(s);
+        (void)riscv_dtm_register_tap_handlers(s);
     }
 }
 
-static void riscv_dmi_init(Object *obj)
+static void riscv_dtm_init(Object *obj)
 {
-    RISCVDMIState *s = RISCV_DMI(obj);
+    RISCVDTMState *s = RISCV_DTM(obj);
 
-    qemu_add_vm_change_state_handler(&riscv_dmi_vm_state_change, s);
+    qemu_add_vm_change_state_handler(&riscv_dtm_vm_state_change, s);
 
     QLIST_INIT(&s->dms);
 }
 
-static void riscv_dmi_class_init(ObjectClass *klass, void *data)
+static void riscv_dtm_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &riscv_dmi_reset;
-    dc->realize = &riscv_dmi_realize;
-    device_class_set_props(dc, riscv_dmi_properties);
+    dc->reset = &riscv_dtm_reset;
+    dc->realize = &riscv_dtm_realize;
+    device_class_set_props(dc, riscv_dtm_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
-static const TypeInfo riscv_dmi_info = {
-    .name = TYPE_RISCV_DMI,
+static const TypeInfo riscv_dtm_info = {
+    .name = TYPE_RISCV_DTM,
     .parent = TYPE_DEVICE,
-    .instance_size = sizeof(RISCVDMIState),
-    .instance_init = &riscv_dmi_init,
-    .class_init = &riscv_dmi_class_init,
+    .instance_size = sizeof(RISCVDTMState),
+    .instance_init = &riscv_dtm_init,
+    .class_init = &riscv_dtm_class_init,
 };
 
-static void riscv_dmi_register_types(void)
+static void riscv_dtm_register_types(void)
 {
-    type_register_static(&riscv_dmi_info);
+    type_register_static(&riscv_dtm_info);
 }
 
-type_init(riscv_dmi_register_types);
+type_init(riscv_dtm_register_types);
