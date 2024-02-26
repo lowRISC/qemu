@@ -89,6 +89,8 @@ config IBEXDEMO
     select IBEXDEMO_SPI
     select IBEXDEMO_TIMER
     select IBEXDEMO_UART
+    select RISCV_DM
+    select RISCV_DTM
     select ST7735
     select UNIMP
 

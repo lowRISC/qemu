@@ -23,9 +23,11 @@
 #include "qemu/cutils.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
+#include "qapi/qmp/qlist.h"
 #include "cpu.h"
 #include "elf.h"
 #include "exec/address-spaces.h"
+#include "exec/jtagstub.h"
 #include "hw/boards.h"
 #include "hw/display/st7735.h"
 #include "hw/ibexdemo/ibexdemo_gpio.h"
@@ -34,8 +36,11 @@
 #include "hw/ibexdemo/ibexdemo_timer.h"
 #include "hw/ibexdemo/ibexdemo_uart.h"
 #include "hw/loader.h"
+#include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/qdev-properties.h"
+#include "hw/riscv/dm.h"
+#include "hw/riscv/dtm.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibexdemo.h"
 #include "hw/ssi/ssi.h"
@@ -45,6 +50,8 @@
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
 
+static void ibexdemo_soc_dm_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ibexdemo_soc_gpio_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ibexdemo_soc_hart_configure(
@@ -76,9 +83,12 @@ static const uint32_t IBEXDEMO_BOOT[] = {
 };
 
 enum IbexDemoSocDevice {
+    IBEXDEMO_SOC_DEV_DM,
+    IBEXDEMO_SOC_DEV_DTM,
     IBEXDEMO_SOC_DEV_GPIO,
     IBEXDEMO_SOC_DEV_HART,
     IBEXDEMO_SOC_DEV_PWM,
+    IBEXDEMO_SOC_DEV_RV_DM,
     IBEXDEMO_SOC_DEV_SIMCTRL,
     IBEXDEMO_SOC_DEV_SPI,
     IBEXDEMO_SOC_DEV_TIMER,
@@ -91,6 +101,30 @@ enum IbexDemoBoardDevice {
     _IBEXDEMO_BOARD_DEV_COUNT
 };
 
+#define IBEXDEMO_SOC_DEVLINK(_pname_, _target_) \
+    IBEX_DEVLINK(_pname_, IBEXDEMO_SOC_DEV_##_target_)
+
+/*
+ * Ibex Demo System RV DM
+ * see https://github.com/lowRISC/part-number-registry/blob/main/jtag_partno.md
+ */
+#define IBEXDEMO_TAP_IDCODE IBEX_JTAG_IDCODE(256, 1, 0)
+
+#define PULP_DM_BASE 0x00010000u
+
+#define IBEXDEMO_DM_CONNECTION(_dst_dev_, _num_) \
+    { \
+        .out = { \
+            .name = PULP_RV_DM_ACK_OUT_LINES, \
+            .num = (_num_), \
+        }, \
+        .in = { \
+            .name = RISCV_DM_ACK_LINES, \
+            .index = (_dst_dev_), \
+            .num = (_num_), \
+        } \
+    }
+
 static const IbexDeviceDef ibexdemo_soc_devices[] = {
     /* clang-format off */
     [IBEXDEMO_SOC_DEV_HART] = {
@@ -98,7 +132,56 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         .cfg = &ibexdemo_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_BOOL_PROP("m", true),
-            IBEX_DEV_UINT_PROP("mtvec", 0x00100001u)
+            IBEX_DEV_UINT_PROP("mtvec", 0x00100001u),
+            IBEX_DEV_UINT_PROP("dmhaltvec", PULP_DM_BASE +
+                PULP_RV_DM_ROM_BASE + PULP_RV_DM_HALT_OFFSET),
+            IBEX_DEV_UINT_PROP("dmexcpvec", PULP_DM_BASE +
+                PULP_RV_DM_ROM_BASE + PULP_RV_DM_EXCEPTION_OFFSET)
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_DTM] = {
+        .type = TYPE_RISCV_DTM,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("abits", 7u)
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_DM] = {
+        .type = TYPE_RISCV_DM,
+        .cfg = &ibexdemo_soc_dm_configure,
+        .link = IBEXDEVICELINKDEFS(
+            IBEXDEMO_SOC_DEVLINK("dtm", DTM)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("nscratch", PULP_RV_DM_NSCRATCH_COUNT),
+            IBEX_DEV_UINT_PROP("progbuf_count",
+                PULP_RV_DM_PROGRAM_BUFFER_COUNT),
+            IBEX_DEV_UINT_PROP("data_count", PULP_RV_DM_DATA_COUNT),
+            IBEX_DEV_UINT_PROP("abstractcmd_count",
+                PULP_RV_DM_ABSTRACTCMD_COUNT),
+            IBEX_DEV_UINT_PROP("dm_phyaddr", PULP_DM_BASE),
+            IBEX_DEV_UINT_PROP("rom_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_ROM_BASE),
+            IBEX_DEV_UINT_PROP("whereto_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_WHERETO_OFFSET),
+            IBEX_DEV_UINT_PROP("data_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_DATAADDR_OFFSET),
+            IBEX_DEV_UINT_PROP("progbuf_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_PROGRAM_BUFFER_OFFSET),
+            IBEX_DEV_UINT_PROP("resume_offset", PULP_RV_DM_RESUME_OFFSET),
+            IBEX_DEV_BOOL_PROP("sysbus_access", true),
+            IBEX_DEV_BOOL_PROP("abstractauto", false)
+        ),
+    },
+    [IBEXDEMO_SOC_DEV_RV_DM] = {
+        .type = TYPE_PULP_RV_DM,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x00000000u, .size = 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            IBEXDEMO_DM_CONNECTION(IBEXDEMO_SOC_DEV_DM, 0),
+            IBEXDEMO_DM_CONNECTION(IBEXDEMO_SOC_DEV_DM, 1),
+            IBEXDEMO_DM_CONNECTION(IBEXDEMO_SOC_DEV_DM, 2),
+            IBEXDEMO_DM_CONNECTION(IBEXDEMO_SOC_DEV_DM, 3)
         ),
     },
     [IBEXDEMO_SOC_DEV_SIMCTRL] = {
@@ -179,6 +262,17 @@ struct IbexDemoMachineState {
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
 
+static void ibexdemo_soc_dm_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    (void)def;
+    (void)parent;
+    QList *hart = qlist_new();
+    qlist_append_int(hart, 0);
+    qdev_prop_set_array(dev, "hart", hart);
+}
+
+
 static void ibexdemo_soc_gpio_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
@@ -226,6 +320,9 @@ static void ibexdemo_soc_reset(DeviceState *dev)
 {
     IbexDemoSoCState *s = RISCV_IBEXDEMO_SOC(dev);
 
+    device_cold_reset(s->devices[IBEXDEMO_SOC_DEV_DTM]);
+    device_cold_reset(s->devices[IBEXDEMO_SOC_DEV_DM]);
+
     cpu_reset(CPU(s->devices[IBEXDEMO_SOC_DEV_HART]));
 }
 
@@ -257,6 +354,8 @@ static void ibexdemo_soc_realize(DeviceState *dev, Error **errp)
 static void ibexdemo_soc_init(Object *obj)
 {
     IbexDemoSoCState *s = RISCV_IBEXDEMO_SOC(obj);
+
+    jtag_configure_tap(IBEX_TAP_IR_LENGTH, IBEXDEMO_TAP_IDCODE);
 
     s->devices =
         ibex_create_devices(ibexdemo_soc_devices,
