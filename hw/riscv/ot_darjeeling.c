@@ -103,6 +103,7 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_AST,
     OT_DJ_SOC_DEV_CLKMGR,
     OT_DJ_SOC_DEV_CSRNG,
+    OT_DJ_SOC_DEV_DM_TL_LC_CTRL,
     OT_DJ_SOC_DEV_DM_TL_MBX,
     OT_DJ_SOC_DEV_DMA,
     OT_DJ_SOC_DEV_DMI,
@@ -361,8 +362,23 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("abits", 12u)
         ),
     },
+    [OT_DJ_SOC_DEV_DM_TL_LC_CTRL] = {
+        .type = TYPE_OT_DM_TL,
+        .instance = 0,
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("dmi", DMI),
+            OT_DJ_SOC_DEVLINK("tl_dev", LC_CTRL)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("dmi_addr", OT_DJ_DEBUG_LC_CTRL_DMI_ADDR),
+            IBEX_DEV_UINT_PROP("dmi_size", OT_DJ_DEBUG_LC_CTRL_DMI_SIZE),
+            IBEX_DEV_UINT_PROP("tl_addr", OT_DJ_DEBUG_LC_CTRL_ADDR),
+            IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
+        )
+    },
     [OT_DJ_SOC_DEV_DM_TL_MBX] = {
         .type = TYPE_OT_DM_TL,
+        .instance = 1,
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("dmi", DMI),
             OT_DJ_SOC_DEVLINK("tl_dev", MBX_JTAG)
@@ -1117,6 +1133,9 @@ static void ot_dj_soc_reset_hold(Object *obj)
     Object *dmi = OBJECT(s->devices[OT_DJ_SOC_DEV_DMI]);
     resettable_reset(dmi, RESET_TYPE_COLD);
 
+    // TODO: not sure where Reset is plugged here...
+    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_TL_LC_CTRL]),
+                     RESET_TYPE_COLD);
     resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_TL_MBX]),
                      RESET_TYPE_COLD);
 
