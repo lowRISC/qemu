@@ -37,8 +37,8 @@ OBJECT_DECLARE_SIMPLE_TYPE(OtMbxState, OT_MBX)
 #define OT_MBX_SYS_REGS_COUNT  6u
 
 #define OT_MBX_HOST_APERTURE \
-    DIV_ROUND_UP((OT_MBX_HOST_REGS_COUNT * sizeof(uint32_t)), 0x10u)
+    ROUND_UP((OT_MBX_HOST_REGS_COUNT * sizeof(uint32_t)), 0x10u)
 #define OT_MBX_SYS_APERTURE \
-    DIV_ROUND_UP((OT_MBX_SYS_REGS_COUNT * sizeof(uint32_t)), 0x10u)
+    ROUND_UP((OT_MBX_SYS_REGS_COUNT * sizeof(uint32_t)), 0x10u)
 
 #endif /* HW_OPENTITAN_OT_MBX_H */
