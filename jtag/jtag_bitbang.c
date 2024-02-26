@@ -197,8 +197,8 @@ static TAPServerState tapserver_state;
  * TAP State Machine implementation
  */
 
-static void tapctrl_dump_register(const char *msg, uint64_t value,
-                                  size_t length)
+static void tapctrl_dump_register(const char *msg, const char *iname,
+                                  uint64_t value, size_t length)
 {
     char buf[80];
     if (length > 64u) {
@@ -211,7 +211,11 @@ static void tapctrl_dump_register(const char *msg, uint64_t value,
     }
     buf[ix] = '\0';
 
-    trace_jtag_tapctrl_dump_register(msg, value, length, buf);
+    if (iname) {
+        trace_jtag_tapctrl_idump_register(msg, iname, value, length, buf);
+    } else {
+        trace_jtag_tapctrl_dump_register(msg, value, length, buf);
+    }
 }
 
 static bool tapctrl_has_data_handler(TAPController *tap, unsigned code)
@@ -327,7 +331,7 @@ static void tapctrl_shift_ir(TAPController *tap, bool tdi)
 static void tapctrl_update_ir(TAPController *tap)
 {
     tap->ir_hold = tap->ir;
-    tapctrl_dump_register("Update IR", tap->ir_hold, tap->ir_len);
+    tapctrl_dump_register("Update IR", NULL, tap->ir_hold, tap->ir_len);
 }
 
 static void tapctrl_capture_dr(TAPController *tap)
@@ -359,7 +363,7 @@ static void tapctrl_capture_dr(TAPController *tap)
         tdh->capture(tdh);
     }
     tap->dr = tdh->value;
-    tapctrl_dump_register("Capture DR", tap->dr, tap->dr_len);
+    tapctrl_dump_register("Capture DR", tap->tdh->name, tap->dr, tap->dr_len);
 }
 
 static void tapctrl_shift_dr(TAPController *tap, bool tdi)
@@ -370,7 +374,7 @@ static void tapctrl_shift_dr(TAPController *tap, bool tdi)
 
 static void tapctrl_update_dr(TAPController *tap)
 {
-    tapctrl_dump_register("Update DR", tap->dr, tap->dr_len);
+    tapctrl_dump_register("Update DR", tap->tdh->name, tap->dr, tap->dr_len);
     TAPDataHandler *tdh = tap->tdh;
     tdh->value = tap->dr;
     if (tdh->update) {

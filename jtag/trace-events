@@ -2,7 +2,8 @@
 
 jtag_tapctrl_change(const char *msg, const char *value) "%s %s"
 jtag_tapctrl_change_state(const char *prev, const char *new) "%s -> %s"
-jtag_tapctrl_dump_register(const char *msg, uint64_t val, size_t len, const char *buf) "%s: 0x%016" PRIx64 "/%zu [%s]"
+jtag_tapctrl_dump_register(const char *msg, uint64_t val, size_t len, const char *buf) "%s: 0x%" PRIx64 "/%zu [b%s]"
+jtag_tapctrl_idump_register(const char *msg, const char *iname, uint64_t val, size_t len, const char *buf) "%s (%s): 0x%" PRIx64 "/%zu [b%s]"
 jtag_tapctrl_init(size_t irlen, uint32_t ircode) "irlength %zu, idcode 0x%08x"
 jtag_tapctrl_register(unsigned code, const char *name) "register 0x%x: %s"
 jtag_tapctrl_reset(bool tap, bool sys) "tap: %u, system: %u"
