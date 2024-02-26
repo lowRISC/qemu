@@ -415,7 +415,11 @@ static void tapctrl_bb_read(TAPController *tap)
 
 static void tapctrl_bb_quit(TAPController *tap)
 {
-    tapctrl_reset(tap);
+    (void)tap;
+
+    qemu_log("%s: JTAG-requested termination\n", __func__);
+
+    qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
 }
 
 static void tapctrl_bb_write(TAPController *tap, bool tck, bool tms, bool tdi)
