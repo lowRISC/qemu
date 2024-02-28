@@ -40,6 +40,8 @@ directory to help with these tasks.
 * `present.py` implements the Present 128-bit scrambler/descrambler used in OTP image files for
   HW digest verification.
 * `treillis/` directory contains the test application to test the [GPIO](gpio.md) device.
+* [`uartmux.py`](uartmux.md) is a tiny stream wrapper to help dealing with multiple QEMU output
+  streams, typically multiple virtual UARTs.
 
 ## Python modules
 
