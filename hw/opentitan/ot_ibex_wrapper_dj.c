@@ -42,6 +42,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 
 
@@ -1371,7 +1372,8 @@ static void ot_ibex_wrapper_dj_regs_write(void *opaque, hwaddr addr,
             if (val32 > 127u) {
                 val32 = 127u;
             }
-            exit((int)val32);
+            qemu_system_shutdown_request_with_code(
+                SHUTDOWN_CAUSE_GUEST_SHUTDOWN, (int)val32);
         }
         val32 &= R_SW_FATAL_ERR_VAL_MASK;
         s->regs[reg] = ot_multibitbool_w1s_write(s->regs[reg], val32, 4u);
@@ -1423,7 +1425,8 @@ static void ot_ibex_wrapper_dj_regs_write(void *opaque, hwaddr addr,
         switch (val32 & R_DV_SIM_STATUS_CODE_MASK) {
         case TEST_STATUS_PASSED:
             trace_ot_ibex_wrapper_exit(s->ot_id, "DV SIM success, exiting", 0);
-            exit(0);
+            qemu_system_shutdown_request_with_code(
+                SHUTDOWN_CAUSE_GUEST_SHUTDOWN, 0);
             break;
         case TEST_STATUS_FAILED: {
             uint32_t info = FIELD_EX32(val32, DV_SIM_STATUS, INFO);
@@ -1436,7 +1439,8 @@ static void ot_ibex_wrapper_dj_regs_write(void *opaque, hwaddr addr,
             }
             trace_ot_ibex_wrapper_exit(s->ot_id, "DV SIM failure, exiting",
                                        ret);
-            exit(ret);
+            qemu_system_shutdown_request_with_code(
+                SHUTDOWN_CAUSE_GUEST_SHUTDOWN, ret);
             break;
         }
         default:

@@ -47,6 +47,7 @@
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 
 /* ------------------------------------------------------------------------ */
@@ -1183,7 +1184,7 @@ static void ot_dev_proxy_quit(OtDevProxyState *s)
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('q', 't'), NULL, 0);
     usleep(200000);
 
-    exit(code);
+    qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_SHUTDOWN, code);
 }
 
 static void ot_dev_proxy_intercepted_irq(void *opaque, int irq, int level)

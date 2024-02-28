@@ -45,6 +45,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 
 
@@ -867,7 +868,7 @@ static void ot_edn_fill_bits(void *opaque, const uint32_t *bits, bool fips)
     default:
         xtrace_ot_edn_error(c->appid, "unexpected state");
         ot_edn_change_state(s, EDN_ERROR);
-        exit(1);
+        qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_PANIC, 1);
         break;
     }
 

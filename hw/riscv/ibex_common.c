@@ -38,6 +38,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/sysbus.h"
 #include "monitor/monitor.h"
+#include "sysemu/runstate.h"
 
 static void rust_demangle_fn(const char *st_name, int st_info,
                              uint64_t st_value, uint64_t st_size);
@@ -615,7 +616,8 @@ uint32_t ibex_load_kernel(AddressSpace *as)
                              &kernel_entry, NULL, NULL, NULL, 0, EM_RISCV, 1, 0,
                              as, true, &rust_demangle_fn) <= 0) {
             error_report("Cannot load ELF kernel %s", ms->kernel_filename);
-            exit(EXIT_FAILURE);
+            qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_HOST_ERROR,
+                                                   EXIT_FAILURE);
         }
 
         if (((uint32_t)kernel_entry & 0xFFu) != 0x80u) {
