@@ -1,10 +1,10 @@
 variables:
+  BAREMETAL_REF: "240223-1"
   QEMU_BUILD_OPTS: ""
   CLANG_FORMAT_CONF: "ot.clang_format"
   CLANG_TIDY_CONF: "ot.clang_tidy"
 
 include:
-  - local: '/.gitlab-ci.d/opentitan/bmref.yml'
   - local: '/.gitlab-ci.d/opentitan/build.yml'
   - local: '/.gitlab-ci.d/opentitan/ot-smoke.yml'
   - local: '/.gitlab-ci.d/opentitan/ot-bmtests.yml'
