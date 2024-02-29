@@ -1,3 +1,5 @@
+jtag/*.c
+include/exec/jtagstub.h
 hw/opentitan/*.c
 hw/opentitan/*.h
 hw/riscv/ibex*.c

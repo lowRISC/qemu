@@ -1,3 +1,4 @@
+jtag/*.c
 hw/opentitan/*.c
 hw/riscv/ot_*.c
 hw/riscv/ibex_*.c
