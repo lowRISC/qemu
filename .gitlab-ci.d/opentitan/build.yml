@@ -62,7 +62,7 @@ format:
     - qemu_ot
   stage: build
   script:
-    - scripts/opentitan/ot-format.sh -i $(tr '\n' ' ' < .gitlab-ci.d/opentitan/$CLANG_FORMAT_CONF)
+    - scripts/opentitan/ot-format.sh --ci -i
     - git status -s
     - test $(git status -s | wc -l) -eq 0
 
@@ -72,4 +72,4 @@ tidy:
   stage: build
   needs: ["build-clang"]
   script:
-    - scripts/opentitan/ot-tidy.sh -p build $(tr '\n' ' ' < .gitlab-ci.d/opentitan/$CLANG_TIDY_CONF)
+    - scripts/opentitan/ot-tidy.sh --ci -p build
