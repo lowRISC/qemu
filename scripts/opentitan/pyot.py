@@ -1202,8 +1202,13 @@ class QEMUExecuter:
         testdir = normpath(self._qfm.interpolate(self._config.get('testdir',
                                                                   curdir)))
         self._qfm.define({'testdir': testdir})
-        cfilters = self._args.filter or ['*']
-        tfilters = [f for f in cfilters if not f.startswith('!')]
+        cfilters = self._args.filter or []
+        pfilters = [f for f in cfilters if not f.startswith('!')]
+        if not pfilters:
+            cfilters = ['*'] + cfilters
+            tfilters = ['*'] + pfilters
+        else:
+            tfilters = list(pfilters)
         inc_filters = self._build_config_list('include')
         if inc_filters:
             self._log.debug('Searching for tests from %s dir', testdir)
@@ -1425,8 +1430,7 @@ def main():
         exe.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
                          help=f'exit after the specified seconds '
                               f'(default: {DEFAULT_TIMEOUT} secs)')
-        exe.add_argument('-F', '--filter', metavar='TEST',
-                               action='append',
+        exe.add_argument('-F', '--filter', metavar='TEST', action='append',
                          help='run tests with matching filter, prefix with "!" '
                               'to exclude matching tests')
         exe.add_argument('-v', '--verbose', action='count',
