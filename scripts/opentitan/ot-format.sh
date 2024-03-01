@@ -18,7 +18,8 @@ if [ -z "${clangformat}" ]; then
 fi
 
 # check clang-format version
-version_full="$(${clangformat} --version | head -1 | \
+version_full="$(${clangformat} --version | \
+    grep "clang-format version" | head -1 | \
     sed -E 's/^.*clang-format version ([0-9]+\.[0-9]+\.[0-9]+).*$/\1/')"
 version_major="$(echo ${version_full} | cut -d. -f1)"
 if [ ${version_major} -lt ${EXPECTED_VERSION} ]; then
@@ -31,7 +32,39 @@ else
     fi
 fi
 
-# build config path
-CFG="$(dirname $0)"/clang-format.yml
+CI_MODE=0
+ARGS=""
 
-exec "${clangformat}" --style=file:"${CFG}" $*
+# filter arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --ci)
+           CI_MODE=1
+           ;;
+        --style=*)
+           echo "Cannot override --style option" >&2
+           exit 1
+           ;;
+        *)
+           ARGS="$ARGS $1"
+           ;;
+    esac
+    shift
+done
+
+# config
+QEMU_ROOT="$(dirname $0)"/../..
+CFG="$(dirname $0)"/clang-format.yml
+FILES=""
+
+# automatic file list
+if [ $CI_MODE -eq 1 ]; then
+    # file list path
+    FILES_D="$(dirname $0)"/clang-format.d
+
+    for filespec in $(cat "$FILES_D"/*.lst); do
+        FILES="$FILES $QEMU_ROOT/$filespec"
+    done
+fi
+
+exec "${clangformat}" --style=file:"${CFG}" $ARGS $FILES

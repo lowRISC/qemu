@@ -18,7 +18,8 @@ if [ -z "${clangtidy}" ]; then
 fi
 
 # check clang-tidy version
-version_full="$(${clangtidy} --version | head -1 | \
+version_full="$(${clangtidy} --version | \
+    grep "LLVM version" | head -1 | \
     sed -E 's/^.*LLVM version ([0-9]+\.[0-9]+\.[0-9]+).*$/\1/')"
 version_major="$(echo ${version_full} | cut -d. -f1)"
 if [ ${version_major} -lt ${EXPECTED_VERSION} ]; then
@@ -31,7 +32,37 @@ else
     fi
 fi
 
-# build config path
-CFG="$(dirname $0)"/clang-tidy.yml
+CI_MODE=0
+ARGS=""
 
-exec "${clangtidy}" --config-file="${CFG}" $*
+# filter arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --ci)
+           CI_MODE=1
+           ;;
+        --config-file=*)
+           echo "Cannot override --config-file option" >&2
+           exit 1
+           ;;
+        *)
+           ARGS="$ARGS $1"
+           ;;
+    esac
+    shift
+done
+
+# config
+QEMU_ROOT="$(dirname $0)"/../..
+CFG="$(dirname $0)"/clang-tidy.yml
+FILES_D="$(dirname $0)"/clang-tidy.d
+FILES=""
+
+# automatic file list
+if [ $CI_MODE -eq 1 ]; then
+    for filespec in $(cat "$FILES_D"/*.lst); do
+        FILES="$FILES $QEMU_ROOT/$filespec"
+    done
+fi
+
+exec "${clangtidy}" --config-file="${CFG}" $ARGS $FILES

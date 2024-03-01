@@ -1,0 +1,4 @@
+hw/opentitan/*.c
+hw/riscv/ot_*.c
+hw/riscv/ibex_*.c
+target/riscv/ibex_*.c
