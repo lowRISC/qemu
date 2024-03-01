@@ -73,10 +73,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Check execution
         run: |
-          clang-format-16 -i \
-             hw/opentitan/*.c hw/opentitan/*.h include/hw/opentitan/*.h \
-             hw/riscv/ibex*.c include/hw/riscv/ibex*.h target/riscv/ibex*.c \
-             hw/riscv/ot_*.c include/hw/riscv/ot_*.h
+          scripts/opentitan/ot-format.sh --ci -i
 
   lint-clang:
     runs-on: ubuntu-latest
@@ -100,11 +97,7 @@ jobs:
       - name: Clang tidy
         # Expect many warnings/errors (accounted but not reported) from included QEMU files
         run: |
-          clang-tidy -p build-clang \
-            hw/opentitan/*.c \
-            hw/riscv/ot_*.c  \
-            hw/riscv/ibex*.c \
-            target/riscv/ibex_csr.c
+          scripts/opentitan/ot-tidy.sh --ci -p build-clang
 
   test-clang:
     runs-on: ubuntu-latest
