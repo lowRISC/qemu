@@ -462,7 +462,7 @@ static void tapctrl_bb_blink(TAPController *tap, bool light) {}
 
 static void tapctrl_bb_read(TAPController *tap)
 {
-    (void)tap;
+    trace_jtag_tapctrl_read(tap->tdo);
 }
 
 static void tapctrl_bb_quit(TAPController *tap)
