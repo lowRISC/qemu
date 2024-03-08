@@ -6,109 +6,20 @@
 """Bit sequence helpers for JTAG/DTM.
 
    BitSequence is a wrapper to help manipulating bits with the JTAG tools.
-
-   >>> empty = BitSequence()
-
-   >>> len(empty)
-   0
-   >>> int(empty)
-   0
-   >>> bool(empty)
-   False
-   >>> bs = BitSequence(0xC4, 8)
-
-   >>> bs
-   [1, 1, 0, 0, 0, 1, 0, 0]
-   >>> str(bs)
-   '11000100'
-   >>> bs = BitSequence('11000100')
-
-   >>> bs
-   [1, 1, 0, 0, 0, 1, 0, 0]
-   >>> int(bs)
-   196
-   >>> bs = BitSequence(b'11000100')
-
-   >>> bs
-   [1, 1, 0, 0, 0, 1, 0, 0]
-   >>> bs = BitSequence([1, 1, 0, 0, 0, 1, 0, 0])
-
-   >>> bs
-   [1, 1, 0, 0, 0, 1, 0, 0]
-   >>> bs.pop_right()
-   [0]
-   >>> bs.pop_right(2)
-   [1, 0]
-   >>> bs.pop_right_bit()
-   False
-   >>> bs.push_right('0111')
-   [1, 1, 0, 0, 0, 1, 1, 1]
-   >>> bs.pop_left_bit()
-   True
-   >>> bs.pop_left(2)
-   [1, 0]
-   >>> bs
-   [0, 0, 1, 1, 1]
-   >>> len(bs)
-   5
-   >>> bs.push_left([False, True, True])
-   [0, 1, 1, 0, 0, 1, 1, 1]
-   >>> bs.rll()
-   [1, 1, 0, 0, 1, 1, 1, 0]
-   >>> bs.rrl(3)
-   [1, 1, 0, 1, 1, 0, 0, 1]
-   >>> bs.inc()
-   [1, 1, 0, 1, 1, 0, 1, 0]
-   >>> bs.invert()
-   [0, 0, 1, 0, 0, 1, 0, 1]
-   >>> bs.reverse()
-   [1, 0, 1, 0, 0, 1, 0, 0]
-   >>> bs = BitSequence(0xff, 8)
-   >>> bs.inc()
-   [0, 0, 0, 0, 0, 0, 0, 0]
-   >>> bs.invariant()
-   False
-   >>> len(bs)
-   8
-   >>> bs.dec()
-   [1, 1, 1, 1, 1, 1, 1, 1]
-   >>> bs.invariant()
-   True
-   >>> len(bs)
-   8
-   >>> bs1 = BitSequence(0x13, 5)  # 10011
-
-   >>> bs2 = BitSequence(0x19, 5)  # 11001
-
-   >>> bs3 = bs2.copy().reverse()
-
-   >>> bs1 == bs3
-   True
-   >>> bs1 == bs2
-   False
-   >>> bs1 != bs2
-   True
-   >>> bs1 < bs2
-   True
-   >>> bs1 <= bs2
-   True
-   >>> bs1 > bs2
-   False
-   >>> bs1 | bs2
-   [1, 1, 0, 1, 1]
-   >>> bs1 & bs2
-   [1, 0, 0, 0, 1]
-   >>> bs1 ^ bs2
-   [0, 1, 0, 1, 0]
-   >>> ~(bs1 ^ bs2)
-   [1, 0, 1, 0, 1]
+   Imported from pyftdi project.
 """
 
 from typing import Any, Iterable, List, Union
 
 
 class BitSequenceError(Exception):
-    """Bit sequence error"""
+    """Bit sequence error.
+
+       >>> raise BitSequenceError('msg')
+       Traceback (most recent call last):
+       ...
+       BitSequenceError: msg
+    """
 
 
 BitSequenceInitializer = Union['BitSequence', str, int, bytes, bytearray,
@@ -126,12 +37,35 @@ class BitSequence:
 
        :param value:  initial value
        :param length: count of signficant bits in the bit sequence
+
+       >>> BitSequence()
+       []
+       >>> BitSequence([False, True])
+       [0, 1]
+       >>> BitSequence([0, 1, 1])
+       [0, 1, 1]
+       >>> BitSequence('100')
+       [1, 0, 0]
+       >>> BitSequence(b'101')
+       [1, 0, 1]
+       >>> BitSequence(0xC, 4)
+       [1, 1, 0, 0]
+       >>> BitSequence(0xC, 3)
+       Traceback (most recent call last):
+       ...
+       ValueError: Value cannot be stored in specified width
     """
 
     # pylint: disable=protected-access
 
     def __init__(self, value: BitSequenceInitializer = None,
                  width: int = 0):
+        """
+        >>> BitSequence()
+        []
+        >>> BitSequence(0, 3)
+        [0, 0, 0]
+        """
         if value is None:
             self._int = 0
             self._width = width
@@ -140,6 +74,8 @@ class BitSequence:
             self._int, self._width = value._int, value._width
             return
         if isinstance(value, int):
+            if value >= 1 << width:
+                raise ValueError('Value cannot be stored in specified width')
             bseq = self.from_int(value, width)
             self._int, self._width = bseq._int, bseq._width
             return
@@ -153,7 +89,15 @@ class BitSequence:
 
     @classmethod
     def from_iterable(cls, iterable: Iterable) -> 'BitSequence':
-        """Instanciate a BitSequence from an iterable."""
+        """Instanciate a BitSequence from an iterable.
+
+        >>> BitSequence('11000100')
+        [1, 1, 0, 0, 0, 1, 0, 0]
+        >>> BitSequence(b'11000100')
+        [1, 1, 0, 0, 0, 1, 0, 0]
+        >>> BitSequence([1, 1, 0, 0, 0, 1, 0, 0])
+        [1, 1, 0, 0, 0, 1, 0, 0]
+        """
         # pylint: disable=duplicate-key
         smap = {
             0: 0, 1: 1,  # as int
@@ -175,32 +119,88 @@ class BitSequence:
 
     @classmethod
     def from_int(cls, value: int, width: int) -> 'BitSequence':
-        """Instanciate a BitSequence from an integer value."""
+        """Instanciate a BitSequence from an integer value.
+
+        >>> BitSequence(0xC4, 8)
+        [1, 1, 0, 0, 0, 1, 0, 0]
+        """
         bseq = BitSequence()
         bseq._int = value
         bseq._width = width
         return bseq
 
     def __len__(self):
+        """
+        >>> len(BitSequence())
+        0
+        >>> len(BitSequence(0, 1))
+        1
+        >>> len(BitSequence('010'))
+        3
+        """
         return self._width
 
-    def __bool__(self):
-        # report wether the Bit Sequence is empty or not.
-        # to fold a single bit sequence into a boolean, see #to_bit
+    def __bool__(self) -> bool:
+        """Report whether BitSequence is empty or not.
+
+           To fold a single bit sequence into a boolean, see #to_bit
+
+        >>> bool(BitSequence())
+        False
+        >>> bool(BitSequence(0, 1))
+        True
+        >>> bool(BitSequence('010'))
+        True
+        """
         return bool(self._width)
 
-    def __int__(self):
+    def __int__(self) -> int:
+        """Convert BitSequence to an int.
+
+        >>> int(BitSequence())
+        0
+        >>> int(BitSequence(0, 1))
+        0
+        >>> int(BitSequence('010'))
+        2
+        """
         return self._int
 
     def __repr__(self) -> str:
+        """
+        >>> repr(BitSequence(0xC4, 8))
+        '[1, 1, 0, 0, 0, 1, 0, 0]'
+        """
         sseq = ', '.join((f'{b:0d}' for b in self))
         return f'[{sseq}]'
 
     def __str__(self) -> str:
+        """
+        >>> str(BitSequence(0xC4, 8))
+        '11000100'
+        """
         return f'{self._int:0{self._width}b}'
 
     def copy(self) -> 'BitSequence':
-        """Duplicate bitsequence."""
+        """Duplicate bitsequence.
+
+        >>> bs1 = BitSequence(0xC4, 8)
+
+        >>> bs2 = bs1.copy()
+
+        >>> bs1 == bs2
+        True
+        >>> id(bs1) == id(bs2)
+        False
+        >>> bs1._int = 0
+
+        >>> bs1 == bs2
+        False
+        >>> int(bs1)
+        0
+        >>> int(bs2)
+        196
+        """
         bseq = self.__class__()
         bseq._int = self._int
         bseq._width = self._width
@@ -208,17 +208,39 @@ class BitSequence:
 
     @property
     def mask(self) -> int:
-        """Bit mask."""
+        """Bit mask.
+
+        >>> BitSequence(0xC4, 8).mask
+        255
+        >>> BitSequence().mask
+        0
+        """
         return (1 << self._width) - 1
 
     def to_bit(self) -> bool:
-        """Fold the sequence into a single bit, if possible"""
+        """Fold the sequence into a single bit, if possible.
+
+        >>> BitSequence([0]).to_bit()
+        False
+        >>> BitSequence([1]).to_bit()
+        True
+        >>> BitSequence([0, 0]).to_bit()
+        Traceback (most recent call last):
+        ...
+        BitSequenceError: BitSequence too large
+        """
         if self._width != 1:
             raise BitSequenceError("BitSequence too large")
         return bool(self._int & 1)
 
     def to_byte(self, msb: bool = False) -> int:
-        """Convert the sequence into a single byte value, if possible"""
+        """Convert the sequence into a single byte value, if possible.
+
+        >>> hex(BitSequence(0xC4, 8).to_byte())
+        '0x23'
+        >>> hex(BitSequence(0xC4, 8).to_byte(True))
+        '0xc4'
+        """
         if self._width > 8:
             raise BitSequenceError("Cannot fit into a single byte")
         if not msb:
@@ -226,26 +248,47 @@ class BitSequence:
             bseq.reverse()
         else:
             bseq = self
-        return self._int
+        return bseq._int
 
     def to_bytes(self) -> bytes:
-        """Return the internal representation as bytes"""
+        """Return the internal representation as bytes.
+
+        >>> BitSequence(0xC4, 8).to_bytes()
+        b'\\x01\\x01\\x00\\x00\\x00\\x01\\x00\\x00'
+        """
         return bytes((int(b) for b in self))
 
     def to_bool_list(self) -> List[bool]:
-        """Convert the sequence into a list of boolean values."""
+        """Convert the sequence into a list of boolean values.
+
+        >>> BitSequence(0xC4, 8).to_bool_list()
+        [True, True, False, False, False, True, False, False]
+        """
         return list(self)
 
     def to_bytestream(self, msb: bool = False, msby: bool = False) -> bytes:
-        """Convert the sequence into a sequence of byte values"""
+        """Convert the sequence into a sequence of byte values.
+
+        >>> from binascii import hexlify
+
+        >>> hexlify(BitSequence(0xC4A5D0, 24).to_bytestream(True, True))
+        b'c4a5d0'
+        >>> hexlify(BitSequence(0xC4A5D0, 24).to_bytestream(True, False))
+        b'd0a5c4'
+        >>> hexlify(BitSequence(0xC4A5D0, 24).to_bytestream(False, True))
+        b'23a50b'
+        >>> hexlify(BitSequence(0xC4A5D0, 24).to_bytestream(False, False))
+        b'0ba523'
+        """
         out: List[int] = []
         bseq = BitSequence(self)
         if not msb:
             bseq.reverse()
         while bseq._width:
-            out.append(self._int & 0xff)
-            self._int >>= 8
-        if msby and not msb:
+            out.append(bseq._int & 0xff)
+            bseq._int >>= 8
+            bseq._width -= 8
+        if not msby ^ msb:
             out.reverse()
         return bytes(out)
 
@@ -253,6 +296,9 @@ class BitSequence:
         """In-place reverse.
 
            :return: self
+
+        >>> BitSequence(0b11000100, 8).reverse()
+        [0, 0, 1, 0, 0, 0, 1, 1]
         """
         bseq = self.__class__.from_iterable(reversed(self))
         assert bseq._width == self._width
@@ -263,31 +309,37 @@ class BitSequence:
         """In-place invert of each sequence value.
 
            :return: self
+
+        >>> BitSequence(0b11000100, 8).invert()
+        [0, 0, 1, 1, 1, 0, 1, 1]
         """
         self._int = ~self._int & self.mask
         return self
 
-    def push_right(self, bseq: BitSequenceInitializer) -> 'BitSequence':
+    def push_right(self, *bseq: BitSequenceInitializer) -> 'BitSequence':
         """Push a bit sequence to the right side.
 
            :param bseq: the bit sequence to push
            :return: self
+
+        >>> BitSequence(0b11000100, 8).push_right(0b110, 3)
+        [1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0]
         """
-        if not isinstance(bseq, BitSequence):
-            bseq = BitSequence(bseq)
+        bseq = BitSequence(*bseq)
         self._int <<= len(bseq)
         self._int |= bseq._int
         self._width += len(bseq)
         return self
 
-    def push_left(self, bseq: BitSequenceInitializer) -> 'BitSequence':
+    def push_left(self, *bseq: BitSequenceInitializer) -> 'BitSequence':
         """Push a bit sequence to the left side.
 
            :param bseq: the bit sequence to push
            :return: self
+        >>> BitSequence(0b11000100, 8).push_left(BitSequence(0b110, 3))
+        [1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0]
         """
-        if not isinstance(bseq, BitSequence):
-            bseq = BitSequence(bseq)
+        bseq = BitSequence(*bseq)
         self._int = (bseq._int << self._width) | self._int
         self._width += len(bseq)
         return self
@@ -297,6 +349,14 @@ class BitSequence:
 
            :param count: how many bits to pop
            :return: popped bits a a new BitSequence
+
+        >>> bs = BitSequence(0b11000100, 8)
+
+        >>> bs.pop_right(2)
+        [0, 0]
+
+        >>> bs
+        [1, 1, 0, 0, 0, 1]
         """
         if count > self._width:
             raise ValueError('Count too large')
@@ -314,6 +374,14 @@ class BitSequence:
 
            :param count: how many bits to pop
            :return: popped bits a a new BitSequence
+
+        >>> bs = BitSequence(0b11000100, 8)
+
+        >>> bs.pop_left(2)
+        [1, 1]
+
+        >>> bs
+        [0, 0, 0, 1, 0, 0]
         """
         if count > self._width:
             raise ValueError('Count too large')
@@ -331,6 +399,13 @@ class BitSequence:
         """Pop a single bit from the right side.
 
            :return: popped bit
+        >>> bs = BitSequence(0b11000100, 8)
+
+        >>> bs.pop_right_bit()
+        False
+
+        >>> bs
+        [1, 1, 0, 0, 0, 1, 0]
         """
         if self._width == 0:
             raise RuntimeError('Empty bit sequence')
@@ -343,6 +418,13 @@ class BitSequence:
         """Pop a single bit from the left side.
 
            :return: popped bit
+        >>> bs = BitSequence(0b11000100, 8)
+
+        >>> bs.pop_left_bit()
+        True
+
+        >>> bs
+        [1, 0, 0, 0, 1, 0, 0]
         """
         if self._width == 0:
             raise RuntimeError('Empty bit sequence')
@@ -355,6 +437,9 @@ class BitSequence:
         """Rotate Left Logical.
 
            :return: self
+
+        >>> BitSequence(0b11000100, 8).rll(3)
+        [0, 0, 1, 0, 0, 1, 1, 0]
         """
         count %= self._width
         bseq = self.pop_left(count)
@@ -365,6 +450,9 @@ class BitSequence:
         """Rotate Right Logical.
 
            :return: self
+
+        >>> BitSequence(0b11000100, 8).rrl(3)
+        [1, 0, 0, 1, 1, 0, 0, 0]
         """
         count %= self._width
         bseq = self.pop_right(count)
@@ -372,7 +460,11 @@ class BitSequence:
         return self
 
     def inc(self, wrap: bool = True) -> 'BitSequence':
-        """Increment the sequence."""
+        """Increment the sequence.
+
+        >>> BitSequence(0b11000100, 8).inc()
+        [1, 1, 0, 0, 0, 1, 0, 1]
+        """
         self._int += 1
         if not wrap:
             if self._int >> self._width:
@@ -382,7 +474,11 @@ class BitSequence:
         return self
 
     def dec(self, wrap: bool = True) -> 'BitSequence':
-        """Decrement the sequence"""
+        """Decrement the sequence.
+
+        >>> BitSequence(0b11000100, 8).dec()
+        [1, 1, 0, 0, 0, 0, 1, 1]
+        """
         self._int -= 1
         if not wrap:
             if not self._int >> self._width:
@@ -394,14 +490,23 @@ class BitSequence:
     def invariant(self) -> bool:
         """Tells whether all bits of the sequence are of the same value.
 
-           Return the value, or ValueError if the bits are not of the same
-           value
+           :return: the value
+           :raise ValueError: if the bits are not of the same value
+
+        >>> BitSequence(0b111, 3).invariant()
+        True
+        >>> BitSequence(0b000, 3).invariant()
+        False
+        >>> BitSequence(0b010, 3).invariant()
+        Traceback (most recent call last):
+        ...
+        BitSequenceError: Bits do no match
         """
         if self._int == 0:
             return False
         if self._int == self.mask:
             return True
-        raise ValueError('Bits do no match')
+        raise BitSequenceError('Bits do no match')
 
     class Iterator:
         """BitSequence iterator.
@@ -410,18 +515,44 @@ class BitSequence:
 
            :param bseq: the BitSequence to iterate
            :param reverse: whether to create a reverse iterator
+
+           >>> for b in BitSequence(): pass
+
         """
 
         def __init__(self, bseq: 'BitSequence', reverse: bool = False):
+            """
+            >>> bsit = BitSequence.Iterator(BitSequence())
+
+            >>> is_iterable(bsit)
+            True
+            """
             self._bseq = bseq
             self._reverse = reverse
             self._width = bseq._width
             self._pos = 0
 
         def __iter__(self) -> 'BitSequence.Iterator':
+            """
+            >>> bsit = BitSequence.Iterator(BitSequence())
+
+            >>> iter(bsit) == bsit
+            True
+            """
             return self
 
         def __next__(self) -> bool:
+            """
+            >>> bsit = BitSequence.Iterator(BitSequence([0]))
+
+            >>> next(bsit)
+            False
+
+            >>> next(bsit)
+            Traceback (most recent call last):
+            ...
+            StopIteration
+            """
             if self._width != self._bseq._width:
                 raise RuntimeError('BitSequence modified while iterating')
             if self._pos >= self._bseq._width:
@@ -435,51 +566,113 @@ class BitSequence:
             return bit
 
     def __iter__(self) -> 'BitSequence.Iterator':
-        """Iterate from left to right, i.e. MSB to LSB."""
+        """Iterate from left to right, i.e. MSB to LSB.
+
+           >>> [not b for b in BitSequence(0b11000100, 8)]
+           [False, False, True, True, True, False, True, True]
+        """
         return self.__class__.Iterator(self)
 
     def __reversed__(self):
-        """Iterate from right to left, i.e. LSB to MSB."""
+        """Iterate from right to left, i.e. LSB to MSB.
+
+           >>> [not b for b in reversed(BitSequence(0b11000100, 8))]
+           [True, True, False, True, True, True, False, False]
+        """
         return self.__class__.Iterator(self, reverse=True)
 
     def __eq__(self, other: 'BitSequence') -> bool:
+        """
+        >>> bs1 = BitSequence(0b10011, 5)  # 10011
+
+        >>> bs2 = BitSequence(0b11001, 5)  # 11001
+
+        >>> bs3 = bs2.copy().reverse()
+
+        >>> bs1 == bs3
+        True
+        >>> bs1 == bs2
+        False
+        """
         if not isinstance(other, self.__class__):
             raise ValueError(f'Cannot compare with {type(other)}')
         return self._cmp(other) == 0
 
     def __ne__(self, other: 'BitSequence') -> bool:
+        """
+        >>> BitSequence(0b10011, 5) != BitSequence(0b11001, 5)
+        True
+        """
         if not isinstance(other, self.__class__):
             raise ValueError(f'Cannot compare with {type(other)}')
         return not self == other
 
     def __le__(self, other: 'BitSequence') -> bool:
+        """
+        >>> BitSequence(0b10011, 5) <= BitSequence(0b11001, 5)
+        True
+        >>> BitSequence(0b11001, 5) <= BitSequence(0b11001, 5)
+        True
+        """
         if not isinstance(other, self.__class__):
             raise ValueError(f'Cannot compare with {type(other)}')
         return self._cmp(other) <= 0
 
     def __lt__(self, other: 'BitSequence') -> bool:
+        """
+        >>> BitSequence(0b10011, 5) < BitSequence(0b11001, 5)
+        True
+        >>> BitSequence(0b11001, 5) < BitSequence(0b11001, 5)
+        False
+        """
         if not isinstance(other, self.__class__):
             raise ValueError(f'Cannot compare with {type(other)}')
         return self._cmp(other) < 0
 
     def __ge__(self, other: 'BitSequence') -> bool:
+        """
+        >>> BitSequence(0b11001, 5) >= BitSequence(0b10011, 5)
+        True
+        >>> BitSequence(0b11001, 5) >= BitSequence(0b11001, 5)
+        True
+        """
         if not isinstance(other, self.__class__):
             raise ValueError(f'Cannot compare with {type(other)}')
         return self._cmp(other) >= 0
 
     def __gt__(self, other: 'BitSequence') -> bool:
+        """
+        >>> BitSequence(0b11001, 5) > BitSequence(0b10011, 5)
+        True
+        >>> BitSequence(0b11001, 5) > BitSequence(0b11001, 5)
+        False
+        """
         if not isinstance(other, self.__class__):
             raise ValueError(f'Cannot compare with {type(other)}')
         return self._cmp(other) > 0
 
     def _cmp(self, other: 'BitSequence') -> int:
         # the bit sequence should be of the same length
-        ld = self._width - other._width
-        if ld:
-            return ld
+        """
+        >>> BitSequence(0b11001, 5)._cmp(BitSequence(0b10011, 5))
+        6
+        >>> BitSequence(0b11001, 5)._cmp(BitSequence(0b11001, 6))
+        -1
+        >>> BitSequence(0b10011, 5)._cmp(BitSequence(0b11001, 5))
+        -6
+        >>> BitSequence(0b11001, 5)._cmp(BitSequence(0b11001, 5))
+        0
+        """
+        wdiff = self._width - other._width
+        if wdiff:
+            return wdiff
         return self._int - other._int
 
     def __and__(self, other: 'BitSequence') -> 'BitSequence':
+        """
+        >>> BitSequence(0b10011, 5) & BitSequence(0b11001, 5)
+        [1, 0, 0, 0, 1]
+        """
         if not isinstance(other, self.__class__):
             raise ValueError('Need a BitSequence to combine')
         if self._width != other._width:
@@ -488,6 +681,10 @@ class BitSequence:
         return self.__class__.from_int(value, self._width)
 
     def __or__(self, other: 'BitSequence') -> 'BitSequence':
+        """
+        >>> BitSequence(0b10011, 5) | BitSequence(0b11001, 5)
+        [1, 1, 0, 1, 1]
+        """
         if not isinstance(other, self.__class__):
             raise ValueError('Need a BitSequence to combine')
         if self._width != other._width:
@@ -496,6 +693,10 @@ class BitSequence:
         return self.__class__.from_int(value, self._width)
 
     def __xor__(self, other: 'BitSequence') -> 'BitSequence':
+        """
+        >>> BitSequence(0b10011, 5) ^ BitSequence(0b11001, 5)
+        [0, 1, 0, 1, 0]
+        """
         if not isinstance(other, self.__class__):
             raise ValueError('Need a BitSequence to combine')
         if self._width != other._width:
@@ -504,41 +705,101 @@ class BitSequence:
         return self.__class__.from_int(value, self._width)
 
     def __invert__(self) -> 'BitSequence':
+        """
+        >>> ~BitSequence(0b10011, 5)
+        [0, 1, 1, 0, 0]
+        """
         value = (~self._int) & self.mask
         return self.__class__.from_int(value, self._width)
 
     def __ilshift__(self, count) -> 'BitSequence':
-        self.pop_left()
-        return self
+        """
+        >>> bs = BitSequence(0b10011, 5)
+
+        >>> bs <<= 1
+
+        >>> bs
+        [0, 0, 1, 1, 0]
+        """
+        value = (self._int << count) & self.mask
+        return self.__class__.from_int(value, self._width)
 
     def __irshift__(self, count) -> 'BitSequence':
-        self.pop_right()
-        return self
+        """
+        >>> bs = BitSequence(0b10011, 5)
+
+        >>> bs >>= 1
+
+        >>> bs
+        [0, 1, 0, 0, 1]
+        """
+        value = (self._int >> count) & self.mask
+        return self.__class__.from_int(value, self._width)
 
     def __getitem__(self, index) -> 'BitSequence':
-        # TODO: not yet validated, likely buggy
+        """
+        >>> bs = BitSequence(0b11000100, 8)
+
+        >>> bs[0]
+        [1]
+        >>> bs[1]
+        [1]
+        >>> bs[2]
+        [0]
+        >>> bs[-3]
+        [1]
+        >>> bs[-2]
+        [0]
+        >>> bs[-1]
+        [0]
+        >>> bs[0:5]
+        [1, 1, 0, 0, 0]
+        >>> bs[-4:-1]
+        [0, 1, 0]
+        """
         if isinstance(index, slice):
             bits: List[int] = []
-            for bpos in range(index.start, index.stop, index.step):
-                if bpos < 0:
-                    continue
+            for bpos in range(index.start or 0, index.stop or 0,
+                              index.step or 1):
                 if bpos >= self._width:
                     break
-                bits.append((self._int >> bpos) & 1)
-            return self.__class__.from_iterable(reversed(bits))
+                if bpos >= 0:
+                    bits.append((self._int >> (self._width - bpos - 1)) & 1)
+                else:
+                    bits.append((self._int >> (- bpos - 1)) & 1)
+            return self.__class__.from_iterable(bits)
         if not isinstance(index, int):
             raise TypeError(f'{self.__class__.__name__} indices must be '
                             f'integers or slices, not {type(index)}')
         if ~index >= self._width:
             raise IndexError(f'{self.__class__.__name__} index out of range')
         if index >= 0:
-            value = (self._int >> index) & 1
-        else:
             value = (self._int >> (self._width - index - 1)) & 1
+        else:
+            value = (self._int >> (- index - 1)) & 1
         return self.__class__.from_int(value, 1)
 
     def __setitem__(self, index, value) -> None:
-        # TODO: not yet validated, likely buggy
+        """
+        >>> bs = BitSequence(0b11000100, 8)
+
+        >>> bs[-1] = True
+
+        >>> bs
+        [1, 1, 0, 0, 0, 1, 0, 1]
+        >>> bs[1] = 0
+
+        >>> bs
+        [1, 0, 0, 0, 0, 1, 0, 1]
+        >>> bs[8] = 0
+        Traceback (most recent call last):
+        ...
+        IndexError: BitSequence index out of range
+        >>> bs[2:4] = [1, 1]
+
+        >>> bs
+        [1, 0, 1, 1, 0, 1, 0, 1]
+        """
         if isinstance(index, slice):
             if not isinstance(value, BitSequence):
                 if not is_iterable(value):
@@ -546,15 +807,19 @@ class BitSequence:
                 value = self.from_iterable(value)
             else:
                 value = value.copy()
-            for bpos in range(index.start, index.stop, index.step):
-                if bpos < 0:
-                    continue
+            for bpos in range(index.start or 0, index.stop or 0,
+                              index.step or 1):
                 if bpos >= self._width:
                     break
-                self._int &= ~(1 << bpos)
-                self._int |= int(value.pop_right()) << bpos
-                if value._width == 0:
+                if not value:
                     break
+                shift = self._width - bpos - 1 if bpos >= 0 else - bpos - 1
+                bit = value.pop_left()
+                if bit:
+                    self._int |= 1 << shift
+                else:
+                    self._int &= ~(1 << shift)
+            return
         if not isinstance(index, int):
             raise TypeError(f'{self.__class__.__name__} indices must be '
                             f'integers or slices, not {type(index)}')
@@ -564,12 +829,17 @@ class BitSequence:
             if value not in (0, 1):
                 raise ValueError('Invalid value')
         value = int(value)
-        if ~index >= self._width:
+        if index >= 0:
+            bpos = self._width - index - 1
+        else:
+            bpos = - index - 1
+        if not 0 <= bpos < self._width:
             raise IndexError(f'{self.__class__.__name__} index out of '
                              f'range')
-        if index < 0:
-            index = self._width - index - 1
-        self._int[index] = value
+        if value:
+            self._int |= 1 << bpos
+        else:
+            self._int &= ~(1 << bpos)
 
 
 def is_iterable(obj: Any) -> bool:
@@ -579,6 +849,23 @@ def is_iterable(obj: Any) -> bool:
        :type obj: object
        :return: True if the object is iterable
        :rtype: bool
+
+    >>> is_iterable(None)
+    False
+    >>> is_iterable(42)
+    False
+    >>> is_iterable((None,))
+    True
+    >>> is_iterable('abc')
+    True
+    >>> is_iterable([])
+    True
+    >>> is_iterable({})
+    True
+    >>> is_iterable(set())
+    True
+    >>> is_iterable(is_iterable)
+    False
     """
     try:
         iter(obj)

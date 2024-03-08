@@ -12,7 +12,7 @@
 # pylint: enable=missing-function-docstring
 
 from logging import getLogger
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 from .bits import BitSequence
 
