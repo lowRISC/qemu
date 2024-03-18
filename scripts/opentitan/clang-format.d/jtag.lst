@@ -1,2 +1,0 @@
-jtag/*.c
-include/exec/jtagstub.h

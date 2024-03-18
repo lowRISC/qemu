@@ -1,4 +1,7 @@
+hw/misc/pulp_rv_dm.c
 hw/opentitan/*.c
+hw/riscv/debug.c
+hw/riscv/dm*.c
 hw/riscv/ot_*.c
 hw/riscv/ibex_*.c
-target/riscv/ibex_*.c
+target/riscv/ibex*.c
