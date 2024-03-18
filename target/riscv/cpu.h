@@ -376,8 +376,11 @@ struct CPUArchState {
         target_ulong *val, target_ulong new_val, target_ulong write_mask);
     void *aia_ireg_rmw_fn_arg[4];
 
-    /* True if in debugger mode.  */
-    bool debugger;
+    /*
+     * Debug support
+     */
+    bool debugger; /* True if in debugger mode.  */
+    bool debug_dm; /* Debug module is available */
 
     /*
      * CSRs for PointerMasking extension
