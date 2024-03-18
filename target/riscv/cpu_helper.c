@@ -1194,6 +1194,32 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     env->two_stage_indirect_lookup = two_stage_indirect;
 }
 
+void riscv_cpu_store_debug_cause(CPUState *cs, unsigned cause)
+{
+    /*
+     * Priorities from debug spec 0.13.2
+     * "4.8.1 Debug Control and Status (dcsr, at 0x7b0)"
+     */
+    static const uint8_t debug_cause_priority[] = {
+        [DCSR_CAUSE_NONE] = 0,
+        [DCSR_CAUSE_EBREAK] =  3,
+        [DCSR_CAUSE_BREAKPOINT] = 4,
+        [DCSR_CAUSE_HALTREQ] = 1,
+        [DCSR_CAUSE_STEP] = 0,
+        [DCSR_CAUSE_RESETHALTREQ] = 2,
+    };
+
+    CPURISCVState *env = &RISCV_CPU((cs))->env;
+
+    uint8_t new_prio = cause < ARRAY_SIZE(debug_cause_priority) ?
+        debug_cause_priority[cause] : 0u;
+    uint8_t cur_prio = debug_cause_priority[env->debug_cause];
+
+    if ((env->debug_cause == DCSR_CAUSE_NONE) || (new_prio > cur_prio)) {
+        env->debug_cause = cause;
+    }
+}
+
 hwaddr riscv_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);

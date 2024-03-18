@@ -62,6 +62,9 @@ static bool trans_ebreak(DisasContext *ctx, arg_ebreak *a)
     if (pre == 0x01f01013 && ebreak == 0x00100073 && post == 0x40705013) {
         generate_exception(ctx, RISCV_EXCP_SEMIHOST);
     } else {
+#ifndef CONFIG_USER_ONLY
+        riscv_cpu_store_debug_cause(ctx->cs, DCSR_CAUSE_EBREAK);
+#endif
         generate_exception(ctx, RISCV_EXCP_BREAKPOINT);
     }
     return true;

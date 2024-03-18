@@ -30,6 +30,7 @@
 #include "trace.h"
 #include "exec/exec-all.h"
 #include "exec/helper-proto.h"
+#include "sysemu/cpus.h"
 #include "sysemu/cpu-timers.h"
 
 /*
@@ -223,6 +224,7 @@ static void do_trigger_action(CPURISCVState *env, trigger_action_t action)
     case DBG_ACTION_NONE:
         break;
     case DBG_ACTION_BP:
+        riscv_cpu_store_debug_cause(env_cpu(env), DCSR_CAUSE_EBREAK);
         riscv_raise_exception(env, RISCV_EXCP_BREAKPOINT, 0);
         break;
     case DBG_ACTION_DBG_MODE:
