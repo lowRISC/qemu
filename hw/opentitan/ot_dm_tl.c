@@ -189,7 +189,6 @@ static void ot_dm_tl_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     RISCVDebugDeviceClass *dmc = RISCV_DEBUG_DEVICE_CLASS(klass);
-    dmc->set_next_dm = NULL;
     dmc->write_rq = &ot_dm_tl_write_rq;
     dmc->read_rq = &ot_dm_tl_read_rq;
     dmc->read_value = &ot_dm_tl_read_value;

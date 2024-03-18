@@ -49,12 +49,6 @@ struct RISCVDebugDeviceClass {
     DeviceClass parent_class;
 
     /*
-     * Set the address of the next managed DM for the registered DMI.
-     * Note that this function in called from #riscv_dmi_register_dm.
-     */
-    void (*set_next_dm)(RISCVDebugDeviceState *dev, uint32_t addr);
-
-    /*
      * Debugger request to write to address.
      */
     RISCVDebugResult (*write_rq)(RISCVDebugDeviceState *dev, uint32_t addr,
