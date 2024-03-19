@@ -19,7 +19,7 @@ baremetal-eg-tests:
     - zstd -d --stdout ot-eg-bmtest.tar.zst | tar xf - -C ${BASEDIR}
     - find ${BASEDIR}
     - scripts/opentitan/pyot.py -vv -c ${BASEDIR}/data/qemu/pyot-ot-earlgrey.hjson
-         -w ot-earlgrey.csv -R -T 3 -F '*' -F '!aes-kat*'
+         -w ot-earlgrey.csv -R -T 3 -F '!aes-kat*'
   artifacts:
     public: false
     expire_in: 1 year
