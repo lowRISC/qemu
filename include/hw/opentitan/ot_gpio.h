@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan GPIO device
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
  *  Samuel Ortiz <sameo@rivosinc.com>
@@ -34,5 +34,8 @@
 
 #define TYPE_OT_GPIO "ot-gpio"
 OBJECT_DECLARE_SIMPLE_TYPE(OtGpioState, OT_GPIO)
+
+#define OT_GPIO_OUT TYPE_OT_GPIO "-out"
+#define OT_GPIO_IN  TYPE_OT_GPIO "-in"
 
 #endif /* HW_OPENTITAN_OT_GPIO_H */

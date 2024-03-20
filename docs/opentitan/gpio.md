@@ -65,6 +65,7 @@ A type describes the meaning of the hex value. Supported types are:
 
 * `D` direction, _i.e._ Output Enable in OpenTitan terminology (QEMU -> host)
 * `I` input GPIO values (host -> QEMU)
+* `M` mask GPIO input values, i.e. non connected input pins (host -> QEMU)
 * `O` output GPIO values (QEMU -> host)
 * `Q` query input (QEMU -> host). QEMU may emit this frame, so that the host replies with a new
   `I` frame (hexvalue of `Q` is ignored)

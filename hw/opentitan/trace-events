@@ -167,7 +167,7 @@ ot_gpio_debug(const char *msg) "%s"
 ot_gpio_io_read_out(uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_gpio_io_write(uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_gpio_irqs(uint32_t active, uint32_t mask, uint32_t eff) "act:0x%08x msk:0x%08x eff:0x%08x"
-ot_gpio_update_input(uint32_t prev, uint32_t indata, uint32_t mix) "input prev:0x%08x new:0x%08x -> mix:0x%08x"
+ot_gpio_update_input(uint32_t prev, uint32_t indata, uint32_t mix, uint32_t ign) "input prev:0x%08x new:0x%08x -> mix:0x%08x (ign: 0x%08x)"
 
 # ot_hmac.c
 

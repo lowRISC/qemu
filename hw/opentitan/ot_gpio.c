@@ -38,6 +38,7 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_gpio.h"
+#include "hw/opentitan/ot_pinmux.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -47,6 +48,7 @@
 #include "trace.h"
 
 #define PARAM_NUM_ALERTS 1u
+#define PARAM_NUM_IO     32u
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
@@ -107,17 +109,25 @@ static const char *REG_NAMES[REGS_COUNT] = {
 struct OtGpioState {
     SysBusDevice parent_obj;
 
-    IbexIRQ irqs[32u];
+    IbexIRQ *irqs;
+    IbexIRQ *gpos;
     IbexIRQ alert;
 
     MemoryRegion mmio;
 
     uint32_t regs[REGS_COUNT];
-    uint32_t data_out;
-    uint32_t data_oe;
-    uint32_t data_in;
+    uint32_t data_out; /* output data */
+    uint32_t data_oe; /* output enable */
+    uint32_t data_in; /* input data */
+    uint32_t data_bi; /* ignore backend input */
+    uint32_t data_gi; /* ignore GPIO input */
+    uint32_t invert; /* invert signal */
+    uint32_t opendrain; /* open drain (1 -> hi-z) */
+    uint32_t pull_en; /* pull up/down enable */
+    uint32_t pull_sel; /* pull up or pull down */
+    uint32_t connected; /* connected to an external device */
 
-    char ibuf[32u]; /* backed input buffer */
+    char ibuf[PARAM_NUM_IO]; /* backed input buffer */
     unsigned ipos;
 
     uint32_t reset_in; /* initial input levels */
@@ -129,7 +139,7 @@ static void ot_gpio_update_irqs(OtGpioState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
     trace_ot_gpio_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE], level);
-    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
+    for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
 }
@@ -161,10 +171,25 @@ static void ot_gpio_update_intr_edge(OtGpioState *s, uint32_t prev)
 static void ot_gpio_update_data_in(OtGpioState *s)
 {
     uint32_t prev = s->regs[R_DATA_IN];
-    uint32_t data_mix = s->data_in & ~s->data_oe;
+
+    uint32_t ign_mask = s->data_gi & (s->data_bi & ~s->connected);
+
+    /* ignore disabled input pins */
+    uint32_t data_in = s->data_in & ~ign_mask;
+
+    /* apply pull up (/down) on non- input enabled pins */
+    data_in |= s->pull_en & ign_mask & s->pull_sel;
+
+    /* apply inversion if any */
+    data_in ^= s->invert;
+
+    /* inject back output pin values into input */
+    uint32_t data_mix = data_in & ~s->data_oe;
     data_mix |= s->data_out & s->data_oe;
+
     s->regs[R_DATA_IN] = data_mix;
-    trace_ot_gpio_update_input(prev, s->data_in, data_mix);
+
+    trace_ot_gpio_update_input(prev, s->data_in, data_mix, ign_mask);
     ot_gpio_update_intr_level(s);
     ot_gpio_update_intr_edge(s, prev);
     ot_gpio_update_irqs(s);
@@ -176,22 +201,110 @@ static void ot_gpio_update_backend(OtGpioState *s, bool oe)
         return;
     }
 
+    /*
+     * use the MS DOS CR LF syntax because some people keep using
+     * Windows-style terminal.
+     */
+
     char buf[32u];
     size_t len;
 
+    uint32_t outv = s->data_out;
+    /* assume invert is performed on device output data, not on pull up/down */
+    outv ^= s->invert;
+
+    uint32_t out_en = s->data_oe;
+
+    /* if open drain is active and output is high, disable output enable */
+    out_en &= ~(s->opendrain & outv);
+
+    /* apply pull up (/down) on non- output enabled pins */
+    outv |= s->pull_en & s->pull_sel;
+
+    /* if pull up or pull down is enabled, force output enable */
+    out_en |= s->pull_en;
+
     /*
-     * use the infamous MS DOS CR LF syntax because people can't help using
-     * Windows-style terminal
+     * if output enable change is explicit or if the pinmux settings have
+     * forced some output, emit the new output configuration
      */
-    if (oe) {
-        len = snprintf(&buf[0], sizeof(buf), "D:%08x\r\n", s->data_oe);
+    if (oe || out_en != s->data_oe) {
+        len = snprintf(&buf[0], sizeof(buf), "D:%08x\r\n", out_en);
     } else {
         len = 0;
     }
 
-    len += snprintf(&buf[len], sizeof(buf), "O:%08x\r\n", s->data_out);
+    len += snprintf(&buf[len], sizeof(buf), "O:%08x\r\n", outv);
 
     qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, (int)len);
+}
+
+static void ot_gpio_in_change(void *opaque, int no, int level)
+{
+    OtGpioState *s = opaque;
+
+    g_assert(no < PARAM_NUM_IO);
+
+    bool ignore = level < 0;
+    bool on = (bool)level;
+    uint32_t bit = 1u << no;
+
+    /*
+     * any time a signal is received from a remote device the pin is considered
+     * as connected and backend no longer may update its state.
+     */
+    s->connected |= bit;
+
+    if (!ignore) {
+        if (on) {
+            s->data_in |= bit;
+        } else {
+            s->data_in &= ~bit;
+        }
+        s->data_gi &= ~bit;
+    } else {
+        s->data_gi |= bit;
+    }
+
+    ot_gpio_update_data_in(s);
+}
+
+static void ot_gpio_pad_attr_change(void *opaque, int no, int level)
+{
+    OtGpioState *s = opaque;
+
+    g_assert(no < PARAM_NUM_IO);
+
+    uint32_t cfg = (uint32_t)level;
+    uint32_t bit = 1u << no;
+
+    if (cfg & OT_PINMUX_PAD_ATTR_INVERT_MASK) {
+        s->invert |= bit;
+    } else {
+        s->invert &= ~bit;
+    }
+
+    if (cfg & (OT_PINMUX_PAD_ATTR_OD_EN_MASK |
+               OT_PINMUX_PAD_ATTR_VIRTUAL_OD_EN_MASK)) {
+        s->opendrain |= bit;
+    } else {
+        s->opendrain &= ~bit;
+    }
+
+    if (cfg & OT_PINMUX_PAD_ATTR_PULL_SELECT_MASK) {
+        s->pull_sel |= bit;
+    } else {
+        s->pull_sel &= ~bit;
+    }
+
+    if (cfg & OT_PINMUX_PAD_ATTR_PULL_EN_MASK) {
+        s->pull_en |= bit;
+    } else {
+        s->pull_en &= ~bit;
+    }
+
+    ot_gpio_update_data_in(s);
+    ot_gpio_update_backend(s, true);
 }
 
 static uint64_t ot_gpio_read(void *opaque, hwaddr addr, unsigned size)
@@ -389,7 +502,10 @@ static void ot_gpio_chr_receive(void *opaque, const uint8_t *buf, int size)
         s->ipos = 0;
 
         if (ret == 2) {
-            if (cmd == 'I') {
+            if (cmd == 'M') {
+                s->data_bi = data_in;
+                ot_gpio_update_data_in(s);
+            } else if (cmd == 'I') {
                 s->data_in = data_in;
                 ot_gpio_update_data_in(s);
             } else if (cmd == 'R') {
@@ -475,6 +591,12 @@ static void ot_gpio_reset(DeviceState *dev)
     s->data_out = 0;
     s->data_oe = 0;
     s->data_in = s->reset_in;
+    s->data_bi = 0;
+    s->data_gi = 0;
+    s->pull_en = 0;
+    s->pull_sel = 0;
+    s->invert = 0;
+    s->connected = 0;
     s->regs[R_DATA_IN] = s->reset_in;
 
     ot_gpio_update_irqs(s);
@@ -506,10 +628,18 @@ static void ot_gpio_init(Object *obj)
                           REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
-    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
+    s->irqs = g_new(IbexIRQ, PARAM_NUM_IO);
+    s->gpos = g_new(IbexIRQ, PARAM_NUM_IO);
+    for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
+    ibex_qdev_init_irqs_default(obj, s->gpos, OT_GPIO_OUT, PARAM_NUM_IO, -1);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_in_change, OT_GPIO_IN,
+                            PARAM_NUM_IO);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_pad_attr_change,
+                            OT_PINMUX_PAD, PARAM_NUM_IO);
 }
 
 static void ot_gpio_class_init(ObjectClass *klass, void *data)
