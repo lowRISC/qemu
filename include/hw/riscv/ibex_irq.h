@@ -69,13 +69,6 @@ static inline bool ibex_irq_lower(IbexIRQ *irq)
     return ibex_irq_set(irq, 0);
 }
 
-static inline void ibex_qdev_init_irq(Object *obj, IbexIRQ *irq,
-                                      const char *name)
-{
-    irq->level = 0;
-    qdev_init_gpio_out_named(DEVICE(obj), &irq->irq, name, 1);
-}
-
 static inline void ibex_qdev_init_irq_default(Object *obj, IbexIRQ *irq,
                                               const char *name, int level)
 {
@@ -83,13 +76,25 @@ static inline void ibex_qdev_init_irq_default(Object *obj, IbexIRQ *irq,
     qdev_init_gpio_out_named(DEVICE(obj), &irq->irq, name, 1);
 }
 
+static inline void ibex_qdev_init_irq(Object *obj, IbexIRQ *irq,
+                                      const char *name)
+{
+    ibex_qdev_init_irq_default(obj, irq, name, 0);
+}
+
+
+static inline void ibex_qdev_init_irqs_default(
+    Object *obj, IbexIRQ *irqs, const char *name, unsigned count, int level)
+{
+    for (unsigned ix = 0; ix < count; ix++) {
+        ibex_qdev_init_irq_default(obj, &irqs[ix], name, level);
+    }
+}
+
 static inline void ibex_qdev_init_irqs(Object *obj, IbexIRQ *irqs,
                                        const char *name, unsigned count)
 {
-    for (unsigned ix = 0; ix < count; ix++) {
-        irqs[ix].level = 0;
-        qdev_init_gpio_out_named(DEVICE(obj), &irqs[ix].irq, name, 1);
-    }
+    ibex_qdev_init_irqs_default(obj, irqs, name, count, 0);
 }
 
 static inline void ibex_sysbus_init_irq(Object *obj, IbexIRQ *irq)
