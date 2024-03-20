@@ -33,7 +33,7 @@ config OT_DARJEELING
     select OT_MBX
     select OT_OTBN
     select OT_OTP_DJ
-    select OT_PINMUX
+    select OT_PINMUX_DJ
     select OT_PWRMGR
     select OT_RSTMGR
     select OT_ROM_CTRL
@@ -70,7 +70,7 @@ config OT_EARLGREY
     select OT_LC_CTRL
     select OT_OTBN
     select OT_OTP_EG
-    select OT_PINMUX
+    select OT_PINMUX_EG
     select OT_PWRMGR
     select OT_ROM_CTRL
     select OT_RSTMGR

@@ -101,7 +101,10 @@ config OT_OTP_EG
     select OT_OTP
     bool
 
-config OT_PINMUX
+config OT_PINMUX_DJ
+    bool
+
+config OT_PINMUX_EG
     bool
 
 config OT_PRESENT

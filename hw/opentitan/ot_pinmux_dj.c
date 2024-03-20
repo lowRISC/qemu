@@ -1,7 +1,7 @@
 /*
- * QEMU OpenTitan PinMux device
+ * QEMU OpenTitan Darjeeling PinMux device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2024 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -32,8 +32,9 @@
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "qom/object.h"
 #include "hw/opentitan/ot_alert.h"
-#include "hw/opentitan/ot_pinmux.h"
+#include "hw/opentitan/ot_pinmux_dj.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -42,99 +43,104 @@
 #include "hw/sysbus.h"
 #include "trace.h"
 
-
-#define PARAM_N_MIO_PERIPH_IN  57u
-#define PARAM_N_MIO_PERIPH_OUT 75u
-#define PARAM_N_MIO_PADS       47u
-#define PARAM_N_DIO_PADS       16u
+#define PARAM_N_MIO_PERIPH_IN  4u
+#define PARAM_N_MIO_PERIPH_OUT 5u
+#define PARAM_N_MIO_PADS       12u
+#define PARAM_N_DIO_PADS       73u
 #define PARAM_N_WKUP_DETECT    8u
 #define PARAM_NUM_ALERTS       1u
+#undef BIT_PACKED_STATUS_REG
+
+#define REG_SIZE(_n_) ((_n_) * sizeof(uint32_t))
+
+#ifdef BIT_PACKED_STATUS_REG
+#define MIO_SLEEP_STATUS_COUNT    DIV_ROUND_UP(PARAM_N_MIO_PADS, 32u)
+#define DIO_SLEEP_STATUS_COUNT    DIV_ROUND_UP(PARAM_N_DIO_PADS, 32u)
+#define MIO_PAD_SLEEP_STATUS_REM  (PARAM_N_MIO_PADS & 31u)
+#define DIO_PAD_SLEEP_STATUS_REM  (PARAM_N_DIO_PADS & 31u)
+#define DIO_PAD_SLEEP_STATUS_MASK UINT32_MAX
+#define MIO_PAD_SLEEP_STATUS_MASK UINT32_MAX
+#else
+#define MIO_SLEEP_STATUS_COUNT    PARAM_N_MIO_PADS
+#define DIO_SLEEP_STATUS_COUNT    PARAM_N_DIO_PADS
+#define MIO_PAD_SLEEP_STATUS_REM  0
+#define DIO_PAD_SLEEP_STATUS_REM  0
+#define DIO_PAD_SLEEP_STATUS_MASK 1u
+#define MIO_PAD_SLEEP_STATUS_MASK 1u
+#endif
+#define N_MAX_PADS MAX(PARAM_N_MIO_PADS, PARAM_N_DIO_PADS)
+
 
 /* clang-format off */
 REG32(ALERT_TEST, 0x0u)
     FIELD(ALERT_TEST, FATAL_FAULT, 0u, 1u)
-REG32(MIO_PERIPH_INSEL_REGWEN, 0x4u)
+REG32(MIO_PERIPH_INSEL_REGWEN, A_ALERT_TEST + REG_SIZE(1u))
     FIELD(MIO_PERIPH_INSEL_REGWEN, EN, 0u, 1u)
-REG32(MIO_PERIPH_INSEL, 0xe8u)
-    FIELD(MIO_PERIPH_INSEL, IN, 0u, 6u)
-REG32(MIO_OUTSEL_REGWEN, 0x1ccu)
+REG32(MIO_PERIPH_INSEL,
+      A_MIO_PERIPH_INSEL_REGWEN + REG_SIZE(PARAM_N_MIO_PERIPH_IN))
+REG32(MIO_OUTSEL_REGWEN,
+      A_MIO_PERIPH_INSEL + REG_SIZE(PARAM_N_MIO_PERIPH_IN))
     FIELD(MIO_OUTSEL_REGWEN, EN, 0u, 1u)
-REG32(MIO_OUTSEL, 0x288u)
-    FIELD(MIO_PERIPH_OUTSEL, OUT, 0u, 6u)
-REG32(MIO_PAD_ATTR_REGWEN, 0x344u)
+REG32(MIO_OUTSEL,
+      A_MIO_OUTSEL_REGWEN + REG_SIZE(PARAM_N_MIO_PERIPH_OUT))
+REG32(MIO_PAD_ATTR_REGWEN,
+      A_MIO_OUTSEL + REG_SIZE(PARAM_N_MIO_PERIPH_OUT))
     FIELD(MIO_PAD_ATTR_REGWEN, EN, 0u, 1u)
-REG32(MIO_PAD_ATTR, 0x400u)
-    FIELD(MIO_PAD_ATTR, INVERT, 0u, 1u)
-    FIELD(MIO_PAD_ATTR, VIRTUAL_OD_EN, 1u, 1u)
-    FIELD(MIO_PAD_ATTR, PULL_EN, 2u, 1u)
-    FIELD(MIO_PAD_ATTR, PULL_SELECT, 3u, 1u)
-    FIELD(MIO_PAD_ATTR, KEEPER_EN, 4u, 1u)
-    FIELD(MIO_PAD_ATTR, SCHMITT_EN, 5u, 1u)
-    FIELD(MIO_PAD_ATTR, OD_EN, 6u, 1u)
-    FIELD(MIO_PAD_ATTR, SLEW_RATE, 16u, 0x2u)
-    FIELD(MIO_PAD_ATTR, DRIVE_STRENGTH, 20u, 4u)
-REG32(DIO_PAD_ATTR_REGWEN, 0x4bcu)
+REG32(MIO_PAD_ATTR,
+      A_MIO_PAD_ATTR_REGWEN + REG_SIZE(PARAM_N_MIO_PADS))
+REG32(DIO_PAD_ATTR_REGWEN,
+      A_MIO_PAD_ATTR + REG_SIZE(PARAM_N_MIO_PADS))
     FIELD(DIO_PAD_ATTR_REGWEN, EN, 0u, 1u)
-REG32(DIO_PAD_ATTR, 0x4fcu)
-    FIELD(DIO_PAD_ATTR, INVERT, 0u, 1u)
-    FIELD(DIO_PAD_ATTR, VIRTUAL_OD_EN, 1u, 1u)
-    FIELD(DIO_PAD_ATTR, PULL_EN, 2u, 1u)
-    FIELD(DIO_PAD_ATTR, PULL_SELECT, 3u, 1u)
-    FIELD(DIO_PAD_ATTR, KEEPER_EN, 4u, 1u)
-    FIELD(DIO_PAD_ATTR, SCHMITT_EN, 5u, 1u)
-    FIELD(DIO_PAD_ATTR, OD_EN, 6u, 1u)
-    FIELD(DIO_PAD_ATTR, SLEW_RATE, 16u, 2u)
-    FIELD(DIO_PAD_ATTR, DRIVE_STRENGTH, 20u, 4u)
-REG32(MIO_PAD_SLEEP_STATUS, 0x53cu)
-REG32(MIO_PAD_SLEEP_REGWEN, 0x544u)
+REG32(DIO_PAD_ATTR,
+      A_DIO_PAD_ATTR_REGWEN + REG_SIZE(PARAM_N_DIO_PADS))
+REG32(MIO_PAD_SLEEP_STATUS,
+      A_DIO_PAD_ATTR + REG_SIZE(PARAM_N_DIO_PADS))
+REG32(MIO_PAD_SLEEP_REGWEN,
+      A_MIO_PAD_SLEEP_STATUS + REG_SIZE(MIO_SLEEP_STATUS_COUNT))
     FIELD(MIO_PAD_SLEEP_REGWEN, EN, 0u, 1u)
-REG32(MIO_PAD_SLEEP, 0x600u)
+REG32(MIO_PAD_SLEEP,
+      A_MIO_PAD_SLEEP_REGWEN + REG_SIZE(PARAM_N_MIO_PADS))
     FIELD(MIO_PAD_SLEEP, EN, 0u, 1u)
-REG32(MIO_PAD_SLEEP_MODE, 0x6bcu)
+REG32(MIO_PAD_SLEEP_MODE,
+      A_MIO_PAD_SLEEP + REG_SIZE(PARAM_N_MIO_PADS))
     FIELD(MIO_PAD_SLEEP_MODE, OUT, 0u, 2u)
-REG32(DIO_PAD_SLEEP_STATUS, 0x778u)
-REG32(DIO_PAD_SLEEP_REGWEN, 0x77cu)
+REG32(DIO_PAD_SLEEP_STATUS,
+      A_MIO_PAD_SLEEP_MODE + REG_SIZE(PARAM_N_MIO_PADS))
+REG32(DIO_PAD_SLEEP_REGWEN,
+      A_DIO_PAD_SLEEP_STATUS + REG_SIZE(DIO_SLEEP_STATUS_COUNT))
     FIELD(DIO_PAD_SLEEP_REGWEN, EN, 0u, 1u)
-REG32(DIO_PAD_SLEEP, 0x7bcu)
+REG32(DIO_PAD_SLEEP,
+      A_DIO_PAD_SLEEP_REGWEN + REG_SIZE(PARAM_N_DIO_PADS))
     FIELD(DIO_PAD_SLEEP, EN, 0u, 1u)
-REG32(DIO_PAD_SLEEP_MODE, 0x7fcu)
+REG32(DIO_PAD_SLEEP_MODE,
+      A_DIO_PAD_SLEEP + REG_SIZE(PARAM_N_DIO_PADS))
     FIELD(DIO_PAD_SLEEP_MODE, OUT, 0u, 2u)
-REG32(WKUP_DETECTOR_REGWEN, 0x83cu)
+REG32(WKUP_DETECTOR_REGWEN,
+     A_DIO_PAD_SLEEP_MODE + REG_SIZE(PARAM_N_DIO_PADS))
     FIELD(WKUP_DETECTOR_REGWEN, EN, 0u, 1u)
-REG32(WKUP_DETECTOR, 0x85cu)
+REG32(WKUP_DETECTOR,
+      A_WKUP_DETECTOR_REGWEN + REG_SIZE(PARAM_N_WKUP_DETECT))
     FIELD(WKUP_DETECTOR, EN, 0u, 1u)
-REG32(WKUP_DETECTOR_CFG, 0x87cu)
+REG32(WKUP_DETECTOR_CFG,
+      A_WKUP_DETECTOR + REG_SIZE(PARAM_N_WKUP_DETECT))
     FIELD(WKUP_DETECTOR_CFG, MODE, 0u, 3u)
     FIELD(WKUP_DETECTOR_CFG, FILTER, 3u, 1u)
     FIELD(WKUP_DETECTOR_CFG, MIODIO, 4u, 1u)
-REG32(WKUP_DETECTOR_CNT_TH, 0x89cu)
+REG32(WKUP_DETECTOR_CNT_TH,
+      A_WKUP_DETECTOR_CFG + REG_SIZE(PARAM_N_WKUP_DETECT))
     FIELD(WKUP_DETECTOR_CNT_TH, TH, 0u, 8u)
-REG32(WKUP_DETECTOR_PADSEL, 0x8bcu)
-    FIELD(WKUP_DETECTOR_PADSEL, SEL, 0u, 6u)
-REG32(WKUP_CAUSE, 0x8dcu)
+REG32(WKUP_DETECTOR_PADSEL,
+      A_WKUP_DETECTOR_CNT_TH + REG_SIZE(PARAM_N_WKUP_DETECT))
+REG32(WKUP_CAUSE,
+      A_WKUP_DETECTOR_PADSEL + REG_SIZE(PARAM_N_WKUP_DETECT))
 /* clang-format on */
 
-#define MIO_SLEEP_STATUS_COUNT DIV_ROUND_UP(PARAM_N_MIO_PADS, 32u)
-#define DIO_SLEEP_STATUS_COUNT DIV_ROUND_UP(PARAM_N_DIO_PADS, 32u)
-
-#define MIO_PAD_ATTR_MASK \
-    (R_MIO_PAD_ATTR_INVERT_MASK | R_MIO_PAD_ATTR_VIRTUAL_OD_EN_MASK | \
-     R_MIO_PAD_ATTR_PULL_EN_MASK | R_MIO_PAD_ATTR_PULL_SELECT_MASK | \
-     R_MIO_PAD_ATTR_KEEPER_EN_MASK | R_MIO_PAD_ATTR_SCHMITT_EN_MASK | \
-     R_MIO_PAD_ATTR_OD_EN_MASK | R_MIO_PAD_ATTR_SLEW_RATE_MASK | \
-     R_MIO_PAD_ATTR_DRIVE_STRENGTH_MASK)
-#define DIO_PAD_ATTR_MASK \
-    (R_DIO_PAD_ATTR_INVERT_MASK | R_DIO_PAD_ATTR_VIRTUAL_OD_EN_MASK | \
-     R_DIO_PAD_ATTR_PULL_EN_MASK | R_DIO_PAD_ATTR_PULL_SELECT_MASK | \
-     R_DIO_PAD_ATTR_KEEPER_EN_MASK | R_DIO_PAD_ATTR_SCHMITT_EN_MASK | \
-     R_DIO_PAD_ATTR_OD_EN_MASK | R_DIO_PAD_ATTR_SLEW_RATE_MASK | \
-     R_DIO_PAD_ATTR_DRIVE_STRENGTH_MASK)
-#define MIO_PAD_SLEEP_STATUS_MASK       UINT32_MAX
+#define MIO_PAD_ATTR_MASK               OT_PINMUX_PAD_ATTR_MASK
+#define DIO_PAD_ATTR_MASK               OT_PINMUX_PAD_ATTR_MASK
 #define MIO_PAD_SLEEP_MODE_OUT_TIE_LOW  0x0u
 #define MIO_PAD_SLEEP_MODE_OUT_TIE_HIGH 0x1u
 #define MIO_PAD_SLEEP_MODE_OUT_HIGH_Z   0x2u
 #define MIO_PAD_SLEEP_MODE_OUT_KEEP     0x3u
-#define DIO_PAD_SLEEP_STATUS_MASK       ((1u << PARAM_N_DIO_PADS) - 1u)
 #define DIO_PAD_SLEEP_MODE_OUT_TIE_LOW  0x0u
 #define DIO_PAD_SLEEP_MODE_OUT_TIE_HIGH 0x1u
 #define DIO_PAD_SLEEP_MODE_OUT_HIGH_Z   0x2u
@@ -155,6 +161,12 @@ REG32(WKUP_CAUSE, 0x8dcu)
 #define REGS_SIZE                (REGS_COUNT * sizeof(uint32_t))
 #define CASE_SCALAR(_reg_)       R_##_reg_
 #define CASE_RANGE(_reg_, _rpt_) R_##_reg_...(R_##_reg_ + (_rpt_) - (1u))
+#define PAD_ATTR_TO_IRQ(_pad_)   ((int)((_pad_)&INT32_MAX))
+#define PAD_ATTR_ENABLE(_en_)    (((unsigned)!(_en_)) << 31u)
+
+static_assert((OT_PINMUX_PAD_ATTR_MASK | OT_PINMUX_PAD_ATTR_FORCE_MODE_MASK) <
+                  (1u << 31u),
+              "Cannot encode PAD attr as IRQ");
 
 typedef struct {
     uint32_t alert_test;
@@ -180,9 +192,9 @@ typedef struct {
     uint32_t wkup_detector_cnt_th[PARAM_N_WKUP_DETECT];
     uint32_t wkup_detector_padsel[PARAM_N_WKUP_DETECT];
     uint32_t wkup_cause;
-} OtPinmuxStateRegs;
+} OtPinmuxDjStateRegs;
 
-struct OtPinmuxState {
+struct OtPinmuxDjState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
@@ -190,16 +202,21 @@ struct OtPinmuxState {
     IbexIRQ *dios;
     IbexIRQ *mios;
 
-    OtPinmuxStateRegs *regs;
+    OtPinmuxDjStateRegs *regs;
 };
 
-static uint64_t ot_pinmux_regs_read(void *opaque, hwaddr addr, unsigned size)
+static uint32_t ot_pinmux_dj_sel_mask(unsigned val)
 {
-    OtPinmuxState *s = opaque;
+    return (1u << (32 - clz32(val))) - 1u;
+}
+
+static uint64_t ot_pinmux_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
+{
+    OtPinmuxDjState *s = opaque;
     (void)size;
     uint32_t val32;
     hwaddr reg = R32_OFF(addr);
-    OtPinmuxStateRegs *regs = s->regs;
+    OtPinmuxDjStateRegs *regs = s->regs;
 
     switch (reg) {
     case CASE_RANGE(MIO_PERIPH_INSEL_REGWEN, PARAM_N_MIO_PERIPH_IN):
@@ -287,17 +304,17 @@ static uint64_t ot_pinmux_regs_read(void *opaque, hwaddr addr, unsigned size)
     return (uint64_t)val32;
 };
 
-#define OT_PINMUX_IS_REGWEN(_off_, _ren_, _rw_) \
+#define OT_PINMUX_DJ_IS_REGWEN(_off_, _ren_, _rw_) \
     ((regs->_ren_##_regwen[(_off_) - (R_##_rw_)]) & 0x1u)
 
-static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
-                                 unsigned size)
+static void ot_pinmux_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
+                                    unsigned size)
 {
-    OtPinmuxState *s = opaque;
+    OtPinmuxDjState *s = opaque;
     (void)size;
     uint32_t val32 = (uint32_t)val64;
     hwaddr reg = R32_OFF(addr);
-    OtPinmuxStateRegs *regs = s->regs;
+    OtPinmuxDjStateRegs *regs = s->regs;
 
     uint32_t pc = ibex_get_current_pc();
     trace_ot_pinmux_io_write((uint32_t)addr, val32, pc);
@@ -314,9 +331,18 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->mio_periph_insel_regwen[reg - R_MIO_PERIPH_INSEL_REGWEN] = val32;
         break;
     case CASE_RANGE(MIO_PERIPH_INSEL, PARAM_N_MIO_PERIPH_IN):
-        if (OT_PINMUX_IS_REGWEN(reg, mio_periph_insel, MIO_PERIPH_INSEL)) {
-            val32 &= R_MIO_PERIPH_INSEL_IN_MASK;
+        if (OT_PINMUX_DJ_IS_REGWEN(reg, mio_periph_insel, MIO_PERIPH_INSEL)) {
+            if (val32 >= PARAM_N_MIO_PERIPH_IN + 2u) {
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x too large: %u\n",
+                              __func__, (unsigned)reg, val32);
+                uint32_t mask =
+                    ot_pinmux_dj_sel_mask(PARAM_N_MIO_PERIPH_IN + 2u);
+                val32 &= mask;
+            }
             regs->mio_periph_insel[reg - R_MIO_PERIPH_INSEL] = val32;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+                          __func__, (uint32_t)addr);
         }
         break;
     case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PERIPH_OUT):
@@ -324,9 +350,18 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->mio_outsel_regwen[reg - R_MIO_OUTSEL_REGWEN] = val32;
         break;
     case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PERIPH_OUT):
-        if (OT_PINMUX_IS_REGWEN(reg, mio_outsel, MIO_OUTSEL)) {
-            val32 &= R_MIO_PERIPH_OUTSEL_OUT_MASK;
+        if (OT_PINMUX_DJ_IS_REGWEN(reg, mio_outsel, MIO_OUTSEL)) {
+            if (val32 >= PARAM_N_MIO_PERIPH_OUT + 2u) {
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x too large: %u\n",
+                              __func__, (unsigned)reg, val32);
+                uint32_t mask =
+                    ot_pinmux_dj_sel_mask(PARAM_N_MIO_PERIPH_OUT + 2u);
+                val32 &= mask;
+            }
             regs->mio_outsel[reg - R_MIO_OUTSEL] = val32;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+                          __func__, (uint32_t)addr);
         }
         break;
     case CASE_RANGE(MIO_PAD_ATTR_REGWEN, PARAM_N_MIO_PADS):
@@ -334,12 +369,15 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->mio_pad_attr_regwen[reg - R_MIO_PAD_ATTR_REGWEN] = val32;
         break;
     case CASE_RANGE(MIO_PAD_ATTR, PARAM_N_MIO_PADS):
-        if (OT_PINMUX_IS_REGWEN(reg, mio_pad_attr, MIO_PAD_ATTR)) {
+        if (OT_PINMUX_DJ_IS_REGWEN(reg, mio_pad_attr, MIO_PAD_ATTR)) {
             val32 &= MIO_PAD_ATTR_MASK;
             unsigned pad_no = reg - R_MIO_PAD_ATTR;
             g_assert(pad_no < R_MIO_PAD_ATTR);
             regs->mio_pad_attr[pad_no] = val32;
             ibex_irq_set(&s->mios[pad_no], PAD_ATTR_TO_IRQ(val32));
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+                          __func__, (uint32_t)addr);
         }
         break;
     case CASE_RANGE(DIO_PAD_ATTR_REGWEN, PARAM_N_DIO_PADS):
@@ -347,16 +385,24 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->dio_pad_attr_regwen[reg - R_DIO_PAD_ATTR_REGWEN] = val32;
         break;
     case CASE_RANGE(DIO_PAD_ATTR, PARAM_N_DIO_PADS):
-        if (OT_PINMUX_IS_REGWEN(reg, dio_pad_attr, DIO_PAD_ATTR)) {
+        if (OT_PINMUX_DJ_IS_REGWEN(reg, dio_pad_attr, DIO_PAD_ATTR)) {
             val32 &= DIO_PAD_ATTR_MASK;
             unsigned pad_no = reg - R_DIO_PAD_ATTR;
             g_assert(pad_no < PARAM_N_DIO_PADS);
             regs->dio_pad_attr[pad_no] = val32;
             ibex_irq_set(&s->dios[pad_no], PAD_ATTR_TO_IRQ(val32));
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+                          __func__, (uint32_t)addr);
         }
         break;
     case CASE_RANGE(MIO_PAD_SLEEP_STATUS, MIO_SLEEP_STATUS_COUNT):
         val32 &= MIO_PAD_SLEEP_STATUS_MASK;
+#if defined(BIT_PACKED_STATUS_REG) && (MIO_PAD_SLEEP_STATUS_REM != 0)
+        if (reg == R_MIO_PAD_SLEEP_STATUS + MIO_SLEEP_STATUS_COUNT - 1u) {
+            val32 &= (1u << MIO_PAD_SLEEP_STATUS_REM) - 1u;
+        }
+#endif
         regs->mio_pad_sleep_status[reg - R_MIO_PAD_SLEEP_STATUS] = val32;
         break;
     case CASE_RANGE(MIO_PAD_SLEEP_REGWEN, PARAM_N_MIO_PADS):
@@ -364,9 +410,12 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->mio_pad_sleep_regwen[reg - R_MIO_PAD_SLEEP_REGWEN] = val32;
         break;
     case CASE_RANGE(MIO_PAD_SLEEP, PARAM_N_MIO_PADS):
-        if (OT_PINMUX_IS_REGWEN(reg, mio_pad_sleep, MIO_PAD_SLEEP)) {
+        if (OT_PINMUX_DJ_IS_REGWEN(reg, mio_pad_sleep, MIO_PAD_SLEEP)) {
             val32 &= R_MIO_PAD_SLEEP_EN_MASK;
             regs->mio_pad_sleep[reg - R_MIO_PAD_SLEEP] = val32;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+                          __func__, (uint32_t)addr);
         }
         break;
     case CASE_RANGE(MIO_PAD_SLEEP_MODE, PARAM_N_MIO_PADS):
@@ -375,6 +424,11 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case CASE_RANGE(DIO_PAD_SLEEP_STATUS, DIO_SLEEP_STATUS_COUNT):
         val32 &= DIO_PAD_SLEEP_STATUS_MASK;
+#if defined(BIT_PACKED_STATUS_REG) && (DIO_PAD_SLEEP_STATUS_REM != 0)
+        if (reg == R_DIO_PAD_SLEEP_STATUS + DIO_SLEEP_STATUS_COUNT - 1u) {
+            val32 &= (1u << DIO_PAD_SLEEP_STATUS_REM) - 1u;
+        }
+#endif
         regs->dio_pad_sleep_status[reg - R_DIO_PAD_SLEEP_STATUS] = val32;
         break;
     case CASE_RANGE(DIO_PAD_SLEEP_REGWEN, PARAM_N_DIO_PADS):
@@ -382,9 +436,12 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->dio_pad_sleep_regwen[reg - R_DIO_PAD_SLEEP_REGWEN] = val32;
         break;
     case CASE_RANGE(DIO_PAD_SLEEP, PARAM_N_DIO_PADS):
-        if (OT_PINMUX_IS_REGWEN(reg, dio_pad_sleep, DIO_PAD_SLEEP)) {
+        if (OT_PINMUX_DJ_IS_REGWEN(reg, dio_pad_sleep, DIO_PAD_SLEEP)) {
             val32 &= R_DIO_PAD_SLEEP_EN_MASK;
             regs->dio_pad_sleep[reg - R_DIO_PAD_SLEEP] = val32;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+                          __func__, (uint32_t)addr);
         }
         break;
     case CASE_RANGE(DIO_PAD_SLEEP_MODE, PARAM_N_DIO_PADS):
@@ -396,9 +453,12 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->wkup_detector_regwen[reg - R_WKUP_DETECTOR_REGWEN] = val32;
         break;
     case CASE_RANGE(WKUP_DETECTOR, PARAM_N_WKUP_DETECT):
-        if (OT_PINMUX_IS_REGWEN(reg, wkup_detector, WKUP_DETECTOR)) {
+        if (OT_PINMUX_DJ_IS_REGWEN(reg, wkup_detector, WKUP_DETECTOR)) {
             val32 &= R_WKUP_DETECTOR_EN_MASK;
             regs->wkup_detector[reg - R_WKUP_DETECTOR] = val32;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+                          __func__, (uint32_t)addr);
         }
         break;
     case CASE_RANGE(WKUP_DETECTOR_CFG, PARAM_N_WKUP_DETECT):
@@ -410,7 +470,12 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->wkup_detector_cnt_th[reg - R_WKUP_DETECTOR_CNT_TH] = val32;
         break;
     case CASE_RANGE(WKUP_DETECTOR_PADSEL, PARAM_N_WKUP_DETECT):
-        val32 &= R_WKUP_DETECTOR_PADSEL_SEL_MASK;
+        if (val32 >= N_MAX_PADS) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x too large: %u\n",
+                          __func__, (unsigned)reg, val32);
+            uint32_t mask = ot_pinmux_dj_sel_mask(N_MAX_PADS);
+            val32 &= mask;
+        }
         regs->wkup_detector_padsel[reg - R_WKUP_DETECTOR_PADSEL] = val32;
         break;
     case CASE_SCALAR(WKUP_CAUSE):
@@ -424,23 +489,23 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_pinmux_properties[] = {
+static Property ot_pinmux_dj_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps ot_pinmux_regs_ops = {
-    .read = &ot_pinmux_regs_read,
-    .write = &ot_pinmux_regs_write,
+static const MemoryRegionOps ot_pinmux_dj_regs_ops = {
+    .read = &ot_pinmux_dj_regs_read,
+    .write = &ot_pinmux_dj_regs_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
 
-static void ot_pinmux_reset(DeviceState *dev)
+static void ot_pinmux_dj_reset(DeviceState *dev)
 {
-    OtPinmuxState *s = OT_PINMUX(dev);
+    OtPinmuxDjState *s = OT_PINMUX_DJ(dev);
 
-    OtPinmuxStateRegs *regs = s->regs;
+    OtPinmuxDjStateRegs *regs = s->regs;
     memset(regs, 0, sizeof(*regs));
 
     for (unsigned ix = 0; ix < PARAM_N_MIO_PERIPH_IN; ix++) {
@@ -465,15 +530,15 @@ static void ot_pinmux_reset(DeviceState *dev)
     ibex_irq_set(&s->alert, 0);
 }
 
-static void ot_pinmux_init(Object *obj)
+static void ot_pinmux_dj_init(Object *obj)
 {
-    OtPinmuxState *s = OT_PINMUX(obj);
+    OtPinmuxDjState *s = OT_PINMUX_DJ(obj);
 
-    memory_region_init_io(&s->mmio, obj, &ot_pinmux_regs_ops, s, TYPE_OT_PINMUX,
-                          REGS_SIZE);
+    memory_region_init_io(&s->mmio, obj, &ot_pinmux_dj_regs_ops, s,
+                          TYPE_OT_PINMUX_DJ, REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
-    s->regs = g_new0(OtPinmuxStateRegs, 1u);
+    s->regs = g_new0(OtPinmuxDjStateRegs, 1u);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
     s->dios = g_new(IbexIRQ, PARAM_N_DIO_PADS);
@@ -484,27 +549,27 @@ static void ot_pinmux_init(Object *obj)
                                 PAD_ATTR_ENABLE(false));
 }
 
-static void ot_pinmux_class_init(ObjectClass *klass, void *data)
+static void ot_pinmux_dj_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_pinmux_reset;
-    device_class_set_props(dc, ot_pinmux_properties);
+    dc->reset = &ot_pinmux_dj_reset;
+    device_class_set_props(dc, ot_pinmux_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
 static const TypeInfo ot_pinmux_info = {
-    .name = TYPE_OT_PINMUX,
+    .name = TYPE_OT_PINMUX_DJ,
     .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(OtPinmuxState),
-    .instance_init = &ot_pinmux_init,
-    .class_init = &ot_pinmux_class_init,
+    .instance_size = sizeof(OtPinmuxDjState),
+    .instance_init = &ot_pinmux_dj_init,
+    .class_init = &ot_pinmux_dj_class_init,
 };
 
-static void ot_pinmux_register_types(void)
+static void ot_pinmux_dj_register_types(void)
 {
     type_register_static(&ot_pinmux_info);
 }
 
-type_init(ot_pinmux_register_types);
+type_init(ot_pinmux_dj_register_types);

@@ -32,7 +32,7 @@
 #include "hw/registerfields.h"
 
 #define TYPE_OT_PINMUX "ot-pinmux"
-OBJECT_DECLARE_SIMPLE_TYPE(OtPinmuxState, OT_PINMUX)
+
 #define OT_PINMUX_DIO TYPE_OT_PINMUX "-dio"
 #define OT_PINMUX_MIO TYPE_OT_PINMUX "-mio"
 #define OT_PINMUX_PAD TYPE_OT_PINMUX "-pad" /* for devices using pinmux pad */

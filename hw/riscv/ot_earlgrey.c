@@ -49,7 +49,7 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_eg.h"
-#include "hw/opentitan/ot_pinmux.h"
+#include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
@@ -663,7 +663,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_PINMUX] = {
-        .type = TYPE_OT_PINMUX,
+        .type = TYPE_OT_PINMUX_EG,
         .memmap = MEMMAPENTRIES(
             { 0x40460000u, 0x1000u }
         ),

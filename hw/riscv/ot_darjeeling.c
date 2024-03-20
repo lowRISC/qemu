@@ -56,7 +56,7 @@
 #include "hw/opentitan/ot_mbx.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_dj.h"
-#include "hw/opentitan/ot_pinmux.h"
+#include "hw/opentitan/ot_pinmux_dj.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
@@ -170,6 +170,100 @@ enum OtDjResetWakeup {
     OT_DJ_WAKEUP_SOC_PROXY_INTERNAL,
     OT_DJ_WAKEUP_SOC_PROXY_EXTERNAL,
     OT_DJ_WAKEUP_COUNT,
+};
+
+enum OtDjPinmuxDio {
+    DIO_SPI_HOST0_SD0, /* 0 */
+    DIO_SPI_HOST0_SD1, /* 1 */
+    DIO_SPI_HOST0_SD2, /* 2 */
+    DIO_SPI_HOST0_SD3, /* 3 */
+    DIO_SPI_DEVICE_SD0, /* 4 */
+    DIO_SPI_DEVICE_SD1, /* 5 */
+    DIO_SPI_DEVICE_SD2, /* 6 */
+    DIO_SPI_DEVICE_SD3, /* 7 */
+    DIO_I2C0_SCL, /* 8 */
+    DIO_I2C0_SDA, /* 9 */
+    DIO_GPIO_GPIO0, /* 10 */
+    DIO_GPIO_GPIO1, /* 11 */
+    DIO_GPIO_GPIO2, /* 12 */
+    DIO_GPIO_GPIO3, /* 13 */
+    DIO_GPIO_GPIO4, /* 14 */
+    DIO_GPIO_GPIO5, /* 15 */
+    DIO_GPIO_GPIO6, /* 16 */
+    DIO_GPIO_GPIO7, /* 17 */
+    DIO_GPIO_GPIO8, /* 18 */
+    DIO_GPIO_GPIO9, /* 19 */
+    DIO_GPIO_GPIO10, /* 20 */
+    DIO_GPIO_GPIO11, /* 21 */
+    DIO_GPIO_GPIO12, /* 22 */
+    DIO_GPIO_GPIO13, /* 23 */
+    DIO_GPIO_GPIO14, /* 24 */
+    DIO_GPIO_GPIO15, /* 25 */
+    DIO_GPIO_GPIO16, /* 26 */
+    DIO_GPIO_GPIO17, /* 27 */
+    DIO_GPIO_GPIO18, /* 28 */
+    DIO_GPIO_GPIO19, /* 29 */
+    DIO_GPIO_GPIO20, /* 30 */
+    DIO_GPIO_GPIO21, /* 31 */
+    DIO_GPIO_GPIO22, /* 32 */
+    DIO_GPIO_GPIO23, /* 33 */
+    DIO_GPIO_GPIO24, /* 34 */
+    DIO_GPIO_GPIO25, /* 35 */
+    DIO_GPIO_GPIO26, /* 36 */
+    DIO_GPIO_GPIO27, /* 37 */
+    DIO_GPIO_GPIO28, /* 38 */
+    DIO_GPIO_GPIO29, /* 39 */
+    DIO_GPIO_GPIO30, /* 40 */
+    DIO_GPIO_GPIO31, /* 41 */
+    DIO_SPI_DEVICE_SCK, /* 42 */
+    DIO_SPI_DEVICE_CSB, /* 43 */
+    DIO_SPI_DEVICE_TPM_CSB, /* 44 */
+    DIO_UART0_RX, /* 45 */
+    DIO_SOC_PROXY_SOC_GPI0, /* 46 */
+    DIO_SOC_PROXY_SOC_GPI1, /* 47 */
+    DIO_SOC_PROXY_SOC_GPI2, /* 48 */
+    DIO_SOC_PROXY_SOC_GPI3, /* 49 */
+    DIO_SOC_PROXY_SOC_GPI4, /* 50 */
+    DIO_SOC_PROXY_SOC_GPI5, /* 51 */
+    DIO_SOC_PROXY_SOC_GPI6, /* 52 */
+    DIO_SOC_PROXY_SOC_GPI7, /* 53 */
+    DIO_SOC_PROXY_SOC_GPI8, /* 54 */
+    DIO_SOC_PROXY_SOC_GPI9, /* 55 */
+    DIO_SOC_PROXY_SOC_GPI10, /* 56 */
+    DIO_SOC_PROXY_SOC_GPI11, /* 57 */
+    DIO_SPI_HOST0_SCK, /* 58 */
+    DIO_SPI_HOST0_CSB, /* 59 */
+    DIO_UART0_TX, /* 60 */
+    DIO_SOC_PROXY_SOC_GPO0, /* 61 */
+    DIO_SOC_PROXY_SOC_GPO1, /* 62 */
+    DIO_SOC_PROXY_SOC_GPO2, /* 63 */
+    DIO_SOC_PROXY_SOC_GPO3, /* 64 */
+    DIO_SOC_PROXY_SOC_GPO4, /* 65 */
+    DIO_SOC_PROXY_SOC_GPO5, /* 66 */
+    DIO_SOC_PROXY_SOC_GPO6, /* 67 */
+    DIO_SOC_PROXY_SOC_GPO7, /* 68 */
+    DIO_SOC_PROXY_SOC_GPO8, /* 69 */
+    DIO_SOC_PROXY_SOC_GPO9, /* 70 */
+    DIO_SOC_PROXY_SOC_GPO10, /* 71 */
+    DIO_SOC_PROXY_SOC_GPO11, /* 72 */
+    DIO_COUNT, /* 73 */
+};
+
+enum OtDjPinmuxMioIn {
+    MIO_IN_SOC_PROXY_SOC_GPI12, /* 0 */
+    MIO_IN_SOC_PROXY_SOC_GPI13, /* 1 */
+    MIO_IN_SOC_PROXY_SOC_GPI14, /* 2 */
+    MIO_IN_SOC_PROXY_SOC_GPI15, /* 3 */
+    MIO_IN_COUNT, /* 4 */
+};
+
+enum OtDjPinmuxMioOut {
+    MIO_OUT_SOC_PROXY_SOC_GPO12, /* 0 */
+    MIO_OUT_SOC_PROXY_SOC_GPO13, /* 1 */
+    MIO_OUT_SOC_PROXY_SOC_GPO14, /* 2 */
+    MIO_OUT_SOC_PROXY_SOC_GPO15, /* 3 */
+    MIO_OUT_OTP_CTRL_TEST0, /* 4 */
+    MIO_OUT_COUNT, /* 5 */
 };
 
 #define OT_DJ_PRIVATE_REGION_OFFSET 0x00000000u
@@ -315,6 +409,10 @@ static const uint32_t ot_dj_pmp_addrs[] = {
                          OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u)), \
     .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)), \
                                IBEX_DEV_STRING_PROP("ram_as_name", _asname_))
+
+#define OT_DJ_PINMUX_LINK(_type_, _name_, _tgt_, _num_) \
+    OT_DJ_SOC_SIGNAL(OT_PINMUX_##_type_, _type_##_##_name_, _tgt_, \
+                     OT_PINMUX_PAD, (_num_))
 
 #define OT_DJ_SOC_CLKMGR_HINT(_num_) \
     OT_DJ_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
@@ -1014,7 +1112,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_SIGNAL(OT_RSTMGR_SW_RST, 0, PWRMGR,
-                                     OT_PWRMGR_SW_RST, 0)
+                             OT_PWRMGR_SW_RST, 0)
         ),
     },
     [OT_DJ_SOC_DEV_CLKMGR] = {
@@ -1024,9 +1122,43 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_PINMUX] = {
-        .type = TYPE_OT_PINMUX,
+        .type = TYPE_OT_PINMUX_DJ,
         .memmap = MEMMAPENTRIES(
             { 0x30460000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO0, GPIO, 0),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO1, GPIO, 1),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO2, GPIO, 2),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO3, GPIO, 3),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO4, GPIO, 4),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO5, GPIO, 5),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO6, GPIO, 6),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO7, GPIO, 7),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO8, GPIO, 8),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO9, GPIO, 9),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO10, GPIO, 10),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO11, GPIO, 11),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO12, GPIO, 12),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO13, GPIO, 13),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO14, GPIO, 14),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO15, GPIO, 15),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO16, GPIO, 16),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO17, GPIO, 17),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO18, GPIO, 18),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO19, GPIO, 19),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO20, GPIO, 20),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO21, GPIO, 21),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO22, GPIO, 22),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO23, GPIO, 23),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO24, GPIO, 24),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO25, GPIO, 25),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO26, GPIO, 26),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO27, GPIO, 27),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO28, GPIO, 28),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO29, GPIO, 29),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO30, GPIO, 30),
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO31, GPIO, 31)
         ),
     },
     [OT_DJ_SOC_DEV_AON_TIMER] = {
