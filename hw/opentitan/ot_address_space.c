@@ -29,14 +29,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/bitmap.h"
-#include "qemu/guest-random.h"
-#include "qemu/log.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_address_space.h"
-#include "hw/qdev-properties-system.h"
-#include "hw/qdev-properties.h"
 #include "trace.h"
 
 struct OtAddressSpaceState {

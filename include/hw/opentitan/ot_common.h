@@ -23,7 +23,6 @@
 #ifndef HW_OPENTITAN_OT_COMMON_H
 #define HW_OPENTITAN_OT_COMMON_H
 
-#include "qemu/timer.h"
 #include "chardev/char-fe.h"
 #include "exec/memory.h"
 #include "hw/core/cpu.h"

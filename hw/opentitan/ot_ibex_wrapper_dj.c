@@ -27,11 +27,9 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "chardev/char-fe.h"
-#include "exec/address-spaces.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"

@@ -29,7 +29,6 @@
 #define HW_OPENTITAN_OT_CLKMGR_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
 
 #define TYPE_OT_CLKMGR "ot-clkmgr"
 OBJECT_DECLARE_SIMPLE_TYPE(OtClkMgrState, OT_CLKMGR)

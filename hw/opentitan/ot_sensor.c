@@ -29,15 +29,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/guest-random.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
-#include "qemu/timer.h"
 #include "qemu/typedefs.h"
-#include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_sensor.h"
-#include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"

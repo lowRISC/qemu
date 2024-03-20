@@ -28,26 +28,17 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/guest-random.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
-#include "qemu/memalign.h"
-#include "qemu/timer.h"
 #include "qemu/typedefs.h"
-#include "qapi/error.h"
-#include "elf.h"
-#include "hw/loader.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
-#include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/block-backend.h"
 #include "trace.h"
 
 #define PARAM_NUM_ALERTS 1

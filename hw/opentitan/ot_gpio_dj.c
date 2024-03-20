@@ -27,14 +27,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/guest-random.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
-#include "qemu/timer.h"
 #include "qemu/typedefs.h"
-#include "qapi/error.h"
 #include "chardev/char-fe.h"
-#include "hw/hw.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_gpio_dj.h"

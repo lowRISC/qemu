@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Entropy Distribution Network device
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -29,7 +29,6 @@
 #define HW_OPENTITAN_OT_EDN_H
 
 #include "qom/object.h"
-#include "hw/irq.h"
 
 #define TYPE_OT_EDN "ot-edn"
 OBJECT_DECLARE_SIMPLE_TYPE(OtEDNState, OT_EDN)

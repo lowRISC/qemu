@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Cryptographically Secure Random Number Generator
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -29,7 +29,6 @@
 #define HW_OPENTITAN_OT_CSRNG_H
 
 #include "qom/object.h"
-#include "hw/irq.h"
 #include "hw/registerfields.h"
 
 #define TYPE_OT_CSRNG "ot-csrng"

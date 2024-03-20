@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan HMAC device
  *
- * Copyright (c) 2022-2023 Rivos, Inc.
+ * Copyright (c) 2022-2024 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -29,7 +29,6 @@
 #define HW_OPENTITAN_OT_HMAC_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
 
 #define TYPE_OT_HMAC "ot-hmac"
 OBJECT_DECLARE_SIMPLE_TYPE(OtHMACState, OT_HMAC)

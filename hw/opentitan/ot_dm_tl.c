@@ -27,19 +27,14 @@
 
 #include "qemu/osdep.h"
 #include <stdint.h>
-#include "qemu/log.h"
 #include "qapi/error.h"
 #include "exec/memory.h"
-#include "hw/hw.h"
 #include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_dm_tl.h"
-#include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
-#include "hw/registerfields.h"
 #include "hw/riscv/debug.h"
 #include "hw/riscv/dtm.h"
-#include "hw/riscv/ibex_common.h"
 #include "hw/sysbus.h"
 #include "trace.h"
 

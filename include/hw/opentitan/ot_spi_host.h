@@ -31,11 +31,9 @@
 #define HW_OPENTITAN_OT_SPI_HOST_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
 
 #define TYPE_OT_SPI_HOST "ot-spi_host"
 OBJECT_DECLARE_TYPE(OtSPIHostState, OtSPIHostClass, OT_SPI_HOST)
-
 
 #define OT_SPI_HOST_IRQ_NUM 2
 

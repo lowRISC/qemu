@@ -16,7 +16,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/bitops.h"
-#include "qemu/log.h"
 #include "hw/opentitan/ot_present.h"
 
 /* warning: not thread safe when enabled */

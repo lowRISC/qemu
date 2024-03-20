@@ -32,7 +32,6 @@
 #include "qemu/osdep.h"
 #include "qemu/bswap.h"
 #include "qemu/log.h"
-#include "qemu/timer.h"
 #include "qapi/error.h"
 #include "elf.h"
 #include "hw/loader.h"

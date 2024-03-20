@@ -28,7 +28,7 @@
 #ifndef HW_OPENTITAN_OT_AON_TIMER_H
 #define HW_OPENTITAN_OT_AON_TIMER_H
 
-#include "hw/sysbus.h"
+#include "qom/object.h"
 
 #define TYPE_OT_AON_TIMER "ot-aon_timer"
 OBJECT_DECLARE_SIMPLE_TYPE(OtAonTimerState, OT_AON_TIMER)

@@ -33,8 +33,6 @@
 #include "qapi/error.h"
 #include "qom/object_interfaces.h"
 #include "hw/opentitan/ot_rom_ctrl_img.h"
-#include "hw/qdev-properties-system.h"
-#include "hw/qdev-properties.h"
 
 /* Current ROMs digests are 256 bits (32 bytes) */
 #define ROM_DIGEST_BYTES (32u)

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Device Proxy
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -29,7 +29,6 @@
 #define HW_OPENTITAN_OT_DEV_PROXY_H
 
 #include "qom/object.h"
-#include "hw/registerfields.h"
 
 #define TYPE_OT_DEV_PROXY "ot-dev_proxy"
 OBJECT_DECLARE_SIMPLE_TYPE(OtDevProxyState, OT_DEV_PROXY)

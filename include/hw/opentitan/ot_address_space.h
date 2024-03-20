@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Address Space container
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -34,7 +34,6 @@
 #define HW_OPENTITAN_OT_ADDRESS_SPACE_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
 
 #define TYPE_OT_ADDRESS_SPACE "ot-address_space"
 OBJECT_DECLARE_SIMPLE_TYPE(OtAddressSpaceState, OT_ADDRESS_SPACE)

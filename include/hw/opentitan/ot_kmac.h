@@ -32,7 +32,6 @@
 #define HW_OPENTITAN_OT_KMAC_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
 
 #define TYPE_OT_KMAC "ot-kmac"
 OBJECT_DECLARE_SIMPLE_TYPE(OtKMACState, OT_KMAC)

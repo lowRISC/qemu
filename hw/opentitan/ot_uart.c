@@ -35,7 +35,6 @@
 #include "qemu/module.h"
 #include "chardev/char-fe.h"
 #include "hw/opentitan/ot_uart.h"
-#include "hw/qdev-clock.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"

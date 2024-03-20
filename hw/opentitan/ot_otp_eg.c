@@ -28,11 +28,9 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
-#include "hw/irq.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"

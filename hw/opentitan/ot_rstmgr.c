@@ -30,10 +30,7 @@
 
 #include "qemu/osdep.h"
 #include <assert.h>
-#include "qemu/guest-random.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
-#include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
@@ -41,7 +38,6 @@
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/qdev-core.h"
-#include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"

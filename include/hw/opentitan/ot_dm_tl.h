@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Debug Module to TileLink bridge
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -27,6 +27,8 @@
 
 #ifndef HW_OPENTITAN_OT_DM_TL_H
 #define HW_OPENTITAN_OT_DM_TL_H
+
+#include "qom/object.h"
 
 #define TYPE_OT_DM_TL "ot-dm_tl"
 OBJECT_DECLARE_SIMPLE_TYPE(OtDMTLState, OT_DM_TL)

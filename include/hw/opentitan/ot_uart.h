@@ -29,7 +29,6 @@
 #define HW_OPENTITAN_OT_UART_H
 
 #include "qom/object.h"
-#include "hw/sysbus.h"
 
 #define TYPE_OT_UART "ot-uart"
 OBJECT_DECLARE_SIMPLE_TYPE(OtUARTState, OT_UART)

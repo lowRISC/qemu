@@ -27,7 +27,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/fifo8.h"
-#include "qemu/log.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-misc.h"
@@ -35,7 +34,6 @@
 #include "chardev/char-fe.h"
 #include "exec/memory.h"
 #include "hw/core/cpu.h"
-#include "hw/hw.h"
 #include "hw/irq.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_dev_proxy.h"
@@ -45,8 +43,7 @@
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
-#include "hw/riscv/ibex_common.h"
-#include "hw/riscv/ibex_irq.h"
+#include "hw/sysbus.h"
 #include "sysemu/runstate.h"
 #include "trace.h"
 

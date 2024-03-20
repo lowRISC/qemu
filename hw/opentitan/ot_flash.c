@@ -29,9 +29,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/guest-random.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
 #include "qemu/memalign.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
@@ -42,7 +40,6 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_flash.h"
-#include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
