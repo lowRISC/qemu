@@ -23,9 +23,6 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
- *
- * Note: for now, only a minimalist subset of Power Manager device is
- *       implemented in order to enable OpenTitan's ROM boot to progress
  */
 
 #include "qemu/osdep.h"
@@ -190,6 +187,8 @@ struct OtPinmuxState {
 
     MemoryRegion mmio;
     IbexIRQ alert;
+    IbexIRQ *dios;
+    IbexIRQ *mios;
 
     OtPinmuxStateRegs *regs;
 };
@@ -209,10 +208,10 @@ static uint64_t ot_pinmux_regs_read(void *opaque, hwaddr addr, unsigned size)
     case CASE_RANGE(MIO_PERIPH_INSEL, PARAM_N_MIO_PERIPH_IN):
         val32 = regs->mio_periph_insel[reg - R_MIO_PERIPH_INSEL];
         break;
-    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PADS):
+    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PERIPH_OUT):
         val32 = regs->mio_outsel_regwen[reg - R_MIO_OUTSEL_REGWEN];
         break;
-    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PADS):
+    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PERIPH_OUT):
         val32 = regs->mio_outsel[reg - R_MIO_OUTSEL];
         break;
     case CASE_RANGE(MIO_PAD_ATTR_REGWEN, PARAM_N_MIO_PADS):
@@ -320,11 +319,11 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             regs->mio_periph_insel[reg - R_MIO_PERIPH_INSEL] = val32;
         }
         break;
-    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PADS):
+    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PERIPH_OUT):
         val32 &= R_MIO_OUTSEL_REGWEN_EN_MASK;
         regs->mio_outsel_regwen[reg - R_MIO_OUTSEL_REGWEN] = val32;
         break;
-    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PADS):
+    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PERIPH_OUT):
         if (OT_PINMUX_IS_REGWEN(reg, mio_outsel, MIO_OUTSEL)) {
             val32 &= R_MIO_PERIPH_OUTSEL_OUT_MASK;
             regs->mio_outsel[reg - R_MIO_OUTSEL] = val32;
@@ -337,7 +336,10 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case CASE_RANGE(MIO_PAD_ATTR, PARAM_N_MIO_PADS):
         if (OT_PINMUX_IS_REGWEN(reg, mio_pad_attr, MIO_PAD_ATTR)) {
             val32 &= MIO_PAD_ATTR_MASK;
-            regs->mio_pad_attr[reg - R_MIO_PAD_ATTR] = val32;
+            unsigned pad_no = reg - R_MIO_PAD_ATTR;
+            g_assert(pad_no < R_MIO_PAD_ATTR);
+            regs->mio_pad_attr[pad_no] = val32;
+            ibex_irq_set(&s->mios[pad_no], PAD_ATTR_TO_IRQ(val32));
         }
         break;
     case CASE_RANGE(DIO_PAD_ATTR_REGWEN, PARAM_N_DIO_PADS):
@@ -347,7 +349,10 @@ static void ot_pinmux_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case CASE_RANGE(DIO_PAD_ATTR, PARAM_N_DIO_PADS):
         if (OT_PINMUX_IS_REGWEN(reg, dio_pad_attr, DIO_PAD_ATTR)) {
             val32 &= DIO_PAD_ATTR_MASK;
-            regs->dio_pad_attr[reg - R_DIO_PAD_ATTR] = val32;
+            unsigned pad_no = reg - R_DIO_PAD_ATTR;
+            g_assert(pad_no < PARAM_N_DIO_PADS);
+            regs->dio_pad_attr[pad_no] = val32;
+            ibex_irq_set(&s->dios[pad_no], PAD_ATTR_TO_IRQ(val32));
         }
         break;
     case CASE_RANGE(MIO_PAD_SLEEP_STATUS, MIO_SLEEP_STATUS_COUNT):
@@ -470,6 +475,13 @@ static void ot_pinmux_init(Object *obj)
 
     s->regs = g_new0(OtPinmuxStateRegs, 1u);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+
+    s->dios = g_new(IbexIRQ, PARAM_N_DIO_PADS);
+    s->mios = g_new(IbexIRQ, PARAM_N_MIO_PADS);
+    ibex_qdev_init_irqs_default(obj, s->dios, OT_PINMUX_DIO, PARAM_N_DIO_PADS,
+                                PAD_ATTR_ENABLE(false));
+    ibex_qdev_init_irqs_default(obj, s->mios, OT_PINMUX_MIO, PARAM_N_MIO_PADS,
+                                PAD_ATTR_ENABLE(false));
 }
 
 static void ot_pinmux_class_init(ObjectClass *klass, void *data)
