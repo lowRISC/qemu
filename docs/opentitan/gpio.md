@@ -9,17 +9,24 @@ for Darjeeling one.
 
 ## Initial configuration
 
-It is possible to configure initial values of the GPIO input pins:
+It is possible to configure initial values of the GPIO pins:
 
-OpenTitan GPIO driver accept a global option:
+OpenTitan GPIO driver accept global options:
 
-- `ot-gpio-$OTMACHINE.in` that defines the input values of the GPIO port as a 32-bit value
+- `ot-gpio-$OTMACHINE.in` defines the input values of the GPIO port as a 32-bit value
+- `ot-gpio-$OTMACHINE.out` defines the output values of the GPIO port as a 32-bit value
+- `ot-gpio-$OTMACHINE.oe` defines the output enable of the GPIO port as a 32-bit value
+
+All values default to zero, that is all GPIOs as input/hi-z, read 0.
 
 ### Example
 
 ```
--global ot-gpio.in=0x00ffff00
+-global ot-gpio-dj.in=0x00ffff00 -global ot-gpio-dj.oe=0x1 -global ot-gpio-dj.out=0x1
 ```
+
+Note: If there were several GPIO instances in a machine, these configurations would apply to all
+GPIO instances.
 
 ## Character Device
 
@@ -70,13 +77,17 @@ The hex value represents the 32-bit GPIO values.
 
 A type describes the meaning of the hex value. Supported types are:
 
+* `C` clear/reset host (at QEMU start up)
 * `D` direction, _i.e._ Output Enable in OpenTitan terminology (QEMU -> host)
 * `I` input GPIO values (host -> QEMU)
 * `M` mask GPIO input values, i.e. non connected input pins (host -> QEMU)
 * `O` output GPIO values (QEMU -> host)
+* `P` output GPIO pull up/down values (QEMU -> host)
 * `Q` query input (QEMU -> host). QEMU may emit this frame, so that the host replies with a new
-  `I` frame (hexvalue of `Q` is ignored)
+  input `I` frame (hexvalue of `Q` is ignored)
 * `R` repeat (host -> QEMU). The host may ask QEMU to repeat the last `D` and `O` frames
+* `Z` output pull up/down GPIO HiZ values (QEMU -> host). 1 means HiZ, 0 means
+  pull up/down values apply.
 
 Frames are only emitted whenever the state of either peer (QEMU, host) change. QEMU should emit `D`
 and `O` frames whenever the GPIO configuration or output values are updated. The host should emit

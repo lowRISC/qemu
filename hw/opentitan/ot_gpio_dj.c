@@ -40,6 +40,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 
 #define PARAM_NUM_ALERTS 1u
@@ -104,6 +105,13 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
+typedef struct {
+    uint32_t hi_z;
+    uint32_t pull_v;
+    uint32_t out_en;
+    uint32_t out_v;
+} OtGpioDjBackendState;
+
 struct OtGpioDjState {
     SysBusDevice parent_obj;
 
@@ -127,16 +135,26 @@ struct OtGpioDjState {
 
     char ibuf[PARAM_NUM_IO]; /* backed input buffer */
     unsigned ipos;
+    OtGpioDjBackendState backend_state; /* cache */
 
+    char *ot_id;
     uint32_t reset_in; /* initial input levels */
+    uint32_t reset_out; /* initial output levels */
+    uint32_t reset_oe; /* initial output enable vs. hi-z levels */
     CharBackend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
+    bool wipe; /* whether to wipe the backend at reset */
 };
+
+static const char DEFAULT_OT_ID[] = "";
+
+static void ot_gpio_dj_update_backend(OtGpioDjState *s);
 
 static void ot_gpio_dj_update_irqs(OtGpioDjState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
-    trace_ot_gpio_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE], level);
+    trace_ot_gpio_irqs(s->ot_id, s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
+                       level);
     for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
@@ -187,26 +205,14 @@ static void ot_gpio_dj_update_data_in(OtGpioDjState *s)
 
     s->regs[R_DATA_IN] = data_mix;
 
-    trace_ot_gpio_update_input(prev, s->data_in, data_mix, ign_mask);
+    trace_ot_gpio_update_input(s->ot_id, prev, s->data_in, data_mix, ign_mask);
     ot_gpio_dj_update_intr_level(s);
     ot_gpio_dj_update_intr_edge(s, prev);
     ot_gpio_dj_update_irqs(s);
 }
 
-static void ot_gpio_dj_update_backend(OtGpioDjState *s, bool oe)
+static void ot_gpio_dj_update_data_out(OtGpioDjState *s)
 {
-    if (!qemu_chr_fe_backend_connected(&s->chr)) {
-        return;
-    }
-
-    /*
-     * use the MS DOS CR LF syntax because some people keep using
-     * Windows-style terminal.
-     */
-
-    char buf[32u];
-    size_t len;
-
     uint32_t outv = s->data_out;
     /* assume invert is performed on device output data, not on pull up/down */
     outv ^= s->invert;
@@ -216,34 +222,28 @@ static void ot_gpio_dj_update_backend(OtGpioDjState *s, bool oe)
     /* if open drain is active and output is high, disable output enable */
     out_en &= ~(s->opendrain & outv);
 
-    /* apply pull up (/down) on non- output enabled pins */
-    outv |= s->pull_en & s->pull_sel;
+    /* keep non- opendrain high values */
+    outv &= out_en;
 
-    /* if pull up or pull down is enabled, force output enable */
-    out_en |= s->pull_en;
-
-    /*
-     * if output enable change is explicit or if the pinmux settings have
-     * forced some output, emit the new output configuration
-     */
-    if (oe || out_en != s->data_oe) {
-        len = snprintf(&buf[0], sizeof(buf), "D:%08x\r\n", out_en);
-    } else {
-        len = 0;
+    trace_ot_gpio_update_output(s->ot_id, outv);
+    for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
+        if ((out_en >> ix) & 1u) {
+            int level = (int)((outv >> ix) & 1u);
+            if (level != ibex_irq_get_level(&s->gpos[ix])) {
+                trace_ot_gpio_update_out_line(s->ot_id, ix, level);
+            }
+            ibex_irq_set(&s->gpos[ix], level);
+        }
     }
-
-    len += snprintf(&buf[len], sizeof(buf), "O:%08x\r\n", outv);
-
-    qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, (int)len);
 }
 
 static void ot_gpio_dj_strap_en(void *opaque, int no, int level)
 {
     OtGpioDjState *s = opaque;
 
-    g_assert(no == 0);
+    trace_ot_gpio_strap_en(s->ot_id, no, (bool)level);
 
-    qemu_log("%s: STRAP %d\n", __func__, level);
+    g_assert(no == 0);
 
     if (level) {
         s->regs[R_HW_STRAPS_DATA_IN] = s->data_in;
@@ -255,6 +255,8 @@ static void ot_gpio_dj_strap_en(void *opaque, int no, int level)
 static void ot_gpio_dj_in_change(void *opaque, int no, int level)
 {
     OtGpioDjState *s = opaque;
+
+    trace_ot_gpio_in_change(s->ot_id, no, level<0, level> 0);
 
     g_assert(no < PARAM_NUM_IO);
 
@@ -280,11 +282,14 @@ static void ot_gpio_dj_in_change(void *opaque, int no, int level)
     }
 
     ot_gpio_dj_update_data_in(s);
+    ot_gpio_dj_update_backend(s);
 }
 
 static void ot_gpio_dj_pad_attr_change(void *opaque, int no, int level)
 {
     OtGpioDjState *s = opaque;
+
+    trace_ot_gpio_pad_attr_change(s->ot_id, no, (uint32_t)level);
 
     g_assert(no < PARAM_NUM_IO);
 
@@ -317,7 +322,8 @@ static void ot_gpio_dj_pad_attr_change(void *opaque, int no, int level)
     }
 
     ot_gpio_dj_update_data_in(s);
-    ot_gpio_dj_update_backend(s, true);
+    ot_gpio_dj_update_data_out(s);
+    ot_gpio_dj_update_backend(s);
 }
 
 static uint64_t ot_gpio_dj_read(void *opaque, hwaddr addr, unsigned size)
@@ -358,19 +364,21 @@ static uint64_t ot_gpio_dj_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_TEST:
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0u;
         break;
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_gpio_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_gpio_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                              pc);
 
     return (uint64_t)val32;
 };
@@ -386,7 +394,7 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_gpio_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_gpio_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_INTR_STATE:
@@ -408,13 +416,15 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_DIRECT_OUT:
         s->regs[reg] = val32;
         s->data_out = val32;
-        ot_gpio_dj_update_backend(s, false);
+        ot_gpio_dj_update_data_out(s);
+        ot_gpio_dj_update_backend(s);
         ot_gpio_dj_update_data_in(s);
         break;
     case R_DIRECT_OE:
         s->regs[reg] = val32;
         s->data_oe = val32;
-        ot_gpio_dj_update_backend(s, true);
+        ot_gpio_dj_update_data_out(s);
+        ot_gpio_dj_update_backend(s);
         ot_gpio_dj_update_data_in(s);
         break;
     case R_MASKED_OUT_LOWER:
@@ -422,7 +432,8 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 >> MASKED_MASK_SHIFT;
         s->data_out &= ~mask;
         s->data_out |= val32 & mask;
-        ot_gpio_dj_update_backend(s, false);
+        ot_gpio_dj_update_data_out(s);
+        ot_gpio_dj_update_backend(s);
         ot_gpio_dj_update_data_in(s);
         break;
     case R_MASKED_OUT_UPPER:
@@ -430,7 +441,8 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 & MASKED_MASK_MASK;
         s->data_out &= ~mask;
         s->data_out |= (val32 << MASKED_MASK_SHIFT) & mask;
-        ot_gpio_dj_update_backend(s, false);
+        ot_gpio_dj_update_data_out(s);
+        ot_gpio_dj_update_backend(s);
         ot_gpio_dj_update_data_in(s);
         break;
     case R_MASKED_OE_LOWER:
@@ -438,7 +450,8 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 >> MASKED_MASK_SHIFT;
         s->data_oe &= ~mask;
         s->data_oe |= val32 & mask;
-        ot_gpio_dj_update_backend(s, true);
+        ot_gpio_dj_update_data_out(s);
+        ot_gpio_dj_update_backend(s);
         ot_gpio_dj_update_data_in(s);
         break;
     case R_MASKED_OE_UPPER:
@@ -446,7 +459,8 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         mask = val32 & MASKED_MASK_MASK;
         s->data_oe &= ~mask;
         s->data_oe |= (val32 << MASKED_MASK_SHIFT) & mask;
-        ot_gpio_dj_update_backend(s, true);
+        ot_gpio_dj_update_data_out(s);
+        ot_gpio_dj_update_backend(s);
         ot_gpio_dj_update_data_in(s);
         break;
     case R_INTR_CTRL_EN_RISING:
@@ -466,12 +480,13 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_HW_STRAPS_DATA_IN:
     case R_HW_STRAPS_DATA_IN_VALID:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 };
@@ -488,7 +503,8 @@ static void ot_gpio_dj_chr_receive(void *opaque, const uint8_t *buf, int size)
     OtGpioDjState *s = opaque;
 
     if (s->ipos + (unsigned)size > sizeof(s->ibuf)) {
-        error_report("%s: Unexpected chardev receive\n", __func__);
+        error_report("%s: %s: Unexpected chardev receive\n", __func__,
+                     s->ot_id);
         return;
     }
 
@@ -507,16 +523,19 @@ static void ot_gpio_dj_chr_receive(void *opaque, const uint8_t *buf, int size)
         }
         unsigned eolpos = eol - s->ibuf;
         if (eolpos < 10u) {
+            /* discard incomplete lines */
             memmove(s->ibuf, eol + 1u, eolpos + 1u);
             s->ipos = 0;
             continue;
         }
         uint32_t data_in = 0;
         char cmd = '\0';
+
         /* NOLINTNEXTLINE */
         int ret = sscanf(s->ibuf, "%c:%08x", &cmd, &data_in);
-        memmove(s->ibuf, eol + 1u, eolpos + 1u);
-        s->ipos = 0;
+        /* discard current command, even if invalid, up to first EOL */
+        s->ipos -= eolpos;
+        memmove(s->ibuf, eol + 1u, s->ipos);
 
         if (ret == 2) {
             if (cmd == 'M') {
@@ -526,26 +545,98 @@ static void ot_gpio_dj_chr_receive(void *opaque, const uint8_t *buf, int size)
                 s->data_in = data_in;
                 ot_gpio_dj_update_data_in(s);
             } else if (cmd == 'R') {
-                ot_gpio_dj_update_backend(s, true);
+                ot_gpio_dj_update_backend(s);
             }
         }
     }
+}
+
+static void ot_gpio_dj_init_backend(OtGpioDjState *s)
+{
+    if (!qemu_chr_fe_backend_connected(&s->chr)) {
+        return;
+    }
+
+    if (s->wipe) {
+        /* query backend for current input status */
+        char buf[16u];
+        int len = snprintf(buf, sizeof(buf), "C:%08x\r\n", 0);
+        qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, len);
+    }
+}
+
+static void ot_gpio_dj_update_backend(OtGpioDjState *s)
+{
+    if (!qemu_chr_fe_backend_connected(&s->chr)) {
+        return;
+    }
+
+    /*
+     * use the MS DOS CR LF syntax because some people keep using
+     * Windows-style terminal.
+     */
+
+    uint32_t outv = s->data_out;
+    /* assume invert is performed on device output data, not on pull up/down */
+    outv ^= s->invert;
+
+    uint32_t out_en = s->data_oe;
+
+    /* if open drain is active and output is high, disable output enable */
+    out_en &= ~(s->opendrain & outv);
+
+    uint32_t active = s->pull_en | out_en;
+    outv &= out_en;
+
+    OtGpioDjBackendState bstate = {
+        .hi_z = ~active,
+        .pull_v = s->pull_sel,
+        .out_en = out_en,
+        .out_v = outv,
+    };
+
+    /*
+     * use the MS DOS CR LF syntax because some people keep using
+     * Windows-style terminal.
+     */
+
+    if (!memcmp(&bstate, &s->backend_state, sizeof(OtGpioDjBackendState))) {
+        /* do not emit new state if nothing has changed */
+        return;
+    }
+
+    char buf[64u];
+    size_t len = 0;
+
+    len += snprintf(&buf[len], sizeof(buf) - len, "Z:%08x\r\n", bstate.hi_z);
+    len += snprintf(&buf[len], sizeof(buf) - len, "P:%08x\r\n", bstate.pull_v);
+    len += snprintf(&buf[len], sizeof(buf) - len, "D:%08x\r\n", bstate.out_en);
+    len += snprintf(&buf[len], sizeof(buf) - len, "O:%08x\r\n", bstate.out_v);
+
+    s->backend_state = bstate;
+
+    qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, (int)len);
 }
 
 static void ot_gpio_dj_chr_event_hander(void *opaque, QEMUChrEvent event)
 {
     OtGpioDjState *s = opaque;
 
+    if (event == CHR_EVENT_CLOSED) {
+        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
+        return;
+    }
+
     if (event == CHR_EVENT_OPENED) {
         if (object_dynamic_cast(OBJECT(s->chr.chr), TYPE_CHARDEV_SERIAL)) {
             ot_common_ignore_chr_status_lines(&s->chr);
         }
 
-        ot_gpio_dj_update_backend(s, true);
-
         if (!qemu_chr_fe_backend_connected(&s->chr)) {
             return;
         }
+
+        ot_gpio_dj_update_backend(s);
 
         /* query backend for current input status */
         char buf[16u];
@@ -596,7 +687,11 @@ static const MemoryRegionOps ot_gpio_dj_regs_ops = {
 };
 
 static Property ot_gpio_dj_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtGpioDjState, ot_id),
     DEFINE_PROP_UINT32("in", OtGpioDjState, reset_in, 0u),
+    DEFINE_PROP_UINT32("out", OtGpioDjState, reset_out, 0u),
+    DEFINE_PROP_UINT32("oe", OtGpioDjState, reset_oe, 0u),
+    DEFINE_PROP_BOOL("wipe", OtGpioDjState, wipe, false),
     DEFINE_PROP_CHR("chardev", OtGpioDjState, chr),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -605,22 +700,34 @@ static void ot_gpio_dj_reset(DeviceState *dev)
 {
     OtGpioDjState *s = OT_GPIO_DJ(dev);
 
+    if (!s->ot_id) {
+        s->ot_id = g_strdup(DEFAULT_OT_ID);
+    }
+
     memset(s->regs, 0, sizeof(s->regs));
-    s->data_out = 0;
-    s->data_oe = 0;
+    memset(&s->backend_state, 0, sizeof(s->backend_state));
+
+    /* reset_* fields are properties, never get reset */
     s->data_in = s->reset_in;
+    s->data_out = s->reset_out;
+    s->data_oe = s->reset_oe;
     s->data_bi = 0;
     s->data_gi = 0;
     s->pull_en = 0;
     s->pull_sel = 0;
     s->invert = 0;
     s->connected = 0;
+
     s->regs[R_DATA_IN] = s->reset_in;
+    s->regs[R_DIRECT_OUT] = s->reset_out;
+    s->regs[R_DIRECT_OE] = s->reset_oe;
 
     ot_gpio_dj_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
 
-    ot_gpio_dj_update_backend(s, true);
+    ot_gpio_dj_init_backend(s);
+    ot_gpio_dj_update_data_out(s);
+    ot_gpio_dj_update_backend(s);
 
     /*
      * do not reset the input backed buffer as external GPIO changes is fully
