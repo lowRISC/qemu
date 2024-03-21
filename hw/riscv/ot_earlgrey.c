@@ -42,7 +42,7 @@
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_flash.h"
-#include "hw/opentitan/ot_gpio.h"
+#include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_ibex_wrapper_eg.h"
 #include "hw/opentitan/ot_kmac.h"
@@ -393,8 +393,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_GPIO] = {
-        .type = TYPE_OT_GPIO,
-        .name = "ot-gpio",
+        .type = TYPE_OT_GPIO_EG,
         .memmap = MEMMAPENTRIES(
             { 0x40040000u, 0x40u }
         ),

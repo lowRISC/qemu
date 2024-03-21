@@ -48,7 +48,7 @@
 #include "hw/opentitan/ot_dma.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
-#include "hw/opentitan/ot_gpio.h"
+#include "hw/opentitan/ot_gpio_dj.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_ibex_wrapper_dj.h"
 #include "hw/opentitan/ot_kmac.h"
@@ -879,8 +879,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_GPIO] = {
-        .type = TYPE_OT_GPIO,
-        .name = "ot-gpio",
+        .type = TYPE_OT_GPIO_DJ,
         .memmap = MEMMAPENTRIES(
             { 0x30000000u, 0x80u }
         ),

@@ -25,7 +25,7 @@ config OT_DARJEELING
     select OT_DMA
     select OT_EDN
     select OT_ENTROPY_SRC
-    select OT_GPIO
+    select OT_GPIO_DJ
     select OT_HMAC
     select OT_IBEX_WRAPPER_DJ
     select OT_KMAC
@@ -63,7 +63,7 @@ config OT_EARLGREY
     select OT_EDN
     select OT_ENTROPY_SRC
     select OT_FLASH
-    select OT_GPIO
+    select OT_GPIO_EG
     select OT_HMAC
     select OT_IBEX_WRAPPER_EG
     select OT_KMAC

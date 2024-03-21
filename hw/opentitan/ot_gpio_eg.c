@@ -1,10 +1,9 @@
 /*
- * QEMU OpenTitan GPIO device
+ * QEMU OpenTitan Earlgrey GPIO device
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
- *  Samuel Ortiz <sameo@rivosinc.com>
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -37,7 +36,7 @@
 #include "hw/hw.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
-#include "hw/opentitan/ot_gpio.h"
+#include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_pinmux.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -57,21 +56,19 @@ REG32(INTR_TEST, 0x8u)
 REG32(ALERT_TEST, 0xcu)
     FIELD(ALERT_TEST, FATAL_FAULT_ERR, 0u, 1u)
 REG32(DATA_IN, 0x10u)
-REG32(HW_STRAPS_DATA_IN_VALID, 0x14u)
-REG32(HW_STRAPS_DATA_IN, 0x18u)
-REG32(DIRECT_OUT, 0x1cu)
-REG32(MASKED_OUT_LOWER, 0x20u)
+REG32(DIRECT_OUT, 0x14u)
+REG32(MASKED_OUT_LOWER, 0x18u)
     SHARED_FIELD(MASKED_VALUE, 0u, 16u)
     SHARED_FIELD(MASKED_MASK, 16u, 16u)
-REG32(MASKED_OUT_UPPER, 0x24u)
-REG32(DIRECT_OE, 0x28u)
-REG32(MASKED_OE_LOWER, 0x2cu)
-REG32(MASKED_OE_UPPER, 0x30u)
-REG32(INTR_CTRL_EN_RISING, 0x34u)
-REG32(INTR_CTRL_EN_FALLING, 0x38u)
-REG32(INTR_CTRL_EN_LVLHIGH, 0x3cu)
-REG32(INTR_CTRL_EN_LVLLOW, 0x40u)
-REG32(CTRL_EN_INPUT_FILTER, 0x44u)
+REG32(MASKED_OUT_UPPER, 0x1cu)
+REG32(DIRECT_OE, 0x20u)
+REG32(MASKED_OE_LOWER, 0x24u)
+REG32(MASKED_OE_UPPER, 0x28u)
+REG32(INTR_CTRL_EN_RISING, 0x2cu)
+REG32(INTR_CTRL_EN_FALLING, 0x30u)
+REG32(INTR_CTRL_EN_LVLHIGH, 0x34u)
+REG32(INTR_CTRL_EN_LVLLOW, 0x38u)
+REG32(CTRL_EN_INPUT_FILTER, 0x3cu)
 /* clang-format on */
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
@@ -106,7 +103,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
-struct OtGpioState {
+struct OtGpioEgState {
     SysBusDevice parent_obj;
 
     IbexIRQ *irqs;
@@ -135,7 +132,7 @@ struct OtGpioState {
     guint watch_tag; /* tracker for comm device change */
 };
 
-static void ot_gpio_update_irqs(OtGpioState *s)
+static void ot_gpio_eg_update_irqs(OtGpioEgState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
     trace_ot_gpio_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE], level);
@@ -144,7 +141,7 @@ static void ot_gpio_update_irqs(OtGpioState *s)
     }
 }
 
-static void ot_gpio_update_intr_level(OtGpioState *s)
+static void ot_gpio_eg_update_intr_level(OtGpioEgState *s)
 {
     uint32_t intr_state = 0;
 
@@ -154,7 +151,7 @@ static void ot_gpio_update_intr_level(OtGpioState *s)
     s->regs[R_INTR_STATE] |= intr_state;
 }
 
-static void ot_gpio_update_intr_edge(OtGpioState *s, uint32_t prev)
+static void ot_gpio_eg_update_intr_edge(OtGpioEgState *s, uint32_t prev)
 {
     uint32_t change = prev ^ s->regs[R_DATA_IN];
     uint32_t rising = change & s->regs[R_DATA_IN];
@@ -168,7 +165,7 @@ static void ot_gpio_update_intr_edge(OtGpioState *s, uint32_t prev)
     s->regs[R_INTR_STATE] |= intr_state;
 }
 
-static void ot_gpio_update_data_in(OtGpioState *s)
+static void ot_gpio_eg_update_data_in(OtGpioEgState *s)
 {
     uint32_t prev = s->regs[R_DATA_IN];
 
@@ -190,12 +187,12 @@ static void ot_gpio_update_data_in(OtGpioState *s)
     s->regs[R_DATA_IN] = data_mix;
 
     trace_ot_gpio_update_input(prev, s->data_in, data_mix, ign_mask);
-    ot_gpio_update_intr_level(s);
-    ot_gpio_update_intr_edge(s, prev);
-    ot_gpio_update_irqs(s);
+    ot_gpio_eg_update_intr_level(s);
+    ot_gpio_eg_update_intr_edge(s, prev);
+    ot_gpio_eg_update_irqs(s);
 }
 
-static void ot_gpio_update_backend(OtGpioState *s, bool oe)
+static void ot_gpio_eg_update_backend(OtGpioEgState *s, bool oe)
 {
     if (!qemu_chr_fe_backend_connected(&s->chr)) {
         return;
@@ -239,9 +236,9 @@ static void ot_gpio_update_backend(OtGpioState *s, bool oe)
     qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, (int)len);
 }
 
-static void ot_gpio_in_change(void *opaque, int no, int level)
+static void ot_gpio_eg_in_change(void *opaque, int no, int level)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
 
     g_assert(no < PARAM_NUM_IO);
 
@@ -266,12 +263,12 @@ static void ot_gpio_in_change(void *opaque, int no, int level)
         s->data_gi |= bit;
     }
 
-    ot_gpio_update_data_in(s);
+    ot_gpio_eg_update_data_in(s);
 }
 
-static void ot_gpio_pad_attr_change(void *opaque, int no, int level)
+static void ot_gpio_eg_pad_attr_change(void *opaque, int no, int level)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
 
     g_assert(no < PARAM_NUM_IO);
 
@@ -303,13 +300,13 @@ static void ot_gpio_pad_attr_change(void *opaque, int no, int level)
         s->pull_en &= ~bit;
     }
 
-    ot_gpio_update_data_in(s);
-    ot_gpio_update_backend(s, true);
+    ot_gpio_eg_update_data_in(s);
+    ot_gpio_eg_update_backend(s, true);
 }
 
-static uint64_t ot_gpio_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_gpio_eg_read(void *opaque, hwaddr addr, unsigned size)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
     (void)size;
     uint32_t val32;
 
@@ -360,10 +357,10 @@ static uint64_t ot_gpio_read(void *opaque, hwaddr addr, unsigned size)
     return (uint64_t)val32;
 };
 
-static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
-                          unsigned size)
+static void ot_gpio_eg_write(void *opaque, hwaddr addr, uint64_t val64,
+                             unsigned size)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
     (void)size;
     uint32_t val32 = (uint32_t)val64;
     uint32_t mask;
@@ -376,15 +373,15 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_INTR_STATE:
         s->regs[reg] &= ~val32; /* RW1C */
-        ot_gpio_update_irqs(s);
+        ot_gpio_eg_update_irqs(s);
         break;
     case R_INTR_ENABLE:
         s->regs[reg] = val32;
-        ot_gpio_update_irqs(s);
+        ot_gpio_eg_update_irqs(s);
         break;
     case R_INTR_TEST:
         s->regs[R_INTR_STATE] |= val32;
-        ot_gpio_update_irqs(s);
+        ot_gpio_eg_update_irqs(s);
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
@@ -393,46 +390,46 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_DIRECT_OUT:
         s->regs[reg] = val32;
         s->data_out = val32;
-        ot_gpio_update_backend(s, false);
-        ot_gpio_update_data_in(s);
+        ot_gpio_eg_update_backend(s, false);
+        ot_gpio_eg_update_data_in(s);
         break;
     case R_DIRECT_OE:
         s->regs[reg] = val32;
         s->data_oe = val32;
-        ot_gpio_update_backend(s, true);
-        ot_gpio_update_data_in(s);
+        ot_gpio_eg_update_backend(s, true);
+        ot_gpio_eg_update_data_in(s);
         break;
     case R_MASKED_OUT_LOWER:
         s->regs[reg] = val32;
         mask = val32 >> MASKED_MASK_SHIFT;
         s->data_out &= ~mask;
         s->data_out |= val32 & mask;
-        ot_gpio_update_backend(s, false);
-        ot_gpio_update_data_in(s);
+        ot_gpio_eg_update_backend(s, false);
+        ot_gpio_eg_update_data_in(s);
         break;
     case R_MASKED_OUT_UPPER:
         s->regs[reg] = val32;
         mask = val32 & MASKED_MASK_MASK;
         s->data_out &= ~mask;
         s->data_out |= (val32 << MASKED_MASK_SHIFT) & mask;
-        ot_gpio_update_backend(s, false);
-        ot_gpio_update_data_in(s);
+        ot_gpio_eg_update_backend(s, false);
+        ot_gpio_eg_update_data_in(s);
         break;
     case R_MASKED_OE_LOWER:
         s->regs[reg] = val32;
         mask = val32 >> MASKED_MASK_SHIFT;
         s->data_oe &= ~mask;
         s->data_oe |= val32 & mask;
-        ot_gpio_update_backend(s, true);
-        ot_gpio_update_data_in(s);
+        ot_gpio_eg_update_backend(s, true);
+        ot_gpio_eg_update_data_in(s);
         break;
     case R_MASKED_OE_UPPER:
         s->regs[reg] = val32;
         mask = val32 & MASKED_MASK_MASK;
         s->data_oe &= ~mask;
         s->data_oe |= (val32 << MASKED_MASK_SHIFT) & mask;
-        ot_gpio_update_backend(s, true);
-        ot_gpio_update_data_in(s);
+        ot_gpio_eg_update_backend(s, true);
+        ot_gpio_eg_update_data_in(s);
         break;
     case R_INTR_CTRL_EN_RISING:
     case R_INTR_CTRL_EN_FALLING:
@@ -441,7 +438,7 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_INTR_CTRL_EN_LVLHIGH:
     case R_INTR_CTRL_EN_LVLLOW:
         s->regs[reg] = val32;
-        ot_gpio_update_data_in(s);
+        ot_gpio_eg_update_data_in(s);
         break;
     case R_CTRL_EN_INPUT_FILTER:
         /* nothing can be done at QEMU level for sampling that fast */
@@ -459,16 +456,16 @@ static void ot_gpio_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static int ot_gpio_chr_can_receive(void *opaque)
+static int ot_gpio_eg_chr_can_receive(void *opaque)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
 
     return (int)sizeof(s->ibuf) - (int)s->ipos;
 }
 
-static void ot_gpio_chr_receive(void *opaque, const uint8_t *buf, int size)
+static void ot_gpio_eg_chr_receive(void *opaque, const uint8_t *buf, int size)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
 
     if (s->ipos + (unsigned)size > sizeof(s->ibuf)) {
         error_report("%s: Unexpected chardev receive\n", __func__);
@@ -504,27 +501,27 @@ static void ot_gpio_chr_receive(void *opaque, const uint8_t *buf, int size)
         if (ret == 2) {
             if (cmd == 'M') {
                 s->data_bi = data_in;
-                ot_gpio_update_data_in(s);
+                ot_gpio_eg_update_data_in(s);
             } else if (cmd == 'I') {
                 s->data_in = data_in;
-                ot_gpio_update_data_in(s);
+                ot_gpio_eg_update_data_in(s);
             } else if (cmd == 'R') {
-                ot_gpio_update_backend(s, true);
+                ot_gpio_eg_update_backend(s, true);
             }
         }
     }
 }
 
-static void ot_gpio_chr_event_hander(void *opaque, QEMUChrEvent event)
+static void ot_gpio_eg_chr_event_hander(void *opaque, QEMUChrEvent event)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
 
     if (event == CHR_EVENT_OPENED) {
         if (object_dynamic_cast(OBJECT(s->chr.chr), TYPE_CHARDEV_SERIAL)) {
             ot_common_ignore_chr_status_lines(&s->chr);
         }
 
-        ot_gpio_update_backend(s, true);
+        ot_gpio_eg_update_backend(s, true);
 
         if (!qemu_chr_fe_backend_connected(&s->chr)) {
             return;
@@ -537,10 +534,10 @@ static void ot_gpio_chr_event_hander(void *opaque, QEMUChrEvent event)
     }
 }
 
-static gboolean ot_gpio_chr_watch_cb(void *do_not_use, GIOCondition cond,
-                                     void *opaque)
+static gboolean
+ot_gpio_eg_chr_watch_cb(void *do_not_use, GIOCondition cond, void *opaque)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
     (void)do_not_use;
     (void)cond;
 
@@ -549,13 +546,14 @@ static gboolean ot_gpio_chr_watch_cb(void *do_not_use, GIOCondition cond,
     return FALSE;
 }
 
-static int ot_gpio_chr_be_change(void *opaque)
+static int ot_gpio_eg_chr_be_change(void *opaque)
 {
-    OtGpioState *s = opaque;
+    OtGpioEgState *s = opaque;
 
-    qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_chr_can_receive,
-                             &ot_gpio_chr_receive, &ot_gpio_chr_event_hander,
-                             &ot_gpio_chr_be_change, s, NULL, true);
+    qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_eg_chr_can_receive,
+                             &ot_gpio_eg_chr_receive,
+                             &ot_gpio_eg_chr_event_hander,
+                             &ot_gpio_eg_chr_be_change, s, NULL, true);
 
     memset(s->ibuf, 0, sizeof(s->ibuf));
     s->ipos = 0;
@@ -563,29 +561,29 @@ static int ot_gpio_chr_be_change(void *opaque)
     if (s->watch_tag > 0) {
         g_source_remove(s->watch_tag);
         s->watch_tag = qemu_chr_fe_add_watch(&s->chr, G_IO_OUT | G_IO_HUP,
-                                             &ot_gpio_chr_watch_cb, s);
+                                             &ot_gpio_eg_chr_watch_cb, s);
     }
 
     return 0;
 }
 
-static const MemoryRegionOps ot_gpio_regs_ops = {
-    .read = &ot_gpio_read,
-    .write = &ot_gpio_write,
+static const MemoryRegionOps ot_gpio_eg_regs_ops = {
+    .read = &ot_gpio_eg_read,
+    .write = &ot_gpio_eg_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
 
-static Property ot_gpio_properties[] = {
-    DEFINE_PROP_UINT32("in", OtGpioState, reset_in, 0u),
-    DEFINE_PROP_CHR("chardev", OtGpioState, chr),
+static Property ot_gpio_eg_properties[] = {
+    DEFINE_PROP_UINT32("in", OtGpioEgState, reset_in, 0u),
+    DEFINE_PROP_CHR("chardev", OtGpioEgState, chr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_gpio_reset(DeviceState *dev)
+static void ot_gpio_eg_reset(DeviceState *dev)
 {
-    OtGpioState *s = OT_GPIO(dev);
+    OtGpioEgState *s = OT_GPIO_EG(dev);
 
     memset(s->regs, 0, sizeof(s->regs));
     s->data_out = 0;
@@ -599,10 +597,10 @@ static void ot_gpio_reset(DeviceState *dev)
     s->connected = 0;
     s->regs[R_DATA_IN] = s->reset_in;
 
-    ot_gpio_update_irqs(s);
+    ot_gpio_eg_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
 
-    ot_gpio_update_backend(s, true);
+    ot_gpio_eg_update_backend(s, true);
 
     /*
      * do not reset the input backed buffer as external GPIO changes is fully
@@ -610,22 +608,23 @@ static void ot_gpio_reset(DeviceState *dev)
      */
 }
 
-static void ot_gpio_realize(DeviceState *dev, Error **errp)
+static void ot_gpio_eg_realize(DeviceState *dev, Error **errp)
 {
-    OtGpioState *s = OT_GPIO(dev);
+    OtGpioEgState *s = OT_GPIO_EG(dev);
     (void)errp;
 
-    qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_chr_can_receive,
-                             &ot_gpio_chr_receive, &ot_gpio_chr_event_hander,
-                             &ot_gpio_chr_be_change, s, NULL, true);
+    qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_eg_chr_can_receive,
+                             &ot_gpio_eg_chr_receive,
+                             &ot_gpio_eg_chr_event_hander,
+                             &ot_gpio_eg_chr_be_change, s, NULL, true);
 }
 
-static void ot_gpio_init(Object *obj)
+static void ot_gpio_eg_init(Object *obj)
 {
-    OtGpioState *s = OT_GPIO(obj);
+    OtGpioEgState *s = OT_GPIO_EG(obj);
 
-    memory_region_init_io(&s->mmio, obj, &ot_gpio_regs_ops, s, TYPE_OT_GPIO,
-                          REGS_SIZE);
+    memory_region_init_io(&s->mmio, obj, &ot_gpio_eg_regs_ops, s,
+                          TYPE_OT_GPIO_EG, REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->irqs = g_new(IbexIRQ, PARAM_NUM_IO);
@@ -636,34 +635,34 @@ static void ot_gpio_init(Object *obj)
     ibex_qdev_init_irqs_default(obj, s->gpos, OT_GPIO_OUT, PARAM_NUM_IO, -1);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_in_change, OT_GPIO_IN,
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_eg_in_change, OT_GPIO_IN,
                             PARAM_NUM_IO);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_pad_attr_change,
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_eg_pad_attr_change,
                             OT_PINMUX_PAD, PARAM_NUM_IO);
 }
 
-static void ot_gpio_class_init(ObjectClass *klass, void *data)
+static void ot_gpio_eg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_gpio_reset;
-    dc->realize = &ot_gpio_realize;
-    device_class_set_props(dc, ot_gpio_properties);
+    dc->reset = &ot_gpio_eg_reset;
+    dc->realize = &ot_gpio_eg_realize;
+    device_class_set_props(dc, ot_gpio_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
-static const TypeInfo ot_gpio_info = {
-    .name = TYPE_OT_GPIO,
+static const TypeInfo ot_gpio_eg_info = {
+    .name = TYPE_OT_GPIO_EG,
     .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(OtGpioState),
-    .instance_init = &ot_gpio_init,
-    .class_init = &ot_gpio_class_init,
+    .instance_size = sizeof(OtGpioEgState),
+    .instance_init = &ot_gpio_eg_init,
+    .class_init = &ot_gpio_eg_class_init,
 };
 
-static void ot_gpio_register_types(void)
+static void ot_gpio_eg_register_types(void)
 {
-    type_register_static(&ot_gpio_info);
+    type_register_static(&ot_gpio_eg_info);
 }
 
-type_init(ot_gpio_register_types);
+type_init(ot_gpio_eg_register_types);

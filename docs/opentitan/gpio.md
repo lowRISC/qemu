@@ -1,12 +1,19 @@
 # OpenTitan GPIO
 
+## Foreword
+
+There are two variations of the GPIO device: one for EarlGrey, one for Darjeeling variants.
+
+In the following document, `OTMACHINE` should be defined as `eg` for EarlGrey machine or as `dj`
+for Darjeeling one.
+
 ## Initial configuration
 
 It is possible to configure initial values of the GPIO input pins:
 
 OpenTitan GPIO driver accept a global option:
 
-- `ot-gpio.in` that defines the input values of the GPIO port as a 32-bit value
+- `ot-gpio-$OTMACHINE.in` that defines the input values of the GPIO port as a 32-bit value
 
 ### Example
 
@@ -24,7 +31,7 @@ This CharDev device can be used to stimulate the GPIO and perform unit tests.
 To connect the GPIO to its optional characted device, use the following QEMU option
 
 ```
--chardev type,id=gpio -global ot-gpio.chardev=gpio
+-chardev type,id=gpio -global ot-gpio-$OTMACHINE.chardev=gpio
 ```
 
 where type is one of the supported QEMU chardev type, such as
@@ -89,9 +96,9 @@ the QEMU machine over a serial port (a USB CDC VCP in this case).
 To connect to the NeoTrellis board, use a configuration such as:
 
 ```
--chardev serial,id=gpio,path=/dev/ttyACM1 -global ot-gpio.chardev=gpio
+-chardev serial,id=gpio,path=$SERIALDEV -global ot-gpio-$OTMACHINE.chardev=gpio
 ```
 
-where /dev/ttyACM1 is the data serial port of the Neotreillis board.
+where `SERIALDEV` is the data serial port of the Neotreillis board, _e.g._ `/dev/ttyACM1`
 
 Note: the first serial port of the board is reserved to its debug console.

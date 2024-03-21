@@ -1,10 +1,9 @@
 /*
- * QEMU OpenTitan GPIO device
+ * QEMU OpenTitan Darjeeling GPIO device
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
- *  Samuel Ortiz <sameo@rivosinc.com>
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -26,12 +25,12 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_GPIO_H
-#define HW_OPENTITAN_OT_GPIO_H
+#ifndef HW_OPENTITAN_OT_GPIO_DJ_H
+#define HW_OPENTITAN_OT_GPIO_DJ_H
 
-#define TYPE_OT_GPIO "ot-gpio"
+#include "hw/opentitan/ot_gpio.h"
 
-#define OT_GPIO_OUT TYPE_OT_GPIO "-out"
-#define OT_GPIO_IN  TYPE_OT_GPIO "-in"
+#define TYPE_OT_GPIO_DJ "ot-gpio-dj"
+OBJECT_DECLARE_SIMPLE_TYPE(OtGpioDjState, OT_GPIO_DJ)
 
-#endif /* HW_OPENTITAN_OT_GPIO_H */
+#endif /* HW_OPENTITAN_OT_GPIO_DJ_H */
