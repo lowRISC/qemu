@@ -33,4 +33,6 @@
 #define TYPE_OT_GPIO_DJ "ot-gpio-dj"
 OBJECT_DECLARE_SIMPLE_TYPE(OtGpioDjState, OT_GPIO_DJ)
 
+#define OT_GPIO_STRAP_EN TYPE_OT_GPIO "-strap-en"
+
 #endif /* HW_OPENTITAN_OT_GPIO_DJ_H */

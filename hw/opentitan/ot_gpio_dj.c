@@ -53,6 +53,7 @@ REG32(ALERT_TEST, 0xcu)
     FIELD(ALERT_TEST, FATAL_FAULT_ERR, 0u, 1u)
 REG32(DATA_IN, 0x10u)
 REG32(HW_STRAPS_DATA_IN_VALID, 0x14u)
+    FIELD(HW_STRAPS_DATA_IN_VALID, VALID, 0u, 1u)
 REG32(HW_STRAPS_DATA_IN, 0x18u)
 REG32(DIRECT_OUT, 0x1cu)
 REG32(MASKED_OUT_LOWER, 0x20u)
@@ -87,6 +88,8 @@ static const char *REG_NAMES[REGS_COUNT] = {
     REG_NAME_ENTRY(INTR_TEST),
     REG_NAME_ENTRY(ALERT_TEST),
     REG_NAME_ENTRY(DATA_IN),
+    REG_NAME_ENTRY(HW_STRAPS_DATA_IN_VALID),
+    REG_NAME_ENTRY(HW_STRAPS_DATA_IN),
     REG_NAME_ENTRY(DIRECT_OUT),
     REG_NAME_ENTRY(MASKED_OUT_LOWER),
     REG_NAME_ENTRY(MASKED_OUT_UPPER),
@@ -234,6 +237,21 @@ static void ot_gpio_dj_update_backend(OtGpioDjState *s, bool oe)
     qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, (int)len);
 }
 
+static void ot_gpio_dj_strap_en(void *opaque, int no, int level)
+{
+    OtGpioDjState *s = opaque;
+
+    g_assert(no == 0);
+
+    qemu_log("%s: STRAP %d\n", __func__, level);
+
+    if (level) {
+        s->regs[R_HW_STRAPS_DATA_IN] = s->data_in;
+        s->regs[R_HW_STRAPS_DATA_IN_VALID] =
+            R_HW_STRAPS_DATA_IN_VALID_VALID_MASK;
+    }
+}
+
 static void ot_gpio_dj_in_change(void *opaque, int no, int level)
 {
     OtGpioDjState *s = opaque;
@@ -321,6 +339,8 @@ static uint64_t ot_gpio_dj_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_CTRL_EN_LVLHIGH:
     case R_INTR_CTRL_EN_LVLLOW:
     case R_CTRL_EN_INPUT_FILTER:
+    case R_HW_STRAPS_DATA_IN:
+    case R_HW_STRAPS_DATA_IN_VALID:
         val32 = s->regs[reg];
         break;
     case R_MASKED_OUT_LOWER:
@@ -443,6 +463,8 @@ static void ot_gpio_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_DATA_IN:
+    case R_HW_STRAPS_DATA_IN:
+    case R_HW_STRAPS_DATA_IN_VALID:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, REG_NAME(reg));
@@ -633,6 +655,8 @@ static void ot_gpio_dj_init(Object *obj)
     ibex_qdev_init_irqs_default(obj, s->gpos, OT_GPIO_OUT, PARAM_NUM_IO, -1);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_dj_strap_en, OT_GPIO_STRAP_EN,
+                            1);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_dj_in_change, OT_GPIO_IN,
                             PARAM_NUM_IO);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_dj_pad_attr_change,
