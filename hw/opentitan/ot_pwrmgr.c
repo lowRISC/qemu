@@ -235,6 +235,7 @@ struct OtPwrMgrState {
     QEMUBH *fsm_tick_bh;
     IbexIRQ irq; /* wake from low power */
     IbexIRQ alert;
+    IbexIRQ strap;
     IbexIRQ cpu_enable;
     IbexIRQ pwr_lc_req;
     IbexIRQ pwr_otp_req;
@@ -587,17 +588,18 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         if (s->fsm_events.lc_done) {
             /* release the request signal */
             ibex_irq_set(&s->pwr_lc_req, (int)false);
-            PWR_CHANGE_FAST_STATE(s, STRAP);
+            PWR_CHANGE_FAST_STATE(s, ACK_PWR_UP);
         }
         break;
-    case OT_PWR_FAST_ST_STRAP:
-        // TODO: need to sample straps
-        PWR_CHANGE_FAST_STATE(s, ACK_PWR_UP);
-        break;
     case OT_PWR_FAST_ST_ACK_PWR_UP:
+        PWR_CHANGE_FAST_STATE(s, STRAP);
+        break;
+    case OT_PWR_FAST_ST_STRAP:
+        ibex_irq_set(&s->strap, (int)true);
         PWR_CHANGE_FAST_STATE(s, ROM_CHECK_DONE);
         break;
     case OT_PWR_FAST_ST_ROM_CHECK_DONE:
+        ibex_irq_set(&s->strap, (int)false);
         if (s->fsm_events.rom_done == (1u << s->num_rom) - 1u) {
             PWR_CHANGE_FAST_STATE(s, ROM_CHECK_GOOD);
         }
@@ -883,6 +885,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     PWR_CHANGE_SLOW_STATE(s, RESET);
 
     ot_pwrmgr_update_irq(s);
+    ibex_irq_set(&s->strap, 0);
     ibex_irq_set(&s->cpu_enable, 0);
     ibex_irq_set(&s->pwr_otp_req, 0);
     ibex_irq_set(&s->pwr_lc_req, 0);
@@ -939,6 +942,7 @@ static void ot_pwrmgr_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->pwr_lc_req, OT_PWRMGR_LC_REQ);
     ibex_qdev_init_irq(obj, &s->pwr_otp_req, OT_PWRMGR_OTP_REQ);
     ibex_qdev_init_irq(obj, &s->cpu_enable, OT_PWRMGR_CPU_EN);
+    ibex_qdev_init_irq(obj, &s->strap, OT_PWRMGR_STRAP);
 
     s->cdc_sync = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_pwrmgr_cdc_sync, s);
 

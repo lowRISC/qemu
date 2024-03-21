@@ -56,6 +56,7 @@ typedef enum {
 #define OT_PWRMGR_LC_REQ  TYPE_OT_PWRMGR "-lc-req"
 #define OT_PWRMGR_OTP_REQ TYPE_OT_PWRMGR "-otp-req"
 #define OT_PWRMGR_CPU_EN  TYPE_OT_PWRMGR "-cpu-en"
+#define OT_PWRMGR_STRAP   TYPE_OT_PWRMGR "-strap"
 
 /* input lines */
 #define OT_PWRMGR_LC_RSP  TYPE_OT_PWRMGR "-lc-rsp"
