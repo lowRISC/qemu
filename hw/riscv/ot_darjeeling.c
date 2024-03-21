@@ -1093,8 +1093,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_REQ(OT_PWRMGR_OTP, OTP_CTRL),
             OT_DJ_SOC_REQ(OT_PWRMGR_LC, LC_CTRL),
             OT_DJ_SOC_SIGNAL(OT_PWRMGR_CPU_EN, 0, IBEX_WRAPPER,
-                                     OT_IBEX_WRAPPER_CPU_EN,
-                                     OT_IBEX_PWRMGR_CPU_EN)
+                             OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_PWRMGR_CPU_EN),
+            OT_DJ_SOC_SIGNAL(OT_PWRMGR_STRAP, 0, GPIO,
+                             OT_GPIO_STRAP_EN, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("rstmgr", RSTMGR)
