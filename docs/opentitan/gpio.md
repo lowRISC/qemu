@@ -113,3 +113,8 @@ To connect to the NeoTrellis board, use a configuration such as:
 where `SERIALDEV` is the data serial port of the Neotreillis board, _e.g._ `/dev/ttyACM1`
 
 Note: the first serial port of the board is reserved to its debug console.
+
+### Testing
+
+See the [gpiodev.py](gpiodev.md) script.
+

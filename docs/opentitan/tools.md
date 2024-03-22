@@ -33,7 +33,8 @@ directory to help with these tasks.
   communication interface.
 * [`gdbreplay.py`](gdbreplay.md) is a basic GDB server that can be used to replay Ibex execution
   stream from a QEMU execution trace.
-* `mbbdef.py`] is a simple Python tool to extract multi-bit bool definition from OpenTitan' HJSON
+* [`gpiodev.py`](gpiodev.md) is a tiny script to run regression tests with GPIO device.
+* `mbbdef.py` is a simple Python tool to extract multi-bit bool definition from OpenTitan' HJSON
   configuration file
 * `ot-format.sh` is a simple shell wrapper to run clang-format (code formatter) on OpenTitan files
 * `ot-tidy.sh` is a simple shell wrapper to run clang-tidy (C linter) on OpenTitan files
