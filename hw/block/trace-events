@@ -77,7 +77,7 @@ xen_block_device_destroy(unsigned int number) "%u"
 # m25p80.c
 m25p80_flash_erase(void *s, int offset, uint32_t len) "[%p] offset = 0x%"PRIx32", len = %u"
 m25p80_programming_zero_to_one(void *s, uint32_t addr, uint8_t prev, uint8_t data) "[%p] programming zero to one! addr=0x%"PRIx32"  0x%"PRIx8" -> 0x%"PRIx8
-m25p80_reset_done(void *s) "[%p] Reset done."
+m25p80_reset(void *s, const char *msg) "[%p] %s"
 m25p80_command_decoded(void *s, uint32_t cmd) "[%p] new command:0x%"PRIx32
 m25p80_complete_collecting(void *s, uint32_t cmd, int n, uint8_t ear, uint32_t cur_addr) "[%p] decode cmd: 0x%"PRIx32" len %d ear 0x%"PRIx8" addr 0x%"PRIx32
 m25p80_populated_jedec(void *s) "[%p] populated jedec code"

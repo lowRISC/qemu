@@ -438,6 +438,7 @@ typedef enum {
     STATE_COLLECTING_VAR_LEN_DATA,
     STATE_READING_DATA,
     STATE_READING_SFDP,
+    STATE_RESET,
 } CMDState;
 
 typedef enum {
@@ -510,6 +511,7 @@ struct Flash {
 
 struct M25P80Class {
     SSIPeripheralClass parent_class;
+    ResettablePhases parent_phases;
     FlashPartInfo *pi;
 };
 
@@ -922,8 +924,6 @@ static void reset_memory(Flash *s)
     default:
         break;
     }
-
-    trace_m25p80_reset_done(s);
 }
 
 static uint8_t numonyx_mode(Flash *s)
@@ -1477,6 +1477,10 @@ static int m25p80_cs(SSIPeripheral *ss, bool select)
 {
     Flash *s = M25P80(ss);
 
+    if (s->state == STATE_RESET) {
+        return 0;
+    }
+
     if (select) {
         if (s->state == STATE_COLLECTING_VAR_LEN_DATA) {
             complete_collecting_data(s);
@@ -1502,6 +1506,9 @@ static uint32_t m25p80_transfer8(SSIPeripheral *ss, uint32_t tx)
                           s->cur_addr, (uint8_t)tx);
 
     switch (s->state) {
+
+    case STATE_RESET:
+        break;
 
     case STATE_PAGE_PROGRAM:
         trace_m25p80_page_program(s, s->cur_addr, (uint8_t)tx);
@@ -1628,9 +1635,16 @@ static void m25p80_realize(SSIPeripheral *ss, Error **errp)
                             m25p80_write_protect_pin_irq_handler, "WP#", 1);
 }
 
-static void m25p80_reset(DeviceState *d)
+static void m25p80_reset_enter(Object *obj, ResetType type)
 {
-    Flash *s = M25P80(d);
+    M25P80Class *c = M25P80_GET_CLASS(obj);
+    Flash *s = M25P80(obj);
+
+    trace_m25p80_reset(s, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     s->wp_level = true;
     s->status_register_write_disabled = false;
@@ -1641,6 +1655,22 @@ static void m25p80_reset(DeviceState *d)
     s->top_bottom_bit = false;
 
     reset_memory(s);
+
+    s->state = STATE_RESET;
+}
+
+static void m25p80_reset_exit(Object *obj)
+{
+    M25P80Class *c = M25P80_GET_CLASS(obj);
+    Flash *s = M25P80(obj);
+
+    trace_m25p80_reset(s, "exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj);
+    }
+
+    s->state = STATE_IDLE;
 }
 
 static int m25p80_pre_save(void *opaque)
@@ -1800,8 +1830,13 @@ static void m25p80_class_init(ObjectClass *klass, void *data)
     k->cs_polarity = SSI_CS_LOW;
     dc->vmsd = &vmstate_m25p80;
     device_class_set_props(dc, m25p80_properties);
-    dc->reset = m25p80_reset;
     mc->pi = data;
+
+    ResettableClass *rc = RESETTABLE_CLASS(dc);
+    M25P80Class *fc = M25P80_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &m25p80_reset_enter, NULL,
+                                       &m25p80_reset_exit,
+                                       &fc->parent_phases);
 }
 
 static const TypeInfo m25p80_info = {
