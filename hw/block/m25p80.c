@@ -501,6 +501,7 @@ struct Flash {
     bool block_protect3;
     bool top_bottom_bit;
     bool status_register_write_disabled;
+    bool hw_reset; /* HW reset status */
     uint8_t ear;
 
     int64_t dirty_page;
@@ -1600,6 +1601,32 @@ static void m25p80_write_protect_pin_irq_handler(void *opaque, int n, int level)
     s->wp_level = !!level;
 }
 
+static void m25p80_hw_reset(void *opaque, int n, int level)
+{
+    Flash *s = opaque;
+
+    g_assert(n == 0);
+
+    bool nreset = (bool)level; /* RESET# */
+
+    if (nreset == !s->hw_reset) {
+        /*
+         * ignore IRQ request without change, as Resettable API tracks count of
+         * reset calls. HW signal is only a level.
+         */
+        return;
+    }
+
+    s->hw_reset = !nreset;
+
+    if (s->hw_reset) {
+        resettable_assert_reset(OBJECT(s), RESET_TYPE_COLD);
+    } else {
+        resettable_release_reset(OBJECT(s), RESET_TYPE_COLD);
+    }
+}
+
+
 static void m25p80_realize(SSIPeripheral *ss, Error **errp)
 {
     Flash *s = M25P80(ss);
@@ -1630,6 +1657,8 @@ static void m25p80_realize(SSIPeripheral *ss, Error **errp)
         s->storage = blk_blockalign(NULL, s->size);
         memset(s->storage, 0xFF, s->size);
     }
+
+    qdev_init_gpio_in_named(DEVICE(s), &m25p80_hw_reset, "RESET#", 1);
 
     qdev_init_gpio_in_named(DEVICE(s),
                             m25p80_write_protect_pin_irq_handler, "WP#", 1);
