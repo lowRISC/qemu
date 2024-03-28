@@ -35,8 +35,7 @@
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "exec/memory.h"
-#include "hw/hw.h"
-#include "hw/irq.h"
+#include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_mbx.h"
@@ -194,7 +193,7 @@ typedef struct {
 typedef struct {
     MemoryRegion mmio;
     uint32_t regs[REGS_SYSLOCAL_COUNT];
-    AddressSpace *host_as;
+    AddressSpace *ram_as;
 } OtMbxSys;
 
 struct OtMbxState {
@@ -204,6 +203,7 @@ struct OtMbxState {
     OtMbxSys sys;
 
     char *ot_id;
+    char *ram_as_name;
 };
 
 static void ot_mbx_host_update_irqs(OtMbxState *s)
@@ -560,7 +560,7 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
         }
         hwaddr raddr = (hwaddr)hregs[R_HOST_OUT_READ_PTR];
         MemTxResult mres;
-        mres = address_space_rw(sys->host_as, raddr, attrs, &val32,
+        mres = address_space_rw(sys->ram_as, raddr, attrs, &val32,
                                 sizeof(val32), false);
         if (mres != MEMTX_OK) {
             qemu_log_mask(LOG_GUEST_ERROR,
@@ -663,7 +663,7 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
         }
         hwaddr waddr = (hwaddr)hregs[R_HOST_IN_WRITE_PTR];
         MemTxResult mres;
-        mres = address_space_rw(sys->host_as, waddr, attrs, &val32,
+        mres = address_space_rw(sys->ram_as, waddr, attrs, &val32,
                                 sizeof(val32), true);
         if (mres != MEMTX_OK) {
             qemu_log_mask(LOG_GUEST_ERROR,
@@ -711,6 +711,7 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
 
 static Property ot_mbx_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtMbxState, ot_id),
+    DEFINE_PROP_STRING("ram_as_name", OtMbxState, ram_as_name),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -744,8 +745,15 @@ static void ot_mbx_reset(DeviceState *dev)
     host->regs[R_HOST_ADDRESS_RANGE_REGWEN] = OT_MULTIBITBOOL4_TRUE;
     host->regs[R_HOST_STATUS] = R_SYS_STATUS_BUSY_MASK;
 
-    sys->host_as = ot_common_get_local_address_space(dev);
-    g_assert(sys->host_as);
+    if (!sys->ram_as) {
+        Object *soc = OBJECT(dev)->parent;
+        Object *obj =
+            object_property_get_link(soc, s->ram_as_name, &error_fatal);
+        OtAddressSpaceState *oas =
+            OBJECT_CHECK(OtAddressSpaceState, obj, TYPE_OT_ADDRESS_SPACE);
+        sys->ram_as = ot_address_space_get(oas);
+        g_assert(sys->ram_as);
+    }
 
     ot_mbx_host_update_irqs(s);
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
