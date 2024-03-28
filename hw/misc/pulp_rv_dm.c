@@ -503,15 +503,15 @@ static void pulp_rv_dm_init(Object *obj)
 
     /* Mem container content */
     memory_region_init_io(&s->dmact, obj, &pulp_rv_dm_dmact_ops, s,
-                          TYPE_PULP_RV_DM "-mem-act", PULP_RV_DM_DMACT_SIZE);
+                          TYPE_PULP_RV_DM "-act", PULP_RV_DM_DMACT_SIZE);
     memory_region_add_subregion(&s->mem, PULP_RV_DM_DMACT_BASE, &s->dmact);
 
-    memory_region_init_ram_nomigrate(&s->prog, obj, TYPE_PULP_RV_DM "-mem-prog",
+    memory_region_init_ram_nomigrate(&s->prog, obj, TYPE_PULP_RV_DM "-prog",
                                      PULP_RV_DM_PROG_SIZE, &error_fatal);
     memory_region_add_subregion(&s->mem, PULP_RV_DM_PROG_BASE, &s->prog);
 
     memory_region_init_io(&s->dmflag, obj, &pulp_rv_dm_dmflag_ops, s,
-                          TYPE_PULP_RV_DM "-mem-flag", PULP_RV_DM_DMFLAG_SIZE);
+                          TYPE_PULP_RV_DM "-flag", PULP_RV_DM_DMFLAG_SIZE);
     memory_region_add_subregion(&s->mem, PULP_RV_DM_DMFLAG_BASE, &s->dmflag);
     s->dmflag.disable_reentrancy_guard = true;
 
