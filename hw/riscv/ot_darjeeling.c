@@ -172,6 +172,9 @@ enum OtDjResetWakeup {
     OT_DJ_WAKEUP_COUNT,
 };
 
+#define OT_DJ_PRIVATE_REGION_OFFSET 0x00000000u
+#define OT_DJ_PRIVATE_REGION_SIZE   (1u << 30u)
+
 /* CTN address space */
 #define OT_DJ_CTN_REGION_OFFSET 0x40000000u
 #define OT_DJ_CTN_REGION_SIZE   (1u << 30u)
@@ -292,16 +295,17 @@ static const uint32_t ot_dj_pmp_addrs[] = {
 #define OT_DJ_SOC_RSP(_rsp_, _tgt_) \
     OT_DJ_SOC_SIGNAL(_rsp_##_RSP, 0, _tgt_, _rsp_##_RSP, 0)
 
-#define OT_DJ_SOC_DEV_MBX(_ix_, _addr_, _irq_) \
+#define OT_DJ_SOC_DEV_MBX(_ix_, _addr_, _asname_, _irq_) \
     .type = TYPE_OT_MBX, .instance = (_ix_), \
     .memmap = MEMMAPENTRIES({ (_addr_), OT_MBX_HOST_APERTURE }), \
     .gpio = \
         IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
                          OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
                          OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u)), \
-    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)))
+    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)), \
+                               IBEX_DEV_STRING_PROP("ram_as_name", _asname_))
 
-#define OT_DJ_SOC_DEV_MBX_DUAL(_ix_, _addr_, _irq_, _xaddr_) \
+#define OT_DJ_SOC_DEV_MBX_DUAL(_ix_, _addr_, _asname_, _irq_, _xaddr_) \
     .type = TYPE_OT_MBX, .instance = (_ix_), \
     .memmap = MEMMAPENTRIES({ (_addr_), OT_MBX_HOST_APERTURE }, \
                             { (_xaddr_), OT_MBX_SYS_APERTURE }), \
@@ -309,7 +313,8 @@ static const uint32_t ot_dj_pmp_addrs[] = {
         IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
                          OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
                          OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u)), \
-    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)))
+    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)), \
+                               IBEX_DEV_STRING_PROP("ram_as_name", _asname_))
 
 #define OT_DJ_SOC_CLKMGR_HINT(_num_) \
     OT_DJ_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
@@ -662,28 +667,28 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_MBX0] = {
-        OT_DJ_SOC_DEV_MBX(0, 0x22000000u, 134),
+        OT_DJ_SOC_DEV_MBX(0, 0x22000000u, "ot-mbx-sram", 134),
     },
     [OT_DJ_SOC_DEV_MBX1] = {
-        OT_DJ_SOC_DEV_MBX(1, 0x22000100u, 137),
+        OT_DJ_SOC_DEV_MBX(1, 0x22000100u, "ot-mbx-sram", 137),
     },
     [OT_DJ_SOC_DEV_MBX2] = {
-        OT_DJ_SOC_DEV_MBX(2, 0x22000200u, 140),
+        OT_DJ_SOC_DEV_MBX(2, 0x22000200u, "ot-mbx-sram", 140),
     },
     [OT_DJ_SOC_DEV_MBX3] = {
-        OT_DJ_SOC_DEV_MBX(3, 0x22000300u, 143),
+        OT_DJ_SOC_DEV_MBX(3, 0x22000300u, "ot-mbx-sram", 143),
     },
     [OT_DJ_SOC_DEV_MBX4] = {
-        OT_DJ_SOC_DEV_MBX(4, 0x22000400u, 146),
+        OT_DJ_SOC_DEV_MBX(4, 0x22000400u, "ot-mbx-sram", 146),
     },
     [OT_DJ_SOC_DEV_MBX5] = {
-        OT_DJ_SOC_DEV_MBX(5, 0x22000500u, 149),
+        OT_DJ_SOC_DEV_MBX(5, 0x22000500u, "ot-mbx-sram", 149),
     },
     [OT_DJ_SOC_DEV_MBX6] = {
-        OT_DJ_SOC_DEV_MBX(6, 0x22000600u, 152),
+        OT_DJ_SOC_DEV_MBX(6, 0x22000600u, "ot-mbx-sram", 152),
     },
     [OT_DJ_SOC_DEV_MBX_JTAG] = {
-        OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, 155,
+        OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, "ot-mbx-sram", 155,
 		                       DEBUG_MEMORY(OT_DJ_DEBUG_MBX_JTAG_ADDR)),
     },
     [OT_DJ_SOC_DEV_DMA] = {
@@ -747,10 +752,10 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_MBX_PCIE0] = {
-        OT_DJ_SOC_DEV_MBX(8, 0x22040000u, 158),
+        OT_DJ_SOC_DEV_MBX(8, 0x22040000u, "ot-mbx-sram", 158),
     },
     [OT_DJ_SOC_DEV_MBX_PCIE1] = {
-        OT_DJ_SOC_DEV_MBX(9, 0x22040100u, 161),
+        OT_DJ_SOC_DEV_MBX(9, 0x22040100u, "ot-mbx-sram", 161),
     },
     [OT_DJ_SOC_DEV_PLIC] = {
         .type = TYPE_SIFIVE_PLIC,
@@ -1276,6 +1281,23 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
                               OT_DJ_DEFAULT_MEMORY_REGION) |
                               IBEX_MEMMAP_MAKE_REG_MASK(
                                   OT_DJ_DEBUG_MEMORY_REGION));
+
+    MemoryRegion *mbx_sram_root_mr = g_new0(MemoryRegion, 1u);
+    memory_region_init(mbx_sram_root_mr, OBJECT(s), "mbx-sram-root",
+                       OT_DJ_PRIVATE_REGION_SIZE);
+    AddressSpace *mbx_sram_as = g_new0(AddressSpace, 1u);
+    address_space_init(mbx_sram_as, mbx_sram_root_mr, "mbx_sram-as");
+    Object *mbx_sram_oas = object_new(TYPE_OT_ADDRESS_SPACE);
+    object_property_add_child(OBJECT(dev), "ot-mbx-sram", mbx_sram_oas);
+    ot_address_space_set(OT_ADDRESS_SPACE(mbx_sram_oas), mbx_sram_as);
+    SysBusDevice *sram_dev = SYS_BUS_DEVICE(s->devices[OT_DJ_SOC_DEV_SRAM_MBX]);
+    /* first MMIO maps to register, second MMIO maps to SRAM */
+    MemoryRegion *mbx_sram_mr = sysbus_mmio_get_region(sram_dev, 1);
+    MemoryRegion *mbx_sram_alias_mr = g_new0(MemoryRegion, 1u);
+    memory_region_init_alias(mbx_sram_alias_mr, OBJECT(s), "mbx-sram",
+                             mbx_sram_mr, 0u, int128_getlo(mbx_sram_mr->size));
+    memory_region_add_subregion(mbx_sram_root_mr, mbx_sram_mr->addr,
+                                mbx_sram_alias_mr);
 
     AddressSpace *dbg_as = g_new0(AddressSpace, 1u);
     address_space_init(dbg_as, dbg_mr, "dbg-as");
