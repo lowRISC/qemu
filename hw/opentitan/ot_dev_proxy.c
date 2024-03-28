@@ -177,7 +177,7 @@ enum OtDevProxyErr {
 };
 
 #define PROXY_VER_MAJ 0
-#define PROXY_VER_MIN 12u
+#define PROXY_VER_MIN 13u
 
 #define PROXY_DISABLED_ROLE 0xfu
 
@@ -283,45 +283,76 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
         uint32_t header;
         uint32_t base;
         uint32_t count;
-        char desc[8u];
+        char desc[16u];
     };
-    g_assert(sizeof(struct entry) == 5u * sizeof(uint32_t));
+    g_assert(sizeof(struct entry) == 7u * sizeof(uint32_t));
+
+    static const char *SUPPORTED_DEVICE_TYPES[] = {
+        TYPE_OT_MBX,
+        TYPE_OT_SOC_PROXY,
+        TYPE_OT_SRAM_CTRL,
+    };
 
     struct entry *entries = g_new0(struct entry, s->dev_count);
     unsigned count = 0;
     unsigned mrcount = 0;
+    char desc[32u];
     for (unsigned ix = 0; ix < s->dev_count; ix++) {
         const OtDevProxyItem *item = &s->items[ix];
         const OtDevProxyCaps *caps = &item->caps;
         struct entry *entry = &entries[count];
         memset(entry, 0, sizeof(*entry));
-        if (object_dynamic_cast(item->obj, TYPE_OT_MBX)) {
-            memcpy(&entry->desc[0u], item->prefix, 4u);
-            const char *oid =
-                object_property_get_str(item->obj, "ot_id", &error_fatal);
-            memcpy(&entry->desc[4u], oid, 4u);
-        } else if (object_dynamic_cast(item->obj, TYPE_OT_SOC_PROXY)) {
-            memcpy(&entry->desc[0u], item->prefix, 4u);
-            const char *oid =
-                object_property_get_str(item->obj, "ot_id", &error_fatal);
-            memcpy(&entry->desc[4u], oid, 4u);
-        } else if (object_dynamic_cast(item->obj, TYPE_OT_SRAM_CTRL)) {
-            memcpy(&entry->desc[0u], item->prefix, 2u);
-            const char *oid =
-                object_property_get_str(item->obj, "ot_id", &error_fatal);
-            memcpy(&entry->desc[2u], oid, 6u);
-        } else if (object_dynamic_cast(item->obj, TYPE_MEMORY_REGION)) {
-            g_assert(mrcount < 10u);
-            memcpy(&entry->desc[0u], item->prefix, 2u);
-            size_t slen = strlen(item->caps.mr->name);
-            slen = MIN(slen, 5u);
-            memcpy(&entry->desc[2u], item->caps.mr->name, slen);
-            entry->desc[2u + slen] = (char)('0' + mrcount++);
-        } else {
-            warn_report("%s: ignoring discovered device: %s\n", __func__,
-                        object_get_typename(item->obj));
-            continue;
+        memset(desc, 0, sizeof(desc));
+        const char *oid = NULL;
+        for (unsigned dix = 0; dix < ARRAY_SIZE(SUPPORTED_DEVICE_TYPES);
+             dix++) {
+            if (object_dynamic_cast(item->obj, SUPPORTED_DEVICE_TYPES[dix])) {
+                oid = object_property_get_str(item->obj, "ot_id", &error_fatal);
+                (void)snprintf(desc, sizeof(desc), "%s%s", item->prefix, oid);
+                break;
+            }
         }
+        if (!oid) {
+            if (object_dynamic_cast(item->obj, TYPE_MEMORY_REGION)) {
+                char name[16u];
+                unsigned pos = 0;
+                const char *src = item->caps.mr->name;
+                memset(name, 0, sizeof(name));
+                while (src && *src) {
+                    switch (*src) {
+                    case '-':
+                    case '.':
+                    case '_':
+                    case ' ':
+                        break;
+                    default:
+                        if (pos < sizeof(name)) {
+                            name[pos++] = *src;
+                        }
+                        break;
+                    }
+                    src++;
+                }
+                (void)snprintf(desc, sizeof(desc), "%s%s%u", item->prefix, name,
+                               mrcount);
+                mrcount++;
+            }
+            if (!desc[0]) {
+                warn_report("%s: ignoring discovered device: %s\n", __func__,
+                            object_get_typename(item->obj));
+                continue;
+            }
+        }
+        /*
+         * desc field does not need to be zero-ended, but its content should not
+         * exceed the field storage, otherwise truncature may occur with
+         * multiple instances ending up with the same descriptor.
+         */
+        if (desc[sizeof(entry->desc)]) {
+            error_setg(&error_fatal, "Device %s cannot be described: %s\n",
+                       object_get_typename(item->obj), desc);
+        }
+        memcpy(entry->desc, desc, sizeof(entry->desc));
         entry->header = ix << 16u;
         entry->base = (uint32_t)caps->mr->addr;
         entry->count = caps->reg_count;

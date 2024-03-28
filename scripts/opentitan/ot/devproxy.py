@@ -1026,7 +1026,7 @@ class ProxyEngine:
     """Tool to access and remotely drive devices and memories.
     """
 
-    VERSION = (0, 12)
+    VERSION = (0, 13)
     """Protocol version."""
 
     TIMEOUT = 2.0
@@ -1119,7 +1119,7 @@ class ProxyEngine:
         except ProxyCommandError as exc:
             self._log.fatal('%s', exc)
             raise
-        devfmt = '<HHII8s'
+        devfmt = '<HHII16s'
         devlen = scalc(devfmt)
         if len(devices) % devlen:
             raise ValueError('Unexpected response length')

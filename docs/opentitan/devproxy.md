@@ -182,7 +182,7 @@ Only initiated by the application.
 +---------------+---------------+---------------+---------------+
 ```
 
-The current version for this documentation is v0.12.
+The current version for this documentation is v0.13.
 
 Note that semantic versionning does not apply for v0 series.
 
@@ -211,7 +211,7 @@ driven from the Application over the communication link.
 +---------------+---------------+---------------+---------------+
 |0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
 +---------------+---------------+---------------+---------------+
-|             'ed'              |            0..4*4N            |
+|             'ed'              |            0..4*7N            |
 +---------------+---------------+---------------+---------------+
 |                              UID                            |0|
 +---------------+---------------+---------------+---------------+
@@ -222,7 +222,9 @@ driven from the Application over the communication link.
 |                           Word Count                          |
 +---------------+---------------+---------------+---------------+
 |                                                               |
+|                                                               |
 |                           Identifier                          |
+|                                                               |
 |                                                               |
 +---------------+---------------+---------------+---------------+
 |            Offset             |         Device        |   -   |
@@ -232,7 +234,9 @@ driven from the Application over the communication link.
 |                           Word Count                          |
 +---------------+---------------+---------------+---------------+
 |                                                               |
+|                                                               |
 |                           Identifier                          |
+|                                                               |
 |                                                               |
 +---------------+---------------+---------------+---------------+
 |                             ....                              |
@@ -244,11 +248,13 @@ driven from the Application over the communication link.
 |                           Word Count                          |
 +---------------+---------------+---------------+---------------+
 |                                                               |
+|                                                               |
 |                           Identifier                          |
+|                                                               |
 |                                                               |
 +---------------+---------------+---------------+---------------+
 ```
-Reponse contains 0 up to N devices, each device is described with a 20-byte entry, where:
+Reponse contains 0 up to N devices, each device is described with a 28-byte entry, where:
 
 * `Device` is a unique device identifier that should be used to select the device for all further
    requests to the device.
@@ -258,7 +264,7 @@ Reponse contains 0 up to N devices, each device is described with a 20-byte entr
    only if b0 is zero.
 * `WordCount` is the count of 32-bit slots for a memory-type device
 * `Base Address` is the base address of the device in the address space as seen from the local CPU.
-* `Identifier` is an arbitrary 8-character string that describes the device.
+* `Identifier` is an arbitrary 16-character string that describes the device.
 
 The count of device entries can be retrieved from the `LENGTH` field.
 
@@ -338,7 +344,7 @@ Reponse contains 0 up to N devices, each device is described with a 28-byte entr
   commands.
 * `Start Address` is the lowest valid address in the address space.
 * `Size` is the size (in bytes) of the address space
-* `Identifier` is an arbitrary 16-character string that describes the device.
+* `Identifier` is an arbitrary 16-character string that describes the memory space.
 
 The count of address spaces can be retrieved from the `LENGTH` field.
 
