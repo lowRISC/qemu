@@ -234,12 +234,13 @@ REG32(FLAGS, RISCV_DM_FLAGS_OFFSET)
  */
 
 #define DM_REG_COUNT (1u << (ADDRESS_BITS))
-#define xtrace_riscv_dm_error(_msg_) \
-    trace_riscv_dm_error(__func__, __LINE__, _msg_)
-#define xtrace_riscv_dm_info(_msg_, _val_) \
-    trace_riscv_dm_info(__func__, __LINE__, _msg_, _val_)
-#define xtrace_reg(_msg_, _reg_, _off_) \
-    trace_riscv_dm_access_register(_msg_, get_riscv_debug_reg_name(_reg_), \
+#define xtrace_riscv_dm_error(_soc_, _msg_) \
+    trace_riscv_dm_error(_soc_, __func__, __LINE__, _msg_)
+#define xtrace_riscv_dm_info(_soc_, _msg_, _val_) \
+    trace_riscv_dm_info(_soc_, __func__, __LINE__, _msg_, _val_)
+#define xtrace_reg(_soc_, _msg_, _reg_, _off_) \
+    trace_riscv_dm_access_register(_soc_, _msg_, \
+                                   get_riscv_debug_reg_name(_reg_), \
                                    (_reg_) - (_off_));
 
 /*
@@ -580,15 +581,16 @@ riscv_dm_write_rq(RISCVDebugDeviceState *dev, uint32_t addr, uint32_t value)
     } else if (RISCVDM_DMS[addr].write) {
         ret = RISCVDM_DMS[addr].write(dm, value);
     } else {
-        xtrace_riscv_dm_info("write request ignored @", addr);
+        xtrace_riscv_dm_info(dm->soc, "write request ignored @", addr);
         ret = CMD_ERR_NONE;
     }
     if (ret != CMD_ERR_NONE) {
-        xtrace_riscv_dm_error("fail to write");
+        xtrace_riscv_dm_error(dm->soc, "fail to write");
     }
 
     if ((ret == CMD_ERR_NONE) && autoexec) {
-        xtrace_riscv_dm_info("autoexec last command", dm->regs[A_COMMAND]);
+        xtrace_riscv_dm_info(dm->soc, "autoexec last command",
+                             dm->regs[A_COMMAND]);
         ret = riscv_dm_exec_command(dm, dm->regs[A_COMMAND]);
     }
 
@@ -647,9 +649,10 @@ riscv_dm_read_rq(RISCVDebugDeviceState *dev, uint32_t addr)
     }
 
     if (ret != CMD_ERR_NONE) {
-        xtrace_riscv_dm_error("fail to read");
+        xtrace_riscv_dm_error(dm->soc, "fail to read");
     } else if (autoexec) {
-        xtrace_riscv_dm_info("autoexec last command", dm->regs[A_COMMAND]);
+        xtrace_riscv_dm_info(dm->soc, "autoexec last command",
+                             dm->regs[A_COMMAND]);
         ret = riscv_dm_exec_command(dm, dm->regs[A_COMMAND]);
     }
 
@@ -734,12 +737,12 @@ static CmdErr riscv_dm_read_absdata(RISCVDMState *dm, unsigned woffset,
 {
     if (!dm->cfg.data_phyaddr) {
         /* CSR-shadowed implementation is not supported */
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
     if ((woffset + wcount > dm->cfg.data_count) || (wcount > 2u)) {
-        xtrace_riscv_dm_error("invalid arg");
+        xtrace_riscv_dm_error(dm->soc, "invalid arg");
         return CMD_ERR_OTHER;
     }
 
@@ -747,9 +750,9 @@ static CmdErr riscv_dm_read_absdata(RISCVDMState *dm, unsigned woffset,
     MemTxResult res;
     res = address_space_rw(dm->as, dm->cfg.data_phyaddr + (woffset << 2u),
                            MEMTXATTRS_DM_REQUESTER, value, wcount << 2u, false);
-    trace_riscv_dm_absdata("read", woffset, wcount, *value, res);
+    trace_riscv_dm_absdata(dm->soc, "read", woffset, wcount, *value, res);
     if (res != MEMTX_OK) {
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         return CMD_ERR_BUS;
     }
 
@@ -761,12 +764,12 @@ static CmdErr riscv_dm_write_absdata(RISCVDMState *dm, unsigned woffset,
 {
     if (!dm->cfg.data_phyaddr) {
         /* CSR-shadowed implementation is not supported */
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
     if ((woffset + wcount > dm->cfg.data_count) || (wcount > 2u)) {
-        xtrace_riscv_dm_error("invalid arg");
+        xtrace_riscv_dm_error(dm->soc, "invalid arg");
         return CMD_ERR_OTHER;
     }
 
@@ -774,9 +777,9 @@ static CmdErr riscv_dm_write_absdata(RISCVDMState *dm, unsigned woffset,
     MemTxResult res;
     res = address_space_rw(dm->as, dm->cfg.data_phyaddr + (woffset << 2u),
                            MEMTXATTRS_DM_REQUESTER, &value, wcount << 2u, true);
-    trace_riscv_dm_absdata("write", woffset, wcount, value, res);
+    trace_riscv_dm_absdata(dm->soc, "write", woffset, wcount, value, res);
     if (res != MEMTX_OK) {
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         return CMD_ERR_BUS;
     }
 
@@ -788,12 +791,12 @@ static CmdErr riscv_dm_read_progbuf(RISCVDMState *dm, unsigned woffset,
 {
     if (!dm->cfg.progbuf_phyaddr) {
         /* CSR-shadowed implementation is not supported */
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
     if (woffset >= dm->cfg.progbuf_count) {
-        xtrace_riscv_dm_error("invalid arg");
+        xtrace_riscv_dm_error(dm->soc, "invalid arg");
         return CMD_ERR_OTHER;
     }
 
@@ -802,9 +805,9 @@ static CmdErr riscv_dm_read_progbuf(RISCVDMState *dm, unsigned woffset,
     res = address_space_rw(dm->as, dm->cfg.progbuf_phyaddr + (woffset << 2u),
                            MEMTXATTRS_DM_REQUESTER, value, sizeof(uint32_t),
                            false);
-    trace_riscv_dm_progbuf("read", woffset, *value, res);
+    trace_riscv_dm_progbuf(dm->soc, "read", woffset, *value, res);
     if (res != MEMTX_OK) {
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         return CMD_ERR_BUS;
     }
 
@@ -816,12 +819,12 @@ static CmdErr riscv_dm_write_progbuf(RISCVDMState *dm, unsigned woffset,
 {
     if (!dm->cfg.progbuf_phyaddr) {
         /* CSR-shadowed implementation is not supported */
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
     if (woffset >= dm->cfg.progbuf_count) {
-        xtrace_riscv_dm_error("invalid arg");
+        xtrace_riscv_dm_error(dm->soc, "invalid arg");
         return CMD_ERR_OTHER;
     }
 
@@ -830,9 +833,9 @@ static CmdErr riscv_dm_write_progbuf(RISCVDMState *dm, unsigned woffset,
     res = address_space_rw(dm->as, dm->cfg.progbuf_phyaddr + (woffset << 2u),
                            MEMTXATTRS_DM_REQUESTER, &value, sizeof(uint32_t),
                            true);
-    trace_riscv_dm_progbuf("write", woffset, value, res);
+    trace_riscv_dm_progbuf(dm->soc, "write", woffset, value, res);
     if (res != MEMTX_OK) {
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         return CMD_ERR_BUS;
     }
 
@@ -845,7 +848,7 @@ static CmdErr riscv_dm_write_whereto(RISCVDMState *dm, uint32_t value)
     if (address_space_rw(dm->as, dm->cfg.whereto_phyaddr,
                          MEMTXATTRS_DM_REQUESTER, &value, sizeof(value),
                          true) != MEMTX_OK) {
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         return CMD_ERR_BUS;
     }
 
@@ -857,12 +860,12 @@ static CmdErr riscv_dm_update_flags(RISCVDMState *dm, unsigned hartnum,
 {
     if (!dm->cfg.dm_phyaddr) {
         /* CSR-shadowed implementation is not supported */
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
     if (hartnum >= dm->hart_count) {
-        xtrace_riscv_dm_error("internal error");
+        xtrace_riscv_dm_error(dm->soc, "internal error");
         return CMD_ERR_OTHER;
     }
 
@@ -883,7 +886,7 @@ static CmdErr riscv_dm_update_flags(RISCVDMState *dm, unsigned hartnum,
     res = address_space_rw(dm->as, flagaddr, MEMTXATTRS_DM_REQUESTER, &flag_bm,
                            sizeof(flag_bm), false);
     if (res != MEMTX_OK) {
-        xtrace_riscv_dm_error("memrx");
+        xtrace_riscv_dm_error(dm->soc, "memrx");
         return CMD_ERR_BUS;
     }
     if (set) {
@@ -894,7 +897,7 @@ static CmdErr riscv_dm_update_flags(RISCVDMState *dm, unsigned hartnum,
     res = address_space_rw(dm->as, flagaddr, MEMTXATTRS_DM_REQUESTER, &flag_bm,
                            sizeof(flag_bm), true);
     if (res != MEMTX_OK) {
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         return CMD_ERR_BUS;
     }
 
@@ -922,13 +925,13 @@ riscv_dm_get_hart_from_id(RISCVDMState *dm, unsigned hartid)
 static void riscv_dm_set_busy(RISCVDMState *dm, bool busy)
 {
     dm->cmd_busy = busy;
-    trace_riscv_dm_busy(busy);
+    trace_riscv_dm_busy(dm->soc, busy);
 }
 
 static void riscv_dm_set_cs(RISCVDMState *dm, bool enable)
 {
     dm->hart->cpu->env.debug_cs = enable;
-    trace_riscv_dm_cs(enable);
+    trace_riscv_dm_cs(dm->soc, enable);
 }
 
 static uint32_t risc_dmi_get_debug_cause(RISCVCPU *cpu)
@@ -968,7 +971,8 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
                 dm->unavailable_bm &= ~hbm;
             }
             riscv_dm_set_busy(dm, false);
-            trace_riscv_dm_halted(hart - &dm->harts[0], hart->cpu->env.dpc,
+            trace_riscv_dm_halted(dm->soc, hart - &dm->harts[0],
+                                  hart->cpu->env.dpc,
                                   risc_dmi_get_debug_cause_name(hart->cpu));
         }
         break;
@@ -976,7 +980,7 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
         /* level value is meaningless */
         if (!dm->to_go_bm) {
             /* internal error */
-            xtrace_riscv_dm_error("Go ack w/o action");
+            xtrace_riscv_dm_error(dm->soc, "Go ack w/o action");
             hart = NULL;
             break;
         }
@@ -984,20 +988,21 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
             hartnum = __builtin_ctz(dm->to_go_bm);
             if (hartnum >= dm->hart_count) {
                 /* internal error, should never occur */
-                xtrace_riscv_dm_error("incoherent go bitmap");
+                xtrace_riscv_dm_error(dm->soc, "incoherent go bitmap");
                 hart = NULL;
             } else {
                 hart = &dm->harts[hartnum];
                 if (riscv_dm_update_flags(dm, hartnum, false,
                                           R_FLAGS_FLAG_GO_MASK)) {
                     /* nothing we can do here */
-                    xtrace_riscv_dm_error("unable to lower going flag");
+                    xtrace_riscv_dm_error(dm->soc,
+                                          "unable to lower going flag");
                     hart = NULL;
                 }
             }
             dm->to_go_bm &= ~(1u << hartnum);
         }
-        trace_riscv_dm_hart_state(hartnum, "debug ongoing");
+        trace_riscv_dm_hart_state(dm->soc, hartnum, "debug ongoing");
         break;
     case ACK_RESUMING:
         hartnum = (unsigned)level;
@@ -1005,7 +1010,7 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
             if (riscv_dm_update_flags(dm, (unsigned)level, false,
                                       R_FLAGS_FLAG_RESUME_MASK)) {
                 /* nothing we can do here */
-                xtrace_riscv_dm_error("unable to lower resume flag");
+                xtrace_riscv_dm_error(dm->soc, "unable to lower resume flag");
             }
             hart->halted = false;
             hart->resumed = true;
@@ -1018,7 +1023,7 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
             }
             bool sstep = (bool)FIELD_EX32(hart->cpu->env.dcsr, DCSR, STEP);
             riscv_dm_set_cs(dm, sstep);
-            trace_riscv_dm_hart_state(hartnum, "has resumed");
+            trace_riscv_dm_hart_state(dm->soc, hartnum, "has resumed");
         }
         break;
     case ACK_EXCEPTION:
@@ -1027,15 +1032,16 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
         dm->cmd_err = CMD_ERR_EXCEPTION;
         riscv_dm_set_cs(dm, false);
         riscv_dm_set_busy(dm, false);
-        trace_riscv_dm_hart_state(hart - &dm->harts[0], "exception in debug");
+        trace_riscv_dm_hart_state(dm->soc, hart - &dm->harts[0],
+                                  "exception in debug");
         break;
     default:
-        xtrace_riscv_dm_error("unknown ack line");
+        xtrace_riscv_dm_error(dm->soc, "unknown ack line");
         return;
     }
 
     if (!hart) {
-        xtrace_riscv_dm_error("no hart to acknowledge");
+        xtrace_riscv_dm_error(dm->soc, "no hart to acknowledge");
         return;
     }
 }
@@ -1322,7 +1328,7 @@ static CmdErr riscv_dm_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
 
     if (unlikely(!FIELD_EX32(dm->regs[A_DMCONTROL], DMCONTROL, DMACTIVE))) {
         /* Debug Module reset */
-        trace_riscv_dm_reset("debugger requested DM reset");
+        trace_riscv_dm_reset(dm->soc, "debugger requested DM reset");
         riscv_dm_reset(DEVICE(dm));
     }
 
@@ -1333,7 +1339,7 @@ static CmdErr riscv_dm_exec_command(RISCVDMState *dm, uint32_t value)
 {
     if (!dm->hart) {
         /* no hart has been selected for debugging */
-        xtrace_riscv_dm_error("no hart");
+        xtrace_riscv_dm_error(dm->soc, "no hart");
         return CMD_ERR_OTHER;
     }
 
@@ -1342,17 +1348,17 @@ static CmdErr riscv_dm_exec_command(RISCVDMState *dm, uint32_t value)
          * CSR-shadowed implementation is not supported
          * abstract command slots are required
          */
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
     if (dm->cmd_busy) {
-        xtrace_riscv_dm_error("already busy");
+        xtrace_riscv_dm_error(dm->soc, "already busy");
         return CMD_ERR_BUSY;
     }
 
     if (!dm->hart->halted) {
-        xtrace_riscv_dm_error("cannot exec command if not halted");
+        xtrace_riscv_dm_error(dm->soc, "cannot exec command if not halted");
         return CMD_ERR_HALT_RESUME;
     }
 
@@ -1377,7 +1383,7 @@ static CmdErr riscv_dm_exec_command(RISCVDMState *dm, uint32_t value)
     }
 
     if (ret != CMD_ERR_NONE) {
-        xtrace_riscv_dm_error("cmd exec failed");
+        xtrace_riscv_dm_error(dm->soc, "cmd exec failed");
         /* "and [this bit] is not cleared until that command has completed." */
         riscv_dm_set_busy(dm, false);
     }
@@ -1407,7 +1413,7 @@ static CmdErr riscv_dm_dm_abstractauto_read(RISCVDMState *dm, uint32_t *value)
      * this function is only for debug, to be removed since simple read out
      * does not need a dedicated handler
      */
-    xtrace_riscv_dm_info("abstract auto read back", *value);
+    xtrace_riscv_dm_info(dm->soc, "abstract auto read back", *value);
 
     return CMD_ERR_NONE;
 }
@@ -1415,16 +1421,17 @@ static CmdErr riscv_dm_dm_abstractauto_read(RISCVDMState *dm, uint32_t *value)
 static CmdErr riscv_dm_dm_abstractauto_write(RISCVDMState *dm, uint32_t value)
 {
     if (!dm->cfg.abstractauto) {
-        xtrace_riscv_dm_info("abstractauto support is disabled", value);
+        xtrace_riscv_dm_info(dm->soc, "abstractauto support is disabled",
+                             value);
         return CMD_ERR_NONE;
     }
 
     if (dm->cmd_busy) {
-        xtrace_riscv_dm_error("already busy");
+        xtrace_riscv_dm_error(dm->soc, "already busy");
         return CMD_ERR_BUSY;
     }
 
-    xtrace_riscv_dm_info("abstractauto attempt", value);
+    xtrace_riscv_dm_info(dm->soc, "abstractauto attempt", value);
 
     uint32_t mask = (((1u << dm->cfg.data_count) - 1u)
                      << R_ABSTRACTAUTO_AUTOEXECDATA_SHIFT) |
@@ -1434,7 +1441,7 @@ static CmdErr riscv_dm_dm_abstractauto_write(RISCVDMState *dm, uint32_t value)
     dm->regs[A_ABSTRACTAUTO] = value & mask;
 
     if (dm->regs[A_ABSTRACTAUTO] != value) {
-        xtrace_riscv_dm_info("abstractauto selected", value & mask);
+        xtrace_riscv_dm_info(dm->soc, "abstractauto selected", value & mask);
     }
 
     return CMD_ERR_NONE;
@@ -1542,7 +1549,7 @@ static CmdErr riscv_dm_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
 
     if (val != dm->regs[A_DMSTATUS]) {
         CPUState *cpu = CPU(dm->harts[0].cpu);
-        trace_riscv_dm_dmstatus_read(val, halted, cpu->halted, running,
+        trace_riscv_dm_dmstatus_read(dm->soc, val, halted, cpu->halted, running,
                                      cpu->running, resumeack, cpu->stopped,
                                      (uint32_t)dm->harts[0].cpu->env.pc);
     }
@@ -1579,7 +1586,7 @@ static uint32_t riscv_dm_dm_sysbus_get_byte_count(RISCVDMState *dm)
     if (!(dm->regs[A_SBCS] & size)) {
         dm->regs[A_SBCS] =
             FIELD_DP32(dm->regs[A_SBCS], SBCS, SBERROR, SYSBUS_ASIZE);
-        xtrace_riscv_dm_error("asize");
+        xtrace_riscv_dm_error(dm->soc, "asize");
         return 0;
     }
     return size;
@@ -1624,7 +1631,7 @@ static CmdErr riscv_dm_dm_sysbus_read(RISCVDMState *dm)
     if (address & (size - 1u)) {
         dm->regs[A_SBCS] =
             FIELD_DP32(dm->regs[A_SBCS], SBCS, SBERROR, SYSBUS_BADALIGN);
-        xtrace_riscv_dm_error("align");
+        xtrace_riscv_dm_error(dm->soc, "align");
         ret = CMD_ERR_BUS;
         goto end;
     }
@@ -1636,11 +1643,11 @@ static CmdErr riscv_dm_dm_sysbus_read(RISCVDMState *dm)
     uint64_t val64 = 0; /* however 0 is easier for debugging */
     res = address_space_rw(dm->as, address, MEMTXATTRS_DM_REQUESTER, &val64,
                            size, false);
-    trace_riscv_dm_sysbus_data_read(address, size, val64, res);
+    trace_riscv_dm_sysbus_data_read(dm->soc, address, size, val64, res);
     if (res != MEMTX_OK) {
         dm->regs[A_SBCS] =
             FIELD_DP32(dm->regs[A_SBCS], SBCS, SBERROR, SYSBUS_BADADDR);
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         ret = CMD_ERR_BUS;
         goto end;
     }
@@ -1654,23 +1661,23 @@ end:
 static CmdErr riscv_dm_dm_sbaddress0_write(RISCVDMState *dm, uint32_t value)
 {
     if (!dm->cfg.sysbus_access) {
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBERROR)) {
-        xtrace_riscv_dm_error("sberror");
+        xtrace_riscv_dm_error(dm->soc, "sberror");
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSY)) {
         FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSYERROR, 1u);
-        xtrace_riscv_dm_error("sbbusy");
+        xtrace_riscv_dm_error(dm->soc, "sbbusy");
         return CMD_ERR_NONE;
     }
 
     dm->regs[A_SBADDRESS0] = value;
-    trace_riscv_dm_sbaddr_write(0, value);
+    trace_riscv_dm_sbaddr_write(dm->soc, 0, value);
 
     /*
      * "When 1, every write to sbaddress0 automatically triggers a system bus
@@ -1699,23 +1706,23 @@ static CmdErr riscv_dm_dm_sbaddress1_write(RISCVDMState *dm, uint32_t value)
 {
     if ((!dm->cfg.sysbus_access) ||
         (dm->hart->cpu->env.misa_mxl_max < MXL_RV64)) {
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBERROR)) {
-        xtrace_riscv_dm_error("sberror");
+        xtrace_riscv_dm_error(dm->soc, "sberror");
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSY)) {
         FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSYERROR, 1u);
-        xtrace_riscv_dm_error("sbbusy");
+        xtrace_riscv_dm_error(dm->soc, "sbbusy");
         return CMD_ERR_NONE;
     }
 
     dm->regs[A_SBADDRESS1] = value;
-    trace_riscv_dm_sbaddr_write(1, value);
+    trace_riscv_dm_sbaddr_write(dm->soc, 1, value);
 
     return CMD_ERR_NONE;
 }
@@ -1723,20 +1730,20 @@ static CmdErr riscv_dm_dm_sbaddress1_write(RISCVDMState *dm, uint32_t value)
 static CmdErr riscv_dm_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value)
 {
     if (!dm->cfg.sysbus_access) {
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         *value = 0;
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBERROR) ||
         FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSYERROR)) {
-        xtrace_riscv_dm_error("sberror");
+        xtrace_riscv_dm_error(dm->soc, "sberror");
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSY)) {
         FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSYERROR, 1u);
-        xtrace_riscv_dm_error("sbbusy");
+        xtrace_riscv_dm_error(dm->soc, "sbbusy");
         return CMD_ERR_NONE;
     }
 
@@ -1747,7 +1754,7 @@ static CmdErr riscv_dm_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value)
      * sbdata cache
      */
     *value = dm->regs[A_SBDATA0] = (uint32_t)dm->sbdata;
-    trace_riscv_dm_sbdata_read(0, *value);
+    trace_riscv_dm_sbdata_read(dm->soc, 0, *value);
 
     CmdErr ret = CMD_ERR_NONE;
 
@@ -1770,19 +1777,19 @@ static CmdErr riscv_dm_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value)
 static CmdErr riscv_dm_dm_sbdata0_write(RISCVDMState *dm, uint32_t value)
 {
     if (!dm->cfg.sysbus_access) {
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBERROR) ||
         FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSYERROR)) {
-        xtrace_riscv_dm_error("sberror");
+        xtrace_riscv_dm_error(dm->soc, "sberror");
         return CMD_ERR_NONE;
     }
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSY)) {
         FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSYERROR, 1u);
-        xtrace_riscv_dm_error("sbbusy");
+        xtrace_riscv_dm_error(dm->soc, "sbbusy");
         return CMD_ERR_NONE;
     }
 
@@ -1802,7 +1809,7 @@ static CmdErr riscv_dm_dm_sbdata0_write(RISCVDMState *dm, uint32_t value)
     if (address & (size - 1u)) {
         dm->regs[A_SBCS] =
             FIELD_DP32(dm->regs[A_SBCS], SBCS, SBERROR, SYSBUS_BADALIGN);
-        xtrace_riscv_dm_error("asize");
+        xtrace_riscv_dm_error(dm->soc, "asize");
         goto end;
     }
     dm->regs[A_SBDATA0] = value;
@@ -1817,11 +1824,11 @@ static CmdErr riscv_dm_dm_sbdata0_write(RISCVDMState *dm, uint32_t value)
     }
     res = address_space_rw(dm->as, address, MEMTXATTRS_DM_REQUESTER, &val64,
                            size, true);
-    trace_riscv_dm_sysbus_data_write(address, size, val64, res);
+    trace_riscv_dm_sysbus_data_write(dm->soc, address, size, val64, res);
     if (res != MEMTX_OK) {
         dm->regs[A_SBCS] =
             FIELD_DP32(dm->regs[A_SBCS], SBCS, SBERROR, SYSBUS_BADADDR);
-        xtrace_riscv_dm_error("memtx");
+        xtrace_riscv_dm_error(dm->soc, "memtx");
         ret = CMD_ERR_BUS;
     }
 end:
@@ -1840,17 +1847,17 @@ static CmdErr riscv_dm_dm_sbdata1_read(RISCVDMState *dm, uint32_t *value)
     if ((!dm->cfg.sysbus_access) ||
         (dm->hart->cpu->env.misa_mxl_max < MXL_RV64)) {
         *value = 0;
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NONE;
     }
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSY)) {
         FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSYERROR, 1u);
-        xtrace_riscv_dm_error("sbbusy");
+        xtrace_riscv_dm_error(dm->soc, "sbbusy");
         return CMD_ERR_NONE;
     }
 
     *value = dm->regs[A_SBDATA1] = (uint32_t)(dm->sbdata >> 32u);
-    trace_riscv_dm_sbdata_read(1, *value);
+    trace_riscv_dm_sbdata_read(dm->soc, 1, *value);
 
     return CMD_ERR_NONE;
 }
@@ -1859,17 +1866,17 @@ static CmdErr riscv_dm_dm_sbdata1_write(RISCVDMState *dm, uint32_t value)
 {
     if ((!dm->cfg.sysbus_access) ||
         (dm->hart->cpu->env.misa_mxl_max < MXL_RV64)) {
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NONE;
     }
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBBUSY)) {
         FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSYERROR, 1u);
-        xtrace_riscv_dm_error("sbbusy");
+        xtrace_riscv_dm_error(dm->soc, "sbbusy");
         return CMD_ERR_NONE;
     }
 
     dm->regs[A_SBDATA1] = value;
-    trace_riscv_dm_sbdata_write(1, value);
+    trace_riscv_dm_sbdata_write(dm->soc, 1, value);
 
     return CMD_ERR_NONE;
 }
@@ -1906,7 +1913,7 @@ static CmdErr riscv_dm_dm_abstractcs_read(RISCVDMState *dm, uint32_t *value)
 static CmdErr riscv_dm_dm_abstractcs_write(RISCVDMState *dm, uint32_t value)
 {
     if (dm->cmd_busy) {
-        xtrace_riscv_dm_error("already busy");
+        xtrace_riscv_dm_error(dm->soc, "already busy");
         return CMD_ERR_BUSY;
     }
 
@@ -1952,7 +1959,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
     if (!dm->cfg.progbuf_phyaddr ||
         dm->cfg.abstractcmd_count < RISCVDM_ABSTRACTDATA_SLOTS) {
         /* abstract command slots and progbuf address are required */
-        xtrace_riscv_dm_error("no support");
+        xtrace_riscv_dm_error(dm->soc, "no support");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
@@ -1970,7 +1977,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
              * If aarsize specifies a size larger than the register’s actual
              * size, then the access must fail.
              */
-            xtrace_riscv_dm_error("aarsize");
+            xtrace_riscv_dm_error(dm->soc, "aarsize");
             return CMD_ERR_NOT_SUPPORTED;
         }
     }
@@ -2024,7 +2031,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
                  * case
                  */
             } else if ((dm->cfg.nscratch > 1u) && (regno == 0x1000u + GPR_A0)) {
-                xtrace_reg("write GPR", regno, 0x1000u);
+                xtrace_reg(dm->soc, "write GPR", regno, 0x1000u);
                 /* store s0 in dscratch */
                 abscmd[4u] = riscv_dm_insn_csrw(CSR_DSCRATCH0, GPR_S0);
                 /* load from data register */
@@ -2041,12 +2048,12 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
                  * register or not
                  */
                 if (regno & 0x20u) {
-                    xtrace_reg("write FPR", regno, 0x1020u);
+                    xtrace_reg(dm->soc, "write FPR", regno, 0x1020u);
                     abscmd[4u] =
                         riscv_dm_insn_float_load(aarsize, riscv_dm_rm(regno),
                                                  regaddr, dm->cfg.data_phyaddr);
                 } else {
-                    xtrace_reg("write GPR", regno, 0x1000u);
+                    xtrace_reg(dm->soc, "write GPR", regno, 0x1000u);
                     abscmd[4u] =
                         riscv_dm_insn_load(aarsize, riscv_dm_rm(regno), regaddr,
                                            dm->cfg.data_phyaddr);
@@ -2054,7 +2061,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
                 /* CSR access */
             } else {
                 /* data register to CSR */
-                xtrace_reg("write CSR", regno, 0u);
+                xtrace_reg(dm->soc, "write CSR", regno, 0u);
                 /* store s0 in dscratch */
                 abscmd[4u] = riscv_dm_insn_csrw(CSR_DSCRATCH0, GPR_S0);
                 /* load from data register */
@@ -2080,7 +2087,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
                  * case
                  */
             } else if ((dm->cfg.nscratch > 1u) && (regno == 0x1000u + GPR_A0)) {
-                xtrace_reg("read GPR", regno, 0x1000u);
+                xtrace_reg(dm->soc, "read GPR", regno, 0x1000u);
                 /* store s0 in dscratch */
                 abscmd[4u] = riscv_dm_insn_csrw(CSR_DSCRATCH0, GPR_S0);
                 /* read value from CSR into s0 */
@@ -2097,13 +2104,13 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
                  * register or not
                  */
                 if (regno & 0x20u) {
-                    xtrace_reg("read FPR", regno, 0x1020u);
+                    xtrace_reg(dm->soc, "read FPR", regno, 0x1020u);
                     abscmd[4u] =
                         riscv_dm_insn_float_store(aarsize, riscv_dm_rm(regno),
                                                   regaddr,
                                                   dm->cfg.data_phyaddr);
                 } else {
-                    xtrace_reg("read GPR", regno, 0x1000u);
+                    xtrace_reg(dm->soc, "read GPR", regno, 0x1000u);
                     abscmd[4u] =
                         riscv_dm_insn_store(aarsize, riscv_dm_rm(regno),
                                             regaddr, dm->cfg.data_phyaddr);
@@ -2111,7 +2118,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
                 /* CSR access */
             } else {
                 /* CSR register to data */
-                xtrace_reg("read CSR", regno, 0u);
+                xtrace_reg(dm->soc, "read CSR", regno, 0u);
                 /* store s0 in dscratch */
                 abscmd[4u] = riscv_dm_insn_csrw(CSR_DSCRATCH0, GPR_S0);
                 /* read value from CSR into s0 */
@@ -2138,7 +2145,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
     }
 
     if (unsupported) {
-        xtrace_riscv_dm_error("unsupported abstract command");
+        xtrace_riscv_dm_error(dm->soc, "unsupported abstract command");
     }
 
     /* copy the abstract command opcode into executable memory */
@@ -2147,12 +2154,13 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
     if (MEMTX_OK !=
         address_space_rw(dm->as, abscmd_addr, MEMTXATTRS_DM_REQUESTER,
                          &abscmd[0], sizeof(abscmd), true)) {
-        xtrace_riscv_dm_error("write to abtract commands to mem");
+        xtrace_riscv_dm_error(dm->soc, "write to abtract commands to mem");
         return CMD_ERR_BUS;
     }
 
     for (unsigned ix = 0; ix < RISCVDM_ABSTRACTDATA_SLOTS; ix++) {
-        trace_riscv_dm_abstract_cmd(abscmd_addr + ix * sizeof(uint32_t),
+        trace_riscv_dm_abstract_cmd(dm->soc,
+                                    abscmd_addr + ix * sizeof(uint32_t),
                                     abscmd[ix]);
     }
 
@@ -2173,12 +2181,12 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
     /* now kick off execution */
     unsigned hartsel = (unsigned)(dm->hart - &dm->harts[0]);
     CPUState *cs = CPU(dm->hart->cpu);
-    trace_riscv_dm_change_hart("GO", hartsel, cs->halted, cs->running,
+    trace_riscv_dm_change_hart(dm->soc, "GO", hartsel, cs->halted, cs->running,
                                cs->stopped, dm->hart->resumed);
     dm->to_go_bm |= 1u << hartsel;
     res = riscv_dm_update_flags(dm, hartsel, true, R_FLAGS_FLAG_GO_MASK);
     if (res != CMD_ERR_NONE) {
-        xtrace_riscv_dm_error("cannot go");
+        xtrace_riscv_dm_error(dm->soc, "cannot go");
         dm->to_go_bm &= ~(1u << hartsel);
         return res;
     }
@@ -2209,7 +2217,7 @@ static CmdErr riscv_dm_dm_access_memory(RISCVDMState *dm, uint32_t value)
     hwaddr size = 1u << aamsize;
 
     if (aamsize > env->misa_mxl_max + 1u) {
-        xtrace_riscv_dm_error("ammsize");
+        xtrace_riscv_dm_error(dm->soc, "ammsize");
         return CMD_ERR_NOT_SUPPORTED;
     }
 
@@ -2220,14 +2228,14 @@ static CmdErr riscv_dm_dm_access_memory(RISCVDMState *dm, uint32_t value)
     hwaddr addr = 0u;
     CmdErr res;
     if ((res = riscv_dm_read_absdata(dm, argwidth, argwidth, &addr))) {
-        xtrace_riscv_dm_error("read mem address (arg1)");
+        xtrace_riscv_dm_error(dm->soc, "read mem address (arg1)");
         return res;
     }
     if (virt) {
         hwaddr phyaddr;
         phyaddr = riscv_cpu_get_phys_page_debug(CPU(cpu), addr);
         if (phyaddr == -1) {
-            xtrace_riscv_dm_error("virtual mem");
+            xtrace_riscv_dm_error(dm->soc, "virtual mem");
             return CMD_ERR_BUS;
         }
         addr = phyaddr;
@@ -2235,25 +2243,25 @@ static CmdErr riscv_dm_dm_access_memory(RISCVDMState *dm, uint32_t value)
     if (write) {
         /* read value from arg0 */
         if ((res = riscv_dm_read_absdata(dm, 0, datawcount, &val))) {
-            xtrace_riscv_dm_error("read mem data (arg0)");
+            xtrace_riscv_dm_error(dm->soc, "read mem data (arg0)");
             return res;
         }
         /* store value into main memory */
         if (MEMTX_OK != address_space_rw(dm->as, addr, MEMTXATTRS_DM_REQUESTER,
                                          &val, size, true)) {
-            xtrace_riscv_dm_error("write to mem");
+            xtrace_riscv_dm_error(dm->soc, "write to mem");
             return CMD_ERR_BUS;
         }
     } else {
         /* read value from main memory */
         if (MEMTX_OK != address_space_rw(dm->as, addr, MEMTXATTRS_DM_REQUESTER,
                                          &val, size, false)) {
-            xtrace_riscv_dm_error("read from mem");
+            xtrace_riscv_dm_error(dm->soc, "read from mem");
             return CMD_ERR_BUS;
         }
         /* write value to arg0 */
         if ((res = riscv_dm_write_absdata(dm, 0, datawcount, val))) {
-            xtrace_riscv_dm_error("write mem data (arg0)");
+            xtrace_riscv_dm_error(dm->soc, "write mem data (arg0)");
             return res;
         }
     }
@@ -2261,7 +2269,7 @@ static CmdErr riscv_dm_dm_access_memory(RISCVDMState *dm, uint32_t value)
     if (aampostinc) {
         addr += argwidth << 2u; /* convert to bytes */
         if (riscv_dm_write_absdata(dm, argwidth, argwidth, addr)) {
-            xtrace_riscv_dm_error("address postinc");
+            xtrace_riscv_dm_error(dm->soc, "address postinc");
         }
     }
 
@@ -2305,7 +2313,7 @@ static void riscv_dm_ensure_running(RISCVDMState *dm)
      */
 
     if (runstate_needs_reset()) {
-        xtrace_riscv_dm_error("cannot change VM now");
+        xtrace_riscv_dm_error(dm->soc, "cannot change VM now");
         return;
     }
 
@@ -2319,7 +2327,7 @@ static void riscv_dm_ensure_running(RISCVDMState *dm)
          * the VM may be stopped
          * (for example, at startup, waiting for debugger initial request)
          */
-        xtrace_riscv_dm_info("(re)starting the VM", 0);
+        xtrace_riscv_dm_info(dm->soc, "(re)starting the VM", 0);
         vm_prepare_start(false);
         vm_start();
     }
@@ -2335,8 +2343,8 @@ static void riscv_dm_halt_hart(RISCVDMState *dm, unsigned hartsel)
     RISCVCPU *cpu = dm->harts[hartsel].cpu;
     CPUState *cs = CPU(cpu);
 
-    trace_riscv_dm_change_hart("HALT", hartsel, cs->halted, cs->running,
-                               cs->stopped, dm->hart->resumed);
+    trace_riscv_dm_change_hart(dm->soc, "HALT", hartsel, cs->halted,
+                               cs->running, cs->stopped, dm->hart->resumed);
 
     /* Note: NMI are not yet supported */
     cpu_exit(cs);
@@ -2354,8 +2362,8 @@ static void riscv_dm_resume_hart(RISCVDMState *dm, unsigned hartsel)
     RISCVCPU *cpu = dm->harts[hartsel].cpu;
     CPUState *cs = CPU(cpu);
 
-    trace_riscv_dm_change_hart("RESUME", hartsel, cs->halted, cs->running,
-                               cs->stopped, dm->hart->resumed);
+    trace_riscv_dm_change_hart(dm->soc, "RESUME", hartsel, cs->halted,
+                               cs->running, cs->stopped, dm->hart->resumed);
 
     /* generate "whereto" opcode */
     uint32_t offset =
@@ -2364,7 +2372,7 @@ static void riscv_dm_resume_hart(RISCVDMState *dm, unsigned hartsel)
     if (MEMTX_OK != address_space_rw(dm->as, dm->cfg.whereto_phyaddr,
                                      MEMTXATTRS_DM_REQUESTER, &whereto,
                                      sizeof(whereto), true)) {
-        xtrace_riscv_dm_error("write whereto to mem");
+        xtrace_riscv_dm_error(dm->soc, "write whereto to mem");
         return;
     }
 
@@ -2382,20 +2390,20 @@ static void riscv_dm_resume_hart(RISCVDMState *dm, unsigned hartsel)
         if ((insn == riscv_dm_insn_ebreak()) ||
             (((uint16_t)insn) == riscv_dm_insn_c_ebreak())) {
             /* cannot single-step an ebreak/c.break instruction */
-            xtrace_riscv_dm_error("clear single-step on ebreak");
+            xtrace_riscv_dm_error(dm->soc, "clear single-step on ebreak");
             env->dcsr = FIELD_DP32(env->dcsr, DCSR, STEP, 0);
         }
     }
 
     if (riscv_dm_update_flags(dm, hartsel, true, R_FLAGS_FLAG_RESUME_MASK)) {
-        xtrace_riscv_dm_error("cannot resume");
+        xtrace_riscv_dm_error(dm->soc, "cannot resume");
     }
 
     cpu_exit(cs);
     cpu_reset_interrupt(cs, CPU_INTERRUPT_DEBUG);
 
     const char *cause = risc_dmi_get_debug_cause_name(cpu);
-    trace_riscv_dm_resume_hart(sstep, cause);
+    trace_riscv_dm_resume_hart(dm->soc, sstep, cause);
 
     riscv_dm_ensure_running(dm);
 }
@@ -2506,7 +2514,7 @@ static void riscv_dm_internal_reset(RISCVDMState *dm)
             }
         }
 
-        xtrace_riscv_dm_info("cause", risc_dmi_get_debug_cause(cpu));
+        xtrace_riscv_dm_info(dm->soc, "cause", risc_dmi_get_debug_cause(cpu));
     }
 
     /* TODO: should we clear progbug, absdata, ...? */
