@@ -77,7 +77,7 @@
 #include "trace.h"
 
 
-#define TRACE_CPU_STATES 1
+#undef TRACE_CPU_STATES
 
 /*
  * Register definitions
@@ -1486,8 +1486,10 @@ static CmdErr riscv_dm_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
                 unavail += 1;
                 continue;
             }
+#ifdef TRACE_CPU_STATES
             qemu_log("%s: %s became available %p: %u\n", __func__, dm->soc,
                      CPU(hart->cpu), CPU(hart->cpu)->cpu_index);
+#endif
             /* clear the unavailability flag and resume w/ "regular" states */
             dm->unavailable_bm &= ~mask;
         }
@@ -1977,7 +1979,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
              * If aarsize specifies a size larger than the register’s actual
              * size, then the access must fail.
              */
-            xtrace_riscv_dm_error(dm->soc, "aarsize");
+            xtrace_riscv_dm_error(dm->soc, "aarsize not supported");
             return CMD_ERR_NOT_SUPPORTED;
         }
     }
