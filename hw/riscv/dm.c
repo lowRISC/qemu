@@ -200,6 +200,9 @@ REG32(SBDATA0, 0x3cu)
 REG32(SBDATA1, 0x3du)
 REG32(HALTSUM0, 0x40u)
 
+#define A_FIRST A_DATA0
+#define A_LAST  A_HALTSUM0
+
 /* Debug CSRs */
 REG32(DCSR, CSR_DCSR)
     FIELD(DCSR, PRV, 0u, 2u)
@@ -427,13 +430,17 @@ static void riscv_dm_resume_hart(RISCVDMState *dm, unsigned hartsel);
                           R_SBCS_SBVERSION_MASK))
 /* clang-format on */
 
-/* DMI update/capture registers that should not be traced in trace log */
-static const uint32_t RISCVDM_REG_IGNORE_TRACES[] = {
+static_assert((A_LAST - A_FIRST) < 64u, "too many registers");
+
+#define REG_BIT(_addr_)    (1ull << ((_addr_)-A_FIRST))
+#define REG_BIT_DEF(_reg_) REG_BIT(A_##_reg_)
+
+/* DM update/capture registers that should not be traced in trace log */
+static const uint64_t RISCVDM_REG_IGNORE_TRACES =
     /* the remote debugger keeps polling dmstatus (to get hart status) */
-    A_DMSTATUS,
+    REG_BIT_DEF(DMSTATUS) |
     /* the remote debugger polls abstractcs quite often (to get busy/cmderr) */
-    A_ABSTRACTCS
-};
+    REG_BIT_DEF(ABSTRACTCS);
 
 static const RISCVDMDMReg RISCVDM_DMS[DM_REG_COUNT] = {
     [A_DMCONTROL] = {
@@ -599,14 +606,7 @@ riscv_dm_write_rq(RISCVDebugDeviceState *dev, uint32_t addr, uint32_t value)
         dm->cmd_err = ret;
     }
 
-    bool trace = true;
-    for (unsigned rix = 0; rix < ARRAY_SIZE(RISCVDM_REG_IGNORE_TRACES); rix++) {
-        if (addr == RISCVDM_REG_IGNORE_TRACES[rix]) {
-            trace = false;
-        }
-    }
-
-    if (trace) {
+    if (!(RISCVDM_REG_IGNORE_TRACES & REG_BIT(addr))) {
         trace_riscv_dm_reg_update(dm->soc, riscv_dm_get_reg_name(addr), addr,
                                   value, "write", ret);
     }
@@ -621,7 +621,7 @@ riscv_dm_read_rq(RISCVDebugDeviceState *dev, uint32_t addr)
 
     CmdErr ret;
     bool autoexec = false;
-    uint32_t value;
+    uint32_t value = 0;
 
     /* store address for next read back */
     dm->address = addr;
@@ -656,13 +656,7 @@ riscv_dm_read_rq(RISCVDebugDeviceState *dev, uint32_t addr)
         ret = riscv_dm_exec_command(dm, dm->regs[A_COMMAND]);
     }
 
-    bool trace = true;
-    for (unsigned rix = 0; rix < ARRAY_SIZE(RISCVDM_REG_IGNORE_TRACES); rix++) {
-        if (addr == RISCVDM_REG_IGNORE_TRACES[rix]) {
-            trace = false;
-        }
-    }
-    if (trace) {
+    if (!(RISCVDM_REG_IGNORE_TRACES & REG_BIT(addr))) {
         trace_riscv_dm_reg_update(dm->soc, riscv_dm_get_reg_name(addr), addr,
                                   value, "read", ret);
     }
@@ -688,13 +682,10 @@ static uint32_t riscv_dm_read_value(RISCVDebugDeviceState *dev)
 
     uint32_t value = dm->regs[dm->address];
 
-    for (unsigned rix = 0; rix < ARRAY_SIZE(RISCVDM_REG_IGNORE_TRACES); rix++) {
-        if (dm->address == RISCVDM_REG_IGNORE_TRACES[rix]) {
-            return value;
-        }
+    if (!(RISCVDM_REG_IGNORE_TRACES & REG_BIT(dm->address))) {
+        trace_riscv_dm_reg_capture(dm->soc, riscv_dm_get_reg_name(dm->address),
+                                   dm->address, value);
     }
-    trace_riscv_dm_reg_capture(dm->soc, riscv_dm_get_reg_name(dm->address),
-                               dm->address, value);
 
     return value;
 }
@@ -1979,7 +1970,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
              * If aarsize specifies a size larger than the register’s actual
              * size, then the access must fail.
              */
-            xtrace_riscv_dm_error(dm->soc, "aarsize not supported");
+            trace_riscv_dm_aarsize_error(dm->soc, aarsize);
             return CMD_ERR_NOT_SUPPORTED;
         }
     }

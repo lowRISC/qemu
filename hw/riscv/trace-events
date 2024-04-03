@@ -1,6 +1,7 @@
 # See documentation at docs/devel/tracing.rst
 
 # Debug Module
+riscv_dm_aarsize_error(const char *soc, unsigned aarsize) "%s: aarsize %u not supported"
 riscv_dm_absdata(const char *soc, const char *op, unsigned woffset, unsigned wcount, uint64_t value, uint32_t res) "%s: %s: @ %u[%u] = 0x%08" PRIx64 ": res %u"
 riscv_dm_abstract_cmd(const char *soc, uint32_t addr, uint32_t inst) "%s: [%x]: %08x"
 riscv_dm_access_register(const char *soc, const char *msg, const char *regname, uint32_t value) "%s: %s: %s (%x)"
