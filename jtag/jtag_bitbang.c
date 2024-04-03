@@ -120,6 +120,7 @@ typedef struct _TAPProcess {
 typedef struct _TAPServerState {
     TAPController *tap;
     CharBackend chr;
+    bool enable_quit; /* whether VM quit can be remotely triggered */
     bool init; /* have we been initialised? */
 } TAPServerState;
 
@@ -469,9 +470,12 @@ static void tapctrl_bb_quit(TAPController *tap)
 {
     (void)tap;
 
-    qemu_log("%s: JTAG-requested termination\n", __func__);
-
-    qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
+    if (tapserver_state.enable_quit) {
+        qemu_log("%s: JTAG-requested termination\n", __func__);
+        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
+    } else {
+        qemu_log("%s: JTAG termination disabled\n", __func__);
+    }
 }
 
 static void tapctrl_bb_write(TAPController *tap, bool tck, bool tms, bool tdi)
@@ -611,35 +615,60 @@ static const TypeInfo char_tap_type_info = {
     .class_init = char_tap_class_init,
 };
 
-static void init_tapserver_state(void)
+static void init_tapserver_state(bool enable_quit)
 {
     g_assert(!tapserver_state.init);
     memset(&tapserver_state, 0, sizeof(TAPServerState));
     tapserver_state.init = true;
+    tapserver_state.enable_quit = enable_quit;
 }
 
 int jtagserver_start(const char *device)
 {
-    char tapstub_device_name[128];
-    Chardev *chr = NULL;
-
     if (!device) {
         return -1;
     }
-    if (strcmp(device, "none") != 0) {
-        if (strstart(device, "tcp:", NULL)) {
-            (void)snprintf(tapstub_device_name, sizeof(tapstub_device_name),
-                           "%s,wait=off,nodelay=on,server=on", device);
-            device = tapstub_device_name;
+
+    Chardev *chr = NULL;
+    gchar **parts = g_strsplit(device, ",", 0);
+    unsigned quit_pos = UINT_MAX;
+    unsigned length = 0;
+    const char *quit = NULL;
+    bool enable_quit = true;
+
+    for (gchar **p = parts; *p; p++, length++) {
+        if (strstart(*p, "quit=", &quit)) {
+            enable_quit = (bool)strcmp(quit, "off");
+            quit_pos = length;
         }
-        chr = qemu_chr_new_noreplay("tap", device, true, NULL);
-        if (!chr) {
-            return -1;
+    }
+    length += 1; /* account for NULL array terminator */
+    if (quit_pos < length) {
+        /* skip quit parameter */
+        g_free(parts[quit_pos]);
+        memmove(&parts[quit_pos], &parts[quit_pos + 1u],
+                (length - quit_pos - 1) * sizeof(gchar *));
+    }
+    if (strcmp(parts[0], "none")) {
+        if (strstart(parts[0], "tcp:", NULL)) {
+            gchar *first =
+                g_strjoin(",", parts[0], "wait=off,nodelay=on,server=on", NULL);
+            g_free(parts[0]);
+            parts[0] = first;
         }
+        gchar *device_name = g_strjoinv(",", parts);
+        chr = qemu_chr_new_noreplay("tap", device_name, true, NULL);
+        g_free(device_name);
+    }
+
+    g_strfreev(parts);
+
+    if (!chr) {
+        return -1;
     }
 
     if (!tapserver_state.init) {
-        init_tapserver_state();
+        init_tapserver_state(enable_quit);
     } else {
         qemu_chr_fe_deinit(&tapserver_state.chr, true);
     }
