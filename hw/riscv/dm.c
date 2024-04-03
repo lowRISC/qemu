@@ -2559,17 +2559,11 @@ static void riscv_dm_reset(DeviceState *dev)
 {
     RISCVDMState *dm = RISCV_DM(dev);
 
-    g_assert(dm->dtm != NULL);
-
-    dm->soc = object_get_canonical_path_component(OBJECT(dev)->parent);
-
-    dm->dtm_ok = riscv_dtm_register_dm(DEVICE(dm->dtm), RISCV_DEBUG_DEVICE(dev),
-                                       dm->cfg.dmi_addr, DM_REG_COUNT);
-
     for (unsigned ix = 0; ix < DM_REG_COUNT; ix++) {
-        dm->regs[ix] = RISCVDM_DMS[ix].value;
+        if (ix != A_NEXTDM) {
+            dm->regs[ix] = RISCVDM_DMS[ix].value;
+        }
     }
-    dm->regs[A_NEXTDM] = dm->cfg.dmi_next;
 
     if (riscv_dm_discover_cpus(dm)) {
         error_setg(&error_fatal, "Cannot identify harts");
@@ -2603,6 +2597,13 @@ static void riscv_dm_realize(DeviceState *dev, Error **errp)
 
     qdev_init_gpio_in_named(dev, &riscv_dm_acknowledge, RISCV_DM_ACK_LINES,
                             ACK_COUNT);
+
+    g_assert(dm->dtm != NULL);
+    dm->dtm_ok = riscv_dtm_register_dm(DEVICE(dm->dtm), RISCV_DEBUG_DEVICE(dev),
+                                       dm->cfg.dmi_addr, DM_REG_COUNT);
+    dm->soc = object_get_canonical_path_component(OBJECT(dev)->parent);
+    dm->unavailable_bm = (1u << dm->hart_count) - 1u;
+    dm->regs[A_NEXTDM] = dm->cfg.dmi_next;
 }
 
 static void riscv_dm_class_init(ObjectClass *klass, void *data)
