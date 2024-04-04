@@ -19,6 +19,7 @@ riscv_dm_reg_capture(const char *soc, const char *name, uint64_t addr, uint32_t 
 riscv_dm_reg_update(const char *soc, const char *name, uint32_t addr, uint32_t value, const char * op, int ret) "%s: %s @ %02x = 0x%08x, %s res %d"
 riscv_dm_reset(const char *soc, const char *msg) "%s: %s"
 riscv_dm_resume_hart(const char *soc, bool sstep, const char *cause) "%s: single-step: %u, cause %s"
+riscv_dm_sbcs_write(const char *soc, bool err, bool busyerr, unsigned access, bool rdonaddr, bool rdondata, bool autoinc) "%s: err#:%u busy#:%u %uB rdonaddr:%u rdondata: %u autoinc:%u"
 riscv_dm_sbaddr_write(const char *soc, unsigned slot, uint32_t address) "%s: @[%u] 0x%08x"
 riscv_dm_sbdata_read(const char *soc, unsigned slot, uint32_t data) "%s: @[%u] 0x%08x"
 riscv_dm_sbdata_write(const char *soc, unsigned slot, uint32_t data) "%s: @[%u] 0x%08x"

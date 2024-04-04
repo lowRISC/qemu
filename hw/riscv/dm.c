@@ -25,7 +25,7 @@
  *
  * Generated code for absract commands has been extracted from the PULP Debug
  * module whose file (dm_mem.sv) contains the following copyright. This piece of
- * code is self contained within the `riscv_dm_dm_access_register` function:
+ * code is self contained within the `riscv_dm_access_register` function:
  *
  *   Copyright and related rights are licensed under the Solderpad Hardware
  *   License, Version 0.51 (the “License”); you may not use this file except in
@@ -236,6 +236,28 @@ REG32(FLAGS, RISCV_DM_FLAGS_OFFSET)
  * Macros
  */
 
+/* clang-format off */
+#define SBCS_WRITE_MASK (R_SBCS_SBERROR_MASK         | \
+                         R_SBCS_SBREADONDATA_MASK    | \
+                         R_SBCS_SBAUTOINCREMENT_MASK | \
+                         R_SBCS_SBACCESS_MASK        | \
+                         R_SBCS_SBREADONADDR_MASK    | \
+                         R_SBCS_SBBUSYERROR_MASK)
+/* clang-format on */
+
+#define GPR_ZERO 0u /* zero = x0 */
+#define GPR_S0   8u /* s0 = x8 */
+#define GPR_A0   10u /* a0 = x10 */
+
+/* Not sure how to define this at system level */
+#define MEMTXATTRS_DM_REQUESTER \
+    ((MemTxAttrs){ .requester_id = JTAG_MEMTX_REQUESTER_ID })
+
+static_assert((A_LAST - A_FIRST) < 64u, "too many registers");
+
+#define REG_BIT(_addr_)    (1ull << ((_addr_)-A_FIRST))
+#define REG_BIT_DEF(_reg_) REG_BIT(A_##_reg_)
+
 #define DM_REG_COUNT (1u << (ADDRESS_BITS))
 #define xtrace_riscv_dm_error(_soc_, _msg_) \
     trace_riscv_dm_error(_soc_, __func__, __LINE__, _msg_)
@@ -371,7 +393,7 @@ struct RISCVDMDMReg {
 
 static void riscv_dm_reset(DeviceState *dev);
 
-static bool riscv_dm_cond_autoexec(RISCVDMState *dm, bool pbord,
+static bool riscv_dm_cond_autoexec(RISCVDMState *dm, bool prgbf,
                                    unsigned regix);
 static CmdErr riscv_dm_read_absdata(RISCVDMState *dm, unsigned woffset,
                                     unsigned wcount, hwaddr *value);
@@ -383,26 +405,26 @@ static CmdErr riscv_dm_write_progbuf(RISCVDMState *dm, unsigned woffset,
                                      hwaddr value);
 static CmdErr riscv_dm_exec_command(RISCVDMState *dm, uint32_t value);
 
-static CmdErr riscv_dm_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_command_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_abstractauto_read(RISCVDMState *dm, uint32_t *value);
-static CmdErr riscv_dm_dm_abstractauto_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value);
-static CmdErr riscv_dm_dm_sbcs_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_sbaddress0_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_sbaddress1_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value);
-static CmdErr riscv_dm_dm_sbdata0_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_sbdata1_read(RISCVDMState *dm, uint32_t *value);
-static CmdErr riscv_dm_dm_sbdata1_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_hartinfo_read(RISCVDMState *dm, uint32_t *value);
-static CmdErr riscv_dm_dm_abstractcs_read(RISCVDMState *dm, uint32_t *value);
-static CmdErr riscv_dm_dm_abstractcs_write(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_haltsum0_read(RISCVDMState *dm, uint32_t *value);
+static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_command_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_abstractauto_read(RISCVDMState *dm, uint32_t *value);
+static CmdErr riscv_dm_abstractauto_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value);
+static CmdErr riscv_dm_sbcs_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_sbaddress0_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_sbaddress1_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value);
+static CmdErr riscv_dm_sbdata0_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_sbdata1_read(RISCVDMState *dm, uint32_t *value);
+static CmdErr riscv_dm_sbdata1_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_hartinfo_read(RISCVDMState *dm, uint32_t *value);
+static CmdErr riscv_dm_abstractcs_read(RISCVDMState *dm, uint32_t *value);
+static CmdErr riscv_dm_abstractcs_write(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_haltsum0_read(RISCVDMState *dm, uint32_t *value);
 
-static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_access_memory(RISCVDMState *dm, uint32_t value);
-static CmdErr riscv_dm_dm_quick_access(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_access_register(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_access_memory(RISCVDMState *dm, uint32_t value);
+static CmdErr riscv_dm_quick_access(RISCVDMState *dm, uint32_t value);
 
 static void riscv_dm_ensure_running(RISCVDMState *dm);
 static void riscv_dm_halt_hart(RISCVDMState *dm, unsigned hartsel);
@@ -411,29 +433,6 @@ static void riscv_dm_resume_hart(RISCVDMState *dm, unsigned hartsel);
 /*
  * Constants
  */
-
-#define GPR_ZERO 0u /* zero = x0 */
-#define GPR_S0   8u /* s0 = x8 */
-#define GPR_A0   10u /* a0 = x10 */
-
-/* Not sure how to define this at system level */
-#define MEMTXATTRS_DM_REQUESTER \
-    ((MemTxAttrs){ .requester_id = JTAG_MEMTX_REQUESTER_ID })
-
-/* clang-format off */
-#define SBCS_WRITE_MASK (~(R_SBCS_SBACCESS8_MASK  | \
-                          R_SBCS_SBACCESS16_MASK  | \
-                          R_SBCS_SBACCESS32_MASK  | \
-                          R_SBCS_SBACCESS64_MASK  | \
-                          R_SBCS_SBACCESS128_MASK | \
-                          R_SBCS_SBASIZE_MASK     | \
-                          R_SBCS_SBVERSION_MASK))
-/* clang-format on */
-
-static_assert((A_LAST - A_FIRST) < 64u, "too many registers");
-
-#define REG_BIT(_addr_)    (1ull << ((_addr_)-A_FIRST))
-#define REG_BIT_DEF(_reg_) REG_BIT(A_##_reg_)
 
 /* DM update/capture registers that should not be traced in trace log */
 static const uint64_t RISCVDM_REG_IGNORE_TRACES =
@@ -445,60 +444,60 @@ static const uint64_t RISCVDM_REG_IGNORE_TRACES =
 static const RISCVDMDMReg RISCVDM_DMS[DM_REG_COUNT] = {
     [A_DMCONTROL] = {
         .name = "dmcontrol",
-        .write = &riscv_dm_dm_dmcontrol_write,
+        .write = &riscv_dm_dmcontrol_write,
     },
     [A_DMSTATUS] = {
         .name = "dmstatus",
         .value = (RISCV_DEBUG_DM_VERSION << R_DMSTATUS_VERSION_SHIFT) |
                  (1u << R_DMSTATUS_AUTHENTICATED_SHIFT),
-        .read = &riscv_dm_dm_dmstatus_read,
+        .read = &riscv_dm_dmstatus_read,
     },
     [A_HARTINFO] = {
         .name = "hartinfo",
-        .read = &riscv_dm_dm_hartinfo_read,
+        .read = &riscv_dm_hartinfo_read,
     },
     [A_ABSTRACTCS] = {
         .name = "abstractcs",
-        .read = &riscv_dm_dm_abstractcs_read,
-        .write = &riscv_dm_dm_abstractcs_write,
+        .read = &riscv_dm_abstractcs_read,
+        .write = &riscv_dm_abstractcs_write,
     },
     [A_COMMAND] = {
         .name = "command",
-        .write = &riscv_dm_dm_command_write,
+        .write = &riscv_dm_command_write,
     },
     [A_ABSTRACTAUTO] = {
         .name = "abstractauto",
-        .read = &riscv_dm_dm_abstractauto_read,
-        .write = &riscv_dm_dm_abstractauto_write,
+        .read = &riscv_dm_abstractauto_read,
+        .write = &riscv_dm_abstractauto_write,
     },
     [A_NEXTDM] = {
         .name = "nextdm",
     },
     [A_SBCS] = {
         .name = "sbcs",
-        .write = &riscv_dm_dm_sbcs_write,
+        .write = &riscv_dm_sbcs_write,
     },
     [A_SBADDRESS0] = {
         .name = "sbaddress0",
-        .write = &riscv_dm_dm_sbaddress0_write,
+        .write = &riscv_dm_sbaddress0_write,
     },
     [A_SBADDRESS1] = {
         .name = "sbaddress1",
-        .write = &riscv_dm_dm_sbaddress1_write,
+        .write = &riscv_dm_sbaddress1_write,
     },
     [A_SBDATA0] = {
         .name = "sbdata0",
-        .read = &riscv_dm_dm_sbdata0_read,
-        .write = &riscv_dm_dm_sbdata0_write,
+        .read = &riscv_dm_sbdata0_read,
+        .write = &riscv_dm_sbdata0_write,
     },
     [A_SBDATA1] = {
         .name = "sbdata1",
-        .read = &riscv_dm_dm_sbdata1_read,
-        .write = &riscv_dm_dm_sbdata1_write,
+        .read = &riscv_dm_sbdata1_read,
+        .write = &riscv_dm_sbdata1_write,
     },
     [A_HALTSUM0] = {
         .name = "haltsum0",
-        .read = &riscv_dm_dm_haltsum0_read,
+        .read = &riscv_dm_haltsum0_read,
     },
 };
 
@@ -712,10 +711,10 @@ static const char *riscv_dm_get_reg_name(unsigned addr)
 }
 
 
-static bool riscv_dm_cond_autoexec(RISCVDMState *dm, bool pbord, unsigned regix)
+static bool riscv_dm_cond_autoexec(RISCVDMState *dm, bool prgbf, unsigned regix)
 {
     uint32_t autoexec =
-        pbord ?
+        prgbf ?
             FIELD_EX32(dm->regs[A_ABSTRACTAUTO], ABSTRACTAUTO,
                        AUTOEXECPROGBUF) :
             FIELD_EX32(dm->regs[A_ABSTRACTAUTO], ABSTRACTAUTO, AUTOEXECDATA);
@@ -1203,7 +1202,7 @@ static uint32_t riscv_dm_insn_illegal(void)
  * DM register implementation
  */
 
-static CmdErr riscv_dm_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
 {
     bool hasel = (bool)FIELD_EX32(value, DMCONTROL, HASEL);
 
@@ -1360,13 +1359,13 @@ static CmdErr riscv_dm_exec_command(RISCVDMState *dm, uint32_t value)
     CmdErr ret;
     switch (cmdtype) {
     case CMD_ACCESS_REGISTER:
-        ret = riscv_dm_dm_access_register(dm, value);
+        ret = riscv_dm_access_register(dm, value);
         break;
     case CMD_QUICK_ACCESS:
-        ret = riscv_dm_dm_quick_access(dm, value);
+        ret = riscv_dm_quick_access(dm, value);
         break;
     case CMD_ACCESS_MEMORY:
-        ret = riscv_dm_dm_access_memory(dm, value);
+        ret = riscv_dm_access_memory(dm, value);
         break;
     default:
         ret = CMD_ERR_NOT_SUPPORTED;
@@ -1382,7 +1381,7 @@ static CmdErr riscv_dm_exec_command(RISCVDMState *dm, uint32_t value)
     return ret;
 }
 
-static CmdErr riscv_dm_dm_command_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_command_write(RISCVDMState *dm, uint32_t value)
 {
     if (dm->cmd_err != CMD_ERR_NONE) {
         /* if cmderr is non-zero, writes to this register are ignored. */
@@ -1392,11 +1391,11 @@ static CmdErr riscv_dm_dm_command_write(RISCVDMState *dm, uint32_t value)
     /* save command as it may be repeated w/ abstractauto command */
     dm->regs[A_COMMAND] = value;
 
-    /* busy status is asserted in riscv_dm_dm_command_write */
+    /* busy status is asserted in riscv_dm_command_write */
     return riscv_dm_exec_command(dm, value);
 }
 
-static CmdErr riscv_dm_dm_abstractauto_read(RISCVDMState *dm, uint32_t *value)
+static CmdErr riscv_dm_abstractauto_read(RISCVDMState *dm, uint32_t *value)
 {
     *value = dm->regs[A_ABSTRACTAUTO];
 
@@ -1409,11 +1408,17 @@ static CmdErr riscv_dm_dm_abstractauto_read(RISCVDMState *dm, uint32_t *value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_abstractauto_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_abstractauto_write(RISCVDMState *dm, uint32_t value)
 {
     if (!dm->cfg.abstractauto) {
         xtrace_riscv_dm_info(dm->soc, "abstractauto support is disabled",
                              value);
+        /*
+         * Peer should check the content of ABSTRACTAUTO (which is initialized
+         * and stuck to 0) to discover the feature is not supported.
+         *
+         * It seems OpenOCD does not perform this check and resume anyway.
+         */
         return CMD_ERR_NONE;
     }
 
@@ -1438,7 +1443,7 @@ static CmdErr riscv_dm_dm_abstractauto_write(RISCVDMState *dm, uint32_t value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
+static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
 {
     unsigned halted = 0u;
     unsigned running = 0u;
@@ -1552,27 +1557,32 @@ static CmdErr riscv_dm_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_sbcs_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_sbcs_write(RISCVDMState *dm, uint32_t value)
 {
     /* mask out the preset, R/O bits */
     value &= SBCS_WRITE_MASK;
 
-    /* clear sberror bits (if flagged as W1C) */
-    value &= ~(value & R_SBCS_SBERROR_MASK);
+    /* clear error bits (if flagged as W1C) */
+    value &= ~(value & (R_SBCS_SBERROR_MASK | R_SBCS_SBBUSYERROR_MASK));
 
     dm->regs[A_SBCS] &= ~SBCS_WRITE_MASK;
     dm->regs[A_SBCS] |= value;
 
+    if (trace_event_get_state(TRACE_RISCV_DM_SBCS_WRITE)) {
+        bool err = (bool)(value & R_SBCS_SBERROR_MASK);
+        bool rdondata = (bool)(value & R_SBCS_SBREADONDATA_MASK);
+        bool autoinc = (bool)(value & R_SBCS_SBAUTOINCREMENT_MASK);
+        bool rdonaddr = (bool)(value & R_SBCS_SBREADONADDR_MASK);
+        bool busyerr = (bool)(value & R_SBCS_SBBUSYERROR_MASK);
+        unsigned access = 1u << FIELD_EX32(value, SBCS, SBACCESS);
+        trace_riscv_dm_sbcs_write(dm->soc, err, busyerr, access, rdonaddr,
+                                  rdondata, autoinc);
+    }
+
     return CMD_ERR_NONE;
 }
 
-static void riscv_dm_dm_sysbus_set_busy(RISCVDMState *dm, bool busy)
-{
-    dm->regs[A_SBCS] =
-        FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSY, (uint32_t)busy);
-}
-
-static uint32_t riscv_dm_dm_sysbus_get_byte_count(RISCVDMState *dm)
+static uint32_t riscv_dm_sysbus_get_byte_count(RISCVDMState *dm)
 {
     uint32_t size = 1u << FIELD_EX32(dm->regs[A_SBCS], SBCS, SBACCESS);
     /* LSBs of A_SBCS define supported sizes as a bitmap */
@@ -1585,10 +1595,16 @@ static uint32_t riscv_dm_dm_sysbus_get_byte_count(RISCVDMState *dm)
     return size;
 }
 
-static void riscv_dm_dm_sysbus_increment_address(RISCVDMState *dm)
+static void riscv_dm_sysbus_set_busy(RISCVDMState *dm, bool busy)
+{
+    dm->regs[A_SBCS] =
+        FIELD_DP32(dm->regs[A_SBCS], SBCS, SBBUSY, (uint32_t)busy);
+}
+
+static void riscv_dm_sysbus_increment_address(RISCVDMState *dm)
 {
     uint32_t size;
-    if (!(size = riscv_dm_dm_sysbus_get_byte_count(dm))) {
+    if (!(size = riscv_dm_sysbus_get_byte_count(dm))) {
         /* invalid size case has already been handled by the caller */
         return;
     }
@@ -1601,10 +1617,10 @@ static void riscv_dm_dm_sysbus_increment_address(RISCVDMState *dm)
     }
 }
 
-static CmdErr riscv_dm_dm_sysbus_read(RISCVDMState *dm)
+static CmdErr riscv_dm_sysbus_read(RISCVDMState *dm)
 {
     uint32_t size;
-    if (!(size = riscv_dm_dm_sysbus_get_byte_count(dm))) {
+    if (!(size = riscv_dm_sysbus_get_byte_count(dm))) {
         /*
          * note: the spec is fuzzy about how sysbus errors should be managed:
          * should cmderr always be flagged, or is sberror enough? TBC..
@@ -1612,7 +1628,7 @@ static CmdErr riscv_dm_dm_sysbus_read(RISCVDMState *dm)
         return CMD_ERR_NONE;
     }
 
-    riscv_dm_dm_sysbus_set_busy(dm, true);
+    riscv_dm_sysbus_set_busy(dm, true);
 
     CmdErr ret = CMD_ERR_NONE;
     MemTxResult res;
@@ -1646,12 +1662,12 @@ static CmdErr riscv_dm_dm_sysbus_read(RISCVDMState *dm)
     }
     dm->sbdata = val64;
 end:
-    riscv_dm_dm_sysbus_set_busy(dm, false);
+    riscv_dm_sysbus_set_busy(dm, false);
 
     return ret;
 }
 
-static CmdErr riscv_dm_dm_sbaddress0_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_sbaddress0_write(RISCVDMState *dm, uint32_t value)
 {
     if (!dm->cfg.sysbus_access) {
         xtrace_riscv_dm_error(dm->soc, "no support");
@@ -1682,20 +1698,20 @@ static CmdErr riscv_dm_dm_sbaddress0_write(RISCVDMState *dm, uint32_t value)
 
     CmdErr ret;
 
-    ret = riscv_dm_dm_sysbus_read(dm);
+    ret = riscv_dm_sysbus_read(dm);
     /*
      * "If the read succeeded and sbautoincrement is set,
      * increment sbaddress."
      */
     if ((ret == CMD_ERR_NONE) &&
         FIELD_EX32(dm->regs[A_SBCS], SBCS, SBAUTOINCREMENT)) {
-        riscv_dm_dm_sysbus_increment_address(dm);
+        riscv_dm_sysbus_increment_address(dm);
     }
 
     return ret;
 }
 
-static CmdErr riscv_dm_dm_sbaddress1_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_sbaddress1_write(RISCVDMState *dm, uint32_t value)
 {
     if ((!dm->cfg.sysbus_access) ||
         (dm->hart->cpu->env.misa_mxl_max < MXL_RV64)) {
@@ -1720,7 +1736,7 @@ static CmdErr riscv_dm_dm_sbaddress1_write(RISCVDMState *dm, uint32_t value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value)
+static CmdErr riscv_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value)
 {
     if (!dm->cfg.sysbus_access) {
         xtrace_riscv_dm_error(dm->soc, "no support");
@@ -1752,7 +1768,7 @@ static CmdErr riscv_dm_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value)
     CmdErr ret = CMD_ERR_NONE;
 
     if (FIELD_EX32(dm->regs[A_SBCS], SBCS, SBREADONDATA)) {
-        ret = riscv_dm_dm_sysbus_read(dm);
+        ret = riscv_dm_sysbus_read(dm);
     }
 
     /*
@@ -1761,13 +1777,13 @@ static CmdErr riscv_dm_dm_sbdata0_read(RISCVDMState *dm, uint32_t *value)
      */
     if ((ret == CMD_ERR_NONE) &&
         FIELD_EX32(dm->regs[A_SBCS], SBCS, SBAUTOINCREMENT)) {
-        riscv_dm_dm_sysbus_increment_address(dm);
+        riscv_dm_sysbus_increment_address(dm);
     }
 
     return ret;
 }
 
-static CmdErr riscv_dm_dm_sbdata0_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_sbdata0_write(RISCVDMState *dm, uint32_t value)
 {
     if (!dm->cfg.sysbus_access) {
         xtrace_riscv_dm_error(dm->soc, "no support");
@@ -1787,13 +1803,13 @@ static CmdErr riscv_dm_dm_sbdata0_write(RISCVDMState *dm, uint32_t value)
     }
 
     uint32_t size;
-    if (!(size = riscv_dm_dm_sysbus_get_byte_count(dm))) {
+    if (!(size = riscv_dm_sysbus_get_byte_count(dm))) {
         return CMD_ERR_BUS;
     }
 
     CmdErr ret = CMD_ERR_NONE;
 
-    riscv_dm_dm_sysbus_set_busy(dm, true);
+    riscv_dm_sysbus_set_busy(dm, true);
     MemTxResult res;
     hwaddr address = (hwaddr)dm->regs[A_SBADDRESS0];
     if (dm->hart->cpu->env.misa_mxl_max > MXL_RV32) {
@@ -1825,17 +1841,17 @@ static CmdErr riscv_dm_dm_sbdata0_write(RISCVDMState *dm, uint32_t value)
         ret = CMD_ERR_BUS;
     }
 end:
-    riscv_dm_dm_sysbus_set_busy(dm, false);
+    riscv_dm_sysbus_set_busy(dm, false);
 
     if ((ret == CMD_ERR_NONE) &&
         FIELD_EX32(dm->regs[A_SBCS], SBCS, SBAUTOINCREMENT)) {
-        riscv_dm_dm_sysbus_increment_address(dm);
+        riscv_dm_sysbus_increment_address(dm);
     }
 
     return ret;
 }
 
-static CmdErr riscv_dm_dm_sbdata1_read(RISCVDMState *dm, uint32_t *value)
+static CmdErr riscv_dm_sbdata1_read(RISCVDMState *dm, uint32_t *value)
 {
     if ((!dm->cfg.sysbus_access) ||
         (dm->hart->cpu->env.misa_mxl_max < MXL_RV64)) {
@@ -1855,7 +1871,7 @@ static CmdErr riscv_dm_dm_sbdata1_read(RISCVDMState *dm, uint32_t *value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_sbdata1_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_sbdata1_write(RISCVDMState *dm, uint32_t value)
 {
     if ((!dm->cfg.sysbus_access) ||
         (dm->hart->cpu->env.misa_mxl_max < MXL_RV64)) {
@@ -1874,7 +1890,7 @@ static CmdErr riscv_dm_dm_sbdata1_write(RISCVDMState *dm, uint32_t value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_hartinfo_read(RISCVDMState *dm, uint32_t *value)
+static CmdErr riscv_dm_hartinfo_read(RISCVDMState *dm, uint32_t *value)
 {
     uint32_t val;
 
@@ -1889,7 +1905,7 @@ static CmdErr riscv_dm_dm_hartinfo_read(RISCVDMState *dm, uint32_t *value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_abstractcs_read(RISCVDMState *dm, uint32_t *value)
+static CmdErr riscv_dm_abstractcs_read(RISCVDMState *dm, uint32_t *value)
 {
     uint32_t val;
 
@@ -1903,7 +1919,7 @@ static CmdErr riscv_dm_dm_abstractcs_read(RISCVDMState *dm, uint32_t *value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_abstractcs_write(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_abstractcs_write(RISCVDMState *dm, uint32_t value)
 {
     if (dm->cmd_busy) {
         xtrace_riscv_dm_error(dm->soc, "already busy");
@@ -1924,7 +1940,7 @@ static CmdErr riscv_dm_dm_abstractcs_write(RISCVDMState *dm, uint32_t value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_haltsum0_read(RISCVDMState *dm, uint32_t *value)
+static CmdErr riscv_dm_haltsum0_read(RISCVDMState *dm, uint32_t *value)
 {
     unsigned hix = 0;
     unsigned halted_bm = 0;
@@ -1940,7 +1956,7 @@ static CmdErr riscv_dm_dm_haltsum0_read(RISCVDMState *dm, uint32_t *value)
 }
 
 /* this function contains code retrieved from PUL dm_mem.sv file */
-static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_access_register(RISCVDMState *dm, uint32_t value)
 {
     /*
      * for now, only LE-RISC-V and LE-hosts are supported,
@@ -2187,7 +2203,7 @@ static CmdErr riscv_dm_dm_access_register(RISCVDMState *dm, uint32_t value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_access_memory(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_access_memory(RISCVDMState *dm, uint32_t value)
 {
     /*
      * Arg Width | arg0/ret val |    arg1  |  arg2     |
@@ -2271,7 +2287,7 @@ static CmdErr riscv_dm_dm_access_memory(RISCVDMState *dm, uint32_t value)
     return CMD_ERR_NONE;
 }
 
-static CmdErr riscv_dm_dm_quick_access(RISCVDMState *dm, uint32_t value)
+static CmdErr riscv_dm_quick_access(RISCVDMState *dm, uint32_t value)
 {
     (void)dm;
     (void)value;
@@ -2551,7 +2567,8 @@ static Property riscv_dm_properties[] = {
     DEFINE_PROP_UINT64("progbuf_phyaddr", RISCVDMState, cfg.progbuf_phyaddr, 0),
     DEFINE_PROP_UINT16("resume_offset", RISCVDMState, cfg.resume_offset, 0),
     DEFINE_PROP_BOOL("sysbus_access", RISCVDMState, cfg.sysbus_access, true),
-    DEFINE_PROP_BOOL("abstractauto", RISCVDMState, cfg.abstractauto, false),
+    /* beware that OpenOCD (RISC-V 2024/04) assumes this is always supported */
+    DEFINE_PROP_BOOL("abstractauto", RISCVDMState, cfg.abstractauto, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
