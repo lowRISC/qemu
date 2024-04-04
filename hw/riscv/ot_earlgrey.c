@@ -305,7 +305,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                 PULP_DM_BASE + PULP_RV_DM_PROGRAM_BUFFER_OFFSET),
             IBEX_DEV_UINT_PROP("resume_offset", PULP_RV_DM_RESUME_OFFSET),
             IBEX_DEV_BOOL_PROP("sysbus_access", true),
-            IBEX_DEV_BOOL_PROP("abstractauto", false)
+            IBEX_DEV_BOOL_PROP("abstractauto", true)
         ),
     },
     [OT_EG_SOC_DEV_UART0] = {
