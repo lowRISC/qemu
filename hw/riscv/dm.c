@@ -609,10 +609,7 @@ riscv_dm_write_rq(RISCVDebugDeviceState *dev, uint32_t addr, uint32_t value)
                                   value, "write", ret);
     }
 
-
-    return (ret == CMD_ERR_NONE) ?
-               RISCV_DEBUG_NOERR :
-               ((ret == CMD_ERR_BUSY) ? RISCV_DEBUG_BUSY : RISCV_DEBUG_FAILED);
+    return RISCV_DEBUG_NOERR;
 }
 
 static RISCVDebugResult
@@ -672,9 +669,7 @@ riscv_dm_read_rq(RISCVDebugDeviceState *dev, uint32_t addr)
         dm->cmd_err = ret;
     }
 
-    return (ret == CMD_ERR_NONE) ?
-               RISCV_DEBUG_NOERR :
-               ((ret == CMD_ERR_BUSY) ? RISCV_DEBUG_BUSY : RISCV_DEBUG_FAILED);
+    return RISCV_DEBUG_NOERR;
 }
 
 static uint32_t riscv_dm_read_value(RISCVDebugDeviceState *dev)
