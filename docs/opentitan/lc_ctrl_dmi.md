@@ -1,8 +1,8 @@
-# Darjeeling LifeCycle Controller over DMI
+# Darjeeling LifeCycle Controller over DTM
 
 ## Communicating with the JTAG Mailbox through a JTAG connection
 
-In QEMU, a bridge between the Debug Module Interface (DMI) and the JTAG Mailbox is implemented
+In QEMU, a bridge between the Debug Transport Module (DTM) and the JTAG Mailbox is implemented
 as Debug Module bridge.
 
 ```
@@ -15,7 +15,7 @@ as Debug Module bridge.
 +-----|-----------------------------------------------------------------------------------+
 |     v                                                                                   |
 | +-------------+     +-----+     +----------+         +---------+         +------+       |
-| | JTAG server |---->| DMI |---->| ot_dm_tl |====D====| LC Ctrl |====P====| Hart |       |
+| | JTAG server |---->| DTM |---->| ot_dm_tl |====D====| LC Ctrl |====P====| Hart |       |
 | +-------------+     +-----+     +----------+         +---------+         +------+       |
 |                                                                                     QEMU|
 +-----------------------------------------------------------------------------------------+

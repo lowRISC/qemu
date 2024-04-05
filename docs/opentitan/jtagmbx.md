@@ -5,7 +5,7 @@ system side (requester) is connected to a Debug Tile Link bus.
 
 ## Communicating with the JTAG Mailbox through a JTAG connection
 
-In QEMU, a bridge between the Debug Module Interface (DMI) and the JTAG Mailbox is implemented
+In QEMU, a bridge between the Debug Transport Module (DTM) and the JTAG Mailbox is implemented
 as Debug Module bridge.
 
 ```
@@ -18,7 +18,7 @@ as Debug Module bridge.
 +-----|-----------------------------------------------------------------------------------+
 |     v                                                                                   |
 | +-------------+     +-----+     +----------+         +---------+         +------+       |
-| | JTAG server |---->| DMI |---->| ot_dm_tl |====D====|S> MBX <H|====P====| Hart |       |
+| | JTAG server |---->| DTM |---->| ot_dm_tl |====D====|S> MBX <H|====P====| Hart |       |
 | +-------------+     +-----+     +----------+         +---------+         +------+       |
 |                                                                                     QEMU|
 +-----------------------------------------------------------------------------------------+
@@ -136,7 +136,7 @@ no RISC-V DM module is connected to the DMI device, _i.e._
 +-----|-----------------------------------------------------------------------------------+
 |     v                                                                                   |
 | +-------------+     +-----+     +----------+         +---------+         +------+       |
-| | JTAG server |---->| DMI |-+-->| ot_dm_tl |====D====|S> MBX <H|===++=P==| Hart |       |
+| | JTAG server |---->| DTM |-+-->| ot_dm_tl |====D====|S> MBX <H|===++=P==| Hart |       |
 | +-------------+     +-----+ |   +----------+         +---------+   ||    +------+       |
 |                             |                                      ||                   |
 |                             |   +----+     +-------- +             ||                   |

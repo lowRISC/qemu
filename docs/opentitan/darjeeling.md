@@ -27,6 +27,7 @@ Please check out `hw/opentitan/ot_ref.log`
 * OTP controller
   * read and write features are supported, Present scrambling is supported w/ digest checks,
     ECC bits are ignored
+* [RISC-V Debug Module](jtag-dm.md) and Pulp Debug Module
 * SPI data flash (from QEMU upstream w/ fixes)
 * SPI Host controller
   * HW bus config is ignored (SPI mode, speed, ...)
