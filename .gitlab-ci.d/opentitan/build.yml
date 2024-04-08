@@ -1,9 +1,5 @@
 #------------------------------------------------------------------------------
 # QEMU OpenTitan CI
-#
-#  apk add llvm rust python3 clang16 clang16-extra-tools cmake ninja-build
-#          samurai git make pkgconfig glib-dev pixman-dev zstd py3-pip
-#  pip3 install pyelftools hjson
 #------------------------------------------------------------------------------
 
 build-clang:
