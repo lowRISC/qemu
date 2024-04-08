@@ -202,6 +202,8 @@ bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
 {
     RISCVDTMState *s = RISCV_DTM(dev);
 
+    g_assert(dev->realized);
+
     if ((base_addr + size - 1u) > (1u << s->abits)) {
         error_setg(&error_fatal,
                    "DM address range cannot be encoded in %u address bits",
