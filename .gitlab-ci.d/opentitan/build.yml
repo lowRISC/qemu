@@ -24,6 +24,8 @@ build-clang:
     - ninja
     - ninja qemu-img
     - strip qemu-system-riscv32 qemu-img
+    - QEMU_DIR="$(cd .. && pwd -P)"; cat compile_commands.json |
+        sed -E 's,'"$QEMU_DIR"',@QEMU_DIR@,g' > compile_commands.json.tpl
     - ../scripts/opentitan/swexit.py -t earlgrey -o exit_eg.bin
     - ../scripts/opentitan/swexit.py -t darjeeling -o exit_dj.bin
   artifacts:
@@ -35,7 +37,7 @@ build-clang:
       - build/*.h
       - build/qapi/*.h
       - build/trace/*.h
-      - build/compile_commands.json
+      - build/compile_commands.json.tpl
       - build/qemu-system-riscv32
       - build/qemu-img
       - build/exit_*.bin
@@ -68,4 +70,6 @@ tidy:
   stage: build
   needs: ["build-clang"]
   script:
+    - QEMU_DIR="$(pwd -P)"; cat build/compile_commands.json.tpl |
+        sed -E 's,@QEMU_DIR@,'"$QEMU_DIR"',g' > build/compile_commands.json
     - scripts/opentitan/ot-tidy.sh --ci -p build
