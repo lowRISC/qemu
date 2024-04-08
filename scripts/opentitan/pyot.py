@@ -212,6 +212,7 @@ class QEMUWrapper:
                    args=(proc, log_q, True)).start()
             Thread(target=self._qemu_logger, name='qemu_err_logger',
                    args=(proc, log_q, False)).start()
+            xstart = now()
             if ctx:
                 try:
                     ctx.execute('with')
@@ -224,8 +225,7 @@ class QEMUWrapper:
                     ret = 126
                     last_error = str(exc)
                     raise
-            xstart = now()
-            abstimeout = float(timeout) + xstart
+            abstimeout = float(timeout) + now()
             while now() < abstimeout:
                 while log_q:
                     err, qline = log_q.popleft()
