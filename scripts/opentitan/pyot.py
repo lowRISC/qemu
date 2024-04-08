@@ -20,7 +20,7 @@ try:
 except ImportError:
     # fallback on legacy JSON syntax otherwise
     from json import load as jload
-from logging import CRITICAL, DEBUG, INFO, ERROR, getLogger
+from logging import CRITICAL, DEBUG, INFO, ERROR, WARNING, getLogger
 from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
 from os.path import (abspath, basename, dirname, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
@@ -230,18 +230,13 @@ class QEMUWrapper:
                 while log_q:
                     err, qline = log_q.popleft()
                     if err:
-                        if qline.find('info: ') > 0:
-                            if qline.startswith('qemu-system-'):
-                                # qemu chardev info is parasiting logs
-                                self._qlog.debug(qline)
-                            else:
-                                self._qlog.info(qline)
-                        elif qline.find('warning: ') > 0:
-                            self._qlog.warning(qline)
-                        else:
-                            self._qlog.error(qline)
+                        level = self.classify_log(qline)
+                        if level == INFO and \
+                           qline.find('QEMU waiting for connection') >= 0:
+                            level = DEBUG
                     else:
-                        self._qlog.info(qline)
+                        level = INFO
+                    self._qlog.log(level, qline)
                 if ctx:
                     wret = ctx.check_error()
                     if wret:
@@ -330,6 +325,28 @@ class QEMUWrapper:
                             logger(line)
         xtime = ExecTime(xend-xstart) if xstart and xend else 0.0
         return abs(ret) or 0, xtime, last_error
+
+    @classmethod
+    def classify_log(cls, line: str, default: int = ERROR) -> int:
+        """Classify log level of a line depending on its content.
+
+           :param line: line to classify
+           :param default: defaut log level in no classification is found
+           :return: the logger log level to use
+        """
+        if (line.find('info: ') >= 0 or
+            line.startswith('INFO ') or
+            line.find(' INFO ') >= 0):  # noqa
+            return INFO
+        if (line.find('warning: ') >= 0 or
+            line.startswith('WARNING ') or
+            line.find(' WARNING ') >= 0):  # noqa
+            return WARNING
+        if (line.find('debug: ') >= 0 or
+            line.startswith('DEBUG ') or
+            line.find(' DEBUG ') >= 0):  # noqa
+            return DEBUG
+        return default
 
     def _qemu_logger(self, proc: Popen, queue: Deque, err: bool):
         # worker thread, blocking on VM stdout/stderr
@@ -715,13 +732,7 @@ class QEMUContextWorker:
             while self._log_q:
                 err, qline = self._log_q.popleft()
                 if err:
-                    if qline.find('info: ') > 0 or qline.find(' INFO ') > 0:
-                        self._log.info(qline)
-                    elif qline.find('warning: ') > 0 \
-                            or qline.find(' WARNING ') > 0:
-                        self._log.warning(qline)
-                    else:
-                        self._log.error(qline)
+                    self._log.log(QEMUWrapper.classify_log(qline), qline)
                 else:
                     self._log.debug(qline)
             if proc.poll() is not None:
