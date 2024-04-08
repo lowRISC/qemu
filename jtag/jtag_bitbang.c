@@ -471,10 +471,10 @@ static void tapctrl_bb_quit(TAPController *tap)
     (void)tap;
 
     if (tapserver_state.enable_quit) {
-        qemu_log("%s: JTAG-requested termination\n", __func__);
+        info_report("%s: JTAG-requested termination\n", __func__);
         qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
     } else {
-        qemu_log("%s: JTAG termination disabled\n", __func__);
+        info_report("%s: JTAG termination disabled\n", __func__);
     }
 }
 
