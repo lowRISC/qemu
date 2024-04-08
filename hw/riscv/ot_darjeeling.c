@@ -278,7 +278,7 @@ enum OtDjPinmuxMioOut {
 #define OT_DJ_CTN_RAM_SIZE (2u << 20u)
 
 /* DEBUG address space */
-#define OT_DJ_DEBUG_RV_DM_ADDR       0x2000u
+#define OT_DJ_DEBUG_RV_DM_ADDR       0x0u
 #define OT_DJ_DEBUG_MBX_JTAG_ADDR    0x2200u
 #define OT_DJ_DEBUG_SOCDBG_CTRL_ADDR 0x2300u
 #define OT_DJ_DEBUG_LC_CTRL_ADDR     0x3000u
@@ -489,6 +489,35 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("abits", 12u)
         ),
     },
+    [OT_DJ_SOC_DEV_DM] = {
+        .type = TYPE_RISCV_DM,
+        .cfg = &ot_dj_soc_dm_configure,
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("dtm", DTM)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("dmi_addr", OT_DJ_DEBUG_RV_DM_ADDR),
+            IBEX_DEV_UINT_PROP("dmi_next", 0u), /* last in chain */
+            IBEX_DEV_UINT_PROP("nscratch", PULP_RV_DM_NSCRATCH_COUNT),
+            IBEX_DEV_UINT_PROP("progbuf_count",
+                PULP_RV_DM_PROGRAM_BUFFER_COUNT),
+            IBEX_DEV_UINT_PROP("data_count", PULP_RV_DM_DATA_COUNT),
+            IBEX_DEV_UINT_PROP("abstractcmd_count",
+                PULP_RV_DM_ABSTRACTCMD_COUNT),
+            IBEX_DEV_UINT_PROP("dm_phyaddr", PULP_DM_BASE),
+            IBEX_DEV_UINT_PROP("rom_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_ROM_BASE),
+            IBEX_DEV_UINT_PROP("whereto_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_WHERETO_OFFSET),
+            IBEX_DEV_UINT_PROP("data_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_DATAADDR_OFFSET),
+            IBEX_DEV_UINT_PROP("progbuf_phyaddr",
+                PULP_DM_BASE + PULP_RV_DM_PROGRAM_BUFFER_OFFSET),
+            IBEX_DEV_UINT_PROP("resume_offset", PULP_RV_DM_RESUME_OFFSET),
+            IBEX_DEV_BOOL_PROP("sysbus_access", true),
+            IBEX_DEV_BOOL_PROP("abstractauto", true)
+        ),
+    },
     [OT_DJ_SOC_DEV_DM_TL_LC_CTRL] = {
         .type = TYPE_OT_DM_TL,
         .instance = 0,
@@ -516,33 +545,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("tl_addr", OT_DJ_DEBUG_MBX_JTAG_ADDR),
             IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
         )
-    },
-    [OT_DJ_SOC_DEV_DM] = {
-        .type = TYPE_RISCV_DM,
-        .cfg = &ot_dj_soc_dm_configure,
-        .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("dtm", DTM)
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("nscratch", PULP_RV_DM_NSCRATCH_COUNT),
-            IBEX_DEV_UINT_PROP("progbuf_count",
-                PULP_RV_DM_PROGRAM_BUFFER_COUNT),
-            IBEX_DEV_UINT_PROP("data_count", PULP_RV_DM_DATA_COUNT),
-            IBEX_DEV_UINT_PROP("abstractcmd_count",
-                PULP_RV_DM_ABSTRACTCMD_COUNT),
-            IBEX_DEV_UINT_PROP("dm_phyaddr", PULP_DM_BASE),
-            IBEX_DEV_UINT_PROP("rom_phyaddr",
-                PULP_DM_BASE + PULP_RV_DM_ROM_BASE),
-            IBEX_DEV_UINT_PROP("whereto_phyaddr",
-                PULP_DM_BASE + PULP_RV_DM_WHERETO_OFFSET),
-            IBEX_DEV_UINT_PROP("data_phyaddr",
-                PULP_DM_BASE + PULP_RV_DM_DATAADDR_OFFSET),
-            IBEX_DEV_UINT_PROP("progbuf_phyaddr",
-                PULP_DM_BASE + PULP_RV_DM_PROGRAM_BUFFER_OFFSET),
-            IBEX_DEV_UINT_PROP("resume_offset", PULP_RV_DM_RESUME_OFFSET),
-            IBEX_DEV_BOOL_PROP("sysbus_access", true),
-            IBEX_DEV_BOOL_PROP("abstractauto", true)
-        ),
     },
     [OT_DJ_SOC_DEV_AES] = {
         .type = TYPE_OT_AES,
