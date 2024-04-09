@@ -22,7 +22,9 @@
 #ifndef RISCV_PMP_H
 #define RISCV_PMP_H
 
-#include "cpu.h"
+#ifndef RISCV_CPU_H
+#error must include cpu.h header
+#endif
 
 typedef enum {
     PMP_READ  = 1 << 0,
