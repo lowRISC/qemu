@@ -3,9 +3,9 @@
 # Copyright (c) 2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-EXPECTED_VERSION="16"
+EXPECTED_VERSION="17"
 
-# find clang-tidy executable: either 'clang-tidy-16' or 'clang-tidy'
+# find clang-tidy executable: either 'clang-tidy-17' or 'clang-tidy'
 for ver_suffix in "-${EXPECTED_VERSION}" ""; do
     clangtidy="$(which clang-tidy${ver_suffix} 2>/dev/null)"
     if [ -n "${clangtidy}" ]; then

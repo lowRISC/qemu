@@ -3,9 +3,9 @@
 # Copyright (c) 2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-EXPECTED_VERSION="16"
+EXPECTED_VERSION="17"
 
-# find clang-format executable: either 'clang-format-16' or 'clang-format'
+# find clang-format executable: either 'clang-format-17' or 'clang-format'
 for ver_suffix in "-${EXPECTED_VERSION}" ""; do
     clangformat="$(which clang-format${ver_suffix} 2>/dev/null)"
     if [ -n "${clangformat}" ]; then
