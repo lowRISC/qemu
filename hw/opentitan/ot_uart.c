@@ -394,6 +394,8 @@ static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
         case OT_UART_RX_FIFO_SIZE:
             val32 |= R_STATUS_RXFULL_MASK;
             break;
+        default:
+            break;
         }
         /* report TXEMPTY+TXIDLE or TXFULL */
         switch (fifo8_num_used(&s->tx_fifo)) {
@@ -402,6 +404,8 @@ static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
             break;
         case OT_UART_TX_FIFO_SIZE:
             val32 |= R_STATUS_TXFULL_MASK;
+            break;
+        default:
             break;
         }
         if (!ot_uart_is_tx_enabled(s)) {

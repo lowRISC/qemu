@@ -58,7 +58,7 @@ enum {
 /* ------------------------------------------------------------------------ */
 
 #define IBEX_JTAG_PART_NUM(_part_, _tap_) \
-    ((((_part_)&0xfffu) << 4u) | ((_tap_)&0xfu))
+    ((((_part_) & 0xfffu) << 4u) | ((_tap_) & 0xfu))
 
 #define LOWRISC_JEDEC_MANUFACTURER_ID 0x6fu /* MSB is parity bit, ignored */
 #define LOWRISC_JEDEC_TABLE           13u
@@ -199,7 +199,7 @@ typedef struct {
     ((_addr_) | (((uint32_t)_flag_) & IBEX_MEMMAP_REGIDX_MASK))
 #define IBEX_MEMMAP_MAKE_REG_MASK(_flag_) (1u << (_flag_))
 #define IBEX_MEMMAP_DEFAULT_REG_MASK      (1u << 0u)
-#define IBEX_MEMMAP_GET_REGIDX(_addr_)    ((_addr_)&IBEX_MEMMAP_REGIDX_MASK)
+#define IBEX_MEMMAP_GET_REGIDX(_addr_)    ((_addr_) & IBEX_MEMMAP_REGIDX_MASK)
 #define IBEX_MEMMAP_GET_ADDRESS(_addr_)   ((_addr_) & ~IBEX_MEMMAP_REGIDX_MASK)
 
 #define IBEX_GPIO_GRP_BITS       5u
@@ -207,11 +207,11 @@ typedef struct {
 #define IBEX_GPIO_GRP_SHIFT      (32u - IBEX_GPIO_GRP_BITS)
 #define IBEX_GPIO_GRP_MASK       ((IBEX_GPIO_GRP_COUNT)-1u) << (IBEX_GPIO_GRP_SHIFT)
 #define IBEX_GPIO_IDX_MASK       (~(IBEX_GPIO_GRP_MASK))
-#define IBEX_GPIO_GET_IDX(_idx_) ((_idx_)&IBEX_GPIO_IDX_MASK)
+#define IBEX_GPIO_GET_IDX(_idx_) ((_idx_) & IBEX_GPIO_IDX_MASK)
 #define IBEX_GPIO_GET_GRP(_idx_) \
     (((_idx_) & (IBEX_GPIO_GRP_MASK)) >> IBEX_GPIO_GRP_SHIFT)
 #define IBEX_GPIO_MAKE_GRPIDX(_grp_, _ix_) \
-    (((_grp_) << IBEX_GPIO_GRP_SHIFT) | ((_ix_)&IBEX_GPIO_IDX_MASK))
+    (((_grp_) << IBEX_GPIO_GRP_SHIFT) | ((_ix_) & IBEX_GPIO_IDX_MASK))
 
 #define IBEX_DEVLINK_RMT_BITS  8u
 #define IBEX_DEVLINK_RMT_COUNT (1u << (IBEX_DEVLINK_RMT_BITS))
@@ -219,11 +219,11 @@ typedef struct {
 #define IBEX_DEVLINK_RMT_MASK \
     ((IBEX_DEVLINK_RMT_COUNT)-1u) << (IBEX_DEVLINK_RMT_SHIFT)
 #define IBEX_DEVLINK_IDX_MASK      (~(IBEX_DEVLINK_RMT_MASK))
-#define IBEX_DEVLINK_DEVICE(_idx_) ((_idx_)&IBEX_DEVLINK_IDX_MASK)
+#define IBEX_DEVLINK_DEVICE(_idx_) ((_idx_) & IBEX_DEVLINK_IDX_MASK)
 #define IBEX_DEVLINK_REMOTE(_idx_) \
     (((_idx_) & (IBEX_DEVLINK_RMT_MASK)) >> IBEX_DEVLINK_RMT_SHIFT)
 #define IBEX_DEVLINK_MAKE_RMTDEV(_par_, _ix_) \
-    (((_par_) << IBEX_DEVLINK_RMT_SHIFT) | ((_ix_)&IBEX_DEVLINK_IDX_MASK))
+    (((_par_) << IBEX_DEVLINK_RMT_SHIFT) | ((_ix_) & IBEX_DEVLINK_IDX_MASK))
 
 /* MemMapEntry that should be ignored (i.e. skipped, not mapped) */
 #define MEMMAPSKIP \

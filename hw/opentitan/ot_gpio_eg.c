@@ -235,7 +235,7 @@ static void ot_gpio_eg_in_change(void *opaque, int no, int level)
 {
     OtGpioEgState *s = opaque;
 
-    trace_ot_gpio_in_change(s->ot_id, no, level<0, level> 0);
+    trace_ot_gpio_in_change(s->ot_id, no, level < 0, level > 0);
 
     g_assert(no < PARAM_NUM_IO);
 

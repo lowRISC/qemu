@@ -156,7 +156,7 @@ REG32(WKUP_CAUSE,
 #define REGS_SIZE                (REGS_COUNT * sizeof(uint32_t))
 #define CASE_SCALAR(_reg_)       R_##_reg_
 #define CASE_RANGE(_reg_, _rpt_) R_##_reg_...(R_##_reg_ + (_rpt_) - (1u))
-#define PAD_ATTR_TO_IRQ(_pad_)   ((int)((_pad_)&INT32_MAX))
+#define PAD_ATTR_TO_IRQ(_pad_)   ((int)((_pad_) & INT32_MAX))
 #define PAD_ATTR_ENABLE(_en_)    (((unsigned)!(_en_)) << 31u)
 
 static_assert((OT_PINMUX_PAD_ATTR_MASK | OT_PINMUX_PAD_ATTR_FORCE_MODE_MASK) <

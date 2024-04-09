@@ -51,8 +51,8 @@ struct _TAPDataHandler {
  * @_ver_  Version
  */
 #define JTAG_IDCODE(_mfid_, _pnum_, _ver_) \
-    ((((_ver_)&0xfu) << 28u) | (((_pnum_)&0xffffu) << 12u) | \
-     (((_mfid_)&0x7ffu) << 1u) | 0b1)
+    ((((_ver_) & 0xfu) << 28u) | (((_pnum_) & 0xffffu) << 12u) | \
+     (((_mfid_) & 0x7ffu) << 1u) | 0b1)
 
 /*
  * Create JEDEC Manufacturer ID
@@ -61,7 +61,7 @@ struct _TAPDataHandler {
  * @_id_ Entry in JEDEC table
  */
 #define JEDEC_MANUFACTURER_ID(_tbl_, _id_) \
-    (((((_tbl_)-1u) & 0xfu) << 7u) | ((_id_)&0x7fu))
+    (((((_tbl_)-1u) & 0xfu) << 7u) | ((_id_) & 0x7fu))
 
 /*
  * Start the JTAG server

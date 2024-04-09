@@ -337,7 +337,7 @@ static_assert(SPI_SRAM_END_OFFSET == 0xe80u, "Invalid SRAM definition");
 static_assert((1u << FIFO_PHASE_BIT) >= GENERIC_BUFFER_SIZE,
               "Invalid phase bit");
 #define FIFO_PTR_MASK     ((1u << FIFO_PHASE_BIT) - 1u)
-#define FIFO_PTR(_ptr_)   ((_ptr_)&FIFO_PTR_MASK)
+#define FIFO_PTR(_ptr_)   ((_ptr_) & FIFO_PTR_MASK)
 #define FIFO_PHASE(_ptr_) ((bool)((_ptr_) >> (FIFO_PHASE_BIT)))
 #define FIFO_MAKE_PTR(_phase_, _ptr_) \
     ((((unsigned)(bool)(_phase_)) << FIFO_PHASE_BIT) | FIFO_PTR(_ptr_))
@@ -649,7 +649,7 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
 #define JEDEC_ID_MASK     (R_JEDEC_ID_ID_MASK | R_JEDEC_ID_MF_MASK)
 
 #define COMMAND_OPCODE(_cmd_info_) \
-    ((uint8_t)((_cmd_info_)&CMD_INFO_OPCODE_MASK))
+    ((uint8_t)((_cmd_info_) & CMD_INFO_OPCODE_MASK))
 #define FLASH_SLOT(_name_) ((R_CMD_INFO_##_name_) - R_CMD_INFO_0)
 
 #define STATE_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
