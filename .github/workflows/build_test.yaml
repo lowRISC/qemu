@@ -1,7 +1,8 @@
+---
 #------------------------------------------------------------------------------
 # QEMU OpenTitan CI
 #
-# Copyright (c) 2023 Rivos, Inc.
+# Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache License 2.0
 #------------------------------------------------------------------------------
 
@@ -12,12 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install deps
-        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
-               sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
-             sudo apt-get update &&
-             sudo apt-get install -y git make pkg-config clang-16 cmake ninja-build python3 rust-all
-               libpixman-1-dev
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y git make pkg-config clang-17 cmake ninja-build python3 rust-all \
+            libpixman-1-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Configure
@@ -26,7 +28,7 @@ jobs:
           git clean -dffx subprojects
           mkdir build-clang
           (cd build-clang &&
-           ../configure --cc=clang-16 --disable-werror --target-list=riscv32-softmmu,riscv64-softmmu)
+           ../configure --cc=clang-17 --disable-werror --target-list=riscv32-softmmu,riscv64-softmmu)
       - name: Build
         run: |
           ninja -C build-clang &&
@@ -64,11 +66,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install tools
-        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
-               sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
-             sudo apt-get update &&
-             sudo apt-get install -y clang-format-16
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y clang-format-17
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Check execution
@@ -80,17 +83,18 @@ jobs:
     needs: build-clang
     steps:
       - name: Install tools
-        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
-             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
-             sudo apt-get update &&
-             sudo apt-get install -y clang-tidy-16
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y clang-tidy-17
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Download QEMU source artifacts
         uses: actions/download-artifact@v3
         with:
-            name: qemu-src
+          name: qemu-src
       - name: Unpack source artifacts
         run: |
           tar xzf qemu-src-artifact.tar.gz
@@ -104,12 +108,13 @@ jobs:
     needs: build-clang
     steps:
       - name: Install tools
-        run: sudo apt-get update &&
-             sudo apt-get install -y libpixman-1-0
+        run: |
+          sudo apt-get update &&
+          sudo apt-get install -y libpixman-1-0
       - name: Download QEMU binary artifacts
         uses: actions/download-artifact@v3
         with:
-            name: qemu-bin
+          name: qemu-bin
       - name: Check machine availability
         run: |
           chmod +x ./qemu-system-riscv32 &&
@@ -129,12 +134,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install tools
-        run: wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
-               sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-             sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
-             sudo apt-get update &&
-             sudo apt-get install -y git make pkg-config gcc cmake ninja-build
-             python3 rust-all libpixman-1-dev
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+          sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y git make pkg-config gcc cmake ninja-build python3 rust-all \
+            libpixman-1-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Configure
