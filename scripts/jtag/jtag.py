@@ -12,7 +12,7 @@
 # pylint: enable=missing-function-docstring
 
 from logging import getLogger
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 from .bits import BitSequence
 
@@ -101,6 +101,10 @@ class JtagStateMachine:
         self['exit_2_ir'].setx(self['shift_ir'], self['update_ir'])
         self['update_ir'].setx(self['run_test_idle'], self['select_dr_scan'])
         self._current = self['test_logic_reset']
+        self._tr_cache: Dict[Tuple[str,  # current state name
+                                   int,  # event length
+                                   int],  # event value
+                             JtagState] = {}  # new state
 
     def __getitem__(self, name: str) -> JtagState:
         return self.states[name]
@@ -176,8 +180,13 @@ class JtagStateMachine:
 
            :param events: a sequence of boolean events to advance the FSM.
         """
+        transit = (self._current.name, len(events), int(events))
+        if transit in self._tr_cache:
+            self._current = self._tr_cache[transit]
+            return
         for event in events:
             self._current = self._current.getx(event)
+        self._tr_cache[transit] = self._current
 
 
 class JtagController:
@@ -256,6 +265,9 @@ class JtagEngine:
         self._ctrl = ctrl
         self._log = getLogger('jtag.eng')
         self._fsm = JtagStateMachine()
+        self._tr_cache: Dict[Tuple[str,  # from state
+                                   str],  # to state
+                             BitSequence] = {}  # TMS sequence
         self._seq = bytearray()
 
     @property
@@ -279,16 +291,22 @@ class JtagEngine:
 
     def change_state(self, statename) -> None:
         """Advance the TAP controller to the defined state"""
-        # find the state machine path to move to the new instruction
-        path = self._fsm.find_path(statename)
-        self._log.debug('path: %s',
-                        ', '.join((str(s).upper() for s in path[1:])))
-        # convert the path into an event sequence
-        events = self._fsm.get_events(path)
+        transition = (self._fsm.state, statename)
+        if transition not in self._tr_cache:
+            # find the state machine path to move to the new instruction
+            path = self._fsm.find_path(statename)
+            self._log.debug('new path: %s',
+                            ', '.join((str(s).upper() for s in path[1:])))
+            # convert the path into an event sequence
+            events = self._fsm.get_events(path)
+            self._tr_cache[transition] = events
+        else:
+            # transition already in cache
+            events = self._tr_cache[transition]
         # update the remote device tap controller (write TMS consumes the seq)
         self._ctrl.write_tms(events.copy())
         # update the current state machine's state
-        self._fsm.handle_events(events)
+        self._fsm.handle_events(events.copy())
 
     def go_idle(self) -> None:
         """Change the current TAP controller to the IDLE state"""

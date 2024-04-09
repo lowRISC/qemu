@@ -156,7 +156,7 @@ class JtagBitbangController(JtagController):
     @tdi.setter
     def tdi(self, value: bool):
         self._tdi = bool(value)
-        self._log.info('SET TDI %u', self._tdi)
+        self._log.debug('set TDI %u', self._tdi)
 
     @property
     def tms(self) -> bool:
