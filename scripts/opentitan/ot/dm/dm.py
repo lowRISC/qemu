@@ -373,6 +373,83 @@ class DebugModule:
         rate = size / (lap * 1024)
         self._log.info('copied %d KB @ %.1f KB/s', size//1024, rate)
 
+    def read32(self, addr: int) -> int:
+        """Read a single word from memory."""
+        if addr & 0x3 != 0:
+            raise ValueError('Invalid address')
+        btf = self.BITFIELDS['SBCS']
+        val = self._wait_sb_idle(check=True)
+        val = btf.encode(val,
+                         sbreadonaddr=True,
+                         sbreadondata=False,
+                         sbautoincrement=False,
+                         sbaccess=2)  # 32-bit access
+        self.sbcs = val
+        # trigger first read (sbreadonaddr) in read mode
+        self._log.debug('reading mem from 0x%08x', addr)
+        self.sbaddress0 = addr
+        self._wait_sb_idle()
+        value = self.sbdata0
+        return value
+
+    def write32(self, addr: int, value: int) -> None:
+        """Write a single word to memory."""
+        if addr & 0x3 != 0:
+            raise ValueError('Invalid address')
+        btf = self.BITFIELDS['SBCS']
+        val = self._wait_sb_idle(check=True)
+        val = btf.encode(val,
+                         sbreadonaddr=False,
+                         sbreadondata=False,
+                         sbautoincrement=False,
+                         sbaccess=2)  # 32-bit access
+        self.sbcs = val
+        self._log.debug('writing mem to 0x%08x', addr)
+        self.sbaddress0 = addr
+        self.sbdata0 = value
+        self._wait_sb_idle()
+
+    def read64(self, addr: int) -> int:
+        """Read two words from memory."""
+        if addr & 0x3 != 0:
+            raise ValueError('Invalid address')
+        btf = self.BITFIELDS['SBCS']
+        val = self._wait_sb_idle(check=True)
+        val = btf.encode(val,
+                         sbreadonaddr=True,
+                         sbreadondata=False,
+                         sbautoincrement=False,
+                         sbaccess=2)  # 32-bit access
+        self.sbcs = val
+        self._log.debug('reading mem from 0x%08x', addr)
+        self.sbaddress0 = addr
+        self._wait_sb_idle()
+        value = self.sbdata0
+        self.sbaddress0 = addr + 4
+        self._wait_sb_idle()
+        value |= self.sbdata0 << 32
+        return value
+
+    def write64(self, addr: int, value: int) -> None:
+        """Write two words to memory."""
+        if addr & 0x3 != 0:
+            raise ValueError('Invalid address')
+        btf = self.BITFIELDS['SBCS']
+        val = self._wait_sb_idle(check=True)
+        val = btf.encode(val,
+                         sbreadonaddr=False,
+                         sbreadondata=False,
+                         sbautoincrement=True,
+                         sbaccess=2)  # 32-bit access
+        self.sbcs = val
+        self._log.debug('writing mem to 0x%08x', addr)
+        self.sbaddress0 = addr
+        self.sbdata0 = value & 0xffff_ffff
+        self._wait_sb_idle()
+        value >>= 32
+        self.sbdata0 = value & 0xffff_ffff
+        self._wait_sb_idle()
+
     def set_pc(self, addr: int) -> None:
         """Set the next Program Counter address."""
         if not self.is_halted:
