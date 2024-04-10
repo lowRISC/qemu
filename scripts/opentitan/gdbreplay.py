@@ -10,7 +10,6 @@
 
 from argparse import ArgumentParser, FileType, Namespace
 from binascii import hexlify
-from io import BytesIO
 from logging import getLogger
 from os import linesep
 from os.path import dirname, isfile, join as joinpath, normpath
@@ -20,159 +19,10 @@ from socket import (SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR, socket,
 from string import ascii_uppercase
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
-from typing import (BinaryIO, Dict, Iterator, List, Optional, TextIO, Tuple,
-                    Union)
+from typing import BinaryIO, Dict, List, Optional, TextIO, Tuple
 
+from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
-
-try:
-    from elftools.common.exceptions import ELFError
-    from elftools.elf.elffile import ELFFile
-    from elftools.elf.segments import Segment
-except ImportError:
-    ELFError = None
-    ELFFile = None
-    Segment = None
-
-
-class ElfBlob:
-    """Load ELF application."""
-
-    def __init__(self):
-        self._log = getLogger('gdbrp.elf')
-        self._elf: Optional[ELFFile] = None
-        self._payload_address: int = 0
-        self._payload_size: int = 0
-        self._payload: bytes = b''
-
-    def load(self, efp: BinaryIO) -> None:
-        """Load the content of an ELF file.
-
-           The ELF file stream is no longer accessed once this method
-           completes.
-
-           :param efp: a File-like (binary read access)
-        """
-        # use a copy of the stream to release the file pointer.
-        try:
-            self._elf = ELFFile(BytesIO(efp.read()))
-        except ELFError as exc:
-            raise ValueError(f'Invalid ELF file: {exc}') from exc
-        if self._elf['e_machine'] != 'EM_RISCV':
-            raise ValueError('Not a RISC-V ELF file')
-        if self._elf['e_type'] != 'ET_EXEC':
-            raise ValueError('Not an executable ELF file')
-        self._log.debug('entry point: 0x%X', self.entry_point)
-        self._log.debug('data size: %d', self.raw_size)
-
-    @property
-    def address_size(self) -> int:
-        """Provide the width of address value used in the ELFFile.
-
-           :return: the address width in bits (not bytes!)
-        """
-        return self._elf.elfclass if self._elf else 0
-
-    @property
-    def entry_point(self) -> Optional[int]:
-        """Provide the entry point of the application, if any.
-
-           :return: the entry point address
-        """
-        return self._elf and self._elf.header.get('e_entry', None)
-
-    @property
-    def raw_size(self) -> int:
-        """Provide the size of the payload section, if any.
-
-           :return: the data/payload size in bytes
-        """
-        if not self._payload_size:
-            self._payload_address, self._payload_size = self._parse_segments()
-        return self._payload_size
-
-    @property
-    def load_address(self) -> int:
-        """Provide the first destination address on target to copy the
-           application blob.
-
-           :return: the load address
-        """
-        if not self._payload_address:
-            self._payload_address, self._payload_size = self._parse_segments()
-        return self._payload_address
-
-    @property
-    def blob(self) -> bytes:
-        """Provide the application blob, i.e. the whole loadable binary.
-
-           :return: the raw application binary.
-        """
-        if not self._payload:
-            self._payload = self._build_payload()
-        if len(self._payload) != self.raw_size:
-            raise RuntimeError('Internal error: size mismatch')
-        return self._payload
-
-    def _loadable_segments(self) -> Iterator[Segment]:
-        """Provide an iterator on segments that should be loaded into the final
-           binary.
-        """
-        if not self._elf:
-            raise RuntimeError('No ELF file loaded')
-        for segment in sorted(self._elf.iter_segments(),
-                              key=lambda seg: seg['p_paddr']):
-            if segment['p_type'] not in ('PT_LOAD', ):
-                continue
-            if not segment['p_filesz']:
-                continue
-            yield segment
-
-    def _parse_segments(self) -> Tuple[int, int]:
-        """Parse ELF segments and extract physical location and size.
-
-           :return: the location of the first byte and the overall payload size
-                    in bytes
-        """
-        size = 0
-        phy_start = None
-        for segment in self._loadable_segments():
-            seg_size = segment['p_filesz']
-            if not seg_size:
-                continue
-            phy_addr = segment['p_paddr']
-            if phy_start is None:
-                phy_start = phy_addr
-            else:
-                if phy_addr > phy_start+size:
-                    self._log.debug('fill gap with previous segment')
-                    size = phy_addr-phy_start
-            size += seg_size
-        if phy_start is None:
-            raise ValueError('No loadable segment found')
-        return phy_start, size
-
-    def _build_payload(self) -> bytes:
-        """Extract the loadable payload from the ELF file and generate a
-           unique, contiguous binary buffer.
-
-           :return: the payload to store as the application blob
-        """
-        buf = BytesIO()
-        phy_start = None
-        for segment in self._loadable_segments():
-            phy_addr = segment['p_paddr']
-            if phy_start is None:
-                phy_start = phy_addr
-            else:
-                current_addr = phy_start+buf.tell()
-                if phy_addr > current_addr:
-                    fill_size = phy_addr-current_addr
-                    buf.write(bytes(fill_size))
-            buf.write(segment.data())
-        data = buf.getvalue()
-        buf.close()
-        return data
 
 
 class QEMUMemoryController:
@@ -606,7 +456,7 @@ class QEMUGDBReplay:
         self._log.info('Reply: "%s"', payload)
         self._send_bytes(payload.encode())
 
-    def _send_bytes(self, payload: Union[bytes, bytearray]):
+    def _send_bytes(self, payload: [bytes | bytearray]):
         """Send a reply to the remote GDB client.
 
            :param payload: the byte sequence to send
@@ -825,7 +675,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        configure_loggers(args.verbose, 'gdbrp')
+        configure_loggers(args.verbose, 'gdbrp', 'elf')
 
         acount = len(args.address or [])
         bcount = len(args.bin or [])
@@ -834,7 +684,7 @@ def main():
 
         gdbr = QEMUGDBReplay()
         if args.elf:
-            if ELFFile is None:
+            if not ElfBlob.LOADED:
                 argparser.error('Please install PyElfTools package')
             for elf in args.elf:
                 gdbr.load_elf(elf)

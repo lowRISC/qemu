@@ -12,7 +12,6 @@ from argparse import ArgumentParser, FileType
 from binascii import hexlify
 from hashlib import sha256
 from itertools import repeat
-from io import BytesIO
 from logging import getLogger
 from os import SEEK_END, SEEK_SET, rename, stat
 from os.path import abspath, basename, exists, isfile
@@ -20,23 +19,12 @@ from re import sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import exit as sysexit, modules, stderr, version_info
 from traceback import format_exc
-from typing import (Any, BinaryIO, Dict, Iterator, List, NamedTuple, Optional,
-                    Tuple, Union)
+from typing import Any, BinaryIO, Dict, List, NamedTuple, Optional, Tuple
 
+from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt
 
-try:
-    # note: pyelftools package is an OpenTitan toolchain requirement, see
-    # python-requirements.txt file from OT top directory.
-    from elftools.common.exceptions import ELFError
-    from elftools.elf.constants import SH_FLAGS
-    from elftools.elf.elffile import ELFFile
-    from elftools.elf.sections import Section
-    from elftools.elf.segments import Segment
-except ImportError:
-    ELFError = BaseException
-    ELFFile = None
 
 # pylint: disable=missing-function-docstring
 
@@ -49,186 +37,12 @@ class BootLocation(NamedTuple):
     seq: int
 
 
-class ElfBlob:
-    """Load ELF application."""
-
-    def __init__(self):
-        self._log = getLogger('flashgen.elf')
-        self._elf: Optional[ELFFile] = None
-        self._payload_address: int = 0
-        self._payload_size: int = 0
-        self._payload: bytes = b''
-
-    def load(self, efp: BinaryIO) -> None:
-        """Load the content of an ELF file.
-
-           The ELF file stream is no longer accessed once this method
-           completes.
-
-           :param efp: a File-like (binary read access)
-        """
-        # use a copy of the stream to release the file pointer.
-        try:
-            self._elf = ELFFile(BytesIO(efp.read()))
-        except ELFError as exc:
-            raise ValueError(f'Invalid ELF file: {exc}') from exc
-        if self._elf['e_machine'] != 'EM_RISCV':
-            raise ValueError('Not an RISC-V ELF file')
-        if self._elf['e_type'] != 'ET_EXEC':
-            raise ValueError('Not an executable ELF file')
-        self._log.debug('entry point: 0x%X', self.entry_point)
-        self._log.debug('data size: %d', self.raw_size)
-
-    @property
-    def address_size(self) -> int:
-        """Provide the width of address value used in the ELFFile.
-
-           :return: the address width in bits (not bytes!)
-        """
-        return self._elf.elfclass if self._elf else 0
-
-    @property
-    def entry_point(self) -> Optional[int]:
-        """Provide the entry point of the application, if any.
-
-           :return: the entry point address
-        """
-        return self._elf and self._elf.header.get('e_entry', None)
-
-    @property
-    def raw_size(self) -> int:
-        """Provide the size of the Secure Boot Header section, if any.
-
-           :return: the data/payload size in bytes
-        """
-        if not self._payload_size:
-            self._payload_address, self._payload_size = self._parse_segments()
-        return self._payload_size
-
-    @property
-    def load_address(self) -> int:
-        """Provide the first destination address on target to copy the
-           application blob.
-
-           :return: the load address
-        """
-        if not self._payload_address:
-            self._payload_address, self._payload_size = self._parse_segments()
-        return self._payload_address
-
-    @property
-    def blob(self) -> bytes:
-        """Provide the application blob, i.e. the whole loadable binary.
-
-           :return: the raw application binary.
-        """
-        if not self._payload:
-            self._payload = self._build_payload()
-        if len(self._payload) != self.raw_size:
-            raise RuntimeError('Internal error: size mismatch')
-        return self._payload
-
-    @property
-    def code_span(self) -> Tuple[int, int]:
-        """Report the extent of the executable portion of the ELF file.
-
-           :return: (start address, end address)
-        """
-        loadable_segments = list(self._loadable_segments())
-        base_addr = None
-        last_addr = None
-        for section in self._elf.iter_sections():
-            if not self.is_section_executable(section):
-                continue
-            for segment in loadable_segments:
-                if segment.section_in_segment(section):
-                    break
-            else:
-                continue
-            addr = section.header['sh_addr']
-            size = section.header['sh_size']
-            if base_addr is None or base_addr > addr:
-                base_addr = addr
-            last = addr + size
-            if last_addr is None or last_addr < last:
-                last_addr = last
-            self._log.debug('Code section @ 0x%08x 0x%08x bytes', addr, size)
-        return base_addr, last_addr
-
-    def is_section_executable(self, section: 'Section') -> bool:
-        """Report whether the section is flagged as executable.
-
-           :return: True is section is executable
-        """
-        return bool(section.header['sh_flags'] & SH_FLAGS.SHF_EXECINSTR)
-
-    def _loadable_segments(self) -> Iterator['Segment']:
-        """Provide an iterator on segments that should be loaded into the final
-           binary.
-        """
-        if not self._elf:
-            raise RuntimeError('No ELF file loaded')
-        for segment in sorted(self._elf.iter_segments(),
-                              key=lambda seg: seg['p_paddr']):
-            if segment['p_type'] not in ('PT_LOAD', ):
-                continue
-            if not segment['p_filesz']:
-                continue
-            yield segment
-
-    def _parse_segments(self) -> Tuple[int, int]:
-        """Parse ELF segments and extract physical location and size.
-
-           :return: the location of the first byte and the overall payload size
-                    in bytes
-        """
-        size = 0
-        phy_start = None
-        for segment in self._loadable_segments():
-            seg_size = segment['p_filesz']
-            if not seg_size:
-                continue
-            phy_addr = segment['p_paddr']
-            if phy_start is None:
-                phy_start = phy_addr
-            else:
-                if phy_addr > phy_start+size:
-                    self._log.debug('fill gap with previous segment')
-                    size = phy_addr-phy_start
-            size += seg_size
-        if phy_start is None:
-            raise ValueError('No loadable segment found')
-        return phy_start, size
-
-    def _build_payload(self) -> bytes:
-        """Extract the loadable payload from the ELF file and generate a
-           unique, contiguous binary buffer.
-
-           :return: the payload to store as the application blob
-        """
-        buf = BytesIO()
-        phy_start = None
-        for segment in self._loadable_segments():
-            phy_addr = segment['p_paddr']
-            if phy_start is None:
-                phy_start = phy_addr
-            else:
-                current_addr = phy_start+buf.tell()
-                if phy_addr > current_addr:
-                    fill_size = phy_addr-current_addr
-                    buf.write(bytes(fill_size))
-            buf.write(segment.data())
-        data = buf.getvalue()
-        buf.close()
-        return data
-
-
 class RuntimeDescriptor(NamedTuple):
     """Description of an executable binary.
     """
     code_start: int
     code_end: int
-    raw_size: int
+    size: int
     entry_point: int
 
 
@@ -398,7 +212,7 @@ class FlashGen:
         return sum(cls.INFOS) * cls.BYTES_PER_PAGE
 
     def read_boot_info(self) -> Dict[BootLocation,
-                                     Dict[str, Union[int, bytes]]]:
+                                     Dict[str, [int | bytes]]]:
         size = self._boot_header_size
         fmt = ''.join(self.BOOT_HEADER_FORMAT.values())
         boot_entries = {}
@@ -578,7 +392,7 @@ class FlashGen:
 
     def _compare_bin_elf(self, bindesc: RuntimeDescriptor, elfpath: str) \
             -> Optional[bool]:
-        if ELFFile is None:
+        if not ElfBlob.LOADED:
             return None
         with open(elfpath, 'rb') as efp:
             elfdesc = self._load_elf_info(efp)
@@ -593,7 +407,7 @@ class FlashGen:
         self._log.debug('ELF base offset 0x%08x', offset)
         relfdesc = RuntimeDescriptor(elfdesc.code_start - offset,
                                      elfdesc.code_end - offset,
-                                     elfdesc.raw_size,
+                                     elfdesc.size,
                                      elfdesc.entry_point - offset)
         match = bindesc == relfdesc
         logfunc = self._log.debug if match else self._log.warning
@@ -602,7 +416,7 @@ class FlashGen:
         logfunc('end   bin %08x / elf %08x',
                 bindesc.code_end, relfdesc.code_end)
         logfunc('size  bin %08x / elf %08x',
-                bindesc.raw_size, relfdesc.raw_size)
+                bindesc.size, relfdesc.size)
         logfunc('entry bin %08x / elf %08x',
                 bindesc.entry_point, relfdesc.entry_point)
         return match
@@ -683,7 +497,7 @@ class FlashGen:
 
     def _load_elf_info(self, efp: BinaryIO) \
             -> Optional[RuntimeDescriptor]:
-        if not ELFFile:
+        if not ElfBlob.LOADED:
             # ELF tools are not available
             self._log.warning('ELF file cannot be verified')
             return None
@@ -692,8 +506,7 @@ class FlashGen:
         if elf.address_size != 32:
             raise ValueError('Spefified ELF file {} is not an ELF32 file')
         elfstart, elfend = elf.code_span
-        return RuntimeDescriptor(elfstart, elfend, elf.raw_size,
-                                 elf.entry_point)
+        return RuntimeDescriptor(elfstart, elfend, elf.size, elf.entry_point)
 
     def _store_debug_info(self, entryname: str, filename: Optional[str]) \
             -> None:
@@ -827,7 +640,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        configure_loggers(args.verbose, 'flashgen')
+        configure_loggers(args.verbose, 'flashgen', 'elf')
 
         use_bl0 = bool(args.boot) or len(args.otdesc) > 1
         gen = FlashGen(args.offset if use_bl0 else 0, bool(args.unsafe_elf),
