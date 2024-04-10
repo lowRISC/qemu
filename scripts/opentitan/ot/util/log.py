@@ -1,14 +1,16 @@
-"""Logging helpers.
-"""
-
 # Copyright (c) 2023-2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""Logging helpers.
+
+   :author: Emmanuel Blot <eblot@rivosinc.com>
+"""
 
 from logging import (Formatter, Logger, StreamHandler, CRITICAL, DEBUG, INFO,
                      ERROR, WARNING, getLogger)
 from os import isatty
 from sys import stderr
-from typing import List
+from typing import List, Tuple
 
 
 class ColorLogFormatter(Formatter):
@@ -82,12 +84,18 @@ def configure_loggers(level: int, *lognames: List[str], **kwargs) \
     logh = StreamHandler(stderr)
     logh.setFormatter(formatter)
     loggers: List[Logger] = []
+    logdefs: List[Tuple[List[str], Logger]] = []
     for logdef in lognames:
         if isinstance(logdef, int):
             loglevel += -10 * logdef
             continue
         log = getLogger(logdef)
         log.setLevel(max(DEBUG, loglevel))
-        log.addHandler(logh)
         loggers.append(log)
+        logdefs.append((logdef.split('.'), log))
+    logdefs.sort(key=lambda p: len(p[0]))
+    # ensure there is only one handler per logger subtree
+    for _, log in logdefs:
+        if not log.hasHandlers():
+            log.addHandler(logh)
     return loggers
