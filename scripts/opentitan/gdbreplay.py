@@ -648,7 +648,8 @@ def main():
         qemu_path = None
     try:
         args: Optional[Namespace] = None
-        argparser = ArgumentParser(description=modules[__name__].__doc__)
+        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('-t', '--trace', metavar='LOG',
                                type=FileType('rt'),
                                help='QEMU execution trace log')

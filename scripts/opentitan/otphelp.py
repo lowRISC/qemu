@@ -126,7 +126,8 @@ def main():
     """Main routine"""
     debug = True
     try:
-        argparser = ArgumentParser(description=modules[__name__].__doc__)
+        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('-c', '--config', metavar='JSON',
                                type=FileType('rt', encoding='utf-8'),
                                help='path to configuration file')

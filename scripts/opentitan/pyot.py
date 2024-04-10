@@ -1384,7 +1384,8 @@ def main():
     tmp_result: Optional[str] = None
     try:
         args: Optional[Namespace] = None
-        argparser = ArgumentParser(description=modules[__name__].__doc__)
+        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        argparser = ArgumentParser(description=f'{desc}.')
         qvm = argparser.add_argument_group(title='Virtual machine')
         rel_qemu_path = relpath(qemu_path) if qemu_path else '?'
         qvm.add_argument('-q', '--qemu',
