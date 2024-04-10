@@ -80,7 +80,6 @@ class LifeCycleController:
     TOKEN_FORMAT = '<4I'
 
     def __init__(self, dtm: DebugTransportModule, address: int):
-        super().__init__()
         self._log = getLogger('dtm.lcctrl')
         self._dtm = dtm
         self._dmi = dtm['dmi']
