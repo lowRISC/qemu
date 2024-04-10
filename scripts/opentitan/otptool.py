@@ -22,6 +22,7 @@ from typing import (Any, BinaryIO, Dict, Iterator, List, Optional, Set, TextIO,
                     Tuple, Union)
 
 from ot.util.log import configure_loggers
+from ot.util.misc import HexInt
 
 try:
     # try to load HJSON if available
@@ -43,18 +44,6 @@ if version_info[:2] < (3, 7):
 def round_up(value: int, rnd: int) -> int:
     """Round up a integer value."""
     return (value + rnd - 1) & -rnd
-
-
-class HexInt(int):
-    """Simple wrapper to always represent an integer in hexadecimal format."""
-
-    def __repr__(self) -> str:
-        return f'0x{self:x}'
-
-    @staticmethod
-    def parse(val: str) -> int:
-        """Simple helper to support hexadecimal integer in argument parser."""
-        return int(val, val.startswith('0x') and 16 or 10)
 
 
 class classproperty(property):

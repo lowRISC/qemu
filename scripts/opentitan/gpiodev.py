@@ -18,6 +18,7 @@ from time import sleep
 from typing import Optional, TextIO, Tuple
 
 from ot.util.log import configure_loggers
+from ot.util.misc import HexInt
 
 # pylint: disable-msg=missing-function-docstring,missing-class-docstring
 # pylint: disable-msg=too-few-public-methods
@@ -262,10 +263,6 @@ class GpioDevice:
         return ''.join(lines)
 
 
-def hexint(val: str) -> int:
-    return int(val, val.startswith('0x') and 16 or 10)
-
-
 def main():
     """Main routine.
     """
@@ -279,7 +276,7 @@ def main():
                                help='input file to check command sequence')
         argparser.add_argument('-r', '--record', type=FileType('wt'),
                                help='output file to record command sequence')
-        argparser.add_argument('-e', '--end', type=hexint,
+        argparser.add_argument('-e', '--end', type=HexInt.parse,
                                help='emit the specified value to trigger '
                                     'remote exit on last received command')
         argparser.add_argument('-q', '--quit-on-error', action='store_true',

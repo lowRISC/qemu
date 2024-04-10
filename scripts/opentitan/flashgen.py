@@ -24,6 +24,7 @@ from typing import (Any, BinaryIO, Dict, Iterator, List, NamedTuple, Optional,
                     Tuple, Union)
 
 from ot.util.log import configure_loggers
+from ot.util.misc import HexInt
 
 try:
     # note: pyelftools package is an OpenTitan toolchain requirement, see
@@ -781,10 +782,6 @@ class FlashGen:
                 self._log.debug('%s: (%d) %s', item, len(value), value)
 
 
-def hexint(val: str) -> int:
-    return int(val, val.startswith('0x') and 16 or 10)
-
-
 def main():
     """Main routine"""
     debug = True
@@ -800,7 +797,7 @@ def main():
         img.add_argument('-a', '--bank', type=int, choices=banks,
                          default=banks[0],
                          help=f'flash bank for data (default: {banks[0]})')
-        img.add_argument('-s', '--offset', type=hexint,
+        img.add_argument('-s', '--offset', type=HexInt.parse,
                          default=FlashGen.CHIP_ROM_EXT_SIZE_MAX,
                          help=f'offset of the BL0 file (default: '
                               f'0x{FlashGen.CHIP_ROM_EXT_SIZE_MAX:x})')
