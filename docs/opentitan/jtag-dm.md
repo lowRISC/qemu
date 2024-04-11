@@ -126,3 +126,6 @@ JTAG/DTM/DM stack.
 
 A demo application is available from [`scripts/opentitan/dtm.py`](dtm.md) that can report basic
 information about this stack and demonstrate how to use the Debug Module to access the Ibex core.
+
+The [`scripts/opentitan/otpdm.py`](otpdm.md) also use the same stack to access the cells of the OTP
+controller.

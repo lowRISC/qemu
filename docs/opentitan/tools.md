@@ -17,6 +17,8 @@ directory to help with these tasks.
 
 ## Companion file management
 
+* [`otpdm.py`](otpdm.md) can be used to access the OTP Controller over a JTAG/DTM/DM link. It reads
+  out partition's item values and can update those items.
 * [`otptool.py`](otptool.md) can be used to generate an OTP image from a OTP VMEM file and can be
   used to decode (some of the) encoded data in the OTP image.
 * [`flashgen.py`](flashgen.md) can be used to generate a flash image with either a ROM_EXT and BL0

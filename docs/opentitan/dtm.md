@@ -80,7 +80,7 @@ Extras:
 * `-P` specify the TCP port of the JTAG server in the QEMU VM, should match the port part of `-jtag`
   option for invoking QEMU.
 
-* `-Q` to not send QEMU a request for termination when this script exits.
+* `-Q` do not send QEMU a request for termination when this script exits.
 
 * `-s` specify the number of bytes to read from or write to memory. Useful with the `--mem` option.
   See also the `--address` option. This option may be omitted for the `write` memory operation, in

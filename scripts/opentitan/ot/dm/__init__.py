@@ -6,4 +6,4 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-from .dm import DebugModule
+from .dm import DebugModule  # noqa: F401
