@@ -6,13 +6,20 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 try:
     # only available from Python 3.12+
     from collections.abc import Buffer
 except ImportError:
     Buffer = [bytes | bytearray | memoryview]
+
+
+class classproperty(property):
+    """Getter property decorator for a class"""
+    # pylint: disable=invalid-name
+    def __get__(self, obj: Any, objtype=None) -> Any:
+        return super().__get__(objtype)
 
 
 class HexInt(int):
@@ -39,3 +46,8 @@ def dump_buffer(buffer: Buffer, addr: int) -> None:
         text = ''.join(chr(c) if 0x20 <= c < 0x7f else '.'
                        for c in view[pos:pos+16])
         print(f'{addr+pos:08x}  {buf}  |{text}|')
+
+
+def round_up(value: int, rnd: int) -> int:
+    """Round up a integer value."""
+    return (value + rnd - 1) & -rnd

@@ -22,7 +22,7 @@ from typing import (Any, BinaryIO, Dict, Iterator, List, Optional, Set, TextIO,
                     Tuple, Union)
 
 from ot.util.log import configure_loggers
-from ot.util.misc import HexInt
+from ot.util.misc import HexInt, classproperty, round_up
 
 try:
     # try to load HJSON if available
@@ -39,18 +39,6 @@ except ImportError:
 # requirement: Python 3.7+: dict entries are kept in creation order
 if version_info[:2] < (3, 7):
     raise RuntimeError('Unsupported Python version')
-
-
-def round_up(value: int, rnd: int) -> int:
-    """Round up a integer value."""
-    return (value + rnd - 1) & -rnd
-
-
-class classproperty(property):
-    """Getter property decorator for a class"""
-    # pylint: disable=invalid-name
-    def __get__(self, obj: Any, objtype=None) -> Any:
-        return super().__get__(objtype)
 
 
 class OtpPartitionDecoder:
