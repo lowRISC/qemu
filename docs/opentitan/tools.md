@@ -31,6 +31,8 @@ directory to help with these tasks.
    develop the machine itself.
 * `devproxy.py` is a Python module that provides an API to remote drive the [DevProxy](devproxy.md)
   communication interface.
+* [`dtm.py`](dtm.md) is a tiny Python script that can be used to check the JTAG/DTM/DM stack is
+  up and running and demonstrate how to use the Debug Module to access the Ibex core.
 * [`gdbreplay.py`](gdbreplay.md) is a basic GDB server that can be used to replay Ibex execution
   stream from a QEMU execution trace.
 * [`gpiodev.py`](gpiodev.md) is a tiny script to run regression tests with GPIO device.

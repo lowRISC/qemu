@@ -22,9 +22,9 @@ dispatches requests to Debug Module depending on the received DMI address.
 See also [JTAG mailbox](jtagmbx.md) and [Life Controller](lc_ctrl_dmi.md) for other Debug Modules.
 
 ```
-+----------------+
-| Host (OpenOCD) |
-+----------------+
++--------------------------+
+| Host (OpenOCD or Python) |
++--------------------------+
       |
       | TCP connection ("bitbang mode")
       |
@@ -118,3 +118,11 @@ A basic `$HOME/.gdbinit` as the following should connect GDB to the running Open
 ```
 target remote :3333
 ```
+
+## Communicating with JTAG server using Python
+
+`scripts/opentitan/ot` directory contains Python modules that provide several APIs to test the
+JTAG/DTM/DM stack.
+
+A demo application is available from [`scripts/opentitan/dtm.py`](dtm.md) that can report basic
+information about this stack and demonstrate how to use the Debug Module to access the Ibex core.

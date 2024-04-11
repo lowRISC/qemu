@@ -174,7 +174,7 @@ class DMI(DTMRegister):
         dmi |= value << 2
         dmi |= self.OPS['write']
         wbseq = BitSequence(dmi, self.length)
-        self._log.info('write: 0x%08x', value)
+        self._log.debug('write: 0x%08x', value)
         self._write(wbseq)
         rbseq = self._read(self.length)
         res = int(rbseq) & 0b11
@@ -187,7 +187,7 @@ class DMI(DTMRegister):
     def read(self, address: int) -> int:
         """Read a 32-bit value from the specified address
         """
-        self._log.info('read @ 0x%x', address)
+        self._log.debug('read @ 0x%x', address)
         dmi = self._build_dmi(address)
         dmi |= self.OPS['read']
         wbseq = BitSequence(dmi, self.length)
@@ -202,7 +202,7 @@ class DMI(DTMRegister):
             raise err
         value >>= 2
         value &= 0xffff_ffff
-        self._log.info('read: 0x%08x', value)
+        self._log.debug('read: 0x%08x', value)
         return value
 
     def _build_dmi(self, address: int) -> int:
