@@ -37,7 +37,11 @@ from .jtag import JtagController
 
 
 class JtagBitbangController(JtagController):
-    """JTAG master for Remote Bitbang connection."""
+    """JTAG master for Remote Bitbang connection.
+
+       :param sock: communication socket with remote QEMU JTAG server
+       :param link_log: whether to emit link log messages
+    """
 
     DEFAULT_PORT = 3335
     """Default TCP port."""
@@ -50,15 +54,16 @@ class JtagBitbangController(JtagController):
        controller.
     """
 
-    READ = 'R'.encode()
+    READ = b'R'
     """JTAG bitbang code to receive data from TDO."""
 
-    QUIT = 'Q'.encode()
+    QUIT = b'Q'
     """JTAG bitbang code to quit."""
 
-    def __init__(self, sock: socket):
+    def __init__(self, sock: socket, link_log: bool = False):
         self._log = getLogger('jtag.ctrl')
         self._sock = sock
+        self._link_log = link_log
         self._last: Optional[bool] = None  # Last deferred TDO bit
         self._outbuf = bytearray()
         self._tck = False
@@ -96,14 +101,21 @@ class JtagBitbangController(JtagController):
         if self._last is not None:
             self._tdi = self._last
             self._last = None
-        self._log.debug('write TMS [%d] %s', len(modesel), modesel)
+        if self._link_log:
+            self._log.debug('write TMS [%d] %s', len(modesel), modesel)
+        tck = self._tck
+        tdi = self._tdi
+        code = self._bus_code
+        stream = bytearray()
         while modesel:
             tms = modesel.pop_left_bit()
-            self._write(self._bus_code(self._tck, tms, self._tdi))
-            self._tck = not self._tck
-            self._write(self._bus_code(self._tck, tms, self._tdi))
-            self._tck = not self._tck
+            stream.append(code(tck, tms, tdi))
+            tck = not tck
+            stream.append(code(tck, tms, tdi))
+            tck = not tck
+        self._sock.send(stream)
         self._tms = tms
+        self._tck = tck
 
     def write(self, out: BitSequence, use_last: bool = True):
         if not isinstance(out, BitSequence):
@@ -113,14 +125,22 @@ class JtagBitbangController(JtagController):
                 # TODO: check if this case needs to be handled
                 raise NotImplementedError('Last is lost')
             self._last = out.pop_left_bit()
-        self._log.debug('write TDI [%d] %s', len(out), out)
+        if self._link_log:
+            self._log.debug('write TDI [%d] %s', len(out), out)
+        tms = self._tms
+        tck = self._tck
+        code = self._bus_code
+        stream = bytearray()
         while out:
             tdi = out.pop_right_bit()
-            self._write(self._bus_code(self._tck, self._tms, tdi))
-            self._tck = not self._tck
-            self._write(self._bus_code(self._tck, self._tms, tdi))
-            self._tck = not self._tck
+            stream.append(code(tck, tms, tdi))
+            tck = not tck
+            stream.append(code(tck, tms, tdi))
+            tck = not tck
+        self._sock.send(stream)
         self._tdi = tdi
+        self._tms = tms
+        self._tck = tck
 
     def read(self, length: int) -> BitSequence:
         if length == 0:
@@ -128,13 +148,21 @@ class JtagBitbangController(JtagController):
         bseq = BitSequence()
         rem = length
         timeout = now() + self.RECV_TIMEOUT
-        self._log.debug('read %d bits, TMS: %d', length, self._tms)
+        if self._link_log:
+            self._log.debug('read %d bits, TMS: %d', length, self._tms)
+        tms = self._tms
+        tck = self._tck
+        tdi = self._tdi
+        read = ord(self.READ)
+        code = self._bus_code
+        stream = bytearray()
         for _ in range(length):
-            self._write(self._bus_code(self._tck, self._tms, self._tdi))
-            self._tck = not self._tck
-            self._write(self._bus_code(self._tck, self._tms, self._tdi))
-            self._tck = not self._tck
-            self._sock.send(self.READ)
+            stream.append(code(tck, tms, tdi))
+            tck = not tck
+            stream.append(code(tck, tms, tdi))
+            tck = not tck
+            stream.append(read)
+        self._sock.send(stream)
         while rem:
             try:
                 data = self._sock.recv(length)
@@ -146,7 +174,8 @@ class JtagBitbangController(JtagController):
             bseq.push_right(data)
             timeout = now() + self.RECV_TIMEOUT
         bseq.reverse()
-        self._log.debug('read TDI [%d] %s', len(bseq), bseq)
+        if self._link_log:
+            self._log.debug('read TDI [%d] %s', len(bseq), bseq)
         return bseq
 
     @property
@@ -156,7 +185,8 @@ class JtagBitbangController(JtagController):
     @tdi.setter
     def tdi(self, value: bool):
         self._tdi = bool(value)
-        self._log.debug('set TDI %u', self._tdi)
+        if self._link_log:
+            self._log.debug('set TDI %u', self._tdi)
 
     @property
     def tms(self) -> bool:
@@ -175,6 +205,7 @@ class JtagBitbangController(JtagController):
         return ord('r') + ((int(trst) << 1) | srst)
 
     def _write(self, code: int):
-        self._log.debug('_write 0x%02x %s (%s)', code, f'{code-0x30:03b}',
-                        chr(code))
+        if self._link_log:
+            self._log.debug('_write 0x%02x %s (%s)', code, f'{code-0x30:03b}',
+                            chr(code))
         self._sock.send(bytes([code]))

@@ -9,8 +9,6 @@
    Based on JTAG support for FTDI from PyFtdi module
 """
 
-# pylint: enable=missing-function-docstring
-
 from logging import getLogger
 from typing import Dict, List, Tuple, Union
 
