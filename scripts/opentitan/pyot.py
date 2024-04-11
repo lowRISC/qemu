@@ -954,7 +954,7 @@ class QEMUExecuter:
             raise ValueError('Invalid suffixes sub-section')
         self._suffixes.extend(suffixes)
 
-    def run(self, debug: bool) -> int:
+    def run(self, debug: bool, allow_no_test: bool) -> int:
         """Execute all requested tests.
 
            :return: success or the code of the first encountered error
@@ -989,6 +989,9 @@ class QEMUExecuter:
             tests = self._build_test_list()
             tcount = len(tests)
             self._log.info('Found %d tests to execute', tcount)
+            if not tcount and not allow_no_test:
+                self._log.error('No test can be run')
+                return 1
             for tpos, test in enumerate(tests, start=1):
                 self._log.info('[TEST %s] (%d/%d)', self.get_test_radix(test),
                                tpos, tcount)
@@ -1435,6 +1438,9 @@ def main():
                            metavar='file', help='rom extension or application')
         files.add_argument('-b', '--boot',
                            metavar='file', help='bootloader 0 file')
+        files.add_argument('-Z', '--zero', action='store_true',
+                           default=False,
+                           help='do not error if no test can be executed')
         exe = argparser.add_argument_group(title='Execution')
         exe.add_argument('-R', '--summary', action='store_true',
                          help='show a result summary')
@@ -1537,7 +1543,7 @@ def main():
             if debug:
                 print(format_exc(chain=False), file=stderr)
             argparser.error(str(exc))
-        ret = qexc.run(args.debug)
+        ret = qexc.run(args.debug, args.zero)
         if args.summary:
             rfmt = ResultFormatter()
             rfmt.load(args.result)

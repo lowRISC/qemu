@@ -51,6 +51,7 @@ Files:
   -f RAW, --flash RAW   embedded Flash image file
   -x file, --exec file  rom extension or application
   -b file, --boot file  bootloader 0 file
+  -Z, --zero            do not error if no test can be executed
 
 Execution:
   -R, --summary         show a result summary
@@ -144,7 +145,9 @@ This tool may be used in two ways, which can be combined:
 *  `-b` / ` --boot`  specify a bootloader 0 file that can be added to the flash image file when
    a ROM extension file is specified with the `-x` option. This option is mutually exclusive with
    the `-f` option.
-
+* `-Z`, `--zero` do not report an error if no test can be executed with the specified filters and
+   detected test applications. Default behavior is to report an error should such a condition arise,
+   as it likely comes from a misconfiguration or build issue.
 
 ## Configuration file
 
