@@ -92,8 +92,8 @@ REG32(HOST_INTR_MSG_DATA, 0x40u)
  * they are overlaid on the sys side by the PCIe wrapper with DOE EXT CAP and
  * CAP registers
  */
-REG32(SYS_INTR_MSG_ADDR, 0x00u)
-REG32(SYS_INTR_MSG_DATA, 0x04u)
+REG32(DEPRECATED_MSG_ADDR, 0x00u)
+REG32(DEPRECATED_MSG_DATA, 0x04u)
 REG32(SYS_CONTROL, 0x08u)
     FIELD(SYS_CONTROL, ABORT, 0u, 1u)
     FIELD(SYS_CONTROL, SYS_INT_EN, 1u, 1u)
@@ -105,6 +105,8 @@ REG32(SYS_STATUS, 0x0cu)
     FIELD(SYS_STATUS, READY, 31u, 1u)
 REG32(SYS_WRITE_DATA, 0x10u)
 REG32(SYS_READ_DATA, 0x14u)
+REG32(SYS_INTR_MSG_ADDR, 0x18u)
+REG32(SYS_INTR_MSG_DATA, 0x1cu)
 
 /* clang-format on */
 
@@ -114,13 +116,14 @@ REG32(SYS_READ_DATA, 0x14u)
 #define REGS_HOST_COUNT (R_HOST_LAST_REG + 1u)
 #define REGS_HOST_SIZE  (REGS_HOST_COUNT * sizeof(uint32_t))
 
-#define R_SYS_LAST_REG (R_SYS_READ_DATA)
+#define R_SYS_LAST_REG (R_SYS_INTR_MSG_DATA)
 #define REGS_SYS_COUNT (R_SYS_LAST_REG + 1u)
 #define REGS_SYS_SIZE  (REGS_SYS_COUNT * sizeof(uint32_t))
 
-#define R_SYSLOCAL_LAST_REG (R_SYS_INTR_MSG_DATA)
-#define REGS_SYSLOCAL_COUNT (R_SYSLOCAL_LAST_REG + 1u)
-#define REGS_SYSLOCAL_SIZE  (REGS_SYSLOCAL_COUNT * sizeof(uint32_t))
+#define R_SYSLOCAL_FIRST_REG (R_SYS_INTR_MSG_ADDR)
+#define R_SYSLOCAL_LAST_REG  (R_SYS_INTR_MSG_DATA)
+#define REGS_SYSLOCAL_COUNT  (R_SYSLOCAL_LAST_REG - R_SYSLOCAL_FIRST_REG + 1u)
+#define REGS_SYSLOCAL_SIZE   (REGS_SYSLOCAL_COUNT * sizeof(uint32_t))
 
 #define HOST_INTR_MASK \
     (INTR_MBX_READY_MASK | INTR_MBX_ABORT_MASK | INTR_MBX_ERROR_MASK)
@@ -166,12 +169,14 @@ static const char *REG_HOST_NAMES[REGS_HOST_COUNT] = {
 };
 
 static const char *REG_SYS_NAMES[REGS_SYS_COUNT] = {
-    REG_NAME_ENTRY(SYS_INTR_MSG_ADDR),
-    REG_NAME_ENTRY(SYS_INTR_MSG_DATA),
+    REG_NAME_ENTRY(DEPRECATED_MSG_ADDR),
+    REG_NAME_ENTRY(DEPRECATED_MSG_DATA),
     REG_NAME_ENTRY(SYS_CONTROL),
     REG_NAME_ENTRY(SYS_STATUS),
     REG_NAME_ENTRY(SYS_WRITE_DATA),
     REG_NAME_ENTRY(SYS_READ_DATA),
+    REG_NAME_ENTRY(SYS_INTR_MSG_ADDR),
+    REG_NAME_ENTRY(SYS_INTR_MSG_DATA),
 };
 /* clang-format on */
 
@@ -519,11 +524,12 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
     hwaddr reg = R32_OFF(addr);
 
     switch (reg) {
-    case R_SYS_INTR_MSG_ADDR:
-        val32 = host->regs[R_HOST_INTR_MSG_ADDR];
-        break;
-    case R_SYS_INTR_MSG_DATA:
-        val32 = host->regs[R_HOST_INTR_MSG_DATA];
+    case R_DEPRECATED_MSG_ADDR:
+    case R_DEPRECATED_MSG_DATA:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s deprecated reg %s 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, REG_NAME(SYS, reg), addr);
+        val32 = 0;
         break;
     case R_SYS_CONTROL:
         val32 = hregs[R_HOST_STATUS] & R_HOST_STATUS_SYS_INTR_ENABLE_MASK ?
@@ -573,6 +579,12 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
         /* "Reads of this register must return all 0’s." */
         val32 = 0;
         break;
+    case R_SYS_INTR_MSG_ADDR:
+        val32 = host->regs[R_HOST_INTR_MSG_ADDR];
+        break;
+    case R_SYS_INTR_MSG_DATA:
+        val32 = host->regs[R_HOST_INTR_MSG_DATA];
+        break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
                       __func__, s->ot_id, addr);
@@ -605,11 +617,11 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
                               val32);
 
     switch (reg) {
-    case R_SYS_INTR_MSG_ADDR:
-        host->regs[R_HOST_INTR_MSG_ADDR] = val32;
-        break;
-    case R_SYS_INTR_MSG_DATA:
-        host->regs[R_HOST_INTR_MSG_DATA] = val32;
+    case R_DEPRECATED_MSG_ADDR:
+    case R_DEPRECATED_MSG_DATA:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s deprecated reg %s 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, REG_NAME(SYS, reg), addr);
         break;
     case R_SYS_CONTROL:
         if (ot_mbx_is_enabled(s)) {
@@ -697,6 +709,12 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
             ot_mbx_clear_busy(s);
             xtrace_ot_mbx_status(s);
         }
+        break;
+    case R_SYS_INTR_MSG_ADDR:
+        host->regs[R_HOST_INTR_MSG_ADDR] = val32;
+        break;
+    case R_SYS_INTR_MSG_DATA:
+        host->regs[R_HOST_INTR_MSG_DATA] = val32;
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
