@@ -181,7 +181,7 @@ static int ot_ast_dj_get_random(OtRandomSrcIf *dev, int genid,
         } else {
             /* computed delay fits into a 31-bit value */
             wait_ns = (int)(timer_expire_time_ns(s->random.timer) -
-                            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT));
+                            qemu_clock_get_ns(OT_VIRTUAL_CLOCK));
         }
         return wait_ns;
     }
