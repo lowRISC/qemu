@@ -304,6 +304,7 @@ ot_rom_ctrl_mem_read_out(const char *id, uint32_t addr, uint32_t val, uint32_t p
 ot_rom_ctrl_mem_write(const char *id, uint32_t addr, uint32_t val, uint32_t pc) "%s: addr=0x%04x, val=0x%x, pc=0x%x"
 ot_rom_ctrl_mem_accepts(const char *id, uint32_t addr, bool is_write, uint32_t pc) "%s: addr=0x%04x, is_write=%u, pc=0x%x"
 ot_rom_ctrl_reset(const char *id, const char *phase) "%s: %s"
+ot_rom_ctrl_load_rom_no_image(const char *id) "%s: ROM image not defined"
 
 # ot_rstmgr.c
 

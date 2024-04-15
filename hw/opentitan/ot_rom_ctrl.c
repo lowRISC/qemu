@@ -225,6 +225,7 @@ static void ot_rom_ctrl_load_rom(OtRomCtrlState *s)
     /* try to find our ROM image object */
     obj = object_resolve_path_component(object_get_objects_root(), s->ot_id);
     if (!obj) {
+        trace_ot_rom_ctrl_load_rom_no_image(s->ot_id);
         return;
     }
     rom_img = (OtRomImg *)object_dynamic_cast(obj, TYPE_OT_ROM_IMG);
