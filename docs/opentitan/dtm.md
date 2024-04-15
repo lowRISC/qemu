@@ -43,6 +43,7 @@ Memory:
   -s SIZE, --size SIZE  size in bytes of memory to access
   -f FILE, --file FILE  file to read/write data for memory access
   -e ELF, --elf ELF     load ELF file into memory
+  -F, --fast-mode       do not check system bus status while transfering
 
 Extras:
   -v, --verbose         increase verbosity
@@ -63,6 +64,10 @@ Extras:
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
 * `-e` specify an ELF32 application file to upload into memory. See also the `--exec` option.
+
+* `-F` assume System Bus can cope with received data pace. This feature increases transfer data
+  rate by bypassing SB status check. However it  may cause the transfer to fail in case System Bus
+  becomes busy while data are transfered.
 
 * `-H` specify the address of the QEMU VM.
 
@@ -93,9 +98,11 @@ Extras:
   This can be useful for example when the QEMU VM is started with `-S` and no application code has
   been loaded in memory: once the DTM operations are completed, the default behavior is to resume
   the hart execution, would start execution code from the current PC and cause an immediate
-  exception.
+  exception. The `-x` option can nevertheless be executed, as it is the last action that the script
+  performs.
 
-* `-x` execute the loaded ELF application from its entry point. Requires the `--elf` option
+* `-x` execute the loaded ELF application from its entry point. Requires the `--elf` option.
+  Application is executed even with `-X` is defined.
 
 ### Examples
 
@@ -111,9 +118,9 @@ Running QEMU VM with the `-jtag tcp::3335` option:
   ./scripts/opentitan/dtm.py -c misa -C 0x401411ad
   ````
 
-* Load and execute an application
+* Load (fast mode) and execute an application
   ````sh
-  ./scripts/opentitan/dtm.py -e .../helloworld -x
+  ./scripts/opentitan/dtm.py -e .../helloworld -x -F
   ````
 
 * Dump a memory segment to stdout

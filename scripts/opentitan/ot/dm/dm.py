@@ -308,7 +308,7 @@ class DebugModule:
         return value
 
     def memory_copy(self, mfp: BinaryIO, mop: str, addr: int,
-                    size: Optional[int]) -> None:
+                    size: Optional[int], no_check: bool = False) -> None:
         """Handle memory operations.
 
            Only support 32-bit transfers (address and size should be aligned)
@@ -319,6 +319,9 @@ class DebugModule:
            :param mop: the operation to perform (read, write)
            :param addr: start address
            :param size: count of bytes to write
+           :param no_check: assume remote peer always accepts incoming data:
+                            SBCS status is not checked during transfer if this
+                            option is set.
         """
         read = mop == 'read'
         write = mop == 'write'
@@ -344,7 +347,8 @@ class DebugModule:
             # pylint: disable=access-member-before-definition
             while to_go > 0:
                 self._log.debug('reading mem from 0x%08x', addr)
-                self._wait_sb_idle()
+                if not no_check:
+                    self._wait_sb_idle()
                 # trigger next read (sbreadondata), inc addr (sbautoincrement)
                 data = self.sbdata0
                 mfp.write(data.to_bytes(4, 'little'))
@@ -366,9 +370,12 @@ class DebugModule:
                 data = int.from_bytes(buf, 'little')
                 # inc addr (sbautoincrement)
                 self.sbdata0 = data
-                self._wait_sb_idle()
+                if not no_check:
+                    self._wait_sb_idle()
                 to_go -= 4
                 addr += 4
+        if no_check:
+            self._wait_sb_idle(check=True)
         lap = now() - start
         rate = size / (lap * 1024)
         self._log.info('copied %d KB @ %.1f KB/s', size//1024, rate)

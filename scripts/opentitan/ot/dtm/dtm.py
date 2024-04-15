@@ -263,7 +263,6 @@ class DebugTransportModule:
     def read(self, address: int, length: int) -> BitSequence:
         """Read a bit sequence value."""
         self._engine.write_ir(BitSequence(address, self._ir_length))
-        self._engine.set_tdi(False)
         return self._engine.read_dr(length)
 
     def write(self, address: int, bseq: BitSequence) -> None:

@@ -22,7 +22,7 @@ import sys
 # pylint: disable=import-error
 
 # JTAG module is available from the scripts/ directory
-sys.path.append(joinpath(normpath(dirname(dirname(sys.argv[0])))))
+sys.path.append(normpath(dirname(dirname(sys.argv[0]))))
 
 from ot.util.elf import ElfBlob  # noqa: E402
 from ot.util.log import configure_loggers  # noqa: E402
@@ -88,6 +88,10 @@ def main():
                          help='file to read/write data for memory access')
         mem.add_argument('-e', '--elf', type=FileType('rb'),
                          help='load ELF file into memory')
+        mem.add_argument('-F', '--fast-mode', default=False,
+                         action='store_true',
+                         help='do not check system bus status while '
+                              'transfering')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -116,7 +120,7 @@ def main():
                 print(f'DTM:       v{version[0]}.{version[1]}, {abits} bits')
                 dtm['dtmcs'].check()
             dtm['dtmcs'].dmireset()
-            if args.csr_check is None and not args.csr:
+            if args.csr_check is not None and not args.csr:
                 argparser.error('CSR check requires CSR option')
             if args.csr:
                 if not rvdm:
@@ -137,7 +141,8 @@ def main():
                     except ValueError:
                         csr = args.csr
                 csr_val = rvdm.read_csr(csr)
-                rvdm.resume()
+                if not args.no_exec:
+                    rvdm.resume()
                 if args.csr_check is not None:
                     if csr_val != args.csr_check:
                         raise RuntimeError(f'CSR {args.csr} check failed: '
@@ -162,10 +167,11 @@ def main():
                         mode = 'rb' if args.mem == 'write' else 'wb'
                         with open(args.file, mode) as mfp:
                             rvdm.memory_copy(mfp, args.mem, args.address,
-                                             args.size)
+                                             args.size, no_check=args.fast_mode)
                     else:
                         mfp = BytesIO()
-                        rvdm.memory_copy(mfp, args.mem, args.address, args.size)
+                        rvdm.memory_copy(mfp, args.mem, args.address, args.size,
+                                         no_check=args.fast_mode)
                         dump_buffer(mfp, args.address)
                 finally:
                     if not args.no_exec:
@@ -184,11 +190,12 @@ def main():
                 try:
                     rvdm.halt()
                     mfp = BytesIO(elf.blob)
-                    rvdm.memory_copy(mfp, 'write', elf.load_address, args.size)
+                    rvdm.memory_copy(mfp, 'write', elf.load_address, args.size,
+                                     no_check=args.fast_mode)
                     if args.execute:
                         rvdm.set_pc(elf.entry_point)
                 finally:
-                    if not args.no_exec:
+                    if args.execute or not args.no_exec:
                         rvdm.resume()
             else:
                 if args.execute:
