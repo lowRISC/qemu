@@ -117,14 +117,13 @@ class JtagBitbangController(JtagController):
         self._tms = tms
         self._tck = tck
 
-    def write(self, out: BitSequence, use_last: bool = True):
+    def write(self, out: BitSequence):
         if not isinstance(out, BitSequence):
             raise ValueError('out is not a BitSequence')
-        if use_last:
-            if self._last is not None:
-                # TODO: check if this case needs to be handled
-                raise NotImplementedError('Last is lost')
-            self._last = out.pop_left_bit()
+        if self._last is not None:
+            # TODO: check if this case needs to be handled
+            raise NotImplementedError('Last is lost')
+        self._last = out.pop_left_bit()
         if self._link_log:
             self._log.debug('write TDI [%d] %s', len(out), out)
         tms = self._tms
@@ -177,24 +176,6 @@ class JtagBitbangController(JtagController):
         if self._link_log:
             self._log.debug('read TDI [%d] %s', len(bseq), bseq)
         return bseq
-
-    @property
-    def tdi(self) -> bool:
-        return self._tdi
-
-    @tdi.setter
-    def tdi(self, value: bool):
-        self._tdi = bool(value)
-        if self._link_log:
-            self._log.debug('set TDI %u', self._tdi)
-
-    @property
-    def tms(self) -> bool:
-        return self._tms
-
-    @tms.setter
-    def tms(self, value: bool):
-        self._tms = bool(value)
 
     @classmethod
     def _bus_code(cls, tclk: bool, tms: bool, tdi: bool) -> int:

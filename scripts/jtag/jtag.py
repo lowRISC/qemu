@@ -217,13 +217,11 @@ class JtagController:
         """
         raise NotImplementedError('ABC')
 
-    def write(self, out: BitSequence, use_last: bool = True):
+    def write(self, out: BitSequence):
         """Write a sequence of bits to TDI.
 
            :note: out content may be consumed, i.e. emptied
            :param out: the bot sequence of TDI bits to clock in
-           :param use_last: whether to clock in the stored TMS bits on first
-                            clock cycle
         """
         raise NotImplementedError('ABC')
 
@@ -233,26 +231,6 @@ class JtagController:
            :param length: the number of bits to clock out from the remote device
            :return: the received TDO bits (length-long)
         """
-        raise NotImplementedError('ABC')
-
-    @property
-    def tdi(self) -> bool:
-        """Get current TDI value."""
-        raise NotImplementedError('ABC')
-
-    @tdi.setter
-    def tdi(self, value: bool):
-        """Set TDI value, to be clocked out on next operation."""
-        raise NotImplementedError('ABC')
-
-    @property
-    def tms(self) -> bool:
-        """Get current TMS value."""
-        raise NotImplementedError('ABC')
-
-    @tms.setter
-    def tms(self, value: bool):
-        """Set TMS value, to be clocked out on next operation."""
         raise NotImplementedError('ABC')
 
 
@@ -321,12 +299,8 @@ class JtagEngine:
     def write_ir(self, instruction) -> None:
         """Change the current instruction of the TAP controller"""
         self.change_state('shift_ir')
-        ilength = len(instruction)  # write consumes the instruction
         self._ctrl.write(instruction)
         self.change_state('update_ir')
-        # flush IR output
-        self._ctrl.tms = False
-        self._ctrl.read(ilength)
 
     def capture_dr(self) -> None:
         """Capture the current data register from the TAP controller"""
@@ -341,27 +315,6 @@ class JtagEngine:
     def read_dr(self, length: int) -> BitSequence:
         """Read the data register from the TAP controller"""
         self.change_state('shift_dr')
-        self._ctrl.tms = False
         data = self._ctrl.read(length)
         self.change_state('update_dr')
         return data
-
-    def write_tms(self, out) -> None:
-        """Change the TAP controller state"""
-        self._ctrl.write_tms(out)
-
-    def write(self, out, use_last=False) -> None:
-        """Write a sequence of bits to TDI"""
-        self._ctrl.write(out, use_last)
-
-    def read(self, length):
-        """Read out a sequence of bits from TDO"""
-        return self._ctrl.read(length)
-
-    def set_tdi(self, value: bool):
-        """Force default TDI value, clocked out on each cycle."""
-        self._ctrl.tdi = value
-
-    def set_tms(self, value: bool):
-        """Force default TMS value clocked out on each cycle."""
-        self._ctrl.tms = value
