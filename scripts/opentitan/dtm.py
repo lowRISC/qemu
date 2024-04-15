@@ -34,6 +34,13 @@ from jtag.bitbang import JtagBitbangController  # noqa: E402
 from jtag.jtag import JtagEngine  # noqa: E402
 
 
+DEFAULT_IR_LENGTH = 5
+"""Default TAP Instruction Register length."""
+
+DEFAULT_DMI_ADDRESS = 0x0
+"""Default DMI address of the DM."""
+
+
 def idcode(engine: JtagEngine, ir_length: int) -> None:
     """Retrieve ID code."""
     code = JtagBitbangController.INSTRUCTIONS['idcode']
@@ -61,10 +68,14 @@ def main():
         qvm.add_argument('-Q', '--no-quit', action='store_true', default=False,
                          help='do not ask the QEMU to quit on exit')
         dmi = argparser.add_argument_group(title='DMI')
-        dmi.add_argument('-l', '--ir-length', type=int, default=5,
-                         help='bit length of the IR register')
-        dmi.add_argument('-b', '--base', type=HexInt.parse, default=0,
-                         help='define DMI base address')
+        dmi.add_argument('-l', '--ir-length', type=int,
+                         default=DEFAULT_IR_LENGTH,
+                         help=f'bit length of the IR register '
+                              f'(default: {DEFAULT_IR_LENGTH})')
+        dmi.add_argument('-b', '--base', type=HexInt.parse,
+                         default=DEFAULT_DMI_ADDRESS,
+                         help=f'define DMI base address '
+                              f'(default: 0x{DEFAULT_DMI_ADDRESS:x})')
         info = argparser.add_argument_group(title='Info')
         info.add_argument('-I', '--info', action='store_true',
                           help='report JTAG ID code and DTM configuration')
