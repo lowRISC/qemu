@@ -275,6 +275,7 @@ static void ot_aon_timer_rearm_wdog(OtAonTimerState *s, bool reset_origin)
     } else {
         int64_t delta = ot_aon_timer_ticks_to_ns(s, 0u, threshold - count);
         int64_t next = ot_aon_timer_compute_next_timeout(s, now, delta);
+        trace_ot_aon_timer_set_wdog(now, next);
         timer_mod(s->wdog_timer, next);
     }
 

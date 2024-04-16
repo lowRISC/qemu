@@ -23,6 +23,7 @@ ot_alert_io_write(uint32_t addr, uint32_t val, uint32_t pc) "addr=0x%02x, val=0x
 
 ot_aon_timer_irqs(bool wakeup, bool bark, bool bite) "wkup:%u bark:%u bite:%u"
 ot_aon_timer_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_aon_timer_set_wdog(int64_t now, int64_t next) "now %" PRId64 ", next %" PRId64
 ot_aon_timer_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 
 # ot_ast.c
