@@ -32,7 +32,7 @@
 /* ------------------------------------------------------------------------ */
 
 /* QEMU virtual timer to use for OpenTitan devices */
-#define OT_VIRTUAL_CLOCK QEMU_CLOCK_VIRTUAL_RT
+#define OT_VIRTUAL_CLOCK QEMU_CLOCK_VIRTUAL
 
 /* ------------------------------------------------------------------------ */
 /* Multi-bit boolean values */
