@@ -82,18 +82,17 @@ static const char *REG_NAMES[REGS_COUNT] = {
 
 struct OtTimerState {
     SysBusDevice parent_obj;
-    QEMUTimer *timer;
-
     MemoryRegion mmio;
-
-    uint32_t regs[REGS_COUNT];
-    uint32_t pclk;
-
-    int64_t origin_ns;
-
     IbexIRQ m_timer_irq;
     IbexIRQ irq;
     IbexIRQ alert;
+    QEMUTimer *timer;
+
+    uint32_t regs[REGS_COUNT];
+    int64_t origin_ns;
+
+    char *ot_id;
+    uint32_t pclk;
 };
 
 static uint64_t ot_timer_ns_to_ticks(OtTimerState *s, int64_t ns)
@@ -155,6 +154,9 @@ static void ot_timer_update_irqs(OtTimerState *s)
 {
     bool level =
         s->regs[R_INTR_STATE0] & s->regs[R_INTR_ENABLE0] & INTR_CMP0_MASK;
+    if (level != (bool)ibex_irq_get_level(&s->m_timer_irq)) {
+        trace_ot_timer_update_irq(s->ot_id, level);
+    }
     ibex_irq_set(&s->m_timer_irq, level);
     ibex_irq_set(&s->irq, level);
 }
@@ -239,7 +241,8 @@ static uint64_t ot_timer_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_timer_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_timer_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                               pc);
 
     return (uint32_t)val32;
 }
@@ -254,7 +257,7 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_timer_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_timer_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_ALERT_TEST:
@@ -342,6 +345,7 @@ static const MemoryRegionOps ot_timer_ops = {
 };
 
 static Property ot_timer_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtTimerState, ot_id),
     DEFINE_PROP_UINT32("pclk", OtTimerState, pclk, 0u),
     DEFINE_PROP_END_OF_LIST(),
 };
