@@ -129,3 +129,37 @@ information about this stack and demonstrate how to use the Debug Module to acce
 
 The [`scripts/opentitan/otpdm.py`](otpdm.md) also use the same stack to access the cells of the OTP
 controller.
+
+### Troubleshooting [#troubleshooting]
+
+A common issue with initial JTAG configuration is to use the wrong Instruction Register length.
+The IR length depends on the actual implementation of the TAP controller and therefore may be
+different across HW implementations, here across OpenTitan instantiations.
+
+Unfortunately, there is no reliable way to automatically detect the IR length, this needs to be
+a setting that should be provided to the JTAG tool. Scripts in `scripts/opentitan` use the `-l` /
+`--ir-length` option to specify the IR length. The default value may be obtained with the `-h`
+option, which is IR length = 5 bits for default EarlGrey and Darjeeling machines.
+
+Whenever the wrong IR length is specified, or the default IR length is used with a HW/VM machine
+that uses a non-default length, the first instruction that is stored in the TAP instruction register
+is misinterpreted, which may cause different errors with the same root cause: a wrong IR length
+setting.
+
+It is recommended to query the DMI address bits with for example [`scripts/opentitan/dtm.py`](dtm.md)
+which is a basic command that needs a valid IR length setting to complete. Use `dtm.py -I` to query
+some low-level information from the remote peer.
+
+It should report something like:
+````
+IDCODE:    0x11cdf
+DTM:       v0.13, 12 bits
+````
+
+* If the DTM bit count is stuck to 0, the IR length is likely wrong,
+* If an error message such as `Invalid reported address bits` is returned, the IR length is likely
+  wrong.
+
+Another common issue is to use a machine with multiple Debug Modules but fail to specify its base
+address. The default DMI base address is always `0x0`. Use `-b` / `--base` option to select the
+proper Debug Module base address.

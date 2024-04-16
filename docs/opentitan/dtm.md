@@ -102,7 +102,7 @@ Extras:
   performs.
 
 * `-x` execute the loaded ELF application from its entry point. Requires the `--elf` option.
-  Application is executed even with `-X` is defined.
+  Application is executed even with `-X` defined.
 
 ### Examples
 

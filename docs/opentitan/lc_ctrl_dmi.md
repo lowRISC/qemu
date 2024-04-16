@@ -65,3 +65,7 @@ lc_ctrl = LifeCycleController(dtm, 0x3000 >> 2)
 
 # See LifeCycleController for LC controller communication API
 ````
+
+### Troubleshooting
+
+See the [Troubleshooting](jtag-dm.md#troubleshooting) section for details.

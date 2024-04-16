@@ -246,3 +246,7 @@ Note: `devproxy.py` needs to be found within the Python path, using for example
 ```sh
 exprot PYTHONPATH=${QEMU_SOURCE_PATH}/scripts/opentitan
 ```
+
+### Troubleshooting
+
+See the [Troubleshooting](jtag-dm.md#troubleshooting) section for details.

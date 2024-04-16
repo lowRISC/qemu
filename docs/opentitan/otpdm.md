@@ -133,3 +133,7 @@ Running QEMU VM with the `-jtag tcp::3335` option:
     -w 4c6f72656d20697073756d20646f6c6f722073697420616d65742c20636f6e73
   ````
 
+### Troubleshooting
+
+See the [Troubleshooting](jtag-dm.md#troubleshooting) section for details.
+
