@@ -399,8 +399,6 @@ static bool ot_rom_ctrl_mem_accepts(void *opaque, hwaddr addr, unsigned size,
     (void)attrs;
     uint32_t pc = ibex_get_current_pc();
 
-    trace_ot_rom_ctrl_mem_accepts(s->ot_id, (uint32_t)addr, is_write, pc);
-
     if (!is_write) {
         /*
          * only allow reads during first reset (after complete check, MR gets
@@ -409,7 +407,13 @@ static bool ot_rom_ctrl_mem_accepts(void *opaque, hwaddr addr, unsigned size,
         return s->first_reset;
     }
 
-    return ((addr + size) <= s->size && s->first_reset);
+    bool accept = ((addr + size) <= s->size && s->first_reset);
+
+    if (!accept) {
+        trace_ot_rom_ctrl_mem_rejects(s->ot_id, (uint32_t)addr, is_write, pc);
+    }
+
+    return accept;
 }
 
 static void ot_rom_ctrl_send_kmac_req(OtRomCtrlState *s)
