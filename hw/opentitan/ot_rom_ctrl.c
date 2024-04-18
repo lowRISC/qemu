@@ -142,8 +142,9 @@ static void ot_rom_ctrl_load_elf(OtRomCtrlState *s, const OtRomImg *ri)
     hwaddr maxaddr;
     ot_rom_ctrl_get_mem_bounds(s, &minaddr, &maxaddr);
     uint64_t loaddr;
-    if (load_elf_ram_sym(ri->filename, NULL, NULL, NULL, NULL, &loaddr, NULL,
-                         NULL, 0, EM_RISCV, 1, 0, as, false, NULL) <= 0) {
+    if (load_elf_ram_sym_nosz(ri->filename, NULL, NULL, NULL, NULL, &loaddr,
+                              NULL, NULL, 0, EM_RISCV, 1, 0, as, false, NULL,
+                              true) <= 0) {
         error_setg(&error_fatal,
                    "ot_rom_ctrl: %s: ROM image '%s', ELF loading failed",
                    s->ot_id, ri->filename);
