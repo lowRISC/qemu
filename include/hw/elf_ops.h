@@ -321,7 +321,7 @@ static ssize_t glue(load_elf, SZ)(const char *name, int fd,
                                   uint32_t *pflags, int elf_machine,
                                   int clear_lsb, int data_swab,
                                   AddressSpace *as, bool load_rom,
-                                  symbol_fn_t sym_cb)
+                                  symbol_fn_t sym_cb, bool skip_nosz)
 {
     struct elfhdr ehdr;
     struct elf_phdr *phdr = NULL, *ph;
@@ -560,7 +560,7 @@ static ssize_t glue(load_elf, SZ)(const char *name, int fd,
                      * We need to zero'ify the space that is not copied
                      * from file
                      */
-                    if (file_size < mem_size) {
+                    if (file_size < mem_size && !skip_nosz) {
                         res = address_space_set(as ? as : &address_space_memory,
                                                 addr + file_size, 0,
                                                 mem_size - file_size,
