@@ -803,15 +803,14 @@ struct OtOTPDjState {
     IbexIRQ alerts[NUM_ALERTS];
     IbexIRQ pwc_otp_rsp;
 
-    uint32_t regs[REGS_COUNT];
+    uint32_t *regs;
 
     OtOTPLcBroadcast lc_broadcast;
-    // TODO: allocate outside the structure
-    OtOTPDAIController dai;
-    OtOTPLCIController lci;
-    OtOTPPartController partctrls[OTP_PART_COUNT];
+    OtOTPDAIController *dai;
+    OtOTPLCIController *lci;
+    OtOTPPartController *partctrls;
 
-    OtOTPStorage otp;
+    OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;
     OtOTPTokens *tokens;
 
@@ -1168,7 +1167,7 @@ static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 
 static uint32_t ot_otp_dj_dai_is_busy(const OtOTPDjState *s)
 {
-    return s->dai.state != OTP_DAI_IDLE;
+    return s->dai->state != OTP_DAI_IDLE;
 }
 
 static uint32_t ot_otp_dj_get_status(const OtOTPDjState *s)
@@ -1236,7 +1235,7 @@ static uint64_t ot_otp_dj_get_part_digest(OtOTPDjState *s, int part)
         return 0u;
     }
 
-    const uint8_t *base = (const uint8_t *)s->otp.data;
+    const uint8_t *base = (const uint8_t *)s->otp->data;
 
     uint64_t digest = ldq_le_p(base + offset);
 
@@ -1364,19 +1363,19 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, int partition)
 static void
 ot_otp_dj_dai_change_state_line(OtOTPDjState *s, OtOTPDAIState state, int line)
 {
-    trace_ot_otp_dai_change_state(line, DAI_STATE_NAME(s->dai.state),
-                                  s->dai.state, DAI_STATE_NAME(state), state);
+    trace_ot_otp_dai_change_state(line, DAI_STATE_NAME(s->dai->state),
+                                  s->dai->state, DAI_STATE_NAME(state), state);
 
-    s->dai.state = state;
+    s->dai->state = state;
 }
 
 static void
 ot_otp_dj_lci_change_state_line(OtOTPDjState *s, OtOTPLCIState state, int line)
 {
-    trace_ot_otp_lci_change_state(line, LCI_STATE_NAME(s->lci.state),
-                                  s->lci.state, LCI_STATE_NAME(state), state);
+    trace_ot_otp_lci_change_state(line, LCI_STATE_NAME(s->lci->state),
+                                  s->lci->state, LCI_STATE_NAME(state), state);
 
-    s->lci.state = state;
+    s->lci->state = state;
 }
 
 static void ot_otp_dj_lc_broadcast_recv(void *opaque, int n, int level)
@@ -1468,7 +1467,7 @@ static uint64_t ot_otp_dj_compute_partition_digest(
     OtPresentState *ps = ot_present_new();
 
     uint8_t buf[sizeof(uint64_t) * 2u];
-    uint64_t state = s->otp.digest_iv;
+    uint64_t state = s->otp->digest_iv;
     uint64_t out;
     for (unsigned off = 0; off < size; off += sizeof(buf)) {
         const uint8_t *chunk;
@@ -1486,7 +1485,7 @@ static uint64_t ot_otp_dj_compute_partition_digest(
         state ^= out;
     }
 
-    ot_present_init(ps, s->otp.digest_constant);
+    ot_present_init(ps, s->otp->digest_constant);
     ot_present_encrypt(ps, state, &out);
     state ^= out;
 
@@ -1497,13 +1496,13 @@ static uint64_t ot_otp_dj_compute_partition_digest(
 
 static uint64_t ot_otp_dj_load_partition_digest(OtOTPDjState *s, unsigned pos)
 {
-    if ((pos + sizeof(uint64_t)) > s->otp.data_size) {
+    if ((pos + sizeof(uint64_t)) > s->otp->data_size) {
         error_setg(&error_fatal, "Partition located outside storage?\n");
         /* linter doest not know the above call never returns */
         return 0u;
     }
 
-    const uint8_t *base = (const uint8_t *)s->otp.data;
+    const uint8_t *base = (const uint8_t *)s->otp->data;
     base += pos;
 
     uint64_t digest = ldq_le_p(base);
@@ -1528,7 +1527,7 @@ static void ot_otp_dj_bufferize_partition(OtOTPDjState *s, unsigned ix)
     unsigned offset = (unsigned)OtOTPPartDescs[ix].offset;
     unsigned part_size = OT_OTP_PART_DATA_BYTE_SIZE(ix);
 
-    const uint8_t *base = (const uint8_t *)s->otp.data;
+    const uint8_t *base = (const uint8_t *)s->otp->data;
     base += offset;
 
     memcpy(pctrl->buffer.data, base, part_size);
@@ -1659,16 +1658,16 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
     DAI_CHANGE_STATE(s, OTP_DAI_READ_WAIT);
     if (is_wide || is_digest) {
         waddr &= ~0b1u;
-        s->regs[R_DIRECT_ACCESS_RDATA_0] = s->otp.data[waddr];
-        s->regs[R_DIRECT_ACCESS_RDATA_1] = s->otp.data[waddr + 1u];
+        s->regs[R_DIRECT_ACCESS_RDATA_0] = s->otp->data[waddr];
+        s->regs[R_DIRECT_ACCESS_RDATA_1] = s->otp->data[waddr + 1u];
     } else {
-        s->regs[R_DIRECT_ACCESS_RDATA_0] = s->otp.data[waddr];
+        s->regs[R_DIRECT_ACCESS_RDATA_0] = s->otp->data[waddr];
         s->regs[R_DIRECT_ACCESS_RDATA_1] = 0;
     }
 
     if (!ot_otp_dj_is_buffered(partition)) {
         /* fake slow access to OTP cell */
-        timer_mod(s->dai.delay,
+        timer_mod(s->dai->delay,
                   qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_READ_DELAY_NS);
     } else {
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
@@ -1750,8 +1749,8 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
     if (is_wide || is_digest) {
         waddr &= ~0b1u;
 
-        uint32_t dst_lo = s->otp.data[waddr];
-        uint32_t dst_hi = s->otp.data[waddr + 1u];
+        uint32_t dst_lo = s->otp->data[waddr];
+        uint32_t dst_hi = s->otp->data[waddr + 1u];
 
         uint32_t lo = s->regs[R_DIRECT_ACCESS_WDATA_0];
         uint32_t hi = s->regs[R_DIRECT_ACCESS_WDATA_1];
@@ -1763,10 +1762,10 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
             return;
         }
 
-        s->otp.data[waddr] = lo;
-        s->otp.data[waddr + 1u] = hi;
+        s->otp->data[waddr] = lo;
+        s->otp->data[waddr + 1u] = hi;
     } else {
-        uint32_t dst = s->otp.data[waddr];
+        uint32_t dst = s->otp->data[waddr];
         uint32_t data = s->regs[R_DIRECT_ACCESS_WDATA_0];
 
         if (dst & ~data) {
@@ -1776,13 +1775,13 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
             return;
         }
 
-        s->otp.data[waddr] = data;
+        s->otp->data[waddr] = data;
     }
 
     /* fake slow access to OTP cell */
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
-    timer_mod(s->dai.delay,
+    timer_mod(s->dai->delay,
               qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
 }
 
@@ -1858,12 +1857,12 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 
     pctrl->buffer.next_digest =
         ot_otp_dj_compute_partition_digest(s, data, part_size);
-    s->dai.partition = partition;
+    s->dai->partition = partition;
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_WAIT);
 
     /* fake slow access to OTP cell */
-    timer_mod(s->dai.delay,
+    timer_mod(s->dai->delay,
               qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_DIGEST_DELAY_NS);
 }
 
@@ -1871,14 +1870,14 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
 {
     OtOTPDjState *s = OT_OTP_DJ(opaque);
 
-    g_assert((s->dai.partition >= 0) && (s->dai.partition < OTP_PART_COUNT));
+    g_assert((s->dai->partition >= 0) && (s->dai->partition < OTP_PART_COUNT));
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE);
 
-    OtOTPPartController *pctrl = &s->partctrls[s->dai.partition];
-    unsigned address = OtOTPPartDescs[s->dai.partition].digest_offset;
+    OtOTPPartController *pctrl = &s->partctrls[s->dai->partition];
+    unsigned address = OtOTPPartDescs[s->dai->partition].digest_offset;
     address >>= 3u;
-    uint64_t *dst = &((uint64_t *)s->otp.data)[address];
+    uint64_t *dst = &((uint64_t *)s->otp->data)[address];
     uint64_t data = pctrl->buffer.next_digest;
     pctrl->buffer.next_digest = 0;
     OtOTPError error;
@@ -1894,7 +1893,7 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
         /* fake slow access to OTP cell */
         DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
-        timer_mod(s->dai.delay,
+        timer_mod(s->dai->delay,
                   qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
     } else {
         /* TODO: no idea on how to report the error since partition is undef */
@@ -1906,22 +1905,22 @@ static void ot_otp_dj_dai_complete(void *opaque)
 {
     OtOTPDjState *s = opaque;
 
-    switch (s->dai.state) {
+    switch (s->dai->state) {
     case OTP_DAI_READ_WAIT:
-        trace_ot_otp_dai_read(PART_NAME(s->dai.partition), s->dai.partition,
+        trace_ot_otp_dai_read(PART_NAME(s->dai->partition), s->dai->partition,
                               s->regs[R_DIRECT_ACCESS_RDATA_1],
                               s->regs[R_DIRECT_ACCESS_RDATA_1]);
-        s->dai.partition = -1;
+        s->dai->partition = -1;
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
         break;
     case OTP_DAI_WRITE_WAIT:
         s->regs[R_INTR_STATE] |= INTR_OTP_OPERATION_DONE_MASK;
-        s->dai.partition = -1;
+        s->dai->partition = -1;
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
         break;
     case OTP_DAI_DIG_WAIT:
-        g_assert(s->dai.partition >= 0);
-        qemu_bh_schedule(s->dai.digest_bh);
+        g_assert(s->dai->partition >= 0);
+        qemu_bh_schedule(s->dai->digest_bh);
         break;
     case OTP_DAI_ERROR:
         break;
@@ -2589,7 +2588,7 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     }
 
     if (!(partition < 0)) {
-        val32 = s->otp.data[reg];
+        val32 = s->otp->data[reg];
         ot_otp_dj_set_error(s, (unsigned)partition, OTP_NO_ERROR);
     }
 
@@ -2672,8 +2671,8 @@ static void ot_otp_dj_csrs_write(void *opaque, hwaddr addr, uint64_t value,
 
 static void ot_otp_dj_decode_lc_partition(OtOTPDjState *s)
 {
-    OtOTPStorage *otp = &s->otp;
-    OtOTPLCIController *lci = &s->lci;
+    OtOTPStorage *otp = s->otp;
+    OtOTPLCIController *lci = s->lci;
     const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
 
     g_assert(lcdesc->offset == A_LC_TRANSITION_CNT);
@@ -2701,7 +2700,7 @@ static void ot_otp_dj_decode_lc_partition(OtOTPDjState *s)
 
 static void ot_otp_dj_load_hw_cfg(OtOTPDjState *s)
 {
-    OtOTPStorage *otp = &s->otp;
+    OtOTPStorage *otp = s->otp;
     OtOTPHWCfg *hw_cfg = s->hw_cfg;
 
     memcpy(hw_cfg->device_id, &otp->data[R_DEVICE_ID],
@@ -2717,7 +2716,7 @@ static void ot_otp_dj_load_tokens(OtOTPDjState *s)
 {
     memset(s->tokens, 0, sizeof(*s->tokens));
 
-    const uint32_t *data = s->otp.data;
+    const uint32_t *data = s->otp->data;
     OtOTPTokens *tokens = s->tokens;
 
     static_assert(sizeof(OtOTPTokenValue) == 16u, "Invalid token size");
@@ -2761,7 +2760,7 @@ static void ot_otp_dj_get_lc_info(
     uint8_t *lc_valid, uint8_t *secret_valid, const OtOTPTokens **tokens)
 {
     const OtOTPDjState *ds = OT_OTP_DJ(s);
-    const OtOTPLCIController *lci = &ds->lci;
+    const OtOTPLCIController *lci = ds->lci;
 
     if (lc_state) {
         *lc_state = lci->lc.state;
@@ -2837,7 +2836,7 @@ static bool ot_otp_dj_program_req(OtOTPState *s, uint32_t lc_state,
                                   void *opaque)
 {
     OtOTPDjState *ds = OT_OTP_DJ(s);
-    OtOTPLCIController *lci = &ds->lci;
+    OtOTPLCIController *lci = ds->lci;
 
     switch (lci->state) {
     case OTP_LCI_IDLE:
@@ -2874,7 +2873,7 @@ static bool ot_otp_dj_program_req(OtOTPState *s, uint32_t lc_state,
 
 static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
 {
-    OtOTPLCIController *lci = &s->lci;
+    OtOTPLCIController *lci = s->lci;
 
     if (lci->hpos) {
         /*
@@ -2883,9 +2882,9 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
          */
         const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
         unsigned lc_data_off = lcdesc->offset / sizeof(uint32_t);
-        uintptr_t offset = (uintptr_t)s->otp.data - (uintptr_t)s->otp.storage;
+        uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
         if (blk_pwrite(s->blk, (int64_t)(intptr_t)(offset + lcdesc->offset),
-                       lcdesc->size, &s->otp.data[lc_data_off],
+                       lcdesc->size, &s->otp->data[lc_data_off],
                        (BdrvRequestFlags)0)) {
             error_report("%s: cannot update OTP backend", __func__);
             if (lci->error == OTP_NO_ERROR) {
@@ -2912,7 +2911,7 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
 static void ot_otp_dj_lci_write_word(void *opaque)
 {
     OtOTPDjState *s = OT_OTP_DJ(opaque);
-    OtOTPLCIController *lci = &s->lci;
+    OtOTPLCIController *lci = s->lci;
     const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
 
     /* should not be called if already in error */
@@ -2948,7 +2947,7 @@ static void ot_otp_dj_lci_write_word(void *opaque)
     LCI_CHANGE_STATE(s, OTP_LCI_WRITE);
 
     uint16_t *lc_dst =
-        (uint16_t *)&s->otp.data[lcdesc->offset / sizeof(uint32_t)];
+        (uint16_t *)&s->otp->data[lcdesc->offset / sizeof(uint32_t)];
 
     uint16_t cur_val = lc_dst[lci->hpos];
     uint16_t new_val = lci->data[lci->hpos];
@@ -3061,7 +3060,7 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
 
     otp_size = ROUND_UP(otp_size, 4096u);
 
-    OtOTPStorage *otp = &s->otp;
+    OtOTPStorage *otp = s->otp;
 
     otp->storage = blk_blockalign(s->blk, otp_size);
     uintptr_t base = (uintptr_t)otp->storage;
@@ -3157,10 +3156,10 @@ static void ot_otp_dj_reset(DeviceState *dev)
 
     trace_ot_otp_reset();
 
-    timer_del(s->dai.delay);
-    timer_del(s->lci.prog_delay);
+    timer_del(s->dai->delay);
+    timer_del(s->lci->prog_delay);
 
-    memset(&s->regs, 0, sizeof(s->regs));
+    memset(s->regs, 0, REGS_COUNT * sizeof(uint32_t));
 
     s->regs[R_DIRECT_ACCESS_REGWEN] = 0x1u;
     s->regs[R_CHECK_TRIGGER_REGWEN] = 0x1u;
@@ -3266,6 +3265,14 @@ static void ot_otp_dj_init(Object *obj)
     qdev_init_gpio_in_named(DEVICE(obj), &ot_otp_dj_lc_broadcast_recv,
                             OT_LC_BROADCAST, OT_OTP_LC_BROADCAST_COUNT);
 
+    s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
+    s->tokens = g_new0(OtOTPTokens, 1u);
+    s->regs = g_new0(uint32_t, REGS_COUNT);
+    s->dai = g_new0(OtOTPDAIController, 1u);
+    s->lci = g_new0(OtOTPLCIController, 1u);
+    s->partctrls = g_new0(OtOTPPartController, OTP_PART_COUNT);
+    s->otp = g_new0(OtOTPStorage, 1u);
+
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
         if (!OtOTPPartDescs[ix].buffered) {
             continue;
@@ -3274,13 +3281,12 @@ static void ot_otp_dj_init(Object *obj)
         s->partctrls[ix].buffer.data = g_new0(uint32_t, part_words);
     }
 
-    s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
-    s->tokens = g_new0(OtOTPTokens, 1u);
-    s->dai.delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_dai_complete, s);
-    s->dai.digest_bh = qemu_bh_new(&ot_otp_dj_dai_write_digest, s);
-    s->lci.prog_delay =
+
+    s->dai->delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_dai_complete, s);
+    s->dai->digest_bh = qemu_bh_new(&ot_otp_dj_dai_write_digest, s);
+    s->lci->prog_delay =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_lci_write_word, s);
-    s->lci.prog_bh = qemu_bh_new(&ot_otp_dj_lci_write_word, s);
+    s->lci->prog_bh = qemu_bh_new(&ot_otp_dj_lci_write_word, s);
 }
 
 static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
