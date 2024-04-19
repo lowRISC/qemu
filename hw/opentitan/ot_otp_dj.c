@@ -38,9 +38,11 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
+#include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otp_dj.h"
 #include "hw/opentitan/ot_present.h"
+#include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -543,6 +545,26 @@ REG32(CSR7, 0x1cu)
 #define DAI_DIGEST_DELAY_NS 5000000u /* 5ms */
 #define LCI_PROG_DELAY_NS   500000u /* 500us*/
 
+#define SRAM_KEY_SEED_WIDTH (SRAM_DATA_KEY_SEED_SIZE * 8u)
+#define KEY_MGR_KEY_WIDTH   256u
+#define SRAM_KEY_WIDTH      128u
+#define SRAM_NONCE_WIDTH    128u
+#define OTBN_KEY_WIDTH      128u
+#define OTBN_NONCE_WIDTH    64u
+
+#define SRAM_KEY_WORDS   ((SRAM_KEY_WIDTH) / 32u)
+#define SRAM_NONCE_WORDS ((SRAM_NONCE_WIDTH) / 32u)
+
+/* Need 128 bits of entropy to compute each 64-bit key part */
+#define OTP_ENTROPY_PRESENT_BITS \
+    (((NUM_SRAM_KEY_REQ_SLOTS * SRAM_KEY_WIDTH) + OTBN_KEY_WIDTH) * 128u / 64u)
+#define OTP_ENTROPY_PRESENT_WORDS (OTP_ENTROPY_PRESENT_BITS / 32u)
+#define OTP_ENTROPY_NONCE_BITS \
+    (NUM_SRAM_KEY_REQ_SLOTS * SRAM_NONCE_WIDTH + OTBN_NONCE_WIDTH)
+#define OTP_ENTROPY_NONCE_WORDS (OTP_ENTROPY_NONCE_BITS / 32u)
+#define OTP_ENTROPY_BUF_COUNT \
+    (OTP_ENTROPY_PRESENT_WORDS + OTP_ENTROPY_NONCE_WORDS)
+
 #define OTP_PART_VENDOR_TEST_OFFSET           0u
 #define OTP_PART_VENDOR_TEST_SIZE             64u
 #define OTP_PART_CREATOR_SW_CFG_OFFSET        64u
@@ -777,12 +799,21 @@ typedef struct {
 } OtOTPStorage;
 
 typedef struct {
+    QEMUBH *bh;
     uint16_t signal; /* each bit tells if signal needs to be handled */
     uint16_t level; /* level of the matching signal */
 } OtOTPLcBroadcast;
 
 static_assert(OT_OTP_LC_BROADCAST_COUNT < 8 * sizeof(uint16_t),
               "Invalid OT_OTP_LC_BROADCAST_COUNT");
+
+typedef struct {
+    QEMUBH *entropy_bh;
+    OtPresentState *present;
+    OtPrngState *prng;
+    OtFifo32 entropy_buf;
+    bool edn_sched;
+} OtOTPKeyGen;
 
 struct OtOTPDjState {
     OtOTPState parent_obj;
@@ -798,7 +829,6 @@ struct OtOTPDjState {
         MemoryRegion csrs;
     } prim;
     QEMUBH *pwc_otp_bh;
-    QEMUBH *lc_broadcast_bh;
     IbexIRQ irqs[NUM_IRQS];
     IbexIRQ alerts[NUM_ALERTS];
     IbexIRQ pwc_otp_rsp;
@@ -809,6 +839,7 @@ struct OtOTPDjState {
     OtOTPDAIController *dai;
     OtOTPLCIController *lci;
     OtOTPPartController *partctrls;
+    OtOTPKeyGen *keygen;
 
     OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;
@@ -818,6 +849,30 @@ struct OtOTPDjState {
     OtEDNState *edn;
     uint8_t edn_ep;
 };
+
+typedef struct {
+    uint8_t key[SRAM_KEY_WIDTH / 8u];
+    uint8_t nonce[SRAM_NONCE_WIDTH / 8u];
+} OtOTPScrmblKeyInit;
+
+static const OtOTPScrmblKeyInit RND_CNST_SCRMBL_KEY_INIT = {
+    .key = {
+        0xceu, 0xbeu, 0xb9u, 0x6fu, 0xfeu, 0x0eu, 0xceu, 0xd7u,
+        0x95u, 0xf8u, 0xb2u, 0xcfu, 0xe2u, 0x3cu, 0x1eu, 0x51u,
+    },
+    .nonce = {
+        0x9eu, 0x4fu, 0xa0u, 0x80u, 0x47u, 0xa6u, 0xbcu, 0xfbu,
+        0x81u, 0x1bu, 0x04u, 0xf0u, 0xa4u, 0x79u, 0x00u, 0x6eu,
+    },
+};
+
+/* TODO: need to find real values from the RTL spaghetti */
+static const uint8_t RND_CNST_DIGEST_CONST[SRAM_KEY_WIDTH / 8u] = {
+    0xe0, 0x48, 0xb6, 0x57, 0x39, 0x6b, 0x4b, 0x83,
+    0x27, 0x71, 0x95, 0xfc, 0x47, 0x1e, 0x4b, 0x26
+};
+
+static const uint64_t RND_CNST_DIGEST_IV = 0x4d5a89aa9109294aull;
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
@@ -1398,7 +1453,7 @@ static void ot_otp_dj_lc_broadcast_recv(void *opaque, int n, int level)
     }
 
     /* use a BH to decouple IRQ signaling from actual handling */
-    qemu_bh_schedule(s->lc_broadcast_bh);
+    qemu_bh_schedule(s->lc_broadcast.bh);
 }
 
 static void ot_otp_dj_lc_broadcast_bh(void *opaque)
@@ -2800,6 +2855,154 @@ static const OtOTPEntropyCfg *ot_otp_dj_get_entropy_cfg(const OtOTPState *s)
     return NULL;
 }
 
+static void ot_otp_dj_request_entropy_bh(void *opaque)
+{
+    OtOTPDjState *s = opaque;
+
+    /*
+     * Use a BH as entropy should be filled in as soon as possible after reset.
+     * However, as the EDN / OTP reset order is unknown, this initial request
+     * can only be performed once the reset sequence is over.
+     */
+    if (!s->keygen->edn_sched) {
+        int rc = ot_edn_request_entropy(s->edn, s->edn_ep);
+        g_assert(rc == 0);
+        s->keygen->edn_sched = true;
+    }
+}
+
+static void
+ot_otp_dj_keygen_push_entropy(void *opaque, uint32_t bits, bool fips)
+{
+    OtOTPDjState *s = opaque;
+    (void)fips;
+
+    s->keygen->edn_sched = false;
+
+    if (!ot_fifo32_is_full(&s->keygen->entropy_buf)) {
+        ot_fifo32_push(&s->keygen->entropy_buf, bits);
+    }
+
+    bool resched = !ot_fifo32_is_full(&s->keygen->entropy_buf);
+
+    trace_ot_otp_keygen_entropy(ot_fifo32_num_used(&s->keygen->entropy_buf),
+                                resched);
+
+    if (resched && !s->keygen->edn_sched) {
+        qemu_bh_schedule(s->keygen->entropy_bh);
+    }
+}
+
+static void ot_otp_dj_generate_otp_sram_key(OtOTPDjState *s, OtOTPKey *key)
+{
+    static_assert(SRAM_NONCE_WORDS * sizeof(uint32_t) < OT_OTP_NONCE_MAX_SIZE,
+                  "Invalid nonce size");
+
+    /* fill in Nonce */
+    OtFifo32 *entropy = &s->keygen->entropy_buf;
+    g_assert(ot_fifo32_num_used(entropy) >= SRAM_NONCE_WORDS);
+    for (unsigned ix = 0; ix < SRAM_NONCE_WORDS; ix++) {
+        stl_le_p(&key->nonce[ix * sizeof(uint32_t)], ot_fifo32_pop(entropy));
+    }
+    key->nonce_size = SRAM_NONCE_WORDS * sizeof(uint32_t);
+
+    /* handle key from key seed */
+
+    OtPresentState *ps = s->keygen->present;
+
+    OtOTPPartController *pctrl = &s->partctrls[OTP_PART_SECRET1];
+    bool valid = pctrl->locked && !pctrl->failed;
+    g_assert(ot_otp_dj_is_buffered(OTP_PART_SECRET1));
+    const uint32_t *sram_data_key_seed =
+        &pctrl->buffer.data[R_SRAM_DATA_KEY_SEED -
+                            OTP_PART_SECRET1_OFFSET / sizeof(uint32_t)];
+    uint32_t tmpkey[SRAM_KEY_WORDS];
+    for (unsigned rix = 0; rix < SRAM_KEY_WIDTH / 64u; rix++) {
+        uint64_t data = RND_CNST_DIGEST_IV;
+
+        ot_present_init(ps, (const uint8_t *)sram_data_key_seed);
+        ot_present_encrypt(ps, data, &data);
+
+        g_assert(ot_fifo32_num_used(entropy) >= SRAM_KEY_WORDS);
+        for (unsigned ix = 0; ix < SRAM_NONCE_WORDS; ix++) {
+            tmpkey[ix] = ot_fifo32_pop(entropy);
+        }
+        ot_present_init(ps, (uint8_t *)&tmpkey[0]);
+        ot_present_encrypt(ps, data, &data);
+
+        ot_present_init(ps, RND_CNST_DIGEST_CONST);
+        ot_present_encrypt(ps, data, &data);
+
+        key->seed[rix] = data;
+    }
+
+    key->seed_valid = valid;
+    key->seed_size = SRAM_KEY_WIDTH / 8u;
+
+    /* some entropy bits have been used, refill the buffer */
+    qemu_bh_schedule(s->keygen->entropy_bh);
+}
+
+static void ot_otp_dj_fake_entropy(OtOTPDjState *s, unsigned count)
+{
+    /*
+     * This part departs from real HW: OTP needs to have bufferized enough
+     * entropy for any SRAM OTP key request to be successfully completed.
+     * On real HW, entropy is requested on demand, but in QEMU this very API
+     * (#get_otp_key) needs to be synchronous, as it should be able to complete
+     * on SRAM controller I/O request, which is itself fully synchronous.
+     * When not enough entropy has been initiatially collected, this function
+     * adds some fake entropy to entropy buffer. The main use case is to enable
+     * SRAM initialization with random values and does not need to be trully
+     * secure, while limiting emulation code size and complexity.
+     */
+
+    OtOTPKeyGen *kgen = s->keygen;
+    while (count-- && !ot_fifo32_is_full(&kgen->entropy_buf)) {
+        ot_fifo32_push(&kgen->entropy_buf, ot_prng_random_u32(kgen->prng));
+    }
+}
+
+static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
+                                  OtOTPKey *key)
+{
+    OtOTPDjState *ds = OT_OTP_DJ(s);
+
+    unsigned avail_entropy = ot_fifo32_num_used(&ds->keygen->entropy_buf);
+    unsigned need_entropy;
+
+    switch (type) {
+    case OTP_KEY_FLASH_DATA:
+    case OTP_KEY_FLASH_ADDR:
+        /* there is no flash key on Darjeeling */
+        qemu_log_mask(LOG_UNIMP, "%s: flash key is not supported\n", __func__);
+        break;
+    case OTP_KEY_OTBN:
+        memset(key, 0, sizeof(*key));
+        break;
+    case OTP_KEY_SRAM:
+        memcpy(key->seed, RND_CNST_SCRMBL_KEY_INIT.key,
+               sizeof(RND_CNST_SCRMBL_KEY_INIT.key));
+        memcpy(key->nonce, RND_CNST_SCRMBL_KEY_INIT.nonce,
+               sizeof(RND_CNST_SCRMBL_KEY_INIT.nonce));
+        key->seed_size = sizeof(RND_CNST_SCRMBL_KEY_INIT.key);
+        key->nonce_size = sizeof(RND_CNST_SCRMBL_KEY_INIT.nonce);
+        key->seed_valid = false;
+        need_entropy = (SRAM_KEY_WIDTH * 2u + SRAM_NONCE_WIDTH) / 32u;
+        if (avail_entropy < need_entropy) {
+            unsigned count = need_entropy - avail_entropy;
+            error_report("%s: not enough entropy for key %d, fake %u words",
+                         __func__, type, count);
+            ot_otp_dj_fake_entropy(ds, count);
+        }
+        ot_otp_dj_generate_otp_sram_key(ds, key);
+        break;
+    default:
+        error_report("%s: invalid OTP key type: %d", __func__, type);
+        break;
+    }
+}
+
 static void ot_otp_dj_create_lc_data(OtOTPLCIController *lci, uint32_t lc_state,
                                      unsigned tcount)
 {
@@ -3158,6 +3361,11 @@ static void ot_otp_dj_reset(DeviceState *dev)
 
     timer_del(s->dai->delay);
     timer_del(s->lci->prog_delay);
+    qemu_bh_cancel(s->keygen->entropy_bh);
+    s->keygen->edn_sched = false;
+
+    ot_edn_connect_endpoint(s->edn, s->edn_ep, &ot_otp_dj_keygen_push_entropy,
+                            s);
 
     memset(s->regs, 0, REGS_COUNT * sizeof(uint32_t));
 
@@ -3180,7 +3388,8 @@ static void ot_otp_dj_reset(DeviceState *dev)
     s->regs[R_EXT_NVM_READ_LOCK] = 0x1u;
     s->regs[R_ROM_PATCH_READ_LOCK] = 0x1u;
 
-    s->lc_broadcast = (OtOTPLcBroadcast){ 0, 0 };
+    s->lc_broadcast.level = 0u;
+    s->lc_broadcast.signal = 0u;
 
     ot_otp_dj_update_irqs(s);
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
@@ -3207,12 +3416,17 @@ static void ot_otp_dj_reset(DeviceState *dev)
     }
     DAI_CHANGE_STATE(s, OTP_DAI_RESET);
     LCI_CHANGE_STATE(s, OTP_LCI_RESET);
+
+    qemu_bh_schedule(s->keygen->entropy_bh);
 }
 
 static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
 {
     (void)errp;
     OtOTPDjState *s = OT_OTP_DJ(dev);
+
+    g_assert(s->edn);
+    g_assert(s->edn_ep != UINT8_MAX);
 
     ot_otp_dj_load(s, &error_fatal);
 }
@@ -3251,10 +3465,6 @@ static void ot_otp_dj_init(Object *obj)
     qdev_init_gpio_in_named(DEVICE(obj), &ot_otp_dj_pwr_otp_req,
                             OT_PWRMGR_OTP_REQ, 1);
 
-    s->pwc_otp_bh = qemu_bh_new(&ot_otp_dj_pwr_otp_bh, s);
-
-    s->lc_broadcast_bh = qemu_bh_new(&ot_otp_dj_lc_broadcast_bh, s);
-
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
@@ -3271,6 +3481,7 @@ static void ot_otp_dj_init(Object *obj)
     s->dai = g_new0(OtOTPDAIController, 1u);
     s->lci = g_new0(OtOTPLCIController, 1u);
     s->partctrls = g_new0(OtOTPPartController, OTP_PART_COUNT);
+    s->keygen = g_new0(OtOTPKeyGen, 1u);
     s->otp = g_new0(OtOTPStorage, 1u);
 
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
@@ -3281,12 +3492,21 @@ static void ot_otp_dj_init(Object *obj)
         s->partctrls[ix].buffer.data = g_new0(uint32_t, part_words);
     }
 
+    ot_fifo32_create(&s->keygen->entropy_buf, OTP_ENTROPY_BUF_COUNT);
+    s->keygen->present = ot_present_new();
+    s->keygen->prng = ot_prng_allocate();
 
     s->dai->delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_dai_complete, s);
     s->dai->digest_bh = qemu_bh_new(&ot_otp_dj_dai_write_digest, s);
     s->lci->prog_delay =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_lci_write_word, s);
     s->lci->prog_bh = qemu_bh_new(&ot_otp_dj_lci_write_word, s);
+    s->pwc_otp_bh = qemu_bh_new(&ot_otp_dj_pwr_otp_bh, s);
+    s->lc_broadcast.bh = qemu_bh_new(&ot_otp_dj_lc_broadcast_bh, s);
+    s->keygen->entropy_bh = qemu_bh_new(&ot_otp_dj_request_entropy_bh, s);
+
+    int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+    ot_prng_reseed(s->keygen->prng, (uint32_t)now);
 }
 
 static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
@@ -3304,6 +3524,7 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
     odc->get_lc_info = &ot_otp_dj_get_lc_info;
     odc->get_hw_cfg = &ot_otp_dj_get_hw_cfg;
     odc->get_entropy_cfg = &ot_otp_dj_get_entropy_cfg;
+    odc->get_otp_key = &ot_otp_dj_get_otp_key;
     odc->program_req = &ot_otp_dj_program_req;
 }
 

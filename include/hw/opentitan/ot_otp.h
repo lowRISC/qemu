@@ -87,6 +87,25 @@ typedef struct {
     uint32_t valid_bm; /* OtLcCtrlToken-indexed valid bit flags */
 } OtOTPTokens;
 
+typedef enum {
+    OTP_KEY_FLASH_DATA,
+    OTP_KEY_FLASH_ADDR,
+    OTP_KEY_OTBN,
+    OTP_KEY_SRAM,
+    OTP_KEY_COUNT
+} OtOTPKeyType;
+
+#define OT_OTP_SEED_MAX_SIZE  32u /* 256 bits */
+#define OT_OTP_NONCE_MAX_SIZE 32u /* 256 bits */
+
+typedef struct {
+    uint8_t seed[OT_OTP_SEED_MAX_SIZE];
+    uint8_t nonce[OT_OTP_NONCE_MAX_SIZE];
+    uint8_t seed_size; /* size in bytes */
+    uint8_t nonce_size; /* size in bytes */
+    bool seed_valid; /* whether the seed is valid */
+} OtOTPKey;
+
 struct OtOTPState {
     SysBusDevice parent_obj;
 };
@@ -126,6 +145,15 @@ struct OtOTPStateClass {
      * @return the entropy config data (may be NULL if not present in OTP)
      */
     const OtOTPEntropyCfg *(*get_entropy_cfg)(const OtOTPState *s);
+
+    /*
+     * Retrieve SRAM scrambling key.
+     *
+     * @s the OTP device
+     * @type the type of the key to retrieve
+     * @key the key record to update
+     */
+    void (*get_otp_key)(OtOTPState *s, OtOTPKeyType type, OtOTPKey *key);
 
     /**
      * Request the OTP to program the state, transition count pair.
