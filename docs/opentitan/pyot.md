@@ -5,61 +5,64 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-q QEMU] [-Q OPTS] [-m MACHINE] [-p DEVICE] [-L LOG_FILE]
-               [-M LOG] [-t TRACE] [-i N] [-s] [-T SECS] [-U] [-D] [-c JSON]
-               [-w CSV] [-K] [-r ELF] [-O RAW] [-o VMEM] [-f RAW] [-x file]
-               [-b file] [-R] [-k SECONDS] [-F TEST] [-v] [-d]
+usage: pyot.py [-h] [-D DELAY] [-i N] [-L LOG_FILE] [-M LOG] [-m MACHINE] [-Q OPTS] [-q QEMU]
+               [-p DEVICE] [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c JSON] [-e] [-f RAW]
+               [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
+               [-k SECONDS] [-R] [-T FACTOR] [-Z] [-v] [-d]
 
-OpenTitan QEMU test sequencer.
+OpenTitan QEMU unit test sequencer.
 
 options:
   -h, --help            show this help message and exit
 
 Virtual machine:
-  -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-
-                        riscv32)
-  -Q OPTS, --opts OPTS  QEMU verbatim option (can be repeated)
-  -m MACHINE, --machine MACHINE
-                        virtual machine (default to ot-earlgrey)
-  -p DEVICE, --device DEVICE
-                        serial port device name (default to localhost:8000)
+  -D DELAY, --start-delay DELAY
+                        QEMU start up delay before initial comm
+  -i N, --icount N      virtual instruction counter with 2^N clock ticks per inst.
   -L LOG_FILE, --log_file LOG_FILE
                         log file for trace and log messages
   -M LOG, --log LOG     log message types
+  -m MACHINE, --machine MACHINE
+                        virtual machine (default to ot-earlgrey)
+  -Q OPTS, --opts OPTS  QEMU verbatim option (can be repeated)
+  -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-riscv32)
+  -p DEVICE, --device DEVICE
+                        serial port device name (default to localhost:8000)
   -t TRACE, --trace TRACE
                         trace event definition file
-  -i N, --icount N      virtual instruction counter with 2^N clock ticks per
-                        inst.
+  -S FIRST_SOC, --first-soc FIRST_SOC
+                        Identifier of the first SoC, if any
   -s, --singlestep      enable "single stepping" QEMU execution mode
-  -T FACTOR, --timeout-factor FACTOR
-                        timeout factor
-  -U, --muxserial       enable multiple virtual UARTs to be muxed into same
-                        host output channel
-  -D DELAY, --start-delay DELAY
-                        QEMU start up delay before initial comm
+  -U, --muxserial       enable multiple virtual UARTs to be muxed into same host output channel
 
 Files:
+  -b file, --boot file  bootloader 0 file
   -c JSON, --config JSON
                         path to configuration file
-  -w CSV, --result CSV  path to output result file
-  -K, --keep-tmp        Do not automatically remove temporary files and dirs
-                        on exit
-  -r ELF, --rom ELF     ROM file
+  -e, --embedded-flash  generate an embedded flash image file
+  -f RAW, --flash RAW   SPI flash image file
+  -K, --keep-tmp        Do not automatically remove temporary files and dirs on exit
+  -l file, --loader file
+                        ROM trampoline to execute, if any
   -O RAW, --otp-raw RAW
                         OTP image file
   -o VMEM, --otp VMEM   OTP VMEM file
-  -f RAW, --flash RAW   embedded Flash image file
-  -x file, --exec file  rom extension or application
-  -b file, --boot file  bootloader 0 file
-  -Z, --zero            do not error if no test can be executed
+  -r ELF, --rom ELF     ROM file
+  -w CSV, --result CSV  path to output result file
+  -x file, --exec file  application to load
+  -X, --rom-exec        load application as ROM image (default: as kernel)
 
 Execution:
-  -R, --summary         show a result summary
-  -k SECONDS, --timeout SECONDS
-                        exit after the specified seconds (default: 60 secs)
   -F TEST, --filter TEST
                         run tests with matching filter, prefix with "!" to exclude matching tests
-                        filter (may be repeated)
+  -k SECONDS, --timeout SECONDS
+                        exit after the specified seconds (default: 60 secs)
+  -R, --summary         show a result summary
+  -T FACTOR, --timeout-factor FACTOR
+                        timeout factor
+  -Z, --zero            do not error if no test can be executed
+
+Extras:
   -v, --verbose         increase verbosity
   -d, --debug           enable debug mode
 ````
@@ -71,43 +74,10 @@ This tool may be used in two ways, which can be combined:
   specified test in the configuration file. This mode is enabled when a JSON config file is
   specified.
 
-### Arguments
+### Virtual machine
 
-* `-c` / `--config` specify a (H)JSON configuration file, see the
-  [Configuration](#Configurationfile) section for details.
-* `-w` / `--result` specify an output CSV report file where the result of all the QEMU sessions,
-  one per test, are reported.
-* `-R` / `--summary` show a execution result summary on exit
-* `-k` / `--timeout` define the maximal duration of each QEMU session. QEMU is terminated or killed
-  after this delay if the executed test has not completed in time.
-* `-F` / `--filter` when used, only tests whose filenames match one of the selected filter are
-  considered. This option only applies to tests enumerated from the configuration file. If a filter
-  starts with '!', any matching test is excluded.
-* `-K` / `--keep-tmp` do not automatically remove temporary files and directories on exit. The user
-  is in charge of discarding any generated files and directories after execution. The paths to the
-  generated items are emitted as warning messages.
-* `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
-* `-d` / `--debug` only useful to debug the script, reports any Python traceback to the standard
-  error stream.
-
-### Virtual machine options
-
-* `-q` / `--qemu` specify an alternative path to the QEMU application.
-* `-Q` / `--opts` add a single QEMU option forwarded verbatim to QEMU (no check is performed)
-   * Note that it is easier to use the special option marker `--` to append many options to QEMU:
-     any argument after this marker is forwarded verbatim to QEMU.
-* `-m` / `--machine` specify the kind of virtual machine to run.
-* `-p` / `--device` specify an alternative TCP communication channel. This option should only be
-  used if the default channel is already in use.
-* `-L` / `--log_file` specify the log file for trace and log messages from QEMU.
-* `-M` / `--log` specify which log message types should be logged; most useful types are:
-  * `in_asm` for guest instruction disassembly,
-  * `unimp` for uimplemented guest features,
-  * `int` for guest interrupts and exceptions,
-  * `guest_errors` for unexpected guest behavior,
-  * `exec` for guest execution stream (caution: highly verbose).
-* `-t` / `--trace` trace event definition file. To obtain a list of available traces, invoke QEMU
-  with `-trace help` option
+* `-D` / `--start-delay` VM start up delay. Grace period to wait for the VM to start up before
+  attempting to communicate with its char devices.
 * `-i` / `--icount` to specify virtual instruction counter with 2^N clock ticks per instruction.
   This option if often used with two specific values:
    * `-i 0` can be used to improve time synchronisation between the virtual CPU and the virtual HW:
@@ -117,37 +87,79 @@ This tool may be used in two ways, which can be combined:
    * `-i 6` can be used to slow down vCPU virtual clock to a ~10-15MHz clock pace, which better
      matches the expected FPGA-based lowRISC CPU.
   Note that this option slows down the execution of guest applications.
+* `-L` / `--log_file` specify the log file for trace and log messages from QEMU.
+* `-M` / `--log` specify which log message types should be logged; most useful types are:
+  * `in_asm` for guest instruction disassembly,
+  * `unimp` for uimplemented guest features,
+  * `int` for guest interrupts and exceptions,
+  * `guest_errors` for unexpected guest behavior,
+  * `exec` for guest execution stream (caution: highly verbose).
+* `-m` / `--machine` specify the kind of virtual machine to run.
+* `-q` / `--qemu` specify an alternative path to the QEMU application.
+* `-Q` / `--opts` add a single QEMU option forwarded verbatim to QEMU (no check is performed)
+   * Note that it is easier to use the special option marker `--` to append many options to QEMU:
+     any argument after this marker is forwarded verbatim to QEMU.
+* `-p` / `--device` specify an alternative TCP communication channel. This option should only be
+  used if the default channel is already in use.
+* `-S` / `--first-soc` define the name of the first SoC to boot, if any. This flag is only used to
+  prefix property names
 * `-s` / `--singlestep` enable QEMU "single stepping" mode.
+* `-t` / `--trace` trace event definition file. To obtain a list of available traces, invoke QEMU
+  with `-trace help` option
 * `-T` / `--timeout-factor` apply a multiplier factor to all timeouts. Specified as a real number,
   it can be greater to increase timeouts or lower than 1 to decrease timeouts.
 * `-U` / `--muxserial` enable muxing QEMU VCP. This option is required when several virtual UARTs
   are routed to the same host output channel.
-* `-D` / `--start-delay` VM start up delay. Grace period to wait for the VM to start up before
-  attempting to communicate with its char devices.
 
-### File options:
+### Files
 
-*  `-r` / `--rom` specify a ROM ELF file. Without a ROM file, it is unlikely to start up any regular
-   application since the emulated lowRISC vCPU is preconfigured with a locked PMP, as the real HW.
-   When no ROM is specified, test applications are executed immediately, as a replacement of the ROM
-   executable.
-*  `-O` / `--otp-raw` specify a RAW image file for OTP fuses, which can be generated with the
-   [`otptool.py`](otpconf.md) tool. Alternatively, see the `-o` option.
-*  `-o` / ` --otp` specify an OTP VMEM file. This option is mutually exclusive with the `-O` option.
-   This script takes care of calling [`otptool.py`](otpconf.md) to generate a temporary OTP file
-   that is discarded when this script exits.
-*  `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
+* `-b` / ` --boot`  specify a bootloader 0 file that can be added to the flash image file when
+  a ROM extension file is specified with the `-x` option. This option is mutually exclusive with
+  the `-f` option.
+* `-c` / `--config` specify a (H)JSON configuration file, see the
+  [Configuration](#Configurationfile) section for details.
+* `-e` / `embedded-flash` generate an embedded flash image file, default is to provide ROM and
+  application files as device options
+* `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
    generated with the [`flashgen.py`](flashgen.md) tool. Alternatively, see the `-x` option.
-*  `-x` / ` --exec` specify a ROM extension, an application or a test to execute. This option is
-   mutually exclusive with the `-f` option. This script takes care of calling
-   [`flashgen.py`](flashgen.md) to generate a temporary flash file that is discarded when the
-   application has been run.
-*  `-b` / ` --boot`  specify a bootloader 0 file that can be added to the flash image file when
-   a ROM extension file is specified with the `-x` option. This option is mutually exclusive with
-   the `-f` option.
+* `-K` / `--keep-tmp` do not automatically remove temporary files and directories on exit. The user
+  is in charge of discarding any generated files and directories after execution. The paths to the
+  generated items are emitted as warning messages.
+* `-l` / `--loader` ROM trampoline to execute, if any
+* `-O` / `--otp-raw` specify a RAW image file for OTP fuses, which can be generated with the
+  [`otptool.py`](otpconf.md) tool. Alternatively, see the `-o` option.
+* `-o` / ` --otp` specify an OTP VMEM file. This option is mutually exclusive with the `-O` option.
+  This script takes care of calling [`otptool.py`](otpconf.md) to generate a temporary OTP file
+  that is discarded when this script exits.
+* `-r` / `--rom` specify a ROM ELF file. Without a ROM file, it is unlikely to start up any regular
+  application since the emulated lowRISC vCPU is preconfigured with a locked PMP, as the real HW.
+  When no ROM is specified, test applications are executed immediately, as a replacement of the ROM
+  executable.
+* `-w` / `--result` specify an output CSV report file where the result of all the QEMU sessions,
+  one per test, are reported.
+* `-x` / ` --exec` specify a ROM extension, an application or a test to execute. This option is
+  mutually exclusive with the `-f` option. This script takes care of calling
+  [`flashgen.py`](flashgen.md) to generate a temporary flash file that is discarded when the
+  application has been run.
+* `-X` / `--rom-exec` load application as ROM image (default: as kernel)
+
+### Execution
+
+* `-F` / `--filter` when used, only tests whose filenames match one of the selected filter are
+  considered. This option only applies to tests enumerated from the configuration file. If a filter
+  starts with '!', any matching test is excluded.
+* `-k` / `--timeout` define the maximal duration of each QEMU session. QEMU is terminated or killed
+  after this delay if the executed test has not completed in time.
+* `-R` / `--summary` show a execution result summary on exit
 * `-Z`, `--zero` do not report an error if no test can be executed with the specified filters and
    detected test applications. Default behavior is to report an error should such a condition arise,
    as it likely comes from a misconfiguration or build issue.
+
+### File options
+
+* `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
+* `-d` / `--debug` only useful to debug the script, reports any Python traceback to the standard
+  error stream.
 
 ## Configuration file
 

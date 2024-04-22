@@ -22,7 +22,7 @@ except ImportError:
     from json import load as jload
 from logging import CRITICAL, DEBUG, INFO, ERROR, WARNING, getLogger
 from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
-from os.path import (abspath, basename, dirname, isabs, isdir, isfile,
+from os.path import (abspath, basename, dirname, exists, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
 from re import Match, compile as re_compile, sub as re_sub
 from shutil import rmtree
@@ -465,6 +465,8 @@ class QEMUFileManager:
         for name in aliases:
             value = str(aliases[name])
             value = re_sub(r'\$\{(\w+)\}', replace, value)
+            if exists(value):
+                value = normpath(value)
             aliases[name] = value
             self._env[name.upper()] = value
             self._log.debug('Store %s as %s', name.upper(), value)
@@ -531,8 +533,8 @@ class QEMUFileManager:
             self._log.error('Cannot be removed dir %s for %s', self._dirs[name],
                             name)
 
-    def create_flash_image(self, app: Optional[str] = None,
-                           bootloader: Optional[str] = None) -> str:
+    def create_eflash_image(self, app: Optional[str] = None,
+                            bootloader: Optional[str] = None) -> str:
         """Generate a temporary flash image file.
 
            :param app: optional path to the application or the rom extension
@@ -1082,7 +1084,7 @@ class QEMUExecuter:
     def abspath(path: str) -> str:
         """Build absolute path"""
         if isabs(path):
-            return path
+            return normpath(path)
         return normpath(joinpath(getcwd(), path))
 
     def _cleanup_temp_files(self, storage: Dict[str, Set[str]]) -> None:
@@ -1112,20 +1114,34 @@ class QEMUExecuter:
             '-M',
             args.machine
         ]
+        rom_exec = bool(args.rom_exec)
+        rom_count = int(rom_exec)
         if args.rom:
+            rom_count += 1
             rom_path = self.abspath(args.rom)
-            qemu_args.extend(('-object',
-                              f'ot-rom-img,id=rom,file={rom_path},digest=fake'))
-        else:
-            if all((args.exec, args.boot)):
-                raise ValueError('Cannot use both a ROM ext/app and a '
-                                 'bootloader without a ROM file')
-            if any((args.exec, args.boot)):
-                qemu_args.append('-kernel')
-            if args.exec:
-                qemu_args.append(normpath(args.exec))
-            if args.boot:
-                qemu_args.append(normpath(args.boot))
+            rom_ids = []
+            if args.first_soc:
+                rom_ids.append(args.first_soc)
+            rom_ids.append('rom')
+            if rom_count > 1:
+                rom_ids.append('0')
+            rom_id = ''.join(rom_ids)
+            rom_opt = f'ot-rom-img,id={rom_id},file={rom_path},digest=fake'
+            qemu_args.extend(('-object', rom_opt))
+        if args.exec:
+            exec_path = self.abspath(args.exec)
+            if rom_exec:
+                rom_ids = []
+                if args.first_soc:
+                    rom_ids.append(args.first_soc)
+                rom_ids.append('rom')
+                if rom_count > 1:
+                    rom_ids.append('1')
+                rom_id = ''.join(rom_ids)
+                rom_opt = f'ot-rom-img,id={rom_id},file={exec_path},digest=fake'
+                qemu_args.extend(('-object', rom_opt))
+            else:
+                qemu_args.extend(('-kernel', exec_path))
         temp_files = defaultdict(set)
         if all((args.otp, args.otp_raw)):
             raise ValueError('OTP VMEM and RAW options are mutually exclusive')
@@ -1154,8 +1170,8 @@ class QEMUExecuter:
                 raise ValueError(f'No such exec file: {args.exec}')
             if args.boot and not isfile(args.boot):
                 raise ValueError(f'No such bootloader file: {args.boot}')
-            if args.rom:
-                flash_file = self._qfm.create_flash_image(args.exec, args.boot)
+            if args.embedded_flash:
+                flash_file = self._qfm.create_eflash_image(args.exec, args.boot)
                 temp_files['flash'].add(flash_file)
                 qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_file},'
                                  f'format=raw'))
@@ -1176,7 +1192,7 @@ class QEMUExecuter:
                 qemu_args.extend(('-icount', f'{args.icount}'))
         mux = f'mux={"on" if args.muxserial else "off"}'
         try:
-            start_delay = float(getattr(args, 'start_delay') or\
+            start_delay = float(getattr(args, 'start_delay') or
                                 self.DEFAULT_START_DELAY)
         except ValueError as exc:
             raise ValueError(f'Invalid start up delay {args.start_delay}') \
@@ -1215,6 +1231,7 @@ class QEMUExecuter:
         pathnames = set()
         testdir = normpath(self._qfm.interpolate(self._config.get('testdir',
                                                                   curdir)))
+        rom = self._argdict.get('rom')
         self._qfm.define({'testdir': testdir})
         cfilters = self._args.filter or []
         pfilters = [f for f in cfilters if not f.startswith('!')]
@@ -1246,6 +1263,8 @@ class QEMUExecuter:
                     pathnames.add(testfile)
         if not pathnames:
             return []
+        if rom:
+            pathnames -= {normpath(rom)}
         xtfilters = [f[1:].strip() for f in cfilters if f.startswith('!')]
         exc_filters = self._build_config_list('exclude')
         xtfilters.extend(exc_filters)
@@ -1388,73 +1407,81 @@ def main():
         argparser = ArgumentParser(description=f'{desc}.')
         qvm = argparser.add_argument_group(title='Virtual machine')
         rel_qemu_path = relpath(qemu_path) if qemu_path else '?'
-        qvm.add_argument('-q', '--qemu',
-                         help=f'path to qemu application '
-                              f'(default: {rel_qemu_path})')
-        qvm.add_argument('-Q', '--opts', action='append',
-                         help='QEMU verbatim option (can be repeated)')
-        qvm.add_argument('-m', '--machine',
-                         help=f'virtual machine (default to {DEFAULT_MACHINE})')
-        qvm.add_argument('-p', '--device',
-                         help=f'serial port device name '
-                              f'(default to {DEFAULT_DEVICE})')
+        qvm.add_argument('-D', '--start-delay', type=float, metavar='DELAY',
+                         help='QEMU start up delay before initial comm')
+        qvm.add_argument('-i', '--icount', metavar='N', type=int,
+                         help='virtual instruction counter with 2^N clock ticks'
+                              ' per inst.')
         qvm.add_argument('-L', '--log_file',
                          help='log file for trace and log messages')
         qvm.add_argument('-M', '--log', action='append',
                          help='log message types')
+        qvm.add_argument('-m', '--machine',
+                         help=f'virtual machine (default to {DEFAULT_MACHINE})')
+        qvm.add_argument('-Q', '--opts', action='append',
+                         help='QEMU verbatim option (can be repeated)')
+        qvm.add_argument('-q', '--qemu',
+                         help=f'path to qemu application '
+                              f'(default: {rel_qemu_path})')
+        qvm.add_argument('-p', '--device',
+                         help=f'serial port device name '
+                              f'(default to {DEFAULT_DEVICE})')
         qvm.add_argument('-t', '--trace', type=FileType('rt', encoding='utf-8'),
                          help='trace event definition file')
-        qvm.add_argument('-i', '--icount', metavar='N', type=int,
-                         help='virtual instruction counter with 2^N clock ticks'
-                              ' per inst.')
-        qvm.add_argument('-s', '--singlestep', action='store_true',
-                         default=None,
+        qvm.add_argument('-S', '--first-soc', default=None,
+                         help='Identifier of the first SoC, if any')
+        qvm.add_argument('-s', '--singlestep', action='store_const',
+                         const=True,
                          help='enable "single stepping" QEMU execution mode')
-        qvm.add_argument('-T', '--timeout-factor', type=float, metavar='FACTOR',
-                         default=DEFAULT_TIMEOUT_FACTOR,
-                         help='timeout factor')
-        qvm.add_argument('-U', '--muxserial', action='store_true',
-                         default=None,
+        qvm.add_argument('-U', '--muxserial', action='store_const',
+                         const=True,
                          help='enable multiple virtual UARTs to be muxed into '
                               'same host output channel')
-        qvm.add_argument('-D', '--start-delay', type=float, metavar='DELAY',
-                         help='QEMU start up delay before initial comm')
         files = argparser.add_argument_group(title='Files')
+        files.add_argument('-b', '--boot',
+                           metavar='file', help='bootloader 0 file')
         files.add_argument('-c', '--config', metavar='JSON',
                            type=FileType('rt', encoding='utf-8'),
                            help='path to configuration file')
-        files.add_argument('-w', '--result', metavar='CSV',
-                           help='path to output result file')
+        files.add_argument('-e', '--embedded-flash', action='store_true',
+                           help='generate an embedded flash image file')
+        files.add_argument('-f', '--flash', metavar='RAW',
+                           help='SPI flash image file')
         files.add_argument('-K', '--keep-tmp', action='store_true',
-                           default=False,
                            help='Do not automatically remove temporary files '
                                 'and dirs on exit')
-        files.add_argument('-r', '--rom', metavar='ELF', help='ROM file')
+        files.add_argument('-l', '--loader', metavar='file',
+                           help='ROM trampoline to execute, if any')
         files.add_argument('-O', '--otp-raw', metavar='RAW',
                            help='OTP image file')
         files.add_argument('-o', '--otp', metavar='VMEM', help='OTP VMEM file')
-        files.add_argument('-f', '--flash', metavar='RAW',
-                           help='embedded Flash image file')
-        files.add_argument('-x', '--exec',
-                           metavar='file', help='rom extension or application')
-        files.add_argument('-b', '--boot',
-                           metavar='file', help='bootloader 0 file')
-        files.add_argument('-Z', '--zero', action='store_true',
-                           default=False,
-                           help='do not error if no test can be executed')
+        files.add_argument('-r', '--rom', metavar='ELF', help='ROM file')
+        files.add_argument('-w', '--result', metavar='CSV',
+                           help='path to output result file')
+        files.add_argument('-x', '--exec', metavar='file',
+                           help='application to load')
+        files.add_argument('-X', '--rom-exec', action='store_const', const=True,
+                           help='load application as ROM image '
+                                '(default: as kernel)')
         exe = argparser.add_argument_group(title='Execution')
-        exe.add_argument('-R', '--summary', action='store_true',
-                         help='show a result summary')
-        exe.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
-                         help=f'exit after the specified seconds '
-                              f'(default: {DEFAULT_TIMEOUT} secs)')
         exe.add_argument('-F', '--filter', metavar='TEST', action='append',
                          help='run tests with matching filter, prefix with "!" '
                               'to exclude matching tests')
-        exe.add_argument('-v', '--verbose', action='count',
-                         help='increase verbosity')
-        exe.add_argument('-d', '--debug', action='store_true',
-                         help='enable debug mode')
+        exe.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
+                         help=f'exit after the specified seconds '
+                              f'(default: {DEFAULT_TIMEOUT} secs)')
+        exe.add_argument('-R', '--summary', action='store_true',
+                         help='show a result summary')
+        exe.add_argument('-T', '--timeout-factor', type=float, metavar='FACTOR',
+                         default=DEFAULT_TIMEOUT_FACTOR,
+                         help='timeout factor')
+        exe.add_argument('-Z', '--zero', action='store_true',
+                         help='do not error if no test can be executed')
+        extra = argparser.add_argument_group(title='Extras')
+        extra.add_argument('-v', '--verbose', action='count',
+                           help='increase verbosity')
+        extra.add_argument('-d', '--debug', action='store_true',
+                           help='enable debug mode')
 
         try:
             # all arguments after `--` are forwarded to QEMU
