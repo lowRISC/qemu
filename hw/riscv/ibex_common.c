@@ -605,13 +605,27 @@ void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
     qdev_prop_set_uint64(dev, "size", def->memmap->size);
 }
 
-uint32_t ibex_load_kernel(AddressSpace *as)
+uint32_t ibex_load_kernel(CPUState *cpu)
 {
     MachineState *ms = MACHINE(qdev_get_machine());
 
     uint64_t kernel_entry;
     /* load kernel if provided */
     if (ms->kernel_filename) {
+        AddressSpace *as = NULL;
+        if (!cpu) {
+            CPUState *cs;
+            /* NOLINTNEXTLINE */
+            CPU_FOREACH(cs) {
+                if (cs->as) {
+                    as = cs->as;
+                    break;
+                }
+            }
+        } else {
+            as = cpu->as;
+        }
+        g_assert(as);
         if (load_elf_ram_sym(ms->kernel_filename, NULL, NULL, NULL,
                              &kernel_entry, NULL, NULL, NULL, 0, EM_RISCV, 1, 0,
                              as, true, &rust_demangle_fn) <= 0) {
@@ -626,10 +640,18 @@ uint32_t ibex_load_kernel(AddressSpace *as)
         }
 
         kernel_entry &= ~0xFFull;
-        CPUState *cpu;
-        /* NOLINTNEXTLINE */
-        CPU_FOREACH(cpu) {
-            if (!as || cpu->as == as) {
+        Error *errp = NULL;
+        bool no_set_pc =
+            object_property_get_bool(OBJECT(ms), "ignore-elf-entry", &errp);
+        if (!no_set_pc) {
+            if (!cpu) {
+                CPUState *cs;
+                /* NOLINTNEXTLINE */
+                CPU_FOREACH(cs) {
+                    RISCV_CPU(cs)->env.resetvec = kernel_entry | 0x80ull;
+                    RISCV_CPU(cs)->cfg.mtvec = kernel_entry | 0b1ull;
+                }
+            } else {
                 RISCV_CPU(cpu)->env.resetvec = kernel_entry | 0x80ull;
                 RISCV_CPU(cpu)->cfg.mtvec = kernel_entry | 0b1ull;
             }

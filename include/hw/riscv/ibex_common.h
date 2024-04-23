@@ -448,12 +448,16 @@ void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
 
 /**
  * Load an ELF application into a CPU address space.
- * @as the address space to load the application into, maybe NULL to use the
- * default address space
+ *
+ * @cpu the CPU to load the application for; maybe NULL in which case the
+ *      first valid CPU address space is used. Except if the machine defines
+ *      and sets a "ignore-elf-entry" boolean property, the PC of the specified
+ *      vCPU - or all vCPUs if not specified - is assigned the entry point of
+ *      the ELF file.
  *
  * @return the Ibex-constrained ELF entry point (or -1 on error)
  */
-uint32_t ibex_load_kernel(AddressSpace *as);
+uint32_t ibex_load_kernel(CPUState *cpu);
 
 /**
  * Helper for device debugging: report the current guest PC, if any.
