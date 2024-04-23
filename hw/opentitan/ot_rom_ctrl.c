@@ -34,6 +34,7 @@
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "elf.h"
+#include "hw/core/rust_demangle.h"
 #include "hw/loader.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
@@ -135,6 +136,19 @@ static void ot_rom_ctrl_get_mem_bounds(OtRomCtrlState *s, hwaddr *minaddr,
     *maxaddr = s->mem.addr + (hwaddr)memory_region_size(&s->mem);
 }
 
+static void ot_rom_ctrl_rust_demangle_fn(const char *st_name, int st_info,
+                                         uint64_t st_value, uint64_t st_size)
+{
+    (void)st_info;
+    (void)st_value;
+
+    if (!st_size) {
+        return;
+    }
+
+    rust_demangle_replace((char *)st_name);
+}
+
 static void ot_rom_ctrl_load_elf(OtRomCtrlState *s, const OtRomImg *ri)
 {
     AddressSpace *as = ot_common_get_local_address_space(DEVICE(s));
@@ -143,8 +157,8 @@ static void ot_rom_ctrl_load_elf(OtRomCtrlState *s, const OtRomImg *ri)
     ot_rom_ctrl_get_mem_bounds(s, &minaddr, &maxaddr);
     uint64_t loaddr;
     if (load_elf_ram_sym_nosz(ri->filename, NULL, NULL, NULL, NULL, &loaddr,
-                              NULL, NULL, 0, EM_RISCV, 1, 0, as, false, NULL,
-                              true) <= 0) {
+                              NULL, NULL, 0, EM_RISCV, 1, 0, as, false,
+                              &ot_rom_ctrl_rust_demangle_fn, true) <= 0) {
         error_setg(&error_fatal,
                    "ot_rom_ctrl: %s: ROM image '%s', ELF loading failed",
                    s->ot_id, ri->filename);
