@@ -1258,6 +1258,7 @@ struct OtDjMachineState {
     ResettableState reset;
 
     bool no_epmp_cfg;
+    bool ignore_elf_entry;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1470,7 +1471,7 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
     ot_address_space_set(OT_ADDRESS_SPACE(oas), ctn_dma_as);
 
     /* load kernel if provided */
-    ibex_load_kernel(cpu->as);
+    ibex_load_kernel(cpu);
 }
 
 static void ot_dj_soc_init(Object *obj)
@@ -1628,6 +1629,23 @@ static void ot_dj_machine_set_no_epmp_cfg(Object *obj, bool value, Error **errp)
     s->no_epmp_cfg = value;
 }
 
+static bool ot_dj_machine_get_ignore_elf_entry(Object *obj, Error **errp)
+{
+    OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
+    (void)errp;
+
+    return s->ignore_elf_entry;
+}
+
+static void
+ot_dj_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
+{
+    OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
+    (void)errp;
+
+    s->ignore_elf_entry = value;
+}
+
 static void ot_dj_machine_transitional_reset(Object *obj)
 {
     (void)obj;
@@ -1658,6 +1676,11 @@ static void ot_dj_machine_instance_init(Object *obj)
                              &ot_dj_machine_set_no_epmp_cfg);
     object_property_set_description(obj, "no-epmp-cfg",
                                     "Skip default ePMP configuration");
+    object_property_add_bool(obj, "ignore-elf-entry",
+                             &ot_dj_machine_get_ignore_elf_entry,
+                             &ot_dj_machine_set_ignore_elf_entry);
+    object_property_set_description(obj, "ignore-elf-entry",
+                                    "Do not set vCPU PC with ELF entry point");
 }
 
 static void ot_dj_machine_init(MachineState *state)

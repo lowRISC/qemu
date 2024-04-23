@@ -45,6 +45,9 @@ Devices in this group implement subset(s) of the real HW.
 * KMAC
   * Side loading is not supported
 * [ROM controller](rom_ctrl.md)
+* SRAM controller
+  * Initialization and scrambling with dummy key supported
+  * Wait for init completion (bus stall) emulated
 
 ### Sparsely implemented devices
 
@@ -120,6 +123,11 @@ See [`tools.md`](tools.md)
 * `no_epmp_cfg=true` can be appended to the machine option switch, _i.e._
   `-M ot-earlgrey,no_epmp_cfg=true` to disable the initial ePMP configuration, which can be very
   useful to execute arbitrary code on the Ibex core without requiring an OT ROM image to boot up.
+
+* `ignore_elf_entry=true` can be appended to the machine option switch, _i.e._
+  `-M ot-earlgrey,ignore_elf_entry=true` to prevent the ELF entry point of a loaded application to
+  update the vCPU reset vector at startup. When this option is used, with `-kernel` option for
+  example, the application is loaded in memory but the default machine reset vector is used.
 
 * `-cpu lowrisc-ibex,x-zbr=false` can be used to force disable the Zbr experimental-and-deprecated
   RISC-V bitmap extension for CRC32 extension.

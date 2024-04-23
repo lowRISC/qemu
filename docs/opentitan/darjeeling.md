@@ -29,7 +29,7 @@ Please check out `hw/opentitan/ot_ref.log`
     ECC bits are ignored
 * [RISC-V Debug Module](jtag-dm.md) and Pulp Debug Module
 * SPI data flash (from QEMU upstream w/ fixes)
-* SPI Host controller
+* SPI host controller
   * HW bus config is ignored (SPI mode, speed, ...)
 * Timer
 * UART
@@ -57,6 +57,10 @@ Devices in this group implement subset(s) of the real HW.
   * Fast FSM is partially supported, Slow FSM is bypassed
   * Interactions with other devices (such as the Reset Manager) are limited
 * [ROM controller](rom_ctrl.md)
+* SPI device controller (only Flash mode is supported)
+* SRAM controller
+  * Initialization and scrambling from OTP key supported
+  * Wait for init completion (bus stall) emulated
 * SoC Proxy only supports IRQ routing/gating
 
 ### Sparsely implemented devices
@@ -73,8 +77,8 @@ features are implemented.
     from Power Manager
 * Reset Manager
   * HW and SW reset requests are supported
-* SRAM controller
-  * Supported as dummy SRAM memories
+* Pinmux
+  * Basic features (pull up/down, open drain) are supported for GPIO pin only
 
 ### Dummy devices
 
@@ -83,7 +87,6 @@ any useful feature (only allow guest test code to execute as expected).
 
 * Alert controller
 * Key manager
-* Pinmux
 * Sensor
 
 ### Additional devices
@@ -138,6 +141,11 @@ See [`tools.md`](tools.md)
   `-M ot-darjeeeling,no_epmp_cfg=true` to disable the initial ePMP configuration, which can be very
   useful to execute arbitrary code on the Ibex core without requiring an OT ROM image to boot up.
 
+* `ignore_elf_entry=true` can be appended to the machine option switch, _i.e._
+  `-M ot-darjeeeling,ignore_elf_entry=true` to prevent the ELF entry point of a loaded application
+  to update the vCPU reset vector at startup. When this option is used, with `-kernel` option for
+  example, the application is loaded in memory but the default machine reset vector is used.
+
 * `-global ot-ibex_wrapper-dj.lc-ignore=on` should be used whenever no OTP image is provided, or if
   the current LifeCycle state stored in the OTP image does not allow the Ibex core to fetch data.
   This switch forces the Ibex core to execute whatever the LifeCycle broadcasted signal, which
@@ -176,6 +184,10 @@ See [`tools.md`](tools.md)
   Note: for now, bus 1 is assigned to the internal controller with the embedded flash storage. See
   also SPI Host section.
 
+### GPIO
+
+  See [gpio](gpio.md) documentation for options.
+
 ### OTBN
 
 * `-global ot-otbn.logfile=<filename>` dumps executed instructions on OTBN core into the specified
@@ -187,6 +199,10 @@ See [`tools.md`](tools.md)
 * `-drive if=pflash,file=otp.raw,format=raw` should be used to specify a path to a QEMU RAW image
   file used as the OpenTitan OTP image. This _RAW_ file should have been generated with the
   [`otptool.py`](otptool.md) tool.
+
+### SPI Device
+
+* See [SPI device](spi_devide.md) for options.
 
 ### SPI Host
 

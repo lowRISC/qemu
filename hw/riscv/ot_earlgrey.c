@@ -985,6 +985,7 @@ struct OtEGMachineState {
     MachineState parent_obj;
 
     bool no_epmp_cfg;
+    bool ignore_elf_entry;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1253,6 +1254,23 @@ static void ot_eg_machine_set_no_epmp_cfg(Object *obj, bool value, Error **errp)
     s->no_epmp_cfg = value;
 }
 
+static bool ot_eg_machine_get_ignore_elf_entry(Object *obj, Error **errp)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
+    (void)errp;
+
+    return s->ignore_elf_entry;
+}
+
+static void
+ot_eg_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
+    (void)errp;
+
+    s->ignore_elf_entry = value;
+}
+
 static void ot_eg_machine_instance_init(Object *obj)
 {
     OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
@@ -1262,6 +1280,11 @@ static void ot_eg_machine_instance_init(Object *obj)
                              &ot_eg_machine_set_no_epmp_cfg);
     object_property_set_description(obj, "no-epmp-cfg",
                                     "Skip default ePMP configuration");
+    object_property_add_bool(obj, "ignore-elf-entry",
+                             &ot_eg_machine_get_ignore_elf_entry,
+                             &ot_eg_machine_set_ignore_elf_entry);
+    object_property_set_description(obj, "ignore-elf-entry",
+                                    "Do not set vCPU PC with ELF entry point");
 }
 
 static void ot_eg_machine_init(MachineState *state)
