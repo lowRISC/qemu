@@ -59,7 +59,7 @@ class TestResult(NamedTuple):
     name: str
     result: str
     time: ExecTime
-    icount: int
+    icount: Optional[int]
     error: str
 
 
@@ -994,6 +994,8 @@ class QEMUExecuter:
             if not tcount and not allow_no_test:
                 self._log.error('No test can be run')
                 return 1
+            targs = None
+            temp_files = {}
             for tpos, test in enumerate(tests, start=1):
                 self._log.info('[TEST %s] (%d/%d)', self.get_test_radix(test),
                                tpos, tcount)
@@ -1003,9 +1005,9 @@ class QEMUExecuter:
                         'UTDIR': normpath(dirname(test)),
                         'UTFILE': basename(test),
                     })
+                    test_name = self.get_test_radix(test)
                     qemu_cmd, targs, timeout, temp_files, ctx, sdelay = \
                         self._build_qemu_test_command(test)
-                    test_name = self.get_test_radix(test)
                     ctx.execute('pre')
                     tret, xtime, err = qot.run(qemu_cmd, timeout, test_name,
                                                ctx, sdelay)
@@ -1023,7 +1025,10 @@ class QEMUExecuter:
                     self._qfm.cleanup_transient()
                 results[tret] += 1
                 sret = self.RESULT_MAP.get(tret, tret)
-                icount = self.get_namespace_arg(targs, 'icount')
+                if targs:
+                    icount = self.get_namespace_arg(targs, 'icount')
+                else:
+                    icount = None
                 if csv:
                     csv.writerow(TestResult(test_name, sret, xtime, icount,
                                             err))
