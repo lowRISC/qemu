@@ -1018,6 +1018,73 @@ class MemProxy(DeviceProxy):
             raise ProxyCommandError(0x404, f'expected {wsize}, wrote {value}')
 
 
+class SramMemProxy(MemProxy):
+    """SRAM memory device proxy.
+
+       Specialized MemProxy that helps managing SRAM.
+
+       :param args: forwarded as is to the parent, see #DevicePRoxy
+       :param role: optional access role
+    """
+
+    DEVICE_ID = 'srm'
+
+
+class SramCtrlProxy(DeviceProxy):
+    """SRAM controller device proxy.
+
+       Specialized DeviceProxy that help managing SRAM controllers.
+
+       :param args: forwarded as is to the parent, see #DevicePRoxy
+       :param role: optional access role
+    """
+
+    DEVICE_ID = 'src'
+
+    REGS = {
+        'ALERT_TEST': 0x0,
+        'STATUS': 0x4,
+        'EXEC_REGWEN': 0x8,
+        'EXEC': 0xc,
+        'CTRL_REGWEN': 0x10,
+        'CTRL': 0x14,
+        'SCR_KEY_ROTATED': 0x1c,
+    }
+    """Supported registers."""
+
+    def __init__(self, *args, role: Optional[int] = None):
+        super().__init__(*args)
+        self._role = 0xff  # ensure it should be defined through set_role
+        if role is not None:
+            self.set_role(role)
+
+    def set_role(self, role: int):
+        """Set the control access role to read/write remote registers."""
+        if not isinstance(role, int) or role > 0xf:
+            raise ValueError('Invalid role')
+        self._role = role
+        self._log.debug('%d', role)
+
+    def is_init_done(self) -> bool:
+        """Report whether initialization is complete."""
+        return bool(self.read_word(self._role, self.REGS['STATUS']) & (1 << 5))
+
+    def is_scr_key_seed_valid(self) -> bool:
+        """Report whether scrambing key seed is valid."""
+        return bool(self.read_word(self._role, self.REGS['STATUS']) & (1 << 4))
+
+    def is_scr_key_valid(self) -> bool:
+        """Report whether scrambing key is valid."""
+        return bool(self.read_word(self._role, self.REGS['STATUS']) & (1 << 3))
+
+    def initialize(self, renew_src_key: bool) -> None:
+        """Intialize SRAM content."""
+        ctrl = 0b10
+        if renew_src_key:
+            ctrl |= 0b01
+        self.write_word(self._role, self.REGS['CTRL'], ctrl)
+
+
 RequestHandler = Callable[[str, bytes, Any], None]
 """Remote request handler."""
 

@@ -873,8 +873,10 @@ static void ot_dev_proxy_write_memory(OtDevProxyState *s)
         base += offset;
         /* for now, there is no way to control role access */
         memcpy((void *)base, buffer, count * sizeof(uint32_t));
-        memory_region_set_dirty(mr, (hwaddr)offset * sizeof(uint32_t),
-                                (hwaddr)count * sizeof(uint32_t));
+        if (mr->ram_block) {
+            memory_region_set_dirty(mr, (hwaddr)offset * sizeof(uint32_t),
+                                    (hwaddr)count * sizeof(uint32_t));
+        }
     } else {
         ot_dev_proxy_reply_error(s, PE_UNSUPPORTED_DEVICE, NULL);
         return;
@@ -1468,21 +1470,27 @@ static int ot_dev_proxy_discover_device(Object *child, void *opaque)
         item->prefix = "SOC/";
         g_array_append_val(array, item);
     } else if (object_dynamic_cast(child, TYPE_OT_SRAM_CTRL)) {
-        OtDevProxyItem *item = g_new0(OtDevProxyItem, 1);
-        object_ref(child);
-        item->obj = child;
         SysBusDevice *sysdev = SYS_BUS_DEVICE(child);
-        for (unsigned ix = 0; ix < sysdev->num_mmio; ix++) {
-            if (sysdev->mmio[ix].memory->ram) {
-                item->caps.mr = sysdev->mmio[ix].memory;
-                break;
-            }
+        if (sysdev->mmio[0].memory && /* ctrl */
+            sysdev->mmio[1].memory /* mem */) {
+            OtDevProxyItem *item;
+            item = g_new0(OtDevProxyItem, 1);
+            object_ref(child);
+            item->obj = child;
+            item->caps.mr = sysdev->mmio[0].memory;
+            item->caps.reg_count =
+                int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
+            item->prefix = "SRC/"; /* SRAM control */
+            g_array_append_val(array, item);
+            item = g_new0(OtDevProxyItem, 1);
+            object_ref(child);
+            item->obj = child;
+            item->caps.mr = sysdev->mmio[1].memory;
+            item->caps.reg_count =
+                int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
+            item->prefix = "SRM/"; /* SRAM memory */
+            g_array_append_val(array, item);
         }
-        g_assert(item->caps.mr);
-        item->caps.reg_count =
-            int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
-        item->prefix = "M/";
-        g_array_append_val(array, item);
     } else if (object_dynamic_cast(child, TYPE_MEMORY_REGION)) {
         MemoryRegion *mr = MEMORY_REGION(child);
         if (mr->ram && child->parent) {
