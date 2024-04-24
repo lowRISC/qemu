@@ -46,9 +46,6 @@ class JtagBitbangController(JtagController):
     DEFAULT_PORT = 3335
     """Default TCP port."""
 
-    INSTRUCTIONS = dict(bypass=0x0, idcode=0x1)
-    """Common instruction register codes."""
-
     RECV_TIMEOUT = 0.25
     """Maximum allowed time in seconds to receive a response from the JTAG
        controller.

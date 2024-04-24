@@ -16,22 +16,22 @@ if TYPE_CHECKING:
 class OTPPartitionDesc:
     """OTP Partition descriptor generator."""
 
-    ATTRS = dict(
-        size=None,
-        offset=None,
-        digest_offset=None,
-        hw_digest='',
-        sw_digest='',
-        secret='',
-        variant='buffer',
-        write_lock='wlock',
-        read_lock='rlock',
-        integrity='',
-        iskeymgr='',
-        iskeymgr_creator='',
-        iskeymgr_owner='',
-        wide=''
-    )
+    ATTRS = {
+        'size': None,
+        'offset': None,
+        'digest_offset': None,
+        'hw_digest': '',
+        'sw_digest': '',
+        'secret': '',
+        'variant': 'buffer',
+        'write_lock': 'wlock',
+        'read_lock': 'rlock',
+        'integrity': '',
+        'iskeymgr': '',
+        'iskeymgr_creator': '',
+        'iskeymgr_owner': '',
+        'wide': ''
+    }
 
     def __init__(self, otpmap: 'OtpMap'):
         self._log = getLogger('otptool.partdesc')

@@ -11,7 +11,7 @@
 from argparse import ArgumentParser, Namespace, FileType
 from io import BytesIO
 from os import linesep
-from os.path import dirname, join as joinpath, normpath
+from os.path import dirname, normpath
 from socket import create_connection
 from traceback import format_exc
 from typing import Optional

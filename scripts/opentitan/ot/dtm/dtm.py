@@ -155,7 +155,7 @@ class DMI(DTMRegister):
 
     ADDRESS = 0x11
 
-    OPS = dict(nop=0, read=1, write=2)
+    OPS = {'nop': 0, 'read': 1, 'write': 2}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -227,9 +227,6 @@ class DebugTransportModule:
        :param engine: JTAG engine
        :param ir_length: the length in bits of the IR register
     """
-
-    # INSTRUCTIONS = dict(dmtcs=DTMCS.ADDRESS, dmi=0x11)
-    # INSTRUCTIONS.update(JtagController.INSTRUCTIONS)
 
     def __init__(self, engine: JtagEngine, ir_length: int):
         self._engine = engine

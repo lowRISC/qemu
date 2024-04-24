@@ -229,8 +229,8 @@ class OtpLifecycleExtension(OtpPartitionDecoder):
                 sequences[kind][name] = items
                 continue
         for kind, seqs in sequences.items():
-            mkind, conv = dict(st=('LC_STATE', str),
-                               cnt=('LC_TRANSITION_CNT', int))[kind]
+            mkind, conv = {'st': ('LC_STATE', str),
+                           'cnt': ('LC_TRANSITION_CNT', int)}[kind]
             self._tables[mkind] = {}
             for ref, seq in seqs.items():
                 seq = ''.join((f'{x:04x}'for x in map(codes.get, seq)))
@@ -276,5 +276,6 @@ class OtpLifecycleExtension(OtpPartitionDecoder):
 
 
 # imported here to avoid Python circular dependency issue
+# pylint: disable=cyclic-import
 # pylint: disable=wrong-import-position
 from .map import OtpMap  # noqa: E402

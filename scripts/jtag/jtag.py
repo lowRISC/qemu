@@ -190,7 +190,7 @@ class JtagStateMachine:
 class JtagController:
     """JTAG master API."""
 
-    INSTRUCTIONS = dict(bypass=0x0, idcode=0x1)
+    INSTRUCTIONS = {'bypass': 0x0, 'idcode': 0x1}
     """Common instruction register codes."""
 
     def tap_reset(self, use_trst: bool = False) -> None:

@@ -66,12 +66,13 @@ class LifeCycleController:
         SCRAP
     """.split()
 
-    REGS = dict(alert_test=0, status=1, claim_transition_if_regwen=2,
-                claim_transition_if=3, transition_regwen=4, transition_cmd=5,
-                transition_ctrl=6, transition_token=7, transition_target=11,
-                otp_vendor_test_ctrl=12, otp_vendor_test_status=13, lc_state=14,
-                lc_transition_cnt=15, lc_id_state=16, hw_revision=17,
-                device_id=19, manuf_state=27)
+    REGS = {
+        'alert_test': 0, 'status': 1, 'claim_transition_if_regwen': 2,
+        'claim_transition_if': 3, 'transition_regwen': 4, 'transition_cmd': 5,
+        'transition_ctrl': 6, 'transition_token': 7, 'transition_target': 11,
+        'otp_vendor_test_ctrl': 12, 'otp_vendor_test_status': 13,
+        'lc_state': 14, 'lc_transition_cnt': 15, 'lc_id_state': 16,
+        'hw_revision': 17, 'device_id': 19, 'manuf_state': 27}
     """Registers."""
 
     ALERTS = 'prog_error state_error bus_integ_error'.split()

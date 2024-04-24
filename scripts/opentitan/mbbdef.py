@@ -80,15 +80,13 @@ class MbbChecker:
     def _enumerate_registers(self, values: [List, Dict]) -> Iterator[Dict]:
         if isinstance(values, list):
             for sub in values:
-                for reg in self._enumerate_registers(sub):
-                    yield reg
+                yield from self._enumerate_registers(sub)
         if isinstance(values, Dict):
             if 'fields' in values:
                 yield values
             else:
                 for regs in values.values():
-                    for reg in self._enumerate_registers(regs):
-                        yield reg
+                    yield from self._enumerate_registers(regs)
 
     def _parse_register(self, ipname: str,  reg: Dict) -> None:
         regname = reg.get('name')

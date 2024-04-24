@@ -18,6 +18,7 @@ from typing import Dict, TextIO, Tuple
 
 from ot.util.log import configure_loggers
 
+# pylint: disable=missing-function-docstring
 
 REG_CRE = re_compile(r'^#define ([A-Z][\w]+)_REG_(OFFSET|RESVAL)\s+'
                      r'((?:0x)?[A-Fa-f0-9]+)(?:\s|$)')

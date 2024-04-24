@@ -88,8 +88,8 @@ class DebugModule:
     SBVERSION = IntEnum('sbversion', ['legacy', 'v1.0'], start=0)
     """SBCS sbversion."""
 
-    BITFIELDS = dict(
-        DMCONTROL=BitField({
+    BITFIELDS = {
+        'DMCONTROL': BitField({
             'dmactive': (0, 1),
             'ndmreset': (1, 1),
             'clrresethaltreq': (2, 1),
@@ -101,7 +101,7 @@ class DebugModule:
             'hartreset': (29, 1),
             'resumereq': (30, 1),
             'haltreq': (31, 1)}),
-        DMSTATUS=BitField({
+        'DMSTATUS': BitField({
             'version': (0, 4, VERSION),
             'confstrptrvalid': (4, 1),
             'hasresethaltreq': (5, 1),
@@ -120,17 +120,17 @@ class DebugModule:
             'anyhavereset': (18, 1),
             'allhavereset': (19, 1),
             'impebreak': (22, 1)}),
-        HARTINFO=BitField({
+        'HARTINFO': BitField({
             'dataaddr': (0, 12),
             'datasize': (12, 4),
             'dataaccess': (16, 1),
             'nscratch': (20, 4)}),
-        ABSTRACTCS=BitField({
+        'ABSTRACTCS': BitField({
             'datacount': (0, 4),
             'cmderr': (8, 3, CMDERR),
             'busy': (12, 1),
             'progbufsize': (24, 5)}),
-        COMMAND=BitField({
+        'COMMAND': BitField({
             'control': (0, 24),
             'cmdtype': (24, 8, IntEnum('cmdtype', ['reg', 'quick', 'mem'],
                                        start=0), True),
@@ -147,10 +147,10 @@ class DebugModule:
             'aampostincrement': (19, 1),
             'aamsize': (20, 3),
             'aamvirtual': (23, 1)}),
-        ABSTRACTAUTO=BitField({
+        'ABSTRACTAUTO': BitField({
             'autoexecdata': (0, 12),
             'autoexecprogbuf': (16, 16)}),
-        SBCS=BitField({
+        'SBCS': BitField({
             'sbaccess8': (0, 1),
             'sbaccess16': (1, 1),
             'sbaccess32': (2, 1),
@@ -166,7 +166,7 @@ class DebugModule:
             'sbbusyerror': (22, 1),
             'sbversion': (29, 3, SBVERSION)
         })
-    )
+    }
 
     def __init__(self, dtm: DebugTransportModule, address: int):
         self._log = getLogger('dtm.rvdm')

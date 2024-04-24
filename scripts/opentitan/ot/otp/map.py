@@ -133,7 +133,7 @@ class OtpMap:
             prefix = name.title().replace('_', '')
             partname = f'{prefix}Part'
             newpart = type(partname, (OtpPartition,),
-                           dict(name=name, __doc__=desc))
+                           {'name': name, '__doc__': desc})
             self._partitions.append(newpart(part))
 
     def _check_keymgr_materials(self, partname: str, items: Dict[str, Dict]) \
@@ -193,5 +193,6 @@ class OtpMap:
 
 
 # imported here to avoid Python circular dependency issue
+# pylint: disable=cyclic-import
 # pylint: disable=wrong-import-position
 from .partition import OtpPartition  # noqa: E402

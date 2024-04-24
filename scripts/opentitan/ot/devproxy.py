@@ -1243,14 +1243,12 @@ class ProxyEngine:
     def enumerate_devices(self) -> Iterator[str]:
         """Provide an iterator on discovered devices.
         """
-        for name in self._devices.keys():
-            yield name
+        yield from self._devices
 
     def enumerate_memory_spaces(self) -> Iterator[str]:
         """Provide an iterator on discovered memory spaces.
         """
-        for name in self._mroots.keys():
-            yield name
+        yield from self._mroots
 
     def get_device_by_name(self, name: str) -> Optional[DeviceProxy]:
         """Retrieve a device proxy from its name."""

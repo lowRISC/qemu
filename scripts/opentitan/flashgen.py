@@ -464,10 +464,12 @@ class FlashGen:
         hlen = scalc(fhfmt) - scalc(shfmt)
         ipp = bytearray(self.INFOS)
         ipp.extend([0] * (12 - len(ipp)))
-        values = dict(magic=b'vFSH', hlength=hlen, version=1,
-                      bank=self.NUM_BANKS, info=len(self.INFOS),
-                      page=self.PAGES_PER_BANK, psize=self.BYTES_PER_PAGE,
-                      ipp=bytes(ipp))
+        values = {
+            'magic': b'vFSH', 'hlength': hlen, 'version': 1,
+            'bank': self.NUM_BANKS, 'info': len(self.INFOS),
+            'page': self.PAGES_PER_BANK, 'psize': self.BYTES_PER_PAGE,
+            'ipp': bytes(ipp)
+        }
         args = [values[k] for k in hfmt]
         header = spack(f'<{fhfmt}', *args)
         return header

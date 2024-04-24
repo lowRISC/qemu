@@ -299,9 +299,11 @@ class OtpImage:
         hlen = scalc(fhfmt)-scalc(shfmt)
         dlen = (len(self._data)+7) & ~0x7
         elen = (len(self._ecc)+7) & ~0x7
-        values = dict(magic=self._magic, hlength=hlen, version=1+int(use_v2),
-                      eccbits=self._ecc_bits, eccgran=self._ecc_granule,
-                      dlength=dlen, elength=elen)
+        values = {
+            'magic': self._magic, 'hlength': hlen, 'version': 1+int(use_v2),
+            'eccbits': self._ecc_bits, 'eccgran': self._ecc_granule,
+            'dlength': dlen, 'elength': elen
+        }
         if use_v2:
             values['digiv'] = self._digest_iv.to_bytes(8, byteorder='little')
             values['digfc'] = self._digest_constant.to_bytes(16,

@@ -20,7 +20,7 @@ class JtagMbox(SysMbox):
     """JTAG Mailbox requester API
     """
 
-    SYSREGS = dict(control=2, status=3, wdata=4, rdata=5)
+    SYSREGS = {'control': 2, 'status': 3, 'wdata': 4, 'rdata': 5}
 
     def __init__(self, dtm: 'DebugTransportModule', address: int):
         super().__init__()

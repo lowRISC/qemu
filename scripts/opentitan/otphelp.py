@@ -26,12 +26,14 @@ from typing import BinaryIO
 
 from ot.util.log import configure_loggers
 
+# pylint: disable=missing-docstring
+
 
 class OtpHelper:
 
     def __init__(self):
         self._log = getLogger('otp.help')
-        self._log = {}
+        self._data = {}
         self._params = {}
         self._registers = {}
         self._regwens = {}
@@ -55,7 +57,8 @@ class OtpHelper:
             name = regdef.get('name')
             if not name:
                 continue
-            regs = [name] if count == 1 else [f'{name}_{p}' for p in range(count)]
+            regs = [name] if count == 1 else [f'{name}_{p}'
+                                              for p in range(count)]
             regwen = regdef.get('regwen')
             if regwen:
                 if regwen not in self._regwens:
@@ -83,13 +86,14 @@ class OtpHelper:
         if self._writeonlys:
             for reg in self._writeonlys:
                 lns.append(f'case R_{reg}:')
-            lns.append('    qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%03" HWADDR_PRIx " (%s)\\n",')
+            lns.append('    qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register'
+                       ' 0x%03" HWADDR_PRIx " (%s)\\n",')
             lns.append('                  __func__, addr, REG_NAME(reg));')
             lns.append('    return;')
         lns.append('default:')
         lns.append('    break;')
         lns.append('}')
-        print('\n'.join((f'{idt}{l}' for l in lns)))
+        print('\n'.join((f'{idt}{ln}' for ln in lns)))
 
     def make_write(self, c_code: bool = False, indent=4):
         if not self._regwens and not self._readonlys:
@@ -104,22 +108,26 @@ class OtpHelper:
         for regwen, regs in self._regwens.items():
             for reg in regs:
                 lns.append(f'case R_{reg}:')
-            lns.append(f'    if (s->regs[R_{regwen}] & R_{regwen}_REGWEN_MASK) {{')
-            lns.append(f'        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s is not enabled, %s is protected\\n",')
-            lns.append(f'                      __func__, REG_NAME(R_{regwen}), REG_NAME(reg));')
+            lns.append(f'    if (s->regs[R_{regwen}] & R_{regwen}_REGWEN_MASK) '
+                       f'{{')
+            lns.append('        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s is not '
+                       'enabled, %s is protected\\n",')
+            lns.append(f'                      __func__, REG_NAME(R_{regwen}), '
+                       f'REG_NAME(reg));')
             lns.append('        return;')
             lns.append('    }')
             lns.append('    break;')
         if self._readonlys:
             for reg in self._readonlys:
                 lns.append(f'case R_{reg}:')
-            lns.append('    qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%03" HWADDR_PRIx " (%s)\\n",')
+            lns.append('    qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register '
+                       '0x%03" HWADDR_PRIx " (%s)\\n",')
             lns.append('                  __func__, addr, REG_NAME(reg));')
             lns.append('    return;')
         lns.append('default:')
         lns.append('    break;')
         lns.append('}')
-        print('\n'.join((f'{idt}{l}' for l in lns)))
+        print('\n'.join((f'{idt}{ln}' for ln in lns)))
 
 
 def main():

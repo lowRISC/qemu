@@ -39,7 +39,7 @@ class BitField:
         bits = dict(self._bits)
         if self._selector:
             offset, length, enum_ = self._bits[self._selector.__name__][:3]
-            mask = ((1 << length) - 1)
+            mask = (1 << length) - 1
             val = (value >> offset) & mask
             try:
                 sel = enum_(val).name
@@ -51,7 +51,7 @@ class BitField:
         for name, code in bits.items():
             offset, length = code[:2]
             enum = code[2] if len(code) > 2 else None
-            mask = ((1 << length) - 1)
+            mask = (1 << length) - 1
             val = (value >> offset) & mask
             if enum:
                 values[name] = enum(val)
@@ -88,7 +88,7 @@ class BitField:
                 val = enum[val]
             if length == 1 and isinstance(val, bool):
                 val = int(val)
-            mask = ((1 << length) - 1)
+            mask = (1 << length) - 1
             val &= mask
             value &= ~(mask << offset)
             value |= val << offset

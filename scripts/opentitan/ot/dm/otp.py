@@ -71,8 +71,8 @@ class OTPController:
 
     ERROR_COUNT = 24
 
-    BITFIELDS = dict(
-        STATUS=BitField({
+    BITFIELDS = {
+        'STATUS': BitField({
             'vendor_test_error': (0, 1),
             'creator_sw_cfg_error': (1, 1),
             'owner_sw_cfg_error': (2, 1),
@@ -105,21 +105,21 @@ class OTPController:
             'dai_idle': (29, 1),
             'check_pending': (30, 1),
         }),
-        REGWEN=BitField({
+        'REGWEN': BitField({
             'en': (0, 1),
         }),
-        CMD=BitField({
+        'CMD': BitField({
             'rd': (0, 1),
             'wr': (1, 1),
             'digest': (2, 1)
         }),
-        ADDRESS=BitField({
+        'ADDRESS': BitField({
             'address': (0, 14),
         }),
-        ERR_CODE=BitField({
+        'ERR_CODE': BitField({
             'err_code': (0, 3, ERR_CODE),
         })
-    )
+    }
 
     def __init__(self, dbgmod: DebugModule, base: int):
         self._log = getLogger('dtm.otp')
