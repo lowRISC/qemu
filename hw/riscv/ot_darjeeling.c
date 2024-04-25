@@ -285,9 +285,8 @@ enum OtDjPinmuxMioOut {
 #define OT_DJ_DEBUG_LC_CTRL_SIZE     0x400u
 #define OT_DJ_DBG_XBAR_SIZE          0x4000u
 
-#define OT_DJ_PERIPHERAL_CLK_HZ 62500000u
-#define OT_DJ_SPIHOST_CLK_HZ    250000000u
-#define OT_DJ_AON_CLK_HZ        62500000u
+#define OT_DJ_PERIPHERAL_CLK_HZ 250000000u /* 250 MHz */
+#define OT_DJ_AON_CLK_HZ        62500000u /* 62.5 MHz */
 
 static const uint8_t ot_dj_pmp_cfgs[] = {
     /* clang-format off */
