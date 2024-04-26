@@ -50,6 +50,7 @@
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_eg.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
+#include "hw/opentitan/ot_plic_ext.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
@@ -116,6 +117,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_PATTGEN,
     OT_EG_SOC_DEV_PINMUX,
     OT_EG_SOC_DEV_PLIC,
+    OT_EG_SOC_DEV_PLIC_EXT,
     OT_EG_SOC_DEV_PWM,
     OT_EG_SOC_DEV_PWRMGR,
     OT_EG_SOC_DEV_SRAM_RET_CTRL,
@@ -926,7 +928,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_PLIC] = {
         .type = TYPE_SIFIVE_PLIC,
         .memmap = MEMMAPENTRIES(
-            { 0x48000000u, 0x8000000u }
+            { 0x48000000u, 0x4000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO(1, HART, IRQ_M_EXT)
@@ -943,7 +945,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_UINT_PROP("enable-stride", 32u),
             IBEX_DEV_UINT_PROP("context-base", 0x200000u),
             IBEX_DEV_UINT_PROP("context-stride", 8u),
-            IBEX_DEV_UINT_PROP("aperture-size", 0x8000000u)
+            IBEX_DEV_UINT_PROP("aperture-size", 0x4000000u)
+        ),
+    },
+    [OT_EG_SOC_DEV_PLIC_EXT] = {
+        .type = TYPE_OT_PLIC_EXT,
+        .memmap = MEMMAPENTRIES(
+            { 0x2c000000u, 0x10u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO(0, HART, IRQ_M_SOFT)
         ),
     },
     /* clang-format on */
