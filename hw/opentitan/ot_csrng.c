@@ -212,7 +212,10 @@ static_assert(OT_CSRNG_AES_BLOCK_SIZE + OT_CSRNG_AES_KEY_SIZE ==
 enum {
     ALERT_RECOVERABLE,
     ALERT_FATAL,
+    ALERT_COUNT,
 };
+
+static_assert(ALERT_COUNT == PARAM_NUM_ALERTS, "Invalid alert count");
 
 typedef enum {
     CSRNG_CMD_STALLED = -2, /* entropy stack is stalled */
@@ -739,14 +742,20 @@ static void ot_csrng_update_irqs(OtCSRNGState *s)
     }
 }
 
-static void ot_csrng_report_alert(OtCSRNGState *s)
+static void ot_csrng_update_alerts(OtCSRNGState *s)
 {
+    uint32_t level = s->regs[R_ALERT_TEST];
+
     if (__builtin_popcount(s->regs[R_RECOV_ALERT_STS])) {
-        ibex_irq_set(&s->alerts[ALERT_RECOVERABLE], 1);
+        level |= 1u << ALERT_RECOVERABLE;
     }
 
     if (s->state == CSRNG_ERROR) {
-        ibex_irq_set(&s->alerts[ALERT_FATAL], 1);
+        level |= 1u << ALERT_FATAL;
+    }
+
+    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -759,7 +768,7 @@ static void ot_csrng_change_state_line(OtCSRNGState *s, OtCSRNGFsmState state,
     s->state = state;
 
     if (s->state == CSRNG_ERROR) {
-        ot_csrng_report_alert(s);
+        ot_csrng_update_alerts(s);
     }
 }
 
@@ -779,7 +788,7 @@ ot_csrng_check_multibitboot(OtCSRNGState *s, uint8_t mbbool, uint32_t alert_bit)
                   (unsigned)mbbool);
 
     s->regs[R_RECOV_ALERT_STS] |= 1u << alert_bit;
-    ot_csrng_report_alert(s);
+    ot_csrng_update_alerts(s);
 
     /* for CSRNG, default to false for invalid multibit boolean */
     return false;
@@ -1006,7 +1015,7 @@ static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res)
         CHANGE_STATE(s, CSRNG_IDLE);
     } else {
         CHANGE_STATE(s, CSRNG_ERROR);
-        ot_csrng_report_alert(s);
+        ot_csrng_update_alerts(s);
     }
 }
 
@@ -1071,7 +1080,7 @@ static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
     if (!packet_count) {
         xtrace_ot_csrng_error("generation for no packet");
         CHANGE_STATE(s, CSRNG_ERROR);
-        ot_csrng_report_alert(s);
+        ot_csrng_update_alerts(s);
         return -1;
     }
 
@@ -1307,7 +1316,7 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
         qemu_log_mask(LOG_GUEST_ERROR, "Unknown command: %u\n", acmd);
         s->regs[R_RECOV_ALERT_STS] |= R_RECOV_ALERT_STS_CS_MAIN_SM_ALERT_MASK;
         CHANGE_STATE(s, CSRNG_ERROR);
-        ot_csrng_report_alert(s);
+        ot_csrng_update_alerts(s);
         return -1;
     }
 
@@ -1331,7 +1340,7 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
             qemu_log_mask(LOG_GUEST_ERROR, "%s: instance %u not instantiated\n",
                           __func__, slot);
             CHANGE_STATE(s, CSRNG_ERROR);
-            ot_csrng_report_alert(s);
+            ot_csrng_update_alerts(s);
             return -1;
         }
     }
@@ -1656,11 +1665,8 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
-        }
+        s->regs[reg] = val32;
+        ot_csrng_update_alerts(s);
         break;
     case R_REGWEN:
         val32 &= R_REGWEN_EN_MASK;

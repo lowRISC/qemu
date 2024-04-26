@@ -484,6 +484,15 @@ ot_lc_ctrl_change_state_line(OtLcCtrlState *s, OtLcCtrlFsmState state, int line)
     s->state = state;
 }
 
+static void ot_lc_ctrl_update_alerts(OtLcCtrlState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < NUM_ALERTS; ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+}
+
 static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
 {
     uint32_t sigbm = 0;
@@ -1380,11 +1389,8 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-            if (val32 && (1u << ix)) {
-                ibex_irq_set(&s->alerts[ix], 1);
-            }
-        }
+        s->regs[R_ALERT_TEST] = val32;
+        ot_lc_ctrl_update_alerts(s);
         break;
     case R_CLAIM_TRANSITION_IF_REGWEN:
         val32 &= R_CLAIM_TRANSITION_IF_REGWEN_EN_MASK;
@@ -1621,9 +1627,7 @@ static void ot_lc_ctrl_reset(DeviceState *dev)
 
     memset(&s->status_cache, 0, sizeof(s->status_cache));
 
-    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
-    }
+    ot_lc_ctrl_update_alerts(s);
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->broadcasts); ix++) {
         ibex_irq_set(&s->broadcasts[ix], 0);

@@ -706,10 +706,9 @@ static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_i2c_dj_update_irqs(s);
         break;
     case R_ALERT_TEST:
-        if (FIELD_EX32(val32, ALERT_TEST, FATAL_FAULT)) {
-            ARRAY_FIELD_DP32(s->regs, ALERT_TEST, FATAL_FAULT, 1u);
-            ibex_irq_set(&s->alert, 1u);
-        }
+        val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
+        s->regs[reg] = val32;
+        ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     case R_TIMEOUT_CTRL:
     case R_HOST_TIMEOUT_CTRL:

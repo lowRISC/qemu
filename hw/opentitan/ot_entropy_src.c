@@ -331,7 +331,10 @@ static const char *REG_NAMES[REGS_COUNT] = {
 enum {
     ALERT_RECOVERABLE,
     ALERT_FATAL,
+    ALERT_COUNT,
 };
+
+static_assert(ALERT_COUNT == PARAM_NUM_ALERTS, "Invalid alert count");
 
 typedef enum {
     ENTROPY_SRC_IDLE,
@@ -716,13 +719,18 @@ static void ot_entropy_src_update_alerts(OtEntropySrcState *s)
                                           ALERT_THRESHOLD, ALERT_THRESHOLD);
     unsigned alert_count = ot_alert_get_alert_fail_count(s);
     bool recoverable = (bool)s->regs[R_RECOV_ALERT_STS];
+    uint32_t level = s->regs[R_ALERT_TEST];
     if (alert_count >= alert_threshold || recoverable) {
-        ibex_irq_set(&s->alerts[ALERT_RECOVERABLE], 1);
+        level |= 1u << ALERT_RECOVERABLE;
     }
     uint32_t fatal_alert = s->regs[R_ERR_CODE] & ERR_CODE_FATAL_ERROR_MASK;
     fatal_alert |= (1u << s->regs[R_ERR_CODE_TEST]) & ERR_CODE_FATAL_ERROR_MASK;
     if (fatal_alert) {
-        ibex_irq_set(&s->alerts[ALERT_FATAL], 1);
+        level |= 1u << ALERT_FATAL;
+    }
+
+    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -1289,11 +1297,8 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
-        }
+        s->regs[reg] = val32;
+        ot_entropy_src_update_alerts(s);
         break;
     case R_ME_REGWEN:
         val32 &= R_ME_REGWEN_EN_MASK;

@@ -165,7 +165,11 @@ static const char *REG_NAMES[REGS_COUNT] = {
 enum {
     ALERT_RECOVERABLE,
     ALERT_FATAL,
+    ALERT_COUNT,
+    ALERT_FATAL_STICKY = ALERT_COUNT,
 };
+
+static_assert(ALERT_COUNT == PARAM_NUM_ALERTS, "Invalid alert count");
 
 typedef enum {
     EDN_IDLE, /* idle */
@@ -347,19 +351,21 @@ static void ot_edn_update_irqs(OtEDNState *s)
     }
 }
 
-static void ot_edn_report_alert(OtEDNState *s)
+static void ot_edn_update_alerts(OtEDNState *s)
 {
-    if (s->regs[R_RECOV_ALERT_STS]) {
-        ibex_irq_set(&s->alerts[ALERT_RECOVERABLE], 1);
+    uint32_t level = s->regs[R_ALERT_TEST];
+    if (s->regs[R_ERR_CODE] & ERR_CODE_MASK) {
+        /* ERR_CODE is sticky */
+        level |= 1u << ALERT_FATAL;
     }
-}
-
-static void ot_edn_signal_error(OtEDNState *s, unsigned error)
-{
-    uint32_t bit = (1u << error) & ERR_CODE_MASK;
-    if (bit) {
-        s->regs[R_ERR_CODE] |= bit;
-        ibex_irq_set(&s->alerts[ALERT_FATAL], 1);
+    if (s->regs[R_ERR_CODE_TEST] & ERR_CODE_MASK) {
+        level |= 1u << ALERT_FATAL;
+    }
+    if (s->regs[R_RECOV_ALERT_STS] & RECOV_ALERT_STS_MASK) {
+        level |= 1u << ALERT_RECOVERABLE;
+    }
+    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -375,7 +381,7 @@ static void ot_edn_check_multibitboot(OtEDNState *s, uint8_t mbbool,
     }
 
     s->regs[R_RECOV_ALERT_STS] |= 1u << alert_bit;
-    ot_edn_report_alert(s);
+    ot_edn_update_alerts(s);
 }
 
 static bool ot_edn_is_enabled(OtEDNState *s)
@@ -462,7 +468,7 @@ static void ot_edn_change_state_line(OtEDNState *s, OtEDNFsmState state,
 
     if (s->state == EDN_ERROR) {
         s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_MAIN_SM_ERR_MASK;
-        ot_edn_report_alert(s);
+        ot_edn_update_alerts(s);
     }
 }
 
@@ -595,7 +601,7 @@ static void ot_edn_send_reseed_cmd(OtEDNState *s)
             R_ERR_CODE_SFIFO_RESCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
         s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
         ot_edn_update_irqs(s);
-        ot_edn_report_alert(s);
+        ot_edn_update_alerts(s);
         return;
     }
 
@@ -607,7 +613,7 @@ static void ot_edn_send_reseed_cmd(OtEDNState *s)
 
         s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
         ot_edn_update_irqs(s);
-        ot_edn_report_alert(s);
+        ot_edn_update_alerts(s);
         return;
     }
 
@@ -636,7 +642,7 @@ static void ot_edn_send_generate_cmd(OtEDNState *s)
             R_ERR_CODE_SFIFO_GENCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
         s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
         ot_edn_update_irqs(s);
-        ot_edn_report_alert(s);
+        ot_edn_update_alerts(s);
         return;
     }
 
@@ -648,7 +654,7 @@ static void ot_edn_send_generate_cmd(OtEDNState *s)
             R_ERR_CODE_SFIFO_GENCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
         s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
         ot_edn_update_irqs(s);
-        ot_edn_report_alert(s);
+        ot_edn_update_alerts(s);
         return;
     }
 
@@ -830,9 +836,7 @@ static void ot_edn_clean_up(OtEDNState *s, bool discard_requests)
     ot_fifo32_reset(&c->bits_fifo);
     ot_fifo32_reset(&c->sw_cmd_fifo);
     ot_edn_update_irqs(s);
-    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
-    }
+    ot_edn_update_alerts(s);
 
     if (discard_requests) {
         /* clear all pending end point requests */
@@ -881,7 +885,7 @@ static void ot_edn_fill_bits(void *opaque, const uint32_t *bits, bool fips)
                                    R_ERR_CODE_FIFO_WRITE_ERR_MASK;
             s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
             ot_edn_update_irqs(s);
-            ot_edn_report_alert(s);
+            ot_edn_update_alerts(s);
             return;
         }
         ot_fifo32_push(&c->bits_fifo, bits[ix]);
@@ -1034,7 +1038,7 @@ static void ot_edn_csrng_ack_irq(void *opaque, int n, int level)
         trace_ot_edn_invalid_state(c->appid, __func__, STATE_NAME(s->state),
                                    s->state);
         s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_ACK_SM_ERR_MASK;
-        ot_edn_report_alert(s);
+        ot_edn_update_alerts(s);
         g_assert_not_reached();
     }
 }
@@ -1135,11 +1139,7 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
-        }
+        s->regs[R_ALERT_TEST] = val32;
         break;
     case R_REGWEN:
         val32 &= R_REGWEN_EN_MASK;
@@ -1211,20 +1211,23 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 break;
             }
         } else {
-            ot_edn_signal_error(s, R_ERR_CODE_FIFO_WRITE_ERR_SHIFT);
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_FIFO_WRITE_ERR_MASK;
+            ot_edn_update_alerts(s);
             xtrace_ot_edn_error(c->appid, "sw fifo full");
         }
         break;
     case R_RESEED_CMD:
         if (ot_fifo32_is_full(&c->cmd_reseed_fifo)) {
-            ot_edn_signal_error(s, R_ERR_CODE_SFIFO_RESCMD_ERR_SHIFT);
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_SFIFO_RESCMD_ERR_MASK;
+            ot_edn_update_alerts(s);
         } else {
             ot_fifo32_push(&c->cmd_reseed_fifo, val32);
         }
         break;
     case R_GENERATE_CMD:
         if (ot_fifo32_is_full(&c->cmd_gen_fifo)) {
-            ot_edn_signal_error(s, R_ERR_CODE_SFIFO_GENCMD_ERR_SHIFT);
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_SFIFO_GENCMD_ERR_MASK;
+            ot_edn_update_alerts(s);
         } else {
             xtrace_ot_edn_xinfo(c->appid, "PUSH GEN CMD", val32);
             ot_fifo32_push(&c->cmd_gen_fifo, val32);
@@ -1240,7 +1243,8 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ERR_CODE_TEST:
         val32 &= R_ERR_CODE_TEST_VAL_MASK;
-        ot_edn_signal_error(s, (unsigned)val32);
+        s->regs[reg] = val32;
+        ot_edn_update_alerts(s);
         break;
     case R_SW_CMD_STS:
     case R_ERR_CODE:

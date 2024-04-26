@@ -319,10 +319,8 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
+        for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+            ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
         }
         break;
     case R_EXTCLK_CTRL_REGWEN:

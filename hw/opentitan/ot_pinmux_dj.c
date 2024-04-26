@@ -317,9 +317,8 @@ static void ot_pinmux_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
-        }
+        regs->alert_test = val32;
+        ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     case CASE_RANGE(MIO_PERIPH_INSEL_REGWEN, PARAM_N_MIO_PERIPH_IN):
         val32 &= R_MIO_PERIPH_INSEL_REGWEN_EN_MASK;

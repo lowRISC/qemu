@@ -782,9 +782,8 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
-        }
+        s->regs[reg] = val32;
+        ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     case R_CONTROL:
         /* TODO: clear LOW_POWER_HINT on next WFI? */

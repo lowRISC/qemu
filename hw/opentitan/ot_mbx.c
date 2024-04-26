@@ -368,10 +368,8 @@ static void ot_mbx_host_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_HOST_ALERT_TEST:
         val32 &= HOST_ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&host->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
+        for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+            ibex_irq_set(&host->alerts[ix], (int)((val32 >> ix) & 0x1u));
         }
         break;
     case R_HOST_CONTROL:

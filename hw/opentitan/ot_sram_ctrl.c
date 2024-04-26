@@ -381,9 +381,7 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_ERROR_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
-        }
+        ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     case R_EXEC_REGWEN:
         val32 &= R_EXEC_REGWEN_EN_MASK;
@@ -659,6 +657,8 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
         s->otp_ifetch = s->ifetch;
     }
     s->cfg_ifetch = 0u; /* not used for now */
+
+    ibex_irq_set(&s->alert, (int)(bool)s->regs[R_ALERT_TEST]);
 
     int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     ot_prng_reseed(s->prng, (uint32_t)now);

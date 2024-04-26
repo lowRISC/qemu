@@ -834,6 +834,7 @@ struct OtOTPDjState {
     IbexIRQ pwc_otp_rsp;
 
     uint32_t *regs;
+    uint32_t alert_bm;
 
     OtOTPLcBroadcast lc_broadcast;
     OtOTPDAIController *dai;
@@ -1151,8 +1152,19 @@ static void ot_otp_dj_update_irqs(OtOTPDjState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
+    level |= s->alert_bm;
+
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1));
+    }
+}
+
+static void ot_otp_dj_update_alerts(OtOTPDjState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -1192,7 +1204,8 @@ static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
     switch (err) {
     case OTP_MACRO_ERROR:
     case OTP_MACRO_ECC_UNCORR_ERROR:
-        ibex_irq_set(&s->alerts[ALERT_FATAL_MACRO_ERROR_SHIFT], 1);
+        s->alert_bm |= ALERT_FATAL_MACRO_ERROR_MASK;
+        ot_otp_dj_update_alerts(s);
         break;
     /* NOLINTNEXTLINE */
     case OTP_MACRO_ECC_CORR_ERROR:
@@ -1208,7 +1221,8 @@ static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
         break;
     case OTP_CHECK_FAIL_ERROR:
     case OTP_FSM_STATE_ERROR:
-        ibex_irq_set(&s->alerts[ALERT_FATAL_CHECK_ERROR_SHIFT], 1);
+        s->alert_bm |= ALERT_FATAL_CHECK_ERROR_MASK;
+        ot_otp_dj_update_alerts(s);
         break;
     default:
         break;
@@ -2419,11 +2433,8 @@ static void ot_otp_dj_regs_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-            if (val32 && (1u << ix)) {
-                ibex_irq_set(&s->alerts[ix], 1);
-            }
-        }
+        s->regs[reg] = val32;
+        ot_otp_dj_update_alerts(s);
         break;
     case R_DIRECT_ACCESS_CMD:
         if (FIELD_EX32(val32, DIRECT_ACCESS_CMD, RD)) {
@@ -3390,13 +3401,13 @@ static void ot_otp_dj_reset(DeviceState *dev)
     s->regs[R_EXT_NVM_READ_LOCK] = 0x1u;
     s->regs[R_ROM_PATCH_READ_LOCK] = 0x1u;
 
+    s->alert_bm = 0u;
+
     s->lc_broadcast.level = 0u;
     s->lc_broadcast.signal = 0u;
 
     ot_otp_dj_update_irqs(s);
-    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
-    }
+    ot_otp_dj_update_alerts(s);
     ibex_irq_set(&s->pwc_otp_rsp, 0);
 
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {

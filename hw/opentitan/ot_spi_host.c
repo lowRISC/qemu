@@ -683,7 +683,6 @@ static void ot_spi_host_update_alert(OtSPIHostState *s)
      * register in QEMU
      */
     bool alert = (bool)s->regs[R_ALERT_TEST];
-    s->regs[R_ALERT_TEST] = 0u;
     ibex_irq_set(&s->alert, alert);
 }
 

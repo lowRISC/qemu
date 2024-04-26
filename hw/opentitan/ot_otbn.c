@@ -130,6 +130,12 @@ typedef struct {
     bool entropy_requested; /* EDN request on-going */
 } OtOTBNRandom;
 
+typedef enum {
+    ALERT_FATAL,
+    ALERT_RECOVERABLE,
+    ALERT_COUNT,
+} OtOtbnAlert;
+
 struct OtOTBNState {
     /* <private> */
     SysBusDevice parent_obj;
@@ -141,7 +147,7 @@ struct OtOTBNState {
     MemoryRegion dmem;
 
     IbexIRQ irq_done;
-    IbexIRQ alert;
+    IbexIRQ alerts[ALERT_COUNT];
     IbexIRQ clkmgr;
 
     QEMUBH *proxy_completion_bh;
@@ -182,8 +188,13 @@ static void ot_otbn_update_irq(OtOTBNState *s)
 
 static void ot_otbn_update_alert(OtOTBNState *s)
 {
-    bool level = s->alert_test || s->fatal_alert_cause;
-    ibex_irq_set(&s->alert, level);
+    for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
+        bool level = (bool)(s->alert_test & (1u << ix));
+        if (ix == ALERT_FATAL) {
+            level |= (bool)s->fatal_alert_cause;
+        }
+        ibex_irq_set(&s->alerts[ix], level);
+    }
 }
 
 static void ot_otbn_post_execute(void *opaque)
@@ -622,7 +633,9 @@ static void ot_otbn_reset(DeviceState *dev)
 
     s->last_cmd = OT_OTBN_CMD_NONE;
     ibex_irq_set(&s->irq_done, 0);
-    ibex_irq_set(&s->alert, 0);
+    for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
+        ibex_irq_set(&s->alerts[ix], 0);
+    }
 
     for (unsigned rix = 0; rix < (unsigned)OT_OTBN_RND_COUNT; rix++) {
         OtOTBNRandom *rnd = &s->rnds[rix];
@@ -664,7 +677,7 @@ static void ot_otbn_init(Object *obj)
     memory_region_add_subregion(&s->mmio, OT_OTBN_DMEM_BASE, &s->dmem);
 
     ibex_sysbus_init_irq(obj, &s->irq_done);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    ibex_qdev_init_irqs(obj, s->alerts, OT_DEVICE_ALERT, ALERT_COUNT);
     ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
 
     for (unsigned rix = 0; rix < (unsigned)OT_OTBN_RND_COUNT; rix++) {

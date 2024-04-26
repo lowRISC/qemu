@@ -132,13 +132,13 @@ struct PulpRVDMState {
     MemoryRegion dmflag; /* MMIO */
     MemoryRegion rom; /* ROM */
 
+    qemu_irq *ack_out;
+    IbexIRQ alert;
+
     uint32_t dmflag_regs[PULP_RV_DM_DMFLAG_SIZE / sizeof(uint32_t)];
 
     unsigned hart_count;
     uint64_t idle_bm;
-
-    qemu_irq *ack_out;
-    IbexIRQ alert;
 };
 
 #ifdef DISCARD_REPEATED_IO_TRACES
@@ -258,9 +258,8 @@ static void pulp_rv_dm_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 
     switch (R32_OFF(addr)) {
     case R_ALERT_TEST:
-        if (val32 & R_ALERT_TEST) {
-            ibex_irq_set(&s->alert, true);
-        }
+        val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
+        ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",

@@ -125,6 +125,15 @@ static void ot_soc_proxy_update_irqs(OtSoCProxyState *s)
     }
 }
 
+static void ot_soc_proxy_update_alerts(OtSoCProxyState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+}
+
 static void ot_soc_proxy_ingress_irq(void *opaque, int n, int level)
 {
     OtSoCProxyState *s = opaque;
@@ -202,11 +211,8 @@ static void ot_soc_proxy_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
-        }
+        s->regs[reg] = val32;
+        ot_soc_proxy_update_alerts(s);
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
@@ -237,9 +243,7 @@ static void ot_soc_proxy_reset(DeviceState *dev)
     memset(s->regs, 0, sizeof(s->regs));
 
     ot_soc_proxy_update_irqs(s);
-    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
-    }
+    ot_soc_proxy_update_alerts(s);
 }
 
 static void ot_soc_proxy_init(Object *obj)

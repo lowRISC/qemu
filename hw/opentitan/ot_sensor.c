@@ -40,6 +40,8 @@
 #include "hw/sysbus.h"
 #include "trace.h"
 
+#define NUM_ALERTS 2u
+
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
     SHARED_FIELD(INTR_IO_STATUS_CHANGE, 0u, 1u)
@@ -134,7 +136,7 @@ struct OtSensorState {
 
     MemoryRegion mmio;
     IbexIRQ irqs[2u];
-    IbexIRQ alert;
+    IbexIRQ alerts[NUM_ALERTS];
 
     uint32_t *regs;
 };
@@ -146,6 +148,15 @@ static void ot_sensor_update_irqs(OtSensorState *s)
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
         int level = (int)(bool)(levels & (1u << ix));
         ibex_irq_set(&s->irqs[ix], level);
+    }
+}
+
+static void ot_sensor_update_alerts(OtSensorState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -224,9 +235,8 @@ static void ot_sensor_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
-        }
+        s->regs[reg] = val32;
+        ot_sensor_update_alerts(s);
         break;
     case R_CFG_REGWEN:
     case R_ALERT_TRIG:
@@ -270,7 +280,7 @@ static void ot_sensor_reset(DeviceState *dev)
     s->regs[R_CFG_REGWEN] = 0x1u;
 
     ot_sensor_update_irqs(s);
-    ibex_irq_set(&s->alert, 0);
+    ot_sensor_update_alerts(s);
 }
 
 static void ot_sensor_init(Object *obj)
@@ -285,7 +295,9 @@ static void ot_sensor_init(Object *obj)
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+    }
 }
 
 static void ot_sensor_class_init(ObjectClass *klass, void *data)

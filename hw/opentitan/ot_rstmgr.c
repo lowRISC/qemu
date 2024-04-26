@@ -147,7 +147,7 @@ struct OtRstMgrState {
 
     MemoryRegion mmio;
     IbexIRQ sw_reset;
-    IbexIRQ alert;
+    IbexIRQ alerts[PARAM_NUM_ALERTS];
     QEMUBH *bus_reset_bh;
     CPUState *cpu;
 
@@ -214,6 +214,15 @@ void ot_rstmgr_reset_req(OtRstMgrState *s, bool fastclk, OtRstMgrResetReq req)
 /* -------------------------------------------------------------------------- */
 /* Private implementation */
 /* -------------------------------------------------------------------------- */
+
+static void ot_rstmgr_update_alerts(OtRstMgrState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+}
 
 static void ot_rstmgr_reset_bus(void *opaque)
 {
@@ -438,9 +447,8 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
-        }
+        s->regs[reg] = val32;
+        ot_rstmgr_update_alerts(s);
         break;
     case R_ALERT_INFO_ATTR:
     case R_ALERT_INFO:
@@ -515,7 +523,7 @@ static void ot_rstmgr_reset(DeviceState *dev)
     }
 
     ibex_irq_set(&s->sw_reset, 0);
-    ibex_irq_set(&s->alert, 0);
+    ot_rstmgr_update_alerts(s);
 }
 
 static void ot_rstmgr_init(Object *obj)
@@ -529,7 +537,7 @@ static void ot_rstmgr_init(Object *obj)
     s->regs = g_new0(uint32_t, REGS_COUNT);
 
     ibex_qdev_init_irq(obj, &s->sw_reset, OT_RSTMGR_SW_RST);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    ibex_qdev_init_irqs(obj, s->alerts, OT_DEVICE_ALERT, PARAM_NUM_ALERTS);
 
     s->bus_reset_bh = qemu_bh_new(&ot_rstmgr_reset_bus, s);
 }

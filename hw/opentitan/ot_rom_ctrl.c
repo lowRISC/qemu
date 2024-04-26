@@ -356,9 +356,8 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_ERROR_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
-        }
+        s->regs[reg] = val32;
+        ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     case R_FATAL_ALERT_CAUSE:
     case R_DIGEST_0:

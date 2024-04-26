@@ -726,6 +726,19 @@ struct OtIbexWrapperDjState {
 static_assert(sizeof(OtIbexTestLogFields) == 20u,
               "Invalid OtIbexTestLogFields structure");
 
+static void ot_ibex_wrapper_dj_update_alerts(OtIbexWrapperDjState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    if (s->regs[R_SW_FATAL_ERR] != OT_MULTIBITBOOL4_FALSE) {
+        level |= R_SW_FATAL_ERR_VAL_MASK;
+    }
+
+    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+}
+
 static void
 ot_ibex_wrapper_dj_remapper_destroy(OtIbexWrapperDjState *s, unsigned slot)
 {
@@ -1350,11 +1363,8 @@ static void ot_ibex_wrapper_dj_regs_write(void *opaque, hwaddr addr,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
-        }
+        s->regs[reg] = val32;
+        ot_ibex_wrapper_dj_update_alerts(s);
         break;
     case R_SW_FATAL_ERR:
         if ((val32 >> 16u) == 0xC0DEu) {
@@ -1375,9 +1385,7 @@ static void ot_ibex_wrapper_dj_regs_write(void *opaque, hwaddr addr,
         }
         val32 &= R_SW_FATAL_ERR_VAL_MASK;
         s->regs[reg] = ot_multibitbool_w1s_write(s->regs[reg], val32, 4u);
-        if (s->regs[reg] != OT_MULTIBITBOOL4_FALSE) {
-            ibex_irq_set(&s->alerts[R_SW_FATAL_ERR_VAL_SHIFT], 1);
-        }
+        ot_ibex_wrapper_dj_update_alerts(s);
         break;
     case CASE_RANGE(R_IBUS_REGWEN_0, PARAM_NUM_REGIONS):
     case CASE_RANGE(R_DBUS_REGWEN_0, PARAM_NUM_REGIONS):

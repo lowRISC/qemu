@@ -146,8 +146,8 @@ static inline bool ot_timer_is_active(OtTimerState *s)
 
 static void ot_timer_update_alert(OtTimerState *s)
 {
-    bool level = s->regs[R_ALERT_TEST] & R_ALERT_TEST_FATAL_FAULT_MASK;
-    ibex_irq_set(&s->irq, level);
+    bool level = (bool)(s->regs[R_ALERT_TEST] & R_ALERT_TEST_FATAL_FAULT_MASK);
+    ibex_irq_set(&s->alert, level);
 }
 
 static void ot_timer_update_irqs(OtTimerState *s)
@@ -261,7 +261,8 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
 
     switch (reg) {
     case R_ALERT_TEST:
-        s->regs[R_ALERT_TEST] |= val32 & R_ALERT_TEST_FATAL_FAULT_MASK;
+        val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
+        s->regs[reg] = val32;
         ot_timer_update_alert(s);
         break;
     case R_CTRL: {
@@ -364,6 +365,7 @@ static void ot_timer_reset(DeviceState *dev)
     s->regs[R_COMPARE_UPPER0_0] = UINT32_MAX;
 
     ot_timer_update_irqs(s);
+    ot_timer_update_alert(s);
 }
 
 static void ot_timer_init(Object *obj)

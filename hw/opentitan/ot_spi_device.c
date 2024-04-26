@@ -985,6 +985,15 @@ static void ot_spi_device_update_irqs(OtSPIDeviceState *s)
     }
 }
 
+static void ot_spi_device_update_alerts(OtSPIDeviceState *s)
+{
+    uint32_t level = s->spi_regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+}
+
 static OtSpiDeviceMode ot_spi_device_get_mode(const OtSPIDeviceState *s)
 {
     return (OtSpiDeviceMode)FIELD_EX32(s->spi_regs[R_CONTROL], CONTROL, MODE);
@@ -1815,11 +1824,8 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
-        }
+        s->spi_regs[reg] = val32;
+        ot_spi_device_update_alerts(s);
         break;
     case R_CONTROL:
         val32 &= CONTROL_MASK;
@@ -2604,9 +2610,7 @@ static void ot_spi_device_reset(DeviceState *dev)
     s->tpm_regs[R_TPM_CAP] = 0x660100u;
 
     ot_spi_device_update_irqs(s);
-    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
-    }
+    ot_spi_device_update_alerts(s);
 }
 
 static void ot_spi_device_realize(DeviceState *dev, Error **errp)

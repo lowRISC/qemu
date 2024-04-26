@@ -672,6 +672,15 @@ static void ot_flash_update_irqs(OtFlashState *s)
     }
 }
 
+static void ot_flash_update_alerts(OtFlashState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+}
+
 static bool ot_flash_is_disabled(OtFlashState *s)
 {
     return s->regs[R_DIS] != OT_MULTIBITBOOL4_FALSE;
@@ -1043,11 +1052,8 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_MASK;
-        if (val32) {
-            for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-                ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
-            }
-        }
+        s->regs[reg] = val32;
+        ot_flash_update_alerts(s);
         break;
     case R_DIS:
         val32 &= R_DIS_VAL_MASK;
@@ -1539,9 +1545,7 @@ static void ot_flash_reset(DeviceState *dev)
     s->csrs[R_CSR0_REGWEN] = 0x1u;
 
     ot_flash_update_irqs(s);
-    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
-    }
+    ot_flash_update_alerts(s);
 
     ot_fifo32_reset(&s->rd_fifo);
 }

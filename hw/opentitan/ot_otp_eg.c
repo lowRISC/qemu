@@ -44,6 +44,7 @@
 #include "sysemu/block-backend.h"
 #include "trace.h"
 
+#define NUM_ALERTS 5u
 
 /* clang-format off */
 /* Core registers */
@@ -53,11 +54,11 @@ REG32(INTR_STATE, 0x0u)
 REG32(INTR_ENABLE, 0x4u)
 REG32(INTR_TEST, 0x8u)
 REG32(ALERT_TEST, 0xcu)
-    FIELD(ALERT_TEST, FATAL_MACRO_ERROR, 0u, 1u)
-    FIELD(ALERT_TEST, FATAL_CHECK_ERROR, 1u, 1u)
-    FIELD(ALERT_TEST, FATAL_BUS_INTEG_ERROR, 2u, 1u)
-    FIELD(ALERT_TEST, FATAL_PRIM_OTP_ALERT, 3u, 1u)
-    FIELD(ALERT_TEST, RECOV_PRIM_OTP_ALERT, 4u, 1u)
+    SHARED_FIELD(ALERT_FATAL_MACRO_ERROR, 0u, 1u)
+    SHARED_FIELD(ALERT_FATAL_CHECK_ERROR, 1u, 1u)
+    SHARED_FIELD(ALERT_FATAL_BUS_INTEG_ERROR, 2u, 1u)
+    SHARED_FIELD(ALERT_FATAL_PRIM_OTP_ALERT, 3u, 1u)
+    SHARED_FIELD(ALERT_RECOV_PRIM_OTP_ALERT, 4u, 1u)
 REG32(STATUS, 0x10u)
     FIELD(STATUS, VENDOR_TEST_ERROR, 0u, 1u)
     FIELD(STATUS, CREATOR_SW_CFG_ERROR, 1u, 1u)
@@ -233,11 +234,9 @@ REG32(LC_STATE, 2008u)
 
 #define INTR_MASK (INTR_OTP_OPERATION_DONE_MASK | INTR_OTP_ERROR_MASK)
 #define ALERT_TEST_MASK \
-    (R_ALERT_TEST_FATAL_MACRO_ERROR_MASK | \
-     R_ALERT_TEST_FATAL_CHECK_ERROR_MASK | \
-     R_ALERT_TEST_FATAL_BUS_INTEG_ERROR_MASK | \
-     R_ALERT_TEST_FATAL_PRIM_OTP_ALERT_MASK | \
-     R_ALERT_TEST_RECOV_PRIM_OTP_ALERT_MASK)
+    (ALERT_FATAL_MACRO_ERROR_MASK | ALERT_FATAL_CHECK_ERROR_MASK | \
+     ALERT_FATAL_BUS_INTEG_ERROR_MASK | ALERT_FATAL_PRIM_OTP_ALERT_MASK | \
+     ALERT_RECOV_PRIM_OTP_ALERT_MASK)
 
 /* clang-format off */
 REG32(CSR0, 0x0u)
@@ -441,11 +440,13 @@ struct OtOTPEgState {
         unsigned tcount;
     } lc;
     IbexIRQ irqs[2u];
-    IbexIRQ alert;
+    IbexIRQ alerts[NUM_ALERTS];
 
     QEMUTimer *dai_delay; /**< Simulate delayed access completion */
 
     uint32_t regs[REGS_COUNT];
+    uint32_t alert_bm;
+
     bool dai_busy;
 
     OtOTPStorage otp;
@@ -475,6 +476,24 @@ static const OtOTPTokens OT_OTP_EG_TOKENS;
     (((_x_) << 0u) | ((_x_) << 5u) | ((_x_) << 10u) | ((_x_) << 15u) | \
      ((_x_) << 20u) | ((_x_) << 25u))
 
+static void ot_otp_eg_update_irqs(OtOTPEgState *s)
+{
+    uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
+        ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1));
+    }
+}
+
+static void ot_otp_eg_update_alerts(OtOTPEgState *s)
+{
+    uint32_t level = s->regs[R_ALERT_TEST];
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+}
+
 static void ot_otp_eg_set_error(OtOTPEgState *s, int part, OtOTPError err)
 {
     unsigned err_off = (unsigned)part * 3u;
@@ -485,9 +504,13 @@ static void ot_otp_eg_set_error(OtOTPEgState *s, int part, OtOTPError err)
     switch (err) {
     case OTP_MACRO_ERROR:
     case OTP_MACRO_ECC_UNCORR_ERROR:
+        s->alert_bm |= ALERT_FATAL_MACRO_ERROR_MASK;
+        ot_otp_eg_update_alerts(s);
+        break;
     case OTP_CHECK_FAIL_ERROR:
     case OTP_FSM_STATE_ERROR:
-        ibex_irq_set(&s->alert, 1u);
+        s->alert_bm |= ALERT_FATAL_CHECK_ERROR_MASK;
+        ot_otp_eg_update_alerts(s);
         break;
     default:
         break;
@@ -563,15 +586,6 @@ static bool ot_otp_eg_swcfg_is_part_digest_offset(int part, hwaddr addr)
     uint16_t offset = ot_otp_eg_swcfg_get_part_digest_offset(part);
 
     return (addr == offset) || ((addr + (sizeof(uint32_t))) == offset);
-}
-
-static void ot_otp_eg_update_irqs(OtOTPEgState *s)
-{
-    uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
-
-    for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
-        ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1));
-    }
 }
 
 static bool ot_otp_eg_is_readable(OtOTPEgState *s, int partition, unsigned addr)
@@ -847,9 +861,8 @@ static void ot_otp_eg_regs_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
-        }
+        s->regs[reg] = val32;
+        ot_otp_eg_update_alerts(s);
         break;
     case R_DIRECT_ACCESS_CMD:
         if (FIELD_EX32(val32, DIRECT_ACCESS_CMD, RD)) {
@@ -1341,9 +1354,10 @@ static void ot_otp_eg_reset(DeviceState *dev)
     s->regs[R_CREATOR_SW_CFG_READ_LOCK] = 0x1u;
     s->regs[R_OWNER_SW_CFG_READ_LOCK] = 0x1u;
     s->dai_busy = false;
+    s->alert_bm = 0;
 
     ot_otp_eg_update_irqs(s);
-    ibex_irq_set(&s->alert, 0);
+    ot_otp_eg_update_alerts(s);
 }
 
 static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
@@ -1378,7 +1392,9 @@ static void ot_otp_eg_init(Object *obj)
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+    }
 
     s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
     s->entropy_cfg = g_new0(OtOTPEntropyCfg, 1u);
