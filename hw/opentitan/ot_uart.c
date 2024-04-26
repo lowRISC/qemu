@@ -34,6 +34,7 @@
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "chardev/char-fe.h"
+#include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -143,20 +144,19 @@ static const char *REG_NAMES[REGS_COUNT] = {
 
 struct OtUARTState {
     SysBusDevice parent_obj;
-
     MemoryRegion mmio;
+    IbexIRQ irqs[OT_UART_IRQ_NUM];
+    IbexIRQ alert;
+
+    uint32_t regs[REGS_COUNT];
 
     Fifo8 tx_fifo;
     Fifo8 rx_fifo;
     uint32_t tx_watermark_level;
-
-    uint32_t regs[REGS_COUNT];
-    uint32_t pclk;
-
-    CharBackend chr;
     guint watch_tag;
 
-    IbexIRQ irqs[OT_UART_IRQ_NUM];
+    uint32_t pclk;
+    CharBackend chr;
 };
 
 static uint32_t ot_uart_get_tx_watermark_level(OtUARTState *s)
@@ -480,6 +480,11 @@ static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[R_INTR_STATE] |= val32;
         ot_uart_update_irqs(s);
         break;
+    case R_ALERT_TEST:
+        val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
+        s->regs[reg] = val32;
+        ibex_irq_set(&s->alert, (int)(bool)val32);
+        break;
     case R_CTRL:
         if (val32 & ~CTRL_SUP_MASK) {
             qemu_log_mask(LOG_UNIMP,
@@ -596,6 +601,7 @@ static void ot_uart_reset(DeviceState *dev)
     ot_uart_reset_rx_fifo(s);
 
     ot_uart_update_irqs(s);
+    ibex_irq_set(&s->alert, 0);
 }
 
 static void ot_uart_init(Object *obj)
@@ -605,6 +611,7 @@ static void ot_uart_init(Object *obj)
     for (unsigned index = 0; index < OT_UART_IRQ_NUM; index++) {
         ibex_sysbus_init_irq(obj, &s->irqs[index]);
     }
+    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
     memory_region_init_io(&s->mmio, obj, &ot_uart_ops, s, TYPE_OT_UART,
                           REGS_SIZE);
