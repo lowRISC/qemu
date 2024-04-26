@@ -232,6 +232,7 @@ struct OtIbexWrapperEgState {
     uint8_t cpu_en_bm;
     bool entropy_requested;
     bool edn_connected;
+    bool esc_rx;
 
     char *ot_id;
     OtEDNState *edn;
@@ -720,6 +721,32 @@ ot_ibex_wrapper_eg_log_handle(OtIbexWrapperEgState *s, uint32_t value)
     }
 }
 
+static void ot_ibex_wrapper_eg_update_exec(OtIbexWrapperEgState *s)
+{
+    /*
+     * "Fetch is only enabled when local fetch enable, lifecycle CPU enable and
+     *  power manager CPU enable are all enabled."
+     */
+    bool enable =
+        ((s->cpu_en_bm & OT_IBEX_CPU_EN_MASK) == OT_IBEX_CPU_EN_MASK) &&
+        !s->esc_rx;
+    trace_ot_ibex_wrapper_update_exec(s->ot_id ?: "", s->cpu_en_bm, s->esc_rx,
+                                      enable);
+
+    if (enable) {
+        s->cpu->halted = 0;
+        if (s->cpu->held_in_reset) {
+            resettable_release_reset(OBJECT(s->cpu), RESET_TYPE_COLD);
+        }
+        cpu_resume(s->cpu);
+    } else {
+        if (!s->cpu->halted) {
+            s->cpu->halted = 1;
+            cpu_exit(s->cpu);
+        }
+    }
+}
+
 static void ot_ibex_wrapper_eg_cpu_enable_recv(void *opaque, int n, int level)
 {
     OtIbexWrapperEgState *s = opaque;
@@ -736,22 +763,23 @@ static void ot_ibex_wrapper_eg_cpu_enable_recv(void *opaque, int n, int level)
      * "Fetch is only enabled when local fetch enable, lifecycle CPU enable and
      *  power manager CPU enable are all enabled."
      */
-    bool enable = ((s->cpu_en_bm & OT_IBEX_CPU_EN_MASK) == OT_IBEX_CPU_EN_MASK);
     trace_ot_ibex_wrapper_cpu_enable(s->ot_id ?: "", n ? "PWR" : "LC",
-                                     (bool)level, s->cpu_en_bm, enable);
+                                     (bool)level);
 
-    if (enable) {
-        s->cpu->halted = 0;
-        if (s->cpu->held_in_reset) {
-            resettable_release_reset(OBJECT(s->cpu), RESET_TYPE_COLD);
-        }
-        cpu_resume(s->cpu);
-    } else {
-        if (!s->cpu->halted) {
-            s->cpu->halted = 1;
-            cpu_exit(s->cpu);
-        }
-    }
+    ot_ibex_wrapper_eg_update_exec(s);
+}
+
+static void ot_ibex_wrapper_eg_escalate_rx(void *opaque, int n, int level)
+{
+    OtIbexWrapperEgState *s = opaque;
+
+    g_assert(n == 0);
+
+    trace_ot_ibex_wrapper_escalate_rx(s->ot_id ?: "", (bool)level);
+
+    s->esc_rx = (bool)level;
+
+    ot_ibex_wrapper_eg_update_exec(s);
 }
 
 static uint64_t
@@ -988,6 +1016,8 @@ static void ot_ibex_wrapper_eg_init(Object *obj)
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_eg_cpu_enable_recv,
                             OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_CPU_EN_COUNT);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_eg_escalate_rx,
+                            OT_ALERT_ESCALATE, 1);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
     s->log_engine = g_new0(OtIbexTestLogEngine, 1u);

@@ -207,8 +207,9 @@ ot_i2c_update_irqs(const char *id, uint32_t active, uint32_t mask, uint32_t eff)
 
 # ot_ibex_wrapper.c
 
-ot_ibex_wrapper_cpu_enable(const char *id, const char *ch, bool level, uint32_t bm, bool cpu_en) "%s: %s:%u (0x%x)-> CPU enable %u"
+ot_ibex_wrapper_cpu_enable(const char *id, const char *ch, bool level) "%s: %s:%u"
 ot_ibex_wrapper_error(const char *id, const char *func, int line, const char *msg) "%s: %s:%d %s"
+ot_ibex_wrapper_escalate_rx(const char *id, bool level) "%s: %u"
 ot_ibex_wrapper_exit(const char *id, const char *msg, int val) "%s: %s (%d)"
 ot_ibex_wrapper_fill_entropy(const char *id, uint32_t bits, bool fips) "%s: 0x%08x fips:%u"
 ot_ibex_wrapper_info(const char *id, const char *func, int line, const char *msg) "%s: %s:%d %s"
@@ -218,6 +219,7 @@ ot_ibex_wrapper_map(const char *id, unsigned slot, uint32_t src, uint32_t dst, u
 ot_ibex_wrapper_request_entropy(const char *id, bool again) "%s: %u"
 ot_ibex_wrapper_reset(const char *id) "%s"
 ot_ibex_wrapper_unmap(const char *id, unsigned slot) "%s: region %u"
+ot_ibex_wrapper_update_exec(const char *id, uint32_t bm, bool esc_rx, bool cpu_en) "%s: 0x%x %u-> CPU enable %u"
 
 # ot_kmac.c
 
