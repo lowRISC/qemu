@@ -240,6 +240,7 @@ ot_kmac_state_read_out(uint32_t addr, uint32_t val, uint32_t pc) "addr=0x%03x, v
 ot_lc_ctrl_change_state(int line, const char *old, int nold, const char *new, int nnew) "@ %d [%s:%d] -> [%s:%d]"
 ot_lc_ctrl_error(const char *msg) "%s"
 ot_lc_ctrl_escalate(const char *fsm, const char *lc) "%s: %s"
+ot_lc_ctrl_escalate_rx(unsigned line, bool level) "%u: %u"
 ot_lc_ctrl_info(const char *msg) "%s"
 ot_lc_ctrl_initialize(const char *cst, int cstix, unsigned tcount, const char *state, int six) "%s (%d), tcount %u, state %s (%u)"
 ot_lc_ctrl_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"

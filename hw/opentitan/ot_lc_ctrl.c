@@ -275,6 +275,7 @@ struct OtLcCtrlState {
     MemoryRegion mmio;
     MemoryRegion dmi_mmio;
     QEMUBH *pwc_lc_bh;
+    QEMUBH *escalate_bh;
     IbexIRQ alerts[NUM_ALERTS];
     IbexIRQ broadcasts[OT_LC_BROADCAST_COUNT];
     IbexIRQ pwc_lc_rsp;
@@ -1233,6 +1234,28 @@ static void ot_lc_ctrl_pwr_lc_req(void *opaque, int n, int level)
     }
 }
 
+static void ot_lc_ctrl_escalate_rx(void *opaque, int n, int level)
+{
+    OtLcCtrlState *s = opaque;
+
+    g_assert((unsigned)n < 2u);
+
+    trace_ot_lc_ctrl_escalate_rx((unsigned)n, (bool)level);
+
+    if (level) {
+        qemu_bh_schedule(s->escalate_bh);
+    }
+}
+
+static void ot_lc_ctrl_escalate_bh(void *opaque)
+{
+    OtLcCtrlState *s = opaque;
+
+    LC_FSM_CHANGE_STATE(s, ST_ESCALATE);
+
+    ot_lc_ctrl_update_broadcast(s);
+}
+
 static void ot_lc_ctrl_pwr_lc_bh(void *opaque)
 {
     OtLcCtrlState *s = opaque;
@@ -1671,8 +1694,11 @@ static void ot_lc_ctrl_init(Object *obj)
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_lc_ctrl_pwr_lc_req,
                             OT_PWRMGR_LC_REQ, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_lc_ctrl_escalate_rx,
+                            OT_ALERT_ESCALATE, 2);
 
     s->pwc_lc_bh = qemu_bh_new(&ot_lc_ctrl_pwr_lc_bh, s);
+    s->escalate_bh = qemu_bh_new(&ot_lc_ctrl_escalate_bh, s);
 }
 
 static void ot_lc_ctrl_class_init(ObjectClass *klass, void *data)
