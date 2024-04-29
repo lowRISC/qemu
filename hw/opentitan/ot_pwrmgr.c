@@ -40,6 +40,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 
 #define PARAM_NUM_RST_REQS       2u
@@ -114,6 +115,9 @@ REG32(FAULT_STATUS, 0x40u)
 
 #define PWRMGR_WAKEUP_MAX 6u
 #define PWRMGR_RESET_MAX  3u
+
+/* special exit error code to report escalation panic */
+#define EXIT_ESCALATION_PANIC 39
 
 /* Verbatim definitions from RTL */
 #define NUM_SW_RST_REQ 1u
@@ -218,6 +222,7 @@ typedef union {
         uint8_t sw_reset : 1; /* SW reset request */
         uint8_t otp_done : 1;
         uint8_t lc_done : 1;
+        uint8_t escalate : 1; /* escalation from alert handler */
         uint8_t holdon_fetch : 1; /* custom extension */
         uint8_t rom_good; /* up to 8 ROMs */
         uint8_t rom_done; /* up to 8 ROMs */
@@ -251,6 +256,7 @@ struct OtPwrMgrState {
     OtRstMgrState *rstmgr;
     uint8_t num_rom;
     uint8_t version;
+    bool main; /* main power manager (for machines w/ multiple PwrMgr) */
     bool fetch_ctrl;
 };
 
@@ -564,8 +570,18 @@ static void ot_pwrmgr_slow_fsm_tick(OtPwrMgrState *s)
 static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
 {
     if (s->s_state != OT_PWR_SLOW_ST_IDLE) {
-        // TODO: to be handled
+        qemu_log_mask(LOG_UNIMP, "%s: %s: slow FSM not supported\n", __func__,
+                      s->ot_id);
         return;
+    }
+
+    if (s->fsm_events.escalate) {
+        PWR_CHANGE_FAST_STATE(s, REQ_PWR_DN);
+        trace_ot_pwrmgr_shutdown(s->ot_id, s->main);
+        if (s->main) {
+            qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_PANIC,
+                                                   EXIT_ESCALATION_PANIC);
+        }
     }
 
     switch (s->f_state) {
@@ -669,6 +685,21 @@ static void ot_pwrmgr_fsm_tick(void *opaque)
 /*
  * Input lines
  */
+
+static void ot_pwrmgr_escalate_rx(void *opaque, int n, int level)
+{
+    OtPwrMgrState *s = opaque;
+
+    g_assert(n == 0);
+
+    trace_ot_pwrmgr_escalate_rx(s->ot_id, (bool)level);
+
+    if (level) {
+        s->regs[R_ESCALATE_RESET_STATUS] |= R_ESCALATE_RESET_STATUS_VAL_MASK;
+        s->fsm_events.escalate = true;
+        ot_pwrmgr_schedule_fsm(s);
+    }
+}
 
 static void ot_pwrmgr_pwr_lc_rsp(void *opaque, int n, int level)
 {
@@ -854,6 +885,7 @@ static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
     DEFINE_PROP_UINT8("version", OtPwrMgrState, version, UINT8_MAX),
     DEFINE_PROP_BOOL("fetch-ctrl", OtPwrMgrState, fetch_ctrl, false),
+    DEFINE_PROP_BOOL("main", OtPwrMgrState, main, true),
     DEFINE_PROP_LINK("rstmgr", OtPwrMgrState, rstmgr, TYPE_OT_RSTMGR,
                      OtRstMgrState *),
     DEFINE_PROP_END_OF_LIST(),
@@ -972,6 +1004,8 @@ static void ot_pwrmgr_init(Object *obj)
                             OT_PWRMGR_LC_RSP, 1);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_pwr_otp_rsp,
                             OT_PWRMGR_OTP_RSP, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_escalate_rx,
+                            OT_ALERT_ESCALATE, 1);
 
     s->fsm_tick_bh = qemu_bh_new(&ot_pwrmgr_fsm_tick, s);
 }

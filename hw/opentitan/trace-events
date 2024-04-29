@@ -318,6 +318,7 @@ ot_plic_ext_io_write(const char *id, uint32_t addr, const char *regname, uint32_
 # ot_pwrmgr.c
 
 ot_pwrmgr_change_state(const char *id, int line, const char *type, const char *old, int nold, const char *new, int nnew) "%s @ %d %s: [%s:%d] -> [%s:%d]"
+ot_pwrmgr_escalate_rx(const char *id, bool level) "%s: level %u"
 ot_pwrmgr_go_idle(const char *id, const char *state) "%s: %s"
 ot_pwrmgr_ignore_req(const char *reason) "%s"
 ot_pwrmgr_io_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
@@ -327,6 +328,7 @@ ot_pwrmgr_reset_req(const char *id, const char *name, unsigned val) "%s: %s: %u"
 ot_pwrmgr_rom(const char *id, int n, const char *what, bool val) "%s rom #%u %s=%u"
 ot_pwrmgr_rst_req(const char *id, const char *name, unsigned src) "%s %s(%u)"
 ot_pwrmgr_schedule_fsm(const char *id, const char *func, int line) "%s @ %s:%d"
+ot_pwrmgr_shutdown(const char *id, bool main) "%s: main %u"
 ot_pwrmgr_sw_rst_req(const char *id, unsigned src, bool active) "%s: %u: %u"
 ot_pwrmgr_wkup(const char *id, const char *name, unsigned src, bool active) "%s: %s(%u): %u"
 
