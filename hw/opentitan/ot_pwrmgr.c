@@ -313,17 +313,20 @@ static const char *SLOW_ST_NAMES[] = {
 typedef struct {
     unsigned wakeup_count;
     unsigned reset_count;
+    uint32_t reset_mask;
 } OtPwrMgrConfig;
 
 /* clang-format off */
 static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWMGR_VERSION_COUNT] = {
     [OT_PWMGR_VERSION_EG] = {
         .wakeup_count = 6u,
-        .reset_count = 3u,
+        .reset_count = 2u,
+        .reset_mask = 0x3u
     },
     [OT_PWMGR_VERSION_DJ] = {
         .wakeup_count = 6u,
         .reset_count = 2u,
+        .reset_mask = 0x3u
     },
 };
 
@@ -335,7 +338,7 @@ static int PWRMGR_RESET_DISPATCH[OT_PWMGR_VERSION_COUNT][PWRMGR_RESET_MAX] = {
     },
     [OT_PWMGR_VERSION_DJ] = {
         [0] = OT_RSTMGR_RESET_AON_TIMER,
-        [1] = -1,
+        [1] = OT_RSTMGR_RESET_SOC_PROXY,
         [2] = -1,
     },
 };
@@ -477,10 +480,19 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
     unsigned src = (unsigned)irq;
     g_assert(src < PWRMGR_CONFIG[s->version].reset_count);
 
-    uint32_t rstmask = 1u << src; /* rst_req are stored in the LSBs */
+    uint32_t rstbit = 1u << src; /* rst_req are stored in the LSBs */
 
     if (level) {
         trace_ot_pwrmgr_rst_req(s->ot_id, RST_NAME(s, src), src);
+        uint32_t rstmask = PWRMGR_CONFIG[s->version].reset_mask;
+
+        /* if HW reset is maskable and not HW reset is not enabled */
+        if ((rstbit & rstmask) && !(s->regs[R_RESET_EN] & rstbit)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: HW reset #%u not enabled 0x%08x 0x%08x\n",
+                          __func__, src, s->regs[R_RESET_EN], rstbit);
+            return;
+        }
 
         if (s->regs[R_RESET_STATUS]) {
             /* do nothing if a reset is already in progress */
@@ -488,7 +500,7 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
             trace_ot_pwrmgr_ignore_req("reset on-going");
             return;
         }
-        s->regs[R_RESET_STATUS] |= rstmask;
+        s->regs[R_RESET_STATUS] |= rstbit;
 
         g_assert(s->reset_req.domain == OT_PWRMGR_NO_DOMAIN);
 
@@ -519,13 +531,6 @@ static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
 
     if (level) {
         trace_ot_pwrmgr_rst_req(s->ot_id, "SW", src);
-
-        if (!(s->regs[R_RESET_EN] & rstbit)) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: SW reset #%u not enabled 0x%08x 0x%08x\n",
-                          __func__, src, s->regs[R_RESET_EN], rstbit);
-            return;
-        }
 
         if (s->regs[R_RESET_STATUS]) {
             /* do nothing if a reset is already in progress */
@@ -728,13 +733,14 @@ static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_TEST:
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0;
         break;
     }
@@ -801,6 +807,9 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         if (s->regs[R_WAKEUP_EN_REGWEN] & R_WAKEUP_EN_REGWEN_EN_MASK) {
             val32 &= WAKEUP_MASK;
             s->regs[reg] = val32;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
+                          __func__, s->ot_id, REG_NAME(reg));
         }
         break;
     case R_RESET_EN_REGWEN:
@@ -811,6 +820,9 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         if (s->regs[R_RESET_EN_REGWEN] & R_RESET_EN_REGWEN_EN_MASK) {
             val32 &= RESET_MASK;
             s->regs[reg] = val32;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
+                          __func__, s->ot_id, REG_NAME(reg));
         }
         break;
     case R_WAKE_INFO_CAPTURE_DIS:
@@ -827,12 +839,13 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ESCALATE_RESET_STATUS:
     case R_FAULT_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 };
