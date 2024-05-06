@@ -241,7 +241,8 @@ static const char *F_COMMAND_SPEED[4u] = {
     "ERROR",
 };
 
-static void ot_spi_host_trace_status(const char *msg, uint32_t status)
+static void ot_spi_host_trace_status(const char *ot_id, const char *msg,
+                                     uint32_t status)
 {
     unsigned cmd = FIELD_EX32(status, STATUS, CMDQD);
     unsigned rxd = FIELD_EX32(status, STATUS, RXQD);
@@ -258,7 +259,7 @@ static void ot_spi_host_trace_status(const char *msg, uint32_t status)
                    FIELD_EX32(status, STATUS, TXFULL) ? "TXF|" : "",
                    FIELD_EX32(status, STATUS, ACTIVE) ? "ACT|" : "",
                    FIELD_EX32(status, STATUS, READY) ? "RDY|" : "");
-    trace_ot_spi_host_status(msg, status, str, cmd, rxd, txd);
+    trace_ot_spi_host_status(ot_id, msg, status, str, cmd, rxd, txd);
 }
 
 #ifdef DISCARD_REPEATED_STATUS_TRACES
@@ -328,6 +329,7 @@ struct OtSPIHostState {
     bool on_reset;
 
     /* properties */
+    char *ot_id;
     uint32_t bus_num; /**< SPI host port number */
     uint8_t num_cs; /**< Supported CS line count */
     bool initbug; /**< Whether to ignore first TX request */
@@ -528,7 +530,7 @@ static bool ot_spi_host_is_on_error(OtSPIHostState *s)
 static void ot_spi_host_chip_select(OtSPIHostState *s, uint32_t csid,
                                     bool activate)
 {
-    trace_ot_spi_host_cs(csid, activate ? "" : "de");
+    trace_ot_spi_host_cs(s->ot_id, csid, activate ? "" : "de");
     qemu_set_irq(s->cs_lines[csid], !activate);
 }
 
@@ -628,7 +630,7 @@ static bool ot_spi_host_update_event(OtSPIHostState *s)
 
     /* mask disabled events to get the spi event state */
     bool event = (bool)(s->events & s->regs[R_EVENT_ENABLE]);
-    trace_ot_spi_host_debug1("event", event);
+    trace_ot_spi_host_debug1(s->ot_id, "event", event);
 
     /*
      * if the spi event test has been enabled, force event and clear its bit
@@ -689,10 +691,9 @@ static void ot_spi_host_update_alert(OtSPIHostState *s)
 /* State machine and I/O */
 /* ------------------------------------------------------------------------ */
 
-static void ot_spi_host_reset(DeviceState *dev)
+static void ot_spi_host_reset(OtSPIHostState *s)
 {
-    OtSPIHostState *s = OT_SPI_HOST(dev);
-    trace_ot_spi_host_reset("Resetting OpenTitan SPI");
+    trace_ot_spi_host_reset(s->ot_id, "Resetting OpenTitan SPI");
 
     timer_del(s->fsm_delay);
 
@@ -732,25 +733,13 @@ static void ot_spi_host_reset(DeviceState *dev)
     ot_spi_host_update_alert(s);
 }
 
-static void ot_spi_host_reset_hold(Object *obj)
-{
-    OtSPIHostState *s = OT_SPI_HOST(obj);
-    s->on_reset = true;
-}
-
-static void ot_spi_host_reset_exit(Object *obj)
-{
-    OtSPIHostState *s = OT_SPI_HOST(obj);
-    s->on_reset = false;
-}
-
 /**
  * Called either from the I/O functions (command, rx_data, tx_data) or from
  * the bottom handler to start a new command.
  */
 static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 {
-    trace_ot_spi_host_fsm(cause);
+    trace_ot_spi_host_fsm(s->ot_id, cause);
 
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
 
@@ -766,17 +755,18 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     if (!(read || write)) {
         /* dummy mode uses clock cycle count rather than byte count */
         if (length % (1u << (3u - speed))) {
-            qemu_log_mask(LOG_UNIMP,
-                          "%s: unsupported clk cycle count: %u for speed %u\n",
-                          __func__, length, speed);
+            qemu_log_mask(
+                LOG_UNIMP,
+                "%s: %s: unsupported clk cycle count: %u for speed %u\n",
+                __func__, s->ot_id, length, speed);
         }
         length = DIV_ROUND_UP(length, 8u);
     }
 
-    ot_spi_host_trace_status("S>", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s->ot_id, "S>", ot_spi_host_get_status(s));
 
     trace_ot_spi_host_command(
-        F_COMMAND_DIRECTION[FIELD_EX32(command, COMMAND, DIRECTION)],
+        s->ot_id, F_COMMAND_DIRECTION[FIELD_EX32(command, COMMAND, DIRECTION)],
         F_COMMAND_SPEED[FIELD_EX32(command, COMMAND, SPEED)],
         (uint32_t)headcmd->csid, (bool)FIELD_EX32(command, COMMAND, CSAAT),
         length, s->fsm.transaction);
@@ -802,7 +792,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
         if (multi && read && write) {
             /* invalid command, lets corrupt input data */
-            trace_ot_spi_host_debug("conflicting command: input is overridden");
+            trace_ot_spi_host_debug(s->ot_id,
+                                    "conflicting command: input is overridden");
             rx ^= tx;
         }
 
@@ -810,7 +801,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
             fifo8_push(s->rx_fifo, rx);
         }
 
-        trace_ot_spi_host_transfer(tx, rx);
+        trace_ot_spi_host_transfer(s->ot_id, tx, rx);
 
         length--;
     }
@@ -819,11 +810,11 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     if (length) {
         /* if the transfer early ended, a stall condition has been detected */
         if (write && txfifo_is_empty(s->tx_fifo)) {
-            trace_ot_spi_host_debug("Tx stall");
+            trace_ot_spi_host_debug(s->ot_id, "Tx stall");
             s->fsm.tx_stall = true;
         }
         if (read && fifo8_is_full(s->rx_fifo)) {
-            trace_ot_spi_host_debug("Rx stall");
+            trace_ot_spi_host_debug(s->ot_id, "Rx stall");
             s->fsm.rx_stall = true;
         }
 
@@ -840,7 +831,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     timer_mod(s->fsm_delay,
               qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + FSM_TRIGGER_DELAY_NS);
 
-    ot_spi_host_trace_status("S<", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s->ot_id, "S<", ot_spi_host_get_status(s));
 }
 
 /**
@@ -858,15 +849,15 @@ static void ot_spi_host_schedule_fsm(void *opaque)
  */
 static void ot_spi_host_post_fsm(void *opaque)
 {
-    trace_ot_spi_host_fsm("post");
-
     OtSPIHostState *s = opaque;
+
+    trace_ot_spi_host_fsm(s->ot_id, "post");
 
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
     uint32_t command = (uint32_t)headcmd->command;
     bool ongoing = headcmd->ongoing;
 
-    ot_spi_host_trace_status("P>", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
 
     if (!ongoing) {
         if (ot_spi_host_is_rx(command)) {
@@ -896,33 +887,35 @@ static void ot_spi_host_post_fsm(void *opaque)
 
     ot_spi_host_update_regs(s);
 
-    ot_spi_host_trace_status("P<", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s->ot_id, "P<", ot_spi_host_get_status(s));
 
     if (!ongoing) {
         /* last command has completed */
         if (!cmdfifo_is_empty(s->cmd_fifo)) {
             /* more commands have been scheduled */
-            trace_ot_spi_host_debug("Next cmd");
+            trace_ot_spi_host_debug(s->ot_id, "Next cmd");
             if (!ot_spi_host_is_on_error(s)) {
                 qemu_bh_schedule(s->fsm_bh);
             } else {
-                trace_ot_spi_host_debug("no resched: on err");
+                trace_ot_spi_host_debug(s->ot_id, "no resched: on err");
             }
         } else {
-            trace_ot_spi_host_debug("no resched: no cmd");
+            trace_ot_spi_host_debug(s->ot_id, "no resched: no cmd");
         }
     } else {
-        trace_ot_spi_host_debug("no resched: ongoing");
+        trace_ot_spi_host_debug(s->ot_id, "no resched: ongoing");
     }
 }
 
-static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
+static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
+                                    unsigned int size)
 {
     OtSPIHostState *s = opaque;
     uint32_t val32;
 
     if (s->on_reset) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: device in reset\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: device in reset\n", __func__,
+                      s->ot_id);
         return 0u;
     }
 
@@ -934,8 +927,8 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     case R_COMMAND:
     case R_TXDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0u;
         break;
     case R_INTR_STATE:
@@ -956,8 +949,8 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
         } else {
             val32 = 0u;
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: CSID invalid, Hardware settings discarded\n",
-                          __func__);
+                          "%s: %s: CSID invalid, Hardware settings discarded\n",
+                          __func__, s->ot_id);
         }
         break;
     case R_RXDATA: {
@@ -986,8 +979,9 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     }
     default:
         val32 = 0u;
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
     }
 
     uint32_t pc = ibex_get_current_pc();
@@ -998,12 +992,13 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     if (trace_cache.pc != pc || trace_cache.addr != addr ||
         trace_cache.value != val32) {
         if (trace_cache.count > 1u) {
-            trace_ot_spi_host_read_repeat(trace_cache.count);
+            trace_ot_spi_host_io_read_repeat(s->ot_id, trace_cache.count);
         }
 #endif /* DISCARD_REPEATED_STATUS_TRACES */
-        trace_ot_spi_host_read((uint32_t)addr, REG_NAME(reg), val32, pc);
+        trace_ot_spi_host_io_read(s->ot_id, (uint32_t)addr, REG_NAME(reg),
+                                  val32, pc);
         if (reg == R_STATUS) {
-            ot_spi_host_trace_status("", val32);
+            ot_spi_host_trace_status(s->ot_id, "", val32);
         }
 #ifdef DISCARD_REPEATED_STATUS_TRACES
         trace_cache.count = 1u;
@@ -1018,8 +1013,8 @@ static uint64_t ot_spi_host_read(void *opaque, hwaddr addr, unsigned int size)
     return val32;
 }
 
-static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
-                              unsigned int size)
+static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
+                                 unsigned int size)
 {
     OtSPIHostState *s = opaque;
     uint32_t val32 = val64;
@@ -1027,10 +1022,12 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_host_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_spi_host_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                               pc);
 
     if (s->on_reset) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: device in reset\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: device in reset\n", __func__,
+                      s->ot_id);
         return;
     }
 
@@ -1067,7 +1064,7 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_CONTROL_MASK;
         s->regs[R_CONTROL] = val32;
         if (FIELD_EX32(val32, CONTROL, SW_RST)) {
-            ot_spi_host_reset((DeviceState *)s);
+            ot_spi_host_reset(s);
         }
         s->fsm.output_en = FIELD_EX32(val32, CONTROL, OUTPUT_EN);
         break;
@@ -1078,8 +1075,8 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
             s->config_opts[s->regs[R_CSID]] = val32;
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: CSID invalid, Hardware settings discarded\n",
-                          __func__);
+                          "%s: %s: CSID invalid, Hardware settings discarded\n",
+                          __func__, s->ot_id);
         }
         break;
     case R_CSID:
@@ -1087,7 +1084,7 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_COMMAND: {
         if (cmdfifo_is_full(s->cmd_fifo)) {
-            trace_ot_spi_host_reject("cmd fifo full");
+            trace_ot_spi_host_reject(s->ot_id, "cmd fifo full");
             REG_UPDATE(s, ERROR_STATUS, CMDBUSY, (uint32_t) true);
             ot_spi_host_update_error(s);
             return;
@@ -1097,12 +1094,12 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
 
         /* IP not enabled */
         if (!(REG_GET(s, CONTROL, SPIEN))) {
-            trace_ot_spi_host_reject("no SPI/EN");
+            trace_ot_spi_host_reject(s->ot_id, "no SPI/EN");
             return;
         }
 
         if (!ot_spi_host_is_ready(s)) {
-            trace_ot_spi_host_reject("busy");
+            trace_ot_spi_host_reject(s->ot_id, "busy");
             REG_UPDATE(s, ERROR_STATUS, CMDBUSY, 1);
             ot_spi_host_update_regs(s);
             break;
@@ -1113,13 +1110,13 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
              (FIELD_EX32(val32, COMMAND, SPEED) != 0u)) ||
             (FIELD_EX32(val32, COMMAND, SPEED) == 3u)) {
             /* dual/quad SPI cannot be used w/ full duplex mode */
-            trace_ot_spi_host_reject("invalid command parameters");
+            trace_ot_spi_host_reject(s->ot_id, "invalid command parameters");
             REG_UPDATE(s, ERROR_STATUS, CMDINVAL, 1u);
             error = true;
         }
         if (!(s->regs[R_CSID] < s->num_cs)) {
             /* CSID exceeds max num_cs */
-            trace_ot_spi_host_reject("invalid csid");
+            trace_ot_spi_host_reject(s->ot_id, "invalid csid");
             REG_UPDATE(s, ERROR_STATUS, CSIDINVAL, 1u);
             error = true;
         }
@@ -1145,8 +1142,8 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
     }
     case R_RXDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     case R_TXDATA: {
         /*
@@ -1199,8 +1196,9 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_spi_host_update_event(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 }
@@ -1211,8 +1209,8 @@ static void ot_spi_host_write(void *opaque, hwaddr addr, uint64_t val64,
 
 /* clang-format off */
 static const MemoryRegionOps ot_spi_host_ops = {
-    .read = ot_spi_host_read,
-    .write = ot_spi_host_write,
+    .read = ot_spi_host_io_read,
+    .write = ot_spi_host_io_write,
     /* OpenTitan default LE */
     .endianness = DEVICE_LITTLE_ENDIAN,
     .impl = {
@@ -1224,11 +1222,32 @@ static const MemoryRegionOps ot_spi_host_ops = {
 /* clang-format on */
 
 static Property ot_spi_host_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtSPIHostState, ot_id),
     DEFINE_PROP_UINT8("num-cs", OtSPIHostState, num_cs, 1),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0),
     DEFINE_PROP_BOOL("initbug", OtSPIHostState, initbug, false),
     DEFINE_PROP_END_OF_LIST(),
 };
+
+static void ot_spi_host_reset_enter(Object *obj, ResetType type)
+{
+    OtSPIHostState *s = OT_SPI_HOST(obj);
+    (void)type;
+
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
+
+    s->on_reset = true;
+    ot_spi_host_reset(s);
+}
+
+static void ot_spi_host_reset_exit(Object *obj)
+{
+    OtSPIHostState *s = OT_SPI_HOST(obj);
+    s->on_reset = false;
+}
 
 static void ot_spi_host_realize(DeviceState *dev, Error **errp)
 {
@@ -1284,10 +1303,9 @@ static void ot_spi_host_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->realize = ot_spi_host_realize;
-    dc->reset = ot_spi_host_reset;
     device_class_set_props(dc, ot_spi_host_properties);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
-    rc->phases.hold = &ot_spi_host_reset_hold;
+    rc->phases.enter = &ot_spi_host_reset_enter;
     rc->phases.exit = &ot_spi_host_reset_exit;
 }
 

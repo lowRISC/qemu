@@ -375,18 +375,18 @@ ot_spi_device_update_last_read_addr(uint32_t addr) "0x%08x"
 
 # ot_spi_host.c
 
-ot_spi_host_reset(const char *msg) "%s"
-ot_spi_host_transfer(uint32_t tx_data, uint32_t rx_data) "tx_data: 0x%02x rx_data: 0x%02x"
-ot_spi_host_read(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr:0x%02x (%s), val:0x%x, pc:0x%x"
-ot_spi_host_read_repeat(size_t count) "last read repeated %zu times"
-ot_spi_host_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr:0x%02x (%s), val:0x%x, pc:0x%x"
-ot_spi_host_cs(uint32_t csid, const char *level) "cs#:%u %sselected"
-ot_spi_host_status(const char *msg, uint32_t status, const char *str, unsigned cmd, unsigned rxd, unsigned txd) "%s 0x%08x s:%s cq:%u rq:%u tq:%u"
-ot_spi_host_command(const char *dir, const char *spd, uint32_t csid, bool active, unsigned len, bool start) "d:%s s:%s cs#:%u csa:%u len:%u (t:%u)"
-ot_spi_host_fsm(const char *cause) "step %s"
-ot_spi_host_reject(const char *msg) "%s"
-ot_spi_host_debug(const char *msg) "%s"
-ot_spi_host_debug1(const char *msg, uint32_t val) "%s 0x%x"
+ot_spi_host_command(const char *id, const char *dir, const char *spd, uint32_t csid, bool active, unsigned len, bool start) "%s: d:%s s:%s cs#:%u csa:%u len:%u (t:%u)"
+ot_spi_host_cs(const char *id, uint32_t csid, const char *level) "%s: cs#:%u %sselected"
+ot_spi_host_debug(const char *id, const char *msg) "%s: %s"
+ot_spi_host_debug1(const char *id, const char *msg, uint32_t val) "%s: %s 0x%x"
+ot_spi_host_fsm(const char *id, const char *cause) "%s: step %s"
+ot_spi_host_io_read(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr:0x%02x (%s), val:0x%x, pc:0x%x"
+ot_spi_host_io_read_repeat(const char *id, size_t count) "%s: last read repeated %zu times"
+ot_spi_host_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr:0x%02x (%s), val:0x%x, pc:0x%x"
+ot_spi_host_reject(const char *id, const char *msg) "%s: %s"
+ot_spi_host_reset(const char *id, const char *msg) "%s: %s"
+ot_spi_host_status(const char *id, const char *msg, uint32_t status, const char *str, unsigned cmd, unsigned rxd, unsigned txd) "%s: %s 0x%08x s:%s cq:%u rq:%u tq:%u"
+ot_spi_host_transfer(const char *id, uint32_t tx_data, uint32_t rx_data) "%s: tx_data: 0x%02x rx_data: 0x%02x"
 
 # ot_sram_ctrl.c
 
