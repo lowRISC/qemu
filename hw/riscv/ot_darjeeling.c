@@ -462,17 +462,9 @@ static const uint32_t ot_dj_pmp_addrs[] = {
 static const IbexDeviceDef ot_dj_soc_devices[] = {
     /* clang-format off */
     [OT_DJ_SOC_DEV_HART] = {
-        .type = TYPE_RISCV_CPU_LOWRISC_IBEX,
+        .type = TYPE_RISCV_CPU_LOWRISC_OPENTITAN,
         .cfg = &ot_dj_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_BOOL_PROP("m", true),
-            IBEX_DEV_BOOL_PROP("pmp", true),
-            IBEX_DEV_BOOL_PROP("zba", true),
-            IBEX_DEV_BOOL_PROP("zbb", true),
-            IBEX_DEV_BOOL_PROP("zbc", true),
-            IBEX_DEV_BOOL_PROP("zbs", true),
-            IBEX_DEV_BOOL_PROP("smepmp", true),
-            IBEX_DEV_BOOL_PROP("x-zbr", true),
             IBEX_DEV_UINT_PROP("resetvec", 0x8080u),
             IBEX_DEV_UINT_PROP("mtvec", 0x8001u),
             IBEX_DEV_UINT_PROP("dmhaltvec", PULP_DM_BASE +

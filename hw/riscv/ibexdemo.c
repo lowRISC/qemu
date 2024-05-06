@@ -128,10 +128,9 @@ enum IbexDemoBoardDevice {
 static const IbexDeviceDef ibexdemo_soc_devices[] = {
     /* clang-format off */
     [IBEXDEMO_SOC_DEV_HART] = {
-        .type = TYPE_RISCV_CPU_LOWRISC_IBEX,
+        .type = TYPE_RISCV_CPU_LOWRISC_IBEXDEMO,
         .cfg = &ibexdemo_soc_hart_configure,
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_BOOL_PROP("m", true),
             IBEX_DEV_UINT_PROP("mtvec", 0x00100001u),
             IBEX_DEV_UINT_PROP("dmhaltvec", PULP_DM_BASE +
                 PULP_RV_DM_ROM_BASE + PULP_RV_DM_HALT_OFFSET),
