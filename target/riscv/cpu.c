@@ -634,6 +634,57 @@ static void rv32_lowrisc_ibex_cpu_init(Object *obj)
     riscv_add_ibex_csr_ops(cpu);
 }
 
+static void rv32_lowrisc_ibexdemo_cpu_init(Object *obj)
+{
+    CPURISCVState *env = &RISCV_CPU(obj)->env;
+    RISCVCPU *cpu = RISCV_CPU(obj);
+
+    riscv_cpu_set_misa(env, MXL_RV32, RVI | RVM | RVC);
+    env->priv_ver = PRIV_VERSION_1_12_0;
+#ifndef CONFIG_USER_ONLY
+    set_satp_mode_max_supported(cpu, VM_1_10_MBARE);
+#endif
+
+    /* Enable ISA extensions */
+    cpu->cfg.ext_zifencei = true;
+    cpu->cfg.ext_zicsr = true;
+
+    cpu->cfg.marchid = 0x16u;
+    cpu->cfg.mtvec = 0x00000001u;
+    cpu->cfg.pmu_mask = MAKE_64BIT_MASK(3, 10);
+
+    riscv_add_ibex_csr_ops(cpu);
+}
+
+static void rv32_lowrisc_opentitan_cpu_init(Object *obj)
+{
+    CPURISCVState *env = &RISCV_CPU(obj)->env;
+    RISCVCPU *cpu = RISCV_CPU(obj);
+
+    riscv_cpu_set_misa(env, MXL_RV32, RVI | RVM | RVC);
+    env->priv_ver = PRIV_VERSION_1_12_0;
+#ifndef CONFIG_USER_ONLY
+    set_satp_mode_max_supported(cpu, VM_1_10_MBARE);
+#endif
+
+    /* Enable ISA extensions */
+    cpu->cfg.ext_zifencei = true;
+    cpu->cfg.ext_zicsr = true;
+    cpu->cfg.ext_zba = true;
+    cpu->cfg.ext_zbb = true;
+    cpu->cfg.ext_zbc = true;
+    cpu->cfg.ext_zbr = true;
+    cpu->cfg.ext_zbs = true;
+    cpu->cfg.pmp = true;
+    cpu->cfg.ext_smepmp = true;
+
+    cpu->cfg.marchid = 0x16u;
+    cpu->cfg.mtvec = 0x00000001u;
+    cpu->cfg.pmu_mask = MAKE_64BIT_MASK(3, 10);
+
+    riscv_add_ibex_csr_ops(cpu);
+}
+
 static void rv32_imafcu_nommu_cpu_init(Object *obj)
 {
     CPURISCVState *env = &RISCV_CPU(obj)->env;
@@ -1920,6 +1971,8 @@ static const TypeInfo riscv_cpu_type_infos[] = {
 #if defined(TARGET_RISCV32)
     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_BASE32,   rv32_base_cpu_init),
     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_LOWRISC_IBEX, rv32_lowrisc_ibex_cpu_init),
+    DEFINE_CPU(TYPE_RISCV_CPU_LOWRISC_IBEXDEMO, rv32_lowrisc_ibexdemo_cpu_init),
+    DEFINE_CPU(TYPE_RISCV_CPU_LOWRISC_OPENTITAN, rv32_lowrisc_opentitan_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E31,       rv32_sifive_e_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E34,       rv32_imafcu_nommu_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_U34,       rv32_sifive_u_cpu_init),
