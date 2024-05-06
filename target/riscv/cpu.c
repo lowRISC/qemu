@@ -600,40 +600,6 @@ static void rv32_sifive_e_cpu_init(Object *obj)
     cpu->cfg.pmp = true;
 }
 
-static void rv32_lowrisc_ibex_cpu_init(Object *obj)
-{
-    CPURISCVState *env = &RISCV_CPU(obj)->env;
-    RISCVCPU *cpu = RISCV_CPU(obj);
-
-    riscv_cpu_set_misa(env, MXL_RV32, 0);
-
-    env->priv_ver = PRIV_VERSION_1_12_0;
-    /*
-     * QEMU RISC-V implementation defines a list of by-default enabled extensions that
-     * need to be disabled.
-     */
-    cpu->cfg.ext_zawrs = false;
-    cpu->cfg.ext_zfa = false;
-    cpu->cfg.ext_zihintpause = false;
-    cpu->cfg.mmu = false;
-    cpu->cfg.pmp = false;
-    cpu->cfg.ext_sstc = false;
-    cpu->cfg.ext_svadu = false;
-    cpu->cfg.pmu_mask = 0;
-    cpu->cfg.ext_zba = false;
-    cpu->cfg.ext_zbb = false;
-    cpu->cfg.ext_zbc = false;
-    cpu->cfg.ext_zbs = false;
-    cpu->cfg.ext_zicbom = false;
-    cpu->cfg.ext_zicboz = false;
-    cpu->cfg.marchid = 0x16u;
-    cpu->cfg.mtvec = 0x00000001u;
-#ifndef CONFIG_USER_ONLY
-    set_satp_mode_max_supported(cpu, VM_1_10_MBARE);
-#endif
-    riscv_add_ibex_csr_ops(cpu);
-}
-
 static void rv32_lowrisc_ibexdemo_cpu_init(Object *obj)
 {
     CPURISCVState *env = &RISCV_CPU(obj)->env;
@@ -1970,7 +1936,6 @@ static const TypeInfo riscv_cpu_type_infos[] = {
     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_MAX,      riscv_max_cpu_init),
 #if defined(TARGET_RISCV32)
     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_BASE32,   rv32_base_cpu_init),
-    DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_LOWRISC_IBEX, rv32_lowrisc_ibex_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_LOWRISC_IBEXDEMO, rv32_lowrisc_ibexdemo_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_LOWRISC_OPENTITAN, rv32_lowrisc_opentitan_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E31,       rv32_sifive_e_cpu_init),
