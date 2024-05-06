@@ -127,11 +127,6 @@ static bool trans_wfi(DisasContext *ctx, arg_wfi *a)
     decode_save_opc(ctx);
     gen_update_pc(ctx, ctx->cur_insn_len);
     gen_helper_wfi(tcg_env);
-    if (ctx->cs->exception_index == -1) {
-        /* WFI triggered no exception (neither error nor halt), handle as NOP */
-        exit_tb(ctx);
-        ctx->base.is_jmp = DISAS_NORETURN;
-     }
     return true;
 #else
     return false;
