@@ -873,8 +873,12 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     OtPwrMgrClass *c = OT_PWRMGR_GET_CLASS(obj);
     OtPwrMgrState *s = OT_PWRMGR(obj);
 
-    g_assert(s->ot_id);
     g_assert(s->version < OT_PWMGR_VERSION_COUNT);
+
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
 
     trace_ot_pwrmgr_reset(s->ot_id, "enter");
 

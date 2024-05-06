@@ -479,7 +479,8 @@ static void ot_rstmgr_reset(DeviceState *dev)
     OtRstMgrState *s = OT_RSTMGR(dev);
 
     if (!s->ot_id) {
-        s->ot_id = g_strdup("");
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
 
     trace_ot_rstmgr_reset();

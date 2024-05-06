@@ -146,8 +146,6 @@ struct OtGpioDjState {
     bool wipe; /* whether to wipe the backend at reset */
 };
 
-static const char DEFAULT_OT_ID[] = "";
-
 static void ot_gpio_dj_update_backend(OtGpioDjState *s);
 
 static void ot_gpio_dj_update_irqs(OtGpioDjState *s)
@@ -701,7 +699,8 @@ static void ot_gpio_dj_reset(DeviceState *dev)
     OtGpioDjState *s = OT_GPIO_DJ(dev);
 
     if (!s->ot_id) {
-        s->ot_id = g_strdup(DEFAULT_OT_ID);
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
 
     memset(s->regs, 0, sizeof(s->regs));
