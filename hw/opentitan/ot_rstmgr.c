@@ -153,6 +153,7 @@ struct OtRstMgrState {
 
     uint32_t *regs;
 
+    char *ot_id;
     bool por; /* Power-On Reset property */
 };
 
@@ -267,8 +268,8 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
 
     const OtRstMgrResettable *rst = &SW_RESETTABLE_DEVICES[devix];
     if (!rst->typename) {
-        qemu_log_mask(LOG_UNIMP, "%s: Reset for slot %u not yet implemented",
-                      __func__, devix);
+        qemu_log_mask(LOG_UNIMP, "%s: %s Reset for slot %u not yet implemented",
+                      __func__, s->ot_id, devix);
         return;
     }
 
@@ -284,8 +285,8 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
         qbus_walk_children(s->parent_obj.parent_obj.parent_bus,
                            &ot_rstmgr_sw_rst_walker, NULL, NULL, NULL, &desc);
     if (res >= 0) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Unable to locate device %s",
-                      __func__, desc.path);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Unable to locate device %s",
+                      __func__, s->ot_id, desc.path);
     }
 
     g_free(desc.path);
@@ -331,13 +332,14 @@ static uint64_t ot_rstmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x02%" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0;
         break;
     }
@@ -385,9 +387,8 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= ALERT_INFO_CTRL_MASK;
             s->regs[val32] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: R_ALERT_INFO_CTRL protected w/ REGWEN\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
+                          __func__, s->ot_id, REG_NAME(reg));
         }
         break;
     case R_CPU_REGWEN:
@@ -399,9 +400,8 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= CPU_INFO_CTRL_MASK;
             s->regs[val32] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: R_CPU_INFO_CTRL protected w/ REGWEN\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
+                          __func__, s->ot_id, REG_NAME(reg));
         }
         break;
     case R_SW_RST_REGWEN_0:
@@ -432,9 +432,8 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 ot_rstmgr_update_sw_reset(s, devix);
             }
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: SW_RST_CTRL_N_%u protected w/ REGWEN\n",
-                          __func__, (unsigned)(reg - R_SW_RST_CTRL_N_0));
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
+                          __func__, s->ot_id, REG_NAME(reg));
         }
         break;
     case R_ALERT_TEST:
@@ -449,17 +448,19 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_CPU_INFO:
     case R_ERR_CODE:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x02%" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 };
 
 static Property ot_rstmgr_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtRstMgrState, ot_id),
     /* this property is only used to store initial reset reason state */
     DEFINE_PROP_BOOL("por", OtRstMgrState, por, true),
     DEFINE_PROP_END_OF_LIST(),
@@ -477,12 +478,17 @@ static void ot_rstmgr_reset(DeviceState *dev)
 {
     OtRstMgrState *s = OT_RSTMGR(dev);
 
+    if (!s->ot_id) {
+        s->ot_id = g_strdup("");
+    }
+
     trace_ot_rstmgr_reset();
 
     if (!s->cpu) {
         CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));
         if (!cpu) {
-            error_setg(&error_fatal, "Could not find the associated vCPU");
+            error_setg(&error_fatal, "%s: Could not find the associated vCPU",
+                       s->ot_id);
             g_assert_not_reached();
         }
         s->cpu = cpu;
