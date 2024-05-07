@@ -2,17 +2,17 @@
 
 # ot_aes.c
 
-ot_aes_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_aes_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_aes_buffer(const char *mode, const char * msg, const char * hexbuf) "[%s] %s: %s"
-ot_aes_request_entropy(void) ""
-ot_aes_schedule(void) ""
-ot_aes_reseed(const char *reason) "%s"
-ot_aes_fill_entropy(uint32_t bits, bool fips) "0x%08x fips:%u"
-ot_aes_init(const char *what) "%s"
 ot_aes_debug(const char *func, int line, const char *msg) "%s:%d %s"
 ot_aes_error(const char *func, int line, const char *err) "%s:%d %s"
+ot_aes_fill_entropy(uint32_t bits, bool fips) "0x%08x fips:%u"
 ot_aes_info(const char *func, int line, const char *errl) "%s:%d %s"
+ot_aes_init(const char *what) "%s"
+ot_aes_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_aes_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_aes_request_entropy(void) ""
+ot_aes_reseed(const char *reason) "%s"
+ot_aes_schedule(void) ""
 
 # ot_alert.c
 
@@ -77,19 +77,19 @@ ot_csrng_try_schedule_genbits(unsigned slot, bool ready, bool queued, unsigned r
 
 ot_dev_proxy_dispatch_request(char a, char b) "%c%c"
 ot_dev_proxy_fe_error(int err) "error: %d"
-ot_dev_proxy_uid_error(const char *msg, unsigned expuid, unsigned realuid) "%s: expected %u, received %u"
 ot_dev_proxy_read_buffer(const char *prefix, unsigned devix, bool mbx, unsigned offset, unsigned count) "%s #%u mbx:%u 0x%02x %u"
-ot_dev_proxy_write_buffer(const char *prefix, unsigned devix, bool mbx, unsigned offset, unsigned count) "%s #%u mbx:%u 0x%02x %u"
 ot_dev_proxy_read_memory(const char *prefix, unsigned devix, unsigned offset, unsigned count) "%s #%u 0x%08x 0x%x"
-ot_dev_proxy_write_memory(const char *prefix, unsigned devix, unsigned offset, unsigned count) "%s #%u 0x%08x 0x%x"
 ot_dev_proxy_read_reg(const char *prefix, unsigned devix, unsigned offset) "%s #%u 0x%08x"
+ot_dev_proxy_uid_error(const char *msg, unsigned expuid, unsigned realuid) "%s: expected %u, received %u"
+ot_dev_proxy_write_buffer(const char *prefix, unsigned devix, bool mbx, unsigned offset, unsigned count) "%s #%u mbx:%u 0x%02x %u"
+ot_dev_proxy_write_memory(const char *prefix, unsigned devix, unsigned offset, unsigned count) "%s #%u 0x%08x 0x%x"
 ot_dev_proxy_write_reg(const char *prefix, unsigned devix, unsigned offset, unsigned value) "%s #%u 0x%08x 0x%08x"
 
 # ot_dm_tl.c
 
+ot_dm_tl_capture(uint32_t addr, uint32_t value) "0x%x: 0x%08x"
 ot_dm_tl_invalid_addr(uint32_t addr) "0x%x"
 ot_dm_tl_update(uint32_t addr, uint32_t value, const char *msg, uint32_t res) "0x%x: 0x%x (%s): %u"
-ot_dm_tl_capture(uint32_t addr, uint32_t value) "0x%x: 0x%08x"
 
 # ot_dma.c
 
@@ -152,15 +152,15 @@ ot_entropy_src_update_generation(unsigned gennum) "%u"
 
 # ot_flash.c
 
-ot_flash_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_flash_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_flash_mem_read_out(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%02x (%u), val=0x%08x, pc=0x%x"
-ot_flash_op_start(int op) "%d"
-ot_flash_op_complete(int op, bool success) "%d: %u"
 ot_flash_error(const char *func, int line, const char *err) "%s:%d %s"
 ot_flash_info(const char *func, int line, const char *msg, uint32_t value) "%s:%d %s: 0x%08x"
 ot_flash_info_part(uint32_t op_addr, unsigned bank, unsigned infosel, uint32_t addr) "op_addr 0x%06x bank %u infosel %u addr 0x%06x"
+ot_flash_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_flash_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_flash_irqs(uint32_t active, uint32_t mask, uint32_t eff) "act:0x%08x msk:0x%08x eff:0x%08x"
+ot_flash_mem_read_out(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%02x (%u), val=0x%08x, pc=0x%x"
+ot_flash_op_complete(int op, bool success) "%d: %u"
+ot_flash_op_start(int op) "%d"
 
 # ot_gpio.c
 
@@ -177,18 +177,18 @@ ot_gpio_update_out_line(const char *id, unsigned ix, int level) "%s: [%u]: %d"
 
 # ot_hmac.c
 
+ot_hmac_debug(const char *msg) "%s"
+ot_hmac_fifo_write(uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "addr=0x%02x, val=0x%x (%u), pc=0x%x"
 ot_hmac_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_hmac_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_hmac_fifo_write(uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "addr=0x%02x, val=0x%x (%u), pc=0x%x"
-ot_hmac_debug(const char *msg) "%s"
 
 # ot_i2c_dj.c
 
+ot_i2c_host_recv(const char *id, unsigned int entries, unsigned int bytes_to_read) "[%s] rx_fifo_entries:%u bytes_to_read:%u"
+ot_i2c_host_send(const char *id, unsigned int entries, unsigned int host_tx_threshold) "[%s] tx_fifo_entries:%u tx_threshold:%u"
 ot_i2c_io_read(const char *id, unsigned int addr, const char *regname, uint64_t val, uint64_t pc) "[%s] addr:0x%02x (%s), val:0x%" PRIx64", pc:0x%" PRIx64
 ot_i2c_io_write(const char *id, unsigned int addr, const char *regname, uint64_t val, uint64_t pc) "[%s] addr:0x%02x (%s), val:0x%" PRIx64", pc:0x%" PRIx64
 ot_i2c_irq(const char *id, const char *irq_id, bool en) "[%s] set interrupt %s to %u"
-ot_i2c_host_recv(const char *id, unsigned int entries, unsigned int bytes_to_read) "[%s] rx_fifo_entries:%u bytes_to_read:%u"
-ot_i2c_host_send(const char *id, unsigned int entries, unsigned int host_tx_threshold) "[%s] tx_fifo_entries:%u tx_threshold:%u"
 ot_i2c_target_recv(const char *id, unsigned int entries, uint8_t data) "[%s] tx_fifo_entries:%u data:0x%02x"
 ot_i2c_target_set_acqdata(const char *id, unsigned int entries, uint8_t data, unsigned int signal) "[%s] rx_fifo_entries:%u data:0x%02x signal:0x%02x"
 ot_i2c_update_irqs(const char *id, uint32_t active, uint32_t mask, uint32_t eff) "[%s] act:0x%08x msk:0x%08x eff:0x%08x"
@@ -208,17 +208,18 @@ ot_ibex_wrapper_reset(const char *id) "%s"
 ot_ibex_wrapper_unmap(const char *id, unsigned slot) "%s: region %u"
 
 # ot_kmac.c
-ot_kmac_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_kmac_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_kmac_state_read_out(uint32_t addr, uint32_t val, uint32_t pc) "addr=0x%03x, val=0x%x, pc=0x%x"
-ot_kmac_msgfifo_write(uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "addr=0x%03x, val=0x%x (%u), pc=0x%x"
+
+ot_kmac_app_finished(unsigned app_idx) "#%u"
+ot_kmac_app_start(unsigned app_idx) "#%u"
 ot_kmac_change_state_app(unsigned app_idx, int line, const char *old, int nold, const char *new, int nnew) "#%u @ %d [%s:%d] -> [%s:%d]"
 ot_kmac_change_state_sw(int line, const char *old, int nold, const char *new, int nnew) "@ %d [%s:%d] -> [%s:%d]"
-ot_kmac_process_sw_command(int cmd, const char *cmd_str) "cmd=0x%02x (%s)"
-ot_kmac_app_start(unsigned app_idx) "#%u"
-ot_kmac_app_finished(unsigned app_idx) "#%u"
-ot_kmac_report_error(int code, const char *code_str, uint32_t info) "code=0x%02x (%s) info=0x%06x"
 ot_kmac_debug(const char *msg) "%s"
+ot_kmac_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_kmac_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_kmac_msgfifo_write(uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "addr=0x%03x, val=0x%x (%u), pc=0x%x"
+ot_kmac_process_sw_command(int cmd, const char *cmd_str) "cmd=0x%02x (%s)"
+ot_kmac_report_error(int code, const char *code_str, uint32_t info) "code=0x%02x (%s) info=0x%06x"
+ot_kmac_state_read_out(uint32_t addr, uint32_t val, uint32_t pc) "addr=0x%03x, val=0x%x, pc=0x%x"
 
 # ot_lc_ctrl.c
 
@@ -313,11 +314,11 @@ ot_pwrmgr_wkup(const char *id, const char *name, unsigned src, bool active) "%s:
 
 ot_rom_ctrl_io_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_rom_ctrl_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_rom_ctrl_mem_read_out(const char *id, uint32_t addr, uint32_t val, uint32_t pc) "%s: addr=0x%04x, val=0x%x, pc=0x%x"
-ot_rom_ctrl_mem_write(const char *id, uint32_t addr, uint32_t val, uint32_t pc) "%s: addr=0x%04x, val=0x%x, pc=0x%x"
-ot_rom_ctrl_mem_rejects(const char *id, uint32_t addr, bool is_write, uint32_t pc) "%s: addr=0x%04x, is_write=%u, pc=0x%x"
-ot_rom_ctrl_reset(const char *id, const char *phase) "%s: %s"
 ot_rom_ctrl_load_rom_no_image(const char *id) "%s: ROM image not defined"
+ot_rom_ctrl_mem_read_out(const char *id, uint32_t addr, uint32_t val, uint32_t pc) "%s: addr=0x%04x, val=0x%x, pc=0x%x"
+ot_rom_ctrl_mem_rejects(const char *id, uint32_t addr, bool is_write, uint32_t pc) "%s: addr=0x%04x, is_write=%u, pc=0x%x"
+ot_rom_ctrl_mem_write(const char *id, uint32_t addr, uint32_t val, uint32_t pc) "%s: addr=0x%04x, val=0x%x, pc=0x%x"
+ot_rom_ctrl_reset(const char *id, const char *phase) "%s: %s"
 
 # ot_rstmgr.c
 
