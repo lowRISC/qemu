@@ -42,11 +42,6 @@
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
 
-
-/* ------------------------------------------------------------------------ */
-/* Register definitions */
-/* ------------------------------------------------------------------------ */
-
 #define PARAM_NUM_EXTERNAL_IRQS 32u
 #define PARAM_NUM_ALERTS        29u
 
@@ -57,18 +52,15 @@ REG32(INTR_ENABLE, 0x4u)
 REG32(INTR_TEST, 0x8u)
 REG32(ALERT_TEST, 0xcu)
 
-#define ALERT_TEST_FATAL_ALERT_INTG 0
-#define ALERT_TEST_FATAL_ALERT_EXTERNAL_BASE 1u
+/* clang-format on */
+
+#define ALERT_TEST_FATAL_ALERT_INTG           0
+#define ALERT_TEST_FATAL_ALERT_EXTERNAL_BASE  1u
 #define ALERT_TEST_FATAL_ALERT_EXTERNAL_COUNT 24u
-#define ALERT_TEST_RECOV_ALERT_EXTERNAL_BASE 25u
+#define ALERT_TEST_RECOV_ALERT_EXTERNAL_BASE  25u
 #define ALERT_TEST_RECOV_ALERT_EXTERNAL_COUNT 4u
 
 #define ALERT_TEST_MASK ((1u << PARAM_NUM_ALERTS) - 1u)
-
-static_assert(1u + ALERT_TEST_FATAL_ALERT_EXTERNAL_COUNT + ALERT_TEST_RECOV_ALERT_EXTERNAL_COUNT
-              == PARAM_NUM_ALERTS, "Invalid external IRQ configuration");
-
-/* clang-format on */
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
@@ -77,6 +69,10 @@ static_assert(1u + ALERT_TEST_FATAL_ALERT_EXTERNAL_COUNT + ALERT_TEST_RECOV_ALER
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define INTR_COUNT PARAM_NUM_EXTERNAL_IRQS
 
+static_assert(1u + ALERT_TEST_FATAL_ALERT_EXTERNAL_COUNT +
+                      ALERT_TEST_RECOV_ALERT_EXTERNAL_COUNT ==
+                  PARAM_NUM_ALERTS,
+              "Invalid external IRQ configuration");
 static_assert(OT_SOC_PROXY_REGS_COUNT == REGS_COUNT, "Invalid regs");
 
 #define REG_NAME(_reg_) \
