@@ -1,7 +1,7 @@
 pylint-ot:
   tags:
     - qemu_ot
-  stage: test
+  stage: build
   script:
     # disable duplicate code as all front end are tested at once (false positive)
     # disable fixme ("# TODO" comments)
