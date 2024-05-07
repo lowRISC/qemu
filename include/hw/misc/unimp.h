@@ -23,6 +23,9 @@ struct UnimplementedDeviceState {
     unsigned offset_fmt_width;
     char *name;
     uint64_t size;
+    bool warn_once;
+    bool r_warned;
+    bool w_warned;
 };
 
 /**
