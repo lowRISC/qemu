@@ -1294,7 +1294,8 @@ static void riscv_cpu_set_irq(void *opaque, int irq, int level)
             }
             break;
         default:
-            g_assert_not_reached();
+            /* Handle platform / custom local interrupts */
+            riscv_cpu_update_mip(env, 1ULL << irq, BOOL_TO_MASK(level));
         }
     } else if (irq < (IRQ_LOCAL_MAX + IRQ_LOCAL_GUEST_MAX)) {
         /* Require H-extension for handling guest local interrupts */
