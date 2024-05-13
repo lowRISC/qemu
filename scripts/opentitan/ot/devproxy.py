@@ -13,7 +13,7 @@ from socket import create_connection, socket, SHUT_RDWR
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import modules
 from threading import Event, Thread, get_ident
-from time import time as now
+from time import sleep, time as now
 from typing import (Any, Callable, Dict, Iterator, List, NamedTuple, Optional,
                     Tuple, Union)
 
@@ -122,7 +122,7 @@ class DeviceProxy:
     NO_ROLE = 0xf
     """Disabled role."""
 
-    def __init__(self, proxy: 'Proxy', name: str, devid: int, addr: int,
+    def __init__(self, proxy: 'ProxyEngine', name: str, devid: int, addr: int,
                  count: int, offset: int):
         logname = self.__class__.__name__.lower().replace('proxy', '')
         self._log = getLogger(f'proxy.{logname}')
@@ -137,6 +137,11 @@ class DeviceProxy:
         self._end = offset + count * 4
         self._interrupts: Optional[Dict[str, Tuple[int, int, int]]] = None
         self._new()
+
+    @property
+    def proxy(self) -> 'ProxyEngine':
+        """Return the proxy engine."""
+        return self._proxy
 
     @property
     def uid(self) -> int:
@@ -1104,6 +1109,14 @@ class ProxyEngine:
     """Maximum time to wait on a blocking operation.
     """
 
+    POLL_RECOVER_DELAY = 0.1
+    """Time to wait on a recovery operation.
+    """
+
+    EXIT_DELAY = 0.1
+    """Time to wait before resuming once the termination command is sent.
+    """
+
     BAUDRATE = 115200
     """Default baudrate for serial line communication."""
 
@@ -1161,17 +1174,25 @@ class ProxyEngine:
                                     baudrate=self.BAUDRATE)
         self._kick_off()
 
+    def close(self) -> None:
+        """Close the connection with the remote device."""
+        self._resume = False
+        self._log.debug('Closing connection')
+        if self._socket:
+            self._socket.shutdown(SHUT_RDWR)
+            self._socket.close()
+            self._socket = None
+        if self._port:
+            self._port.close()
+            self._port = None
+
     def quit(self, code: int) -> None:
         """Tell the remote target to exit the application.
         """
         payload = spack('<i', code)
         self.exchange('QT', payload)
-        if self._socket:
-            self._socket.shutdown(SHUT_RDWR)
-            self._socket = None
-        if self._port:
-            self._port.close()
-            self._port = None
+        sleep(self.EXIT_DELAY)
+        self.close()
 
     def resume(self) -> None:
         """Resume execution.
@@ -1371,7 +1392,7 @@ class ProxyEngine:
                 if now() > timeout:
                     self._log.error('Timeout on command completion')
                     self._resume = False
-                    raise TimeoutError()
+                    raise TimeoutError('No reply from peer')
                 if self._resp_event.wait(self.POLL_TIMEOUT):
                     break
             rcmd, payload = self._resp_q.popleft()
@@ -1470,8 +1491,10 @@ class ProxyEngine:
                 resp = False
             # pylint: disable=broad-except
             except Exception as exc:
-                self._resume = False
-                self._log.fatal('Exception: %s', exc)
+                # connection shutdown may have been requested
+                if self._resume:
+                    self._log.fatal('Exception: %s', exc)
+                    self._resume = False
                 break
 
     def _notify(self) -> None:
