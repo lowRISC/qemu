@@ -45,19 +45,23 @@ class ColorLogFormatter(Formatter):
         kwargs = dict(kwargs)
         name_width = kwargs.pop('name_width', 10)
         self._use_ansi = kwargs.pop('color', isatty(stderr.fileno()))
+        use_func = kwargs.pop('funcname', False)
         use_ms = kwargs.pop('ms', False)
         use_time = kwargs.pop('time', use_ms)
         use_lineno = kwargs.pop('lineno', False)
         super().__init__(*args, **kwargs)
-        format_trail = f' %(name)-{name_width}s %(message)s'
         if use_time:
             tfmt = '%(asctime)s ' if not use_ms else '%(asctime)s.%(msecs)03d '
         else:
             tfmt = ''
-        lno = ' [%(lineno)d] ' if use_lineno else ''
-        self._plain_format = f'{tfmt}{self.FMT_LEVEL}{lno}{format_trail}'
+        sep = ' ' if not use_lineno else ''
+        fnc = f' %(funcName)s{sep}' if use_func else ' '
+        sep = ' ' if not use_func else ''
+        lno = f'{sep}[%(lineno)d] ' if use_lineno else ''
+        fmt_trail = f' %(name)-{name_width}s{fnc}{lno}%(message)s'
+        self._plain_format = f'{tfmt}{self.FMT_LEVEL}{fmt_trail}'
         self._color_formats = {
-            lvl: f'{tfmt}{clr}{self.FMT_LEVEL}{self.RESET}{lno}{format_trail}'
+            lvl: f'{tfmt}{clr}{self.FMT_LEVEL}{self.RESET}{fmt_trail}'
             for lvl, clr in self.COLORS.items()
         }
         self._formatter_args = ['%H:%M:%S'] if use_time else []
