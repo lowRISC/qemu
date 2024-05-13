@@ -1297,28 +1297,26 @@ static void riscv_cpu_set_irq(void *opaque, int irq, int level)
             g_assert_not_reached();
         }
     } else if (irq < (IRQ_LOCAL_MAX + IRQ_LOCAL_GUEST_MAX)) {
-        if (riscv_has_ext(env, RVH)) {
-            /* Handle guest local interrupts */
-            /* Compute bit position in HGEIP CSR */
-            irq = irq - IRQ_LOCAL_MAX + 1;
-            if (env->geilen < irq) {
-                g_assert_not_reached();
-            }
-
-            /* Update HGEIP CSR */
-            env->hgeip &= ~((target_ulong)1 << irq);
-            if (level) {
-                env->hgeip |= (target_ulong)1 << irq;
-            }
-
-            /* Update mip.SGEIP bit */
-            riscv_cpu_update_mip(env, MIP_SGEIP,
-                                 BOOL_TO_MASK(!!(env->hgeie & env->hgeip)));
-        } else {
-            /* Handle platform / custom local interrupts */
-            riscv_cpu_update_mip(env, (target_ulong)1 << irq,
-                                 BOOL_TO_MASK(level));
+        /* Require H-extension for handling guest local interrupts */
+        if (!riscv_has_ext(env, RVH)) {
+            g_assert_not_reached();
         }
+
+        /* Compute bit position in HGEIP CSR */
+        irq = irq - IRQ_LOCAL_MAX + 1;
+        if (env->geilen < irq) {
+            g_assert_not_reached();
+        }
+
+        /* Update HGEIP CSR */
+        env->hgeip &= ~((target_ulong)1 << irq);
+        if (level) {
+            env->hgeip |= (target_ulong)1 << irq;
+        }
+
+        /* Update mip.SGEIP bit */
+        riscv_cpu_update_mip(env, MIP_SGEIP,
+                             BOOL_TO_MASK(!!(env->hgeie & env->hgeip)));
     } else {
         g_assert_not_reached();
     }
