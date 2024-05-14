@@ -467,6 +467,14 @@ static bool ot_dma_is_configurable(const OtDMAState *s)
     return !ot_dma_is_busy(s);
 }
 
+static bool ot_dma_is_on_error(const OtDMAState *s, unsigned err)
+{
+    g_assert(err < ERR_COUNT);
+
+    return ((bool)(s->regs[R_STATUS] & R_STATUS_ERROR_MASK)) &&
+           ((bool)(s->regs[R_ERROR_CODE] & DMA_ERROR(err)));
+}
+
 static void ot_dma_set_error(OtDMAState *s, unsigned err)
 {
     g_assert(err < ERR_COUNT);
@@ -736,11 +744,13 @@ static bool ot_dma_go(OtDMAState *s)
 
     OtDMAOp *op = &s->op;
 
-    op->attrs.unspecified = false;
+    if (s->state != SM_ERROR) {
+        op->attrs.unspecified = false;
 #ifdef OT_DMA_HAS_ROLE
-    op->attrs.role = (unsigned)s->role;
+        op->attrs.role = (unsigned)s->role;
 #endif
-    op->size = s->regs[R_TOTAL_DATA_SIZE];
+        op->size = s->regs[R_TOTAL_DATA_SIZE];
+    }
 
     /*
      * The emulation ignores the transfer width as this is already managed
@@ -758,7 +768,7 @@ static bool ot_dma_go(OtDMAState *s)
     unsigned twidth = s->regs[R_TRANSFER_WIDTH];
     uint32_t tmask = (1u << twidth) - 1u;
 
-    if (soffset & tmask) {
+    if (!ot_dma_is_on_error(s, ERR_SRC_ADDR) && (soffset & tmask)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: Src 0x%" HWADDR_PRIx
                       " not aligned on TRANSFER_WIDTH\n",
@@ -766,7 +776,7 @@ static bool ot_dma_go(OtDMAState *s)
         ot_dma_set_xerror(s, ERR_SRC_ADDR);
     }
 
-    if (doffset & tmask) {
+    if (!ot_dma_is_on_error(s, ERR_DEST_ADDR) && (doffset & tmask)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: Dest 0x%" HWADDR_PRIx
                       " not aligned on TRANSFER_WIDTH\n",
@@ -774,7 +784,7 @@ static bool ot_dma_go(OtDMAState *s)
         ot_dma_set_xerror(s, ERR_DEST_ADDR);
     }
 
-    if (sasix != AS_SYS) {
+    if (!ot_dma_is_on_error(s, ERR_SRC_ADDR) && (sasix != AS_SYS)) {
         if (s->regs[R_SRC_ADDR_HI] != 0) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Src address is too large\n",
                           __func__, s->ot_id);
@@ -782,12 +792,12 @@ static bool ot_dma_go(OtDMAState *s)
         }
     }
 
-    if (dasix != AS_SYS) {
+    if (!ot_dma_is_on_error(s, ERR_DEST_ADDR) && (dasix != AS_SYS)) {
         if (s->regs[R_DEST_ADDR_HI] != 0) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: Dest address is too large\n", __func__,
                           s->ot_id);
-            ot_dma_set_xerror(s, ERR_SRC_ADDR);
+            ot_dma_set_xerror(s, ERR_DEST_ADDR);
         }
     }
 
@@ -803,7 +813,7 @@ static bool ot_dma_go(OtDMAState *s)
         int ewidth = memory_access_size(smr, sizeof(uint32_t),
                                         soffset + op->size - sizeof(uint32_t));
         int dwidth = MIN(swidth, ewidth);
-        if (dwidth < (int)twidth) {
+        if (!ot_dma_is_on_error(s, ERR_SRC_ADDR) && (dwidth < (int)twidth)) {
             qemu_log_mask(LOG_UNIMP,
                           "%s: %s: Src device does not supported "
                           "requested width: %u, max %d\n",
@@ -817,7 +827,7 @@ static bool ot_dma_go(OtDMAState *s)
         int ewidth = memory_access_size(dmr, sizeof(uint32_t),
                                         doffset + op->size - sizeof(uint32_t));
         int dwidth = MIN(swidth, ewidth);
-        if (dwidth < (int)twidth) {
+        if (!ot_dma_is_on_error(s, ERR_DEST_ADDR) && (dwidth < (int)twidth)) {
             qemu_log_mask(LOG_UNIMP,
                           "%s: %s: Dest device does not supported "
                           "requested width: %u, max %d\n",
