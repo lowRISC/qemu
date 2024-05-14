@@ -385,7 +385,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_INFO_CTRL:
         if (s->regs[R_ALERT_REGWEN]) {
             val32 &= ALERT_INFO_CTRL_MASK;
-            s->regs[val32] = val32;
+            s->regs[reg] = val32;
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
                           __func__, s->ot_id, REG_NAME(reg));
@@ -398,7 +398,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_CPU_INFO_CTRL:
         if (s->regs[R_CPU_REGWEN]) {
             val32 &= CPU_INFO_CTRL_MASK;
-            s->regs[val32] = val32;
+            s->regs[reg] = val32;
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
                           __func__, s->ot_id, REG_NAME(reg));
@@ -425,8 +425,8 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_SW_RST_CTRL_N_7:
         if (s->regs[reg - R_SW_RST_CTRL_N_0 + R_SW_RST_REGWEN_0]) {
             val32 &= SW_RST_CTRL_VAL_MASK;
-            uint32_t change = s->regs[val32] ^ val32;
-            s->regs[val32] = val32;
+            uint32_t change = s->regs[reg] ^ val32;
+            s->regs[reg] = val32;
             unsigned devix = (unsigned)reg - R_SW_RST_CTRL_N_0;
             if (change & (1u << devix)) {
                 ot_rstmgr_update_sw_reset(s, devix);

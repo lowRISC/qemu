@@ -392,8 +392,8 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_EXEC:
         if (s->regs[R_EXEC_REGWEN]) {
             val32 &= R_EXEC_EN_MASK;
-            s->regs[val32] = val32;
-            if ((s->regs[val32] == OT_MULTIBITBOOL4_TRUE) && s->otp_ifetch) {
+            s->regs[reg] = val32;
+            if ((s->regs[reg] == OT_MULTIBITBOOL4_TRUE) && s->otp_ifetch) {
                 s->cfg_ifetch = true;
             }
         } else {
@@ -409,7 +409,7 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_CTRL:
         if (s->regs[R_CTRL_REGWEN]) { /* WO */
             val32 &= R_CTRL_INIT_MASK | R_CTRL_RENEW_SCR_KEY_MASK;
-            uint32_t trig = (val32 ^ s->regs[val32]) & val32;
+            uint32_t trig = (val32 ^ s->regs[reg]) & val32;
             /* storing value prevents from trigerring again before completion */
             s->regs[reg] = val32;
             if (trig & R_CTRL_RENEW_SCR_KEY_MASK) {
