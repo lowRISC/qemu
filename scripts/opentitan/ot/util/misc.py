@@ -7,7 +7,7 @@
 """
 
 from sys import stdout
-from typing import Any, Optional, TextIO
+from typing import Any, Iterable, Optional, TextIO
 
 try:
     # only available from Python 3.12+
@@ -35,6 +35,31 @@ class HexInt(int):
         if val is None:
             return None
         return int(val, val.startswith('0x') and 16 or 10)
+
+
+class EasyDict(dict):
+    """Dictionary whose members can be accessed as instance members
+    """
+
+    def __init__(self, dictionary=None, **kwargs):
+        if dictionary is not None:
+            self.update(dictionary)
+        self.update(kwargs)
+
+    def __getattr__(self, name):
+        try:
+            return self.__getitem__(name)
+        except KeyError as exc:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no "
+                                 f"attribute '{name}'") from exc
+
+    def __setattr__(self, name, value):
+        self.__setitem__(name, value)
+
+    def __dir__(self) -> Iterable[Any]:
+        items = set(super().__dir__())
+        items.update(set(self))
+        yield from sorted(items)
 
 
 def dump_buffer(buffer: Buffer, addr: int = 0, file: Optional[TextIO] = None) \
