@@ -341,6 +341,14 @@ static const uint32_t ot_dj_pmp_addrs[] = {
 #define OT_DJ_SOC_GPIO_SYSBUS_IRQ(_irq_, _target_, _num_) \
     IBEX_GPIO_SYSBUS_IRQ(_irq_, OT_DJ_SOC_DEV_##_target_, _num_)
 
+#define OT_DJ_SOC_GPIO_ALERT(_snum_, _tnum_) \
+    OT_DJ_SOC_SIGNAL(OT_DEVICE_ALERT, _snum_, ALERT_HANDLER, OT_DEVICE_ALERT, \
+                     _tnum_)
+
+#define OT_DJ_SOC_GPIO_ESCALATE(_snum_, _tgt_, _tnum_) \
+    OT_DJ_SOC_SIGNAL(OT_ALERT_ESCALATE, _snum_, _tgt_, OT_ALERT_ESCALATE, \
+                     _tnum_)
+
 #define OT_DJ_SOC_DEVLINK(_pname_, _target_) \
     IBEX_DEVLINK(_pname_, OT_DJ_SOC_DEV_##_target_)
 
@@ -391,24 +399,27 @@ static const uint32_t ot_dj_pmp_addrs[] = {
 #define OT_DJ_SOC_RSP(_rsp_, _tgt_) \
     OT_DJ_SOC_SIGNAL(_rsp_##_RSP, 0, _tgt_, _rsp_##_RSP, 0)
 
-#define OT_DJ_SOC_DEV_MBX(_ix_, _addr_, _asname_, _irq_) \
+#define OT_DJ_SOC_DEV_MBX(_ix_, _addr_, _asname_, _irq_, _alert_) \
     .type = TYPE_OT_MBX, .instance = (_ix_), \
     .memmap = MEMMAPENTRIES({ (_addr_), OT_MBX_HOST_APERTURE }), \
-    .gpio = \
-        IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
-                         OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
-                         OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u)), \
+    .gpio = IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
+                             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
+                             OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u), \
+                             OT_DJ_SOC_GPIO_ALERT(0, (_alert_)), \
+                             OT_DJ_SOC_GPIO_ALERT(1, (_alert_) + 1)), \
     .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)), \
                                IBEX_DEV_STRING_PROP("ram_as_name", _asname_))
 
-#define OT_DJ_SOC_DEV_MBX_DUAL(_ix_, _addr_, _asname_, _irq_, _xaddr_) \
+#define OT_DJ_SOC_DEV_MBX_DUAL(_ix_, _addr_, _asname_, _irq_, _alert_, \
+                               _xaddr_) \
     .type = TYPE_OT_MBX, .instance = (_ix_), \
     .memmap = MEMMAPENTRIES({ (_addr_), OT_MBX_HOST_APERTURE }, \
                             { (_xaddr_), OT_MBX_SYS_APERTURE }), \
-    .gpio = \
-        IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
-                         OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
-                         OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u)), \
+    .gpio = IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
+                             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
+                             OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u), \
+                             OT_DJ_SOC_GPIO_ALERT(0, (_alert_)), \
+                             OT_DJ_SOC_GPIO_ALERT(1, (_alert_) + 1)), \
     .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)), \
                                IBEX_DEV_STRING_PROP("ram_as_name", _asname_))
 
@@ -435,7 +446,7 @@ static const uint32_t ot_dj_pmp_addrs[] = {
     OT_DJ_DEBUG_TL_TO_DMI(OT_DJ_DEBUG_MBX_JTAG_ADDR)
 #define OT_DJ_DEBUG_MBX_JTAG_DMI_SIZE (OT_MBX_SYS_APERTURE / sizeof(uint32_t))
 
-#define OT_DARJEELING_SOC_DM_CONNECTION(_dst_dev_, _num_) \
+#define OT_DJ_SOC_DM_CONNECTION(_dst_dev_, _num_) \
     { \
         .out = { \
             .name = PULP_RV_DM_ACK_OUT_LINES, \
@@ -546,7 +557,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { 0x21100000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DJ_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES)
+            OT_DJ_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES),
+            OT_DJ_SOC_GPIO_ALERT(0, 55),
+            OT_DJ_SOC_GPIO_ALERT(1, 56)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("edn", EDN0)
@@ -564,6 +577,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 115),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 116),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 117),
+            OT_DJ_SOC_GPIO_ALERT(0, 57),
             OT_DJ_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
         ),
     },
@@ -575,7 +589,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 118),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 119),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 120)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 120),
+            OT_DJ_SOC_GPIO_ALERT(0, 58),
+            OT_DJ_SOC_GPIO_ALERT(1, 59)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("edn", EDN0)
@@ -592,6 +608,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 121),
+            OT_DJ_SOC_GPIO_ALERT(0, 60),
+            OT_DJ_SOC_GPIO_ALERT(1, 61),
             OT_DJ_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -620,7 +638,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 123),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 124),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 125),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 126)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 126),
+            OT_DJ_SOC_GPIO_ALERT(0, 64),
+            OT_DJ_SOC_GPIO_ALERT(1, 65)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("random_src", AST),
@@ -635,7 +655,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 128)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 128),
+            OT_DJ_SOC_GPIO_ALERT(0, 66),
+            OT_DJ_SOC_GPIO_ALERT(1, 67)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("csrng", CSRNG)
@@ -652,7 +674,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 129),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 130)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 130),
+            OT_DJ_SOC_GPIO_ALERT(0, 68),
+            OT_DJ_SOC_GPIO_ALERT(1, 69)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("csrng", CSRNG)
@@ -668,6 +692,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { 0x211c0000u, 0x20u },
             { 0x10000000, 0x10000u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 70)
+        ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
@@ -682,6 +709,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x211d0000u, 0x20u },
             { 0x11000000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 71)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
@@ -699,6 +729,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { 0x00008000u, 0x8000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 72),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR,
                                      OT_PWRMGR_ROM_GOOD, 0),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_DONE, 0, PWRMGR,
@@ -721,6 +752,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { 0x00020000u, 0x10000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 73),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR,
                                      OT_PWRMGR_ROM_GOOD, 1),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_DONE, 0, PWRMGR,
@@ -740,6 +772,12 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x211f0000u, 0x800u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 95),
+            OT_DJ_SOC_GPIO_ALERT(1, 96),
+            OT_DJ_SOC_GPIO_ALERT(2, 97),
+            OT_DJ_SOC_GPIO_ALERT(3, 98)
+        ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("edn", EDN0)
         ),
@@ -754,35 +792,36 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { 0x21200000u, 0x1000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 0),
-            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 1),
-            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 2),
-            OT_DARJEELING_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 3)
+            OT_DJ_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 0),
+            OT_DJ_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 1),
+            OT_DJ_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 2),
+            OT_DJ_SOC_DM_CONNECTION(OT_DJ_SOC_DEV_DM, 3),
+            OT_DJ_SOC_GPIO_ALERT(0, 53)
         ),
     },
     [OT_DJ_SOC_DEV_MBX0] = {
-        OT_DJ_SOC_DEV_MBX(0, 0x22000000u, "ot-mbx-sram", 134),
+        OT_DJ_SOC_DEV_MBX(0, 0x22000000u, "ot-mbx-sram", 134, 75),
     },
     [OT_DJ_SOC_DEV_MBX1] = {
-        OT_DJ_SOC_DEV_MBX(1, 0x22000100u, "ot-mbx-sram", 137),
+        OT_DJ_SOC_DEV_MBX(1, 0x22000100u, "ot-mbx-sram", 137, 77),
     },
     [OT_DJ_SOC_DEV_MBX2] = {
-        OT_DJ_SOC_DEV_MBX(2, 0x22000200u, "ot-mbx-sram", 140),
+        OT_DJ_SOC_DEV_MBX(2, 0x22000200u, "ot-mbx-sram", 140, 79),
     },
     [OT_DJ_SOC_DEV_MBX3] = {
-        OT_DJ_SOC_DEV_MBX(3, 0x22000300u, "ot-mbx-sram", 143),
+        OT_DJ_SOC_DEV_MBX(3, 0x22000300u, "ot-mbx-sram", 143, 81),
     },
     [OT_DJ_SOC_DEV_MBX4] = {
-        OT_DJ_SOC_DEV_MBX(4, 0x22000400u, "ot-mbx-sram", 146),
+        OT_DJ_SOC_DEV_MBX(4, 0x22000400u, "ot-mbx-sram", 146, 83),
     },
     [OT_DJ_SOC_DEV_MBX5] = {
-        OT_DJ_SOC_DEV_MBX(5, 0x22000500u, "ot-mbx-sram", 149),
+        OT_DJ_SOC_DEV_MBX(5, 0x22000500u, "ot-mbx-sram", 149, 85),
     },
     [OT_DJ_SOC_DEV_MBX6] = {
-        OT_DJ_SOC_DEV_MBX(6, 0x22000600u, "ot-mbx-sram", 152),
+        OT_DJ_SOC_DEV_MBX(6, 0x22000600u, "ot-mbx-sram", 152, 87),
     },
     [OT_DJ_SOC_DEV_MBX_JTAG] = {
-        OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, "ot-mbx-sram", 155,
+        OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, "ot-mbx-sram", 155, 89,
 		                       DEBUG_MEMORY(OT_DJ_DEBUG_MBX_JTAG_ADDR)),
     },
     [OT_DJ_SOC_DEV_DMA] = {
@@ -793,10 +832,10 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 131),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 133)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 133),
+            OT_DJ_SOC_GPIO_ALERT(0, 74)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "0"),
             IBEX_DEV_STRING_PROP("ot_as_name", "ot-dma"),
             IBEX_DEV_STRING_PROP("ctn_as_name", "ctn-dma")
         )
@@ -839,17 +878,46 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 111),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 112),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 113),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 114)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 114),
+            OT_DJ_SOC_GPIO_ALERT(0, 23),
+            OT_DJ_SOC_GPIO_ALERT(1, 24),
+            OT_DJ_SOC_GPIO_ALERT(2, 25),
+            OT_DJ_SOC_GPIO_ALERT(3, 26),
+            OT_DJ_SOC_GPIO_ALERT(4, 27),
+            OT_DJ_SOC_GPIO_ALERT(5, 28),
+            OT_DJ_SOC_GPIO_ALERT(6, 29),
+            OT_DJ_SOC_GPIO_ALERT(7, 30),
+            OT_DJ_SOC_GPIO_ALERT(8, 31),
+            OT_DJ_SOC_GPIO_ALERT(9, 32),
+            OT_DJ_SOC_GPIO_ALERT(10, 33),
+            OT_DJ_SOC_GPIO_ALERT(11, 34),
+            OT_DJ_SOC_GPIO_ALERT(12, 35),
+            OT_DJ_SOC_GPIO_ALERT(13, 36),
+            OT_DJ_SOC_GPIO_ALERT(14, 37),
+            OT_DJ_SOC_GPIO_ALERT(15, 38),
+            OT_DJ_SOC_GPIO_ALERT(16, 39),
+            OT_DJ_SOC_GPIO_ALERT(17, 40),
+            OT_DJ_SOC_GPIO_ALERT(18, 41),
+            OT_DJ_SOC_GPIO_ALERT(19, 42),
+            OT_DJ_SOC_GPIO_ALERT(20, 43),
+            OT_DJ_SOC_GPIO_ALERT(21, 44),
+            OT_DJ_SOC_GPIO_ALERT(22, 45),
+            OT_DJ_SOC_GPIO_ALERT(23, 46),
+            OT_DJ_SOC_GPIO_ALERT(24, 47),
+            OT_DJ_SOC_GPIO_ALERT(25, 48),
+            OT_DJ_SOC_GPIO_ALERT(26, 49),
+            OT_DJ_SOC_GPIO_ALERT(27, 50),
+            OT_DJ_SOC_GPIO_ALERT(28, 51)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("ot_id", "0")
         ),
     },
     [OT_DJ_SOC_DEV_MBX_PCIE0] = {
-        OT_DJ_SOC_DEV_MBX(8, 0x22040000u, "ot-mbx-sram", 158),
+        OT_DJ_SOC_DEV_MBX(8, 0x22040000u, "ot-mbx-sram", 158, 91),
     },
     [OT_DJ_SOC_DEV_MBX_PCIE1] = {
-        OT_DJ_SOC_DEV_MBX(9, 0x22040100u, "ot-mbx-sram", 161),
+        OT_DJ_SOC_DEV_MBX(9, 0x22040100u, "ot-mbx-sram", 161, 93),
     },
     [OT_DJ_SOC_DEV_PLIC] = {
         .type = TYPE_SIFIVE_PLIC,
@@ -880,7 +948,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { 0x2c000000u, 0x10u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DJ_SOC_GPIO(0, HART, IRQ_M_SOFT)
+            OT_DJ_SOC_GPIO(0, HART, IRQ_M_SOFT),
+            OT_DJ_SOC_GPIO_ALERT(0, 54)
         ),
     },
     [OT_DJ_SOC_DEV_GPIO] = {
@@ -920,7 +989,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 37),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 38),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 39),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 40)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 40),
+            OT_DJ_SOC_GPIO_ALERT(0, 1)
         )
     },
     [OT_DJ_SOC_DEV_UART0] = {
@@ -938,7 +1008,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 5),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 6),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 7),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8),
+            OT_DJ_SOC_GPIO_ALERT(0, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
@@ -975,7 +1046,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 64),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 65),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 66),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 67)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 67),
+            OT_DJ_SOC_GPIO_ALERT(0, 3)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
@@ -988,7 +1060,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO(0, HART, IRQ_M_TIMER),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 68)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 68),
+            OT_DJ_SOC_GPIO_ALERT(0, 4)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
@@ -1004,6 +1077,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 69),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 70),
+            OT_DJ_SOC_GPIO_ALERT(0, 5),
+            OT_DJ_SOC_GPIO_ALERT(1, 6),
+            OT_DJ_SOC_GPIO_ALERT(2, 7),
+            OT_DJ_SOC_GPIO_ALERT(3, 8),
+            OT_DJ_SOC_GPIO_ALERT(4, 9),
             OT_DJ_SOC_RSP(OT_PWRMGR_OTP, PWRMGR)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -1020,6 +1098,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { DEBUG_MEMORY(OT_DJ_DEBUG_LC_CTRL_ADDR), OT_DJ_DEBUG_LC_CTRL_SIZE }
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 10),
+            OT_DJ_SOC_GPIO_ALERT(1, 11),
+            OT_DJ_SOC_GPIO_ALERT(2, 12),
             OT_DJ_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN,
                                   LC_HW_DEBUG),
             OT_DJ_SOC_D2S(OT_LC_BROADCAST, OT_LC_ESCALATE_EN,
@@ -1063,7 +1144,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 71),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 72),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 73),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 74)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 74),
+            OT_DJ_SOC_GPIO_ESCALATE(0, IBEX_WRAPPER, 0),
+            OT_DJ_SOC_GPIO_ESCALATE(1, LC_CTRL, 0),
+            OT_DJ_SOC_GPIO_ESCALATE(2, LC_CTRL, 1),
+            OT_DJ_SOC_GPIO_ESCALATE(3, PWRMGR, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("edn", EDN0)
@@ -1084,7 +1169,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 76),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 77)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 77),
+            OT_DJ_SOC_GPIO_ALERT(0, 13)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("bus-num", 0)
@@ -1107,7 +1193,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 49),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 50),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 51),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 52)
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 52),
+            OT_DJ_SOC_GPIO_ALERT(0, 2)
         ),
     },
     [OT_DJ_SOC_DEV_PWRMGR] = {
@@ -1117,6 +1204,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 78),
+            OT_DJ_SOC_GPIO_ALERT(0, 14),
             OT_DJ_SOC_REQ(OT_PWRMGR_OTP, OTP_CTRL),
             OT_DJ_SOC_REQ(OT_PWRMGR_LC, LC_CTRL),
             OT_DJ_SOC_SIGNAL(OT_PWRMGR_CPU_EN, 0, IBEX_WRAPPER,
@@ -1138,6 +1226,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { 0x30410000u, 0x80u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 15),
+            OT_DJ_SOC_GPIO_ALERT(1, 16),
             OT_DJ_SOC_SIGNAL(OT_RSTMGR_SW_RST, 0, PWRMGR,
                              OT_PWRMGR_SW_RST, 0)
         ),
@@ -1147,6 +1237,10 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x30420000u, 0x80u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 17),
+            OT_DJ_SOC_GPIO_ALERT(1, 18)
+        )
     },
     [OT_DJ_SOC_DEV_PINMUX] = {
         .type = TYPE_OT_PINMUX_DJ,
@@ -1185,7 +1279,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO28, GPIO, 28),
             OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO29, GPIO, 29),
             OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO30, GPIO, 30),
-            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO31, GPIO, 31)
+            OT_DJ_PINMUX_LINK(DIO, GPIO_GPIO31, GPIO, 31),
+            OT_DJ_SOC_GPIO_ALERT(0, 19)
         ),
     },
     [OT_DJ_SOC_DEV_AON_TIMER] = {
@@ -1196,6 +1291,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 79),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 80),
+            OT_DJ_SOC_GPIO_ALERT(0, 20),
             OT_DJ_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR,
                              OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
             OT_DJ_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR,
@@ -1217,6 +1313,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { 0x30500000u, 0x20u },
             { 0x30600000u, 0x1000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 52)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
