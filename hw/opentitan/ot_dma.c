@@ -396,7 +396,7 @@ static const char *STATE_NAMES[] = {
 static void ot_dma_change_state_line(OtDMAState *s, OtDMASM state, int line)
 {
     if (s->state != state) {
-        trace_ot_dma_change_state(line, STATE_NAME(state), state);
+        trace_ot_dma_change_state(s->ot_id, line, STATE_NAME(state), state);
         s->state = state;
     }
 }
@@ -404,7 +404,8 @@ static void ot_dma_change_state_line(OtDMAState *s, OtDMASM state, int line)
 static void ot_dma_update_irqs(OtDMAState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
-    trace_ot_dma_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE], level);
+    trace_ot_dma_irqs(s->ot_id, s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
+                      level);
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
