@@ -54,6 +54,7 @@
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
 #include "hw/i2c/i2c.h"
+#include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_i2c_dj.h"
 #include "hw/qdev-clock.h"
@@ -927,22 +928,22 @@ static void ot_i2c_dj_target_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->desc = "OpenTitan I2C Target";
-    sc->event = ot_i2c_dj_target_event;
-    sc->send_async = ot_i2c_dj_target_send_async;
-    sc->recv = ot_i2c_dj_target_recv;
+    sc->event = &ot_i2c_dj_target_event;
+    sc->send_async = &ot_i2c_dj_target_send_async;
+    sc->recv = &ot_i2c_dj_target_recv;
 }
 
 static const TypeInfo ot_i2c_dj_target_info = {
     .name = TYPE_OT_I2C_DJ_TARGET,
     .parent = TYPE_I2C_SLAVE,
     .instance_size = sizeof(OtI2CDjState),
-    .class_init = ot_i2c_dj_target_class_init,
+    .class_init = &ot_i2c_dj_target_class_init,
     .class_size = sizeof(I2CSlaveClass),
 };
 
 static const MemoryRegionOps ot_i2c_dj_ops = {
-    .read = ot_i2c_dj_read,
-    .write = ot_i2c_dj_write,
+    .read = &ot_i2c_dj_read,
+    .write = &ot_i2c_dj_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
@@ -983,21 +984,28 @@ static void ot_i2c_dj_realize(DeviceState *dev, Error **errp)
     OtI2CDjState *s = OT_I2C_DJ(dev);
     (void)errp;
 
-    for (unsigned index = 0; index < ARRAY_SIZE(s->irqs); index++) {
-        ibex_sysbus_init_irq(OBJECT(dev), &s->irqs[index]);
-    }
+    /* TODO: check if the following can be moved to ot_i2c_dj_init */
+    s->bus = i2c_init_bus(dev, TYPE_OT_I2C_DJ);
+    s->target = i2c_slave_create_simple(s->bus, TYPE_OT_I2C_DJ_TARGET, 0xff);
+}
 
-    memory_region_init_io(&s->mmio, OBJECT(dev), &ot_i2c_dj_ops, s,
-                          TYPE_OT_I2C_DJ, REGS_SIZE);
-    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mmio);
+static void ot_i2c_dj_init(Object *obj)
+{
+    OtI2CDjState *s = OT_I2C_DJ(obj);
+
+    for (unsigned index = 0; index < ARRAY_SIZE(s->irqs); index++) {
+        ibex_sysbus_init_irq(obj, &s->irqs[index]);
+    }
+    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+
+    memory_region_init_io(&s->mmio, obj, &ot_i2c_dj_ops, s, TYPE_OT_I2C_DJ,
+                          REGS_SIZE);
+    sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     fifo8_create(&s->host_tx_fifo, OT_I2C_DJ_FIFO_SIZE);
     fifo8_create(&s->host_rx_fifo, OT_I2C_DJ_FIFO_SIZE);
     fifo8_create(&s->target_tx_fifo, OT_I2C_DJ_FIFO_SIZE);
     ot_fifo32_create(&s->target_rx_fifo, OT_I2C_DJ_FIFO_SIZE);
-
-    s->bus = i2c_init_bus(dev, TYPE_OT_I2C_DJ);
-    s->target = i2c_slave_create_simple(s->bus, TYPE_OT_I2C_DJ_TARGET, 0xff);
 }
 
 static void ot_i2c_dj_class_init(ObjectClass *klass, void *data)
@@ -1017,7 +1025,8 @@ static const TypeInfo ot_i2c_dj_info = {
     .name = TYPE_OT_I2C_DJ,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtI2CDjState),
-    .class_init = ot_i2c_dj_class_init,
+    .instance_init = &ot_i2c_dj_init,
+    .class_init = &ot_i2c_dj_class_init,
 };
 
 static void ot_i2c_dj_register_types(void)
