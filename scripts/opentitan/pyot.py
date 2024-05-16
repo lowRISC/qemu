@@ -124,7 +124,7 @@ class QEMUWrapper:
        such as SIGABRT.
     """
 
-    GUEST_ERROR_OFFSET = 30
+    GUEST_ERROR_OFFSET = 40
     """Offset for guest errors. Should be larger than the host max signal value.
     """
 
@@ -914,7 +914,9 @@ class QEMUExecuter:
         1: 'ERROR',
         6: 'ABORT',
         11: 'CRASH',
+        QEMUWrapper.GUEST_ERROR_OFFSET - 1: 'GUEST_ESC',
         QEMUWrapper.GUEST_ERROR_OFFSET + 1: 'FAIL',
+        98: 'UNEXP_SUCCESS',
         99: 'CONTEXT',
         124: 'TIMEOUT',
         125: 'DEADLOCK',
@@ -1006,13 +1008,22 @@ class QEMUExecuter:
                         'UTFILE': basename(test),
                     })
                     test_name = self.get_test_radix(test)
-                    qemu_cmd, targs, timeout, temp_files, ctx, sdelay = \
+                    qemu_cmd, targs, timeout, temp_files, ctx, sdelay, texp = \
                         self._build_qemu_test_command(test)
                     ctx.execute('pre')
                     tret, xtime, err = qot.run(qemu_cmd, timeout, test_name,
                                                ctx, sdelay)
                     cret = ctx.finalize()
                     ctx.execute('post', tret)
+                    if texp != 0:
+                        if tret == texp:
+                            self._log.info('QEMU failed with expected error, '
+                                           'assume success')
+                            tret = 0
+                        elif tret == 0:
+                            self._log.warning('QEMU success while expected '
+                                              'error %d, assume error', tret)
+                            tret = 98
                     if tret == 0 and cret != 0:
                         tret = 99
                 # pylint: disable=broad-except
@@ -1224,13 +1235,13 @@ class QEMUExecuter:
 
     def _build_qemu_test_command(self, filename: str) -> \
             Tuple[List[str], Namespace, int, Dict[str, Set[str]], QEMUContext,
-                  float]:
+                  float, int]:
         test_name = self.get_test_radix(filename)
-        args, opts, timeout = self._build_test_args(test_name)
+        args, opts, timeout, texp = self._build_test_args(test_name)
         setattr(args, 'exec', filename)
         qemu_cmd, _, temp_files, sdelay = self._build_qemu_command(args, opts)
         ctx = self._build_test_context(test_name)
-        return qemu_cmd, args, timeout, temp_files, ctx, sdelay
+        return qemu_cmd, args, timeout, temp_files, ctx, sdelay, texp
 
     def _build_test_list(self, alphasort: bool = True) -> List[str]:
         pathnames = set()
@@ -1365,7 +1376,16 @@ class QEMUExecuter:
         timeout = float(kwargs.get('timeout', DEFAULT_TIMEOUT))
         tmfactor = float(kwargs.get('timeout_factor', DEFAULT_TIMEOUT_FACTOR))
         itimeout = int(timeout * tmfactor)
-        return Namespace(**kwargs), opts or [], itimeout
+        texpect = kwargs.get('expect', 0)
+        try:
+            texp = int(texpect)
+        except ValueError:
+            result_map = {v: k for k, v in self.RESULT_MAP.items()}
+            try:
+                texp = result_map[texpect.upper()]
+            except KeyError as exc:
+                raise ValueError(f'Unsupported expect: {texpect}') from exc
+        return Namespace(**kwargs), opts or [], itimeout, texp
 
     def _build_test_context(self, test_name: str) -> QEMUContext:
         context = defaultdict(list)
