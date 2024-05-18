@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-EXPECTED_VERSION="17"
+EXPECTED_VERSION="18"
 
 # find clang-format executable: either 'clang-format-17' or 'clang-format'
 for ver_suffix in "-${EXPECTED_VERSION}" ""; do

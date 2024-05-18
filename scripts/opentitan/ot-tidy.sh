@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-EXPECTED_VERSION="17"
+EXPECTED_VERSION="18"
 
 # find clang-tidy executable: either 'clang-tidy-17' or 'clang-tidy'
 for ver_suffix in "-${EXPECTED_VERSION}" ""; do
