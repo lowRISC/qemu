@@ -61,7 +61,7 @@ struct _TAPDataHandler {
  * @_id_ Entry in JEDEC table
  */
 #define JEDEC_MANUFACTURER_ID(_tbl_, _id_) \
-    (((((_tbl_)-1u) & 0xfu) << 7u) | ((_id_) & 0x7fu))
+    (((((_tbl_) - 1u) & 0xfu) << 7u) | ((_id_) & 0x7fu))
 
 /*
  * Start the JTAG server

@@ -194,7 +194,7 @@ typedef struct {
  */
 #define IBEX_MEMMAP_REGIDX_COUNT 4u
 #define IBEX_MEMMAP_REGIDX_MASK \
-    ((IBEX_MEMMAP_REGIDX_COUNT)-1u) /* address are always word-aligned */
+    ((IBEX_MEMMAP_REGIDX_COUNT) - 1u) /* address are always word-aligned */
 #define IBEX_MEMMAP_MAKE_REG(_addr_, _flag_) \
     ((_addr_) | (((uint32_t)_flag_) & IBEX_MEMMAP_REGIDX_MASK))
 #define IBEX_MEMMAP_MAKE_REG_MASK(_flag_) (1u << (_flag_))
@@ -205,7 +205,7 @@ typedef struct {
 #define IBEX_GPIO_GRP_BITS       5u
 #define IBEX_GPIO_GRP_COUNT      (1u << (IBEX_GPIO_GRP_BITS))
 #define IBEX_GPIO_GRP_SHIFT      (32u - IBEX_GPIO_GRP_BITS)
-#define IBEX_GPIO_GRP_MASK       ((IBEX_GPIO_GRP_COUNT)-1u) << (IBEX_GPIO_GRP_SHIFT)
+#define IBEX_GPIO_GRP_MASK       ((IBEX_GPIO_GRP_COUNT) - 1u) << (IBEX_GPIO_GRP_SHIFT)
 #define IBEX_GPIO_IDX_MASK       (~(IBEX_GPIO_GRP_MASK))
 #define IBEX_GPIO_GET_IDX(_idx_) ((_idx_) & IBEX_GPIO_IDX_MASK)
 #define IBEX_GPIO_GET_GRP(_idx_) \
@@ -217,7 +217,7 @@ typedef struct {
 #define IBEX_DEVLINK_RMT_COUNT (1u << (IBEX_DEVLINK_RMT_BITS))
 #define IBEX_DEVLINK_RMT_SHIFT (32u - IBEX_DEVLINK_RMT_BITS)
 #define IBEX_DEVLINK_RMT_MASK \
-    ((IBEX_DEVLINK_RMT_COUNT)-1u) << (IBEX_DEVLINK_RMT_SHIFT)
+    ((IBEX_DEVLINK_RMT_COUNT) - 1u) << (IBEX_DEVLINK_RMT_SHIFT)
 #define IBEX_DEVLINK_IDX_MASK      (~(IBEX_DEVLINK_RMT_MASK))
 #define IBEX_DEVLINK_DEVICE(_idx_) ((_idx_) & IBEX_DEVLINK_IDX_MASK)
 #define IBEX_DEVLINK_REMOTE(_idx_) \
@@ -226,10 +226,7 @@ typedef struct {
     (((_par_) << IBEX_DEVLINK_RMT_SHIFT) | ((_ix_) & IBEX_DEVLINK_IDX_MASK))
 
 /* MemMapEntry that should be ignored (i.e. skipped, not mapped) */
-#define MEMMAPSKIP \
-    { \
-        .base = HWADDR_MAX, .size = HWADDR_MAX \
-    }
+#define MEMMAPSKIP          { .base = HWADDR_MAX, .size = HWADDR_MAX }
 #define SKIP_MEMMAP(_mmap_) ((_mmap_)->size == HWADDR_MAX)
 
 /**
@@ -339,7 +336,8 @@ typedef struct {
  */
 #define IBEX_DEVLINK(_pname_, _idx_) \
     { \
-        .propname = (_pname_), .index = (_idx_), \
+        .propname = (_pname_), \
+        .index = (_idx_), \
     }
 
 /**
@@ -368,7 +366,9 @@ typedef struct {
  */
 #define IBEX_DEV_BOOL_PROP(_pname_, _b_) \
     { \
-        .propname = (_pname_), .type = IBEX_PROP_TYPE_BOOL, .b = (_b_), \
+        .propname = (_pname_), \
+        .type = IBEX_PROP_TYPE_BOOL, \
+        .b = (_b_), \
     }
 
 /**
@@ -376,7 +376,9 @@ typedef struct {
  */
 #define IBEX_DEV_INT_PROP(_pname_, _i_) \
     { \
-        .propname = (_pname_), .type = IBEX_PROP_TYPE_INT, .i = (_i_), \
+        .propname = (_pname_), \
+        .type = IBEX_PROP_TYPE_INT, \
+        .i = (_i_), \
     }
 
 /**
@@ -384,7 +386,9 @@ typedef struct {
  */
 #define IBEX_DEV_UINT_PROP(_pname_, _u_) \
     { \
-        .propname = (_pname_), .type = IBEX_PROP_TYPE_UINT, .u = (_u_), \
+        .propname = (_pname_), \
+        .type = IBEX_PROP_TYPE_UINT, \
+        .u = (_u_), \
     }
 
 /**
@@ -392,7 +396,9 @@ typedef struct {
  */
 #define IBEX_DEV_STRING_PROP(_pname_, _s_) \
     { \
-        .propname = (_pname_), .type = IBEX_PROP_TYPE_STR, .s = (_s_), \
+        .propname = (_pname_), \
+        .type = IBEX_PROP_TYPE_STR, \
+        .s = (_s_), \
     }
 
 DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,

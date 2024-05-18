@@ -255,7 +255,7 @@ REG32(FLAGS, RISCV_DM_FLAGS_OFFSET)
 
 static_assert((A_LAST - A_FIRST) < 64u, "too many registers");
 
-#define REG_BIT(_addr_)    (1ull << ((_addr_)-A_FIRST))
+#define REG_BIT(_addr_)    (1ull << ((_addr_) - A_FIRST))
 #define REG_BIT_DEF(_reg_) REG_BIT(A_##_reg_)
 
 #define DM_REG_COUNT (1u << (ADDRESS_BITS))

@@ -109,7 +109,7 @@ REG32(FLAGS, RISCV_DM_FLAGS_OFFSET)
  */
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
-#define MEM_OFF(_r_) ((_r_)-R_WHERETO)
+#define MEM_OFF(_r_) ((_r_) - R_WHERETO)
 
 #define PULP_RV_DM_DMACT_BASE  (A_HALTED)
 #define PULP_RV_DM_DMACT_SIZE  (A_EXCEPTION - A_HALTED + sizeof(uint32_t))
