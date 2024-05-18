@@ -21,6 +21,10 @@ fi
 version_full="$(${clangformat} --version | \
     grep "clang-format version" | head -1 | \
     sed -E 's/^.*clang-format version ([0-9]+\.[0-9]+\.[0-9]+).*$/\1/')"
+if [ -z "${version_full}" ]; then
+    echo "Unable to retrieve LLVM version" >&2
+    exit 1
+fi
 version_major="$(echo ${version_full} | cut -d. -f1)"
 if [ ${version_major} -lt ${EXPECTED_VERSION} ]; then
     echo "clang-format v${EXPECTED_VERSION} required, found ${version_full}" >&2
