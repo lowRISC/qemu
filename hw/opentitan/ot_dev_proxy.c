@@ -1411,6 +1411,7 @@ static int ot_dev_proxy_be_change(void *opaque)
 
     if (s->watch_tag > 0) {
         g_source_remove(s->watch_tag);
+        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
         s->watch_tag = qemu_chr_fe_add_watch(&s->chr, G_IO_OUT | G_IO_HUP,
                                              &ot_dev_proxy_watch_cb, s);
     }

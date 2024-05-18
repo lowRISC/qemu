@@ -1596,6 +1596,7 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
             blk_blockalign(s->blk, sizeof(OtFlashBackendHeader));
 
         int rc;
+        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
         rc = blk_pread(s->blk, 0, sizeof(*header), header, 0);
         if (rc < 0) {
             error_setg(errp, "failed to read the flash header content: %d", rc);
@@ -1649,6 +1650,7 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
         unsigned offset = offsetof(OtFlashBackendHeader, hlength) +
                           sizeof(header->hlength) + header->hlength;
 
+        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
         rc = blk_pread(s->blk, (int64_t)offset, flash_size, flash->storage, 0);
         if (rc < 0) {
             error_setg(errp, "failed to read the initial flash content: %d",
@@ -1663,8 +1665,10 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
         size_t debug_trailer_size =
             (size_t)(flash->bank_count) * ELFNAME_SIZE * BIN_APP_COUNT;
         uint8_t *elfnames = blk_blockalign(s->blk, debug_trailer_size);
+        // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange)
         rc = blk_pread(s->blk, (int64_t)offset + flash_size,
                        (int64_t)debug_trailer_size, elfnames, 0);
+        // NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange)
         if (!rc) {
             const char *elfname = (const char *)elfnames;
             for (unsigned ix = 0; ix < BIN_APP_COUNT; ix++) {

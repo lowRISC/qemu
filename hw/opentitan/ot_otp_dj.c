@@ -3086,9 +3086,11 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
         const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
         unsigned lc_data_off = lcdesc->offset / sizeof(uint32_t);
         uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
+        // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange)
         if (blk_pwrite(s->blk, (int64_t)(intptr_t)(offset + lcdesc->offset),
                        lcdesc->size, &s->otp->data[lc_data_off],
                        (BdrvRequestFlags)0)) {
+            // NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange)
             error_report("%s: cannot update OTP backend", __func__);
             if (lci->error == OTP_NO_ERROR) {
                 lci->error = OTP_MACRO_ERROR;
