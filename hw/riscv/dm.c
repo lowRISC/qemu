@@ -605,7 +605,7 @@ riscv_dm_write_rq(RISCVDebugDeviceState *dev, uint32_t addr, uint32_t value)
         dm->cmd_err = ret;
     }
 
-    if (!(RISCVDM_REG_IGNORE_TRACES & REG_BIT(addr))) {
+    if ((addr >= A_FIRST) && !(RISCVDM_REG_IGNORE_TRACES & REG_BIT(addr))) {
         trace_riscv_dm_reg_update(dm->soc, riscv_dm_get_reg_name(addr), addr,
                                   value, "write", ret);
     }
@@ -655,7 +655,7 @@ riscv_dm_read_rq(RISCVDebugDeviceState *dev, uint32_t addr)
         ret = riscv_dm_exec_command(dm, dm->regs[A_COMMAND]);
     }
 
-    if (!(RISCVDM_REG_IGNORE_TRACES & REG_BIT(addr))) {
+    if ((addr >= A_FIRST) && !(RISCVDM_REG_IGNORE_TRACES & REG_BIT(addr))) {
         trace_riscv_dm_reg_update(dm->soc, riscv_dm_get_reg_name(addr), addr,
                                   value, "read", ret);
     }
