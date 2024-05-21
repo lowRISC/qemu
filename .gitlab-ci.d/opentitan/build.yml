@@ -19,7 +19,7 @@ build-clang:
     - git clean -dffx subprojects
     - mkdir build
     - cd build
-    - ../configure --cc=clang-17 --disable-werror $QEMU_BUILD_OPTS
+    - ../configure --cc=clang-18 --disable-werror $QEMU_BUILD_OPTS
         --target-list=riscv32-softmmu,riscv64-softmmu,x86_64-linux-user
     - ninja
     - ninja qemu-img
