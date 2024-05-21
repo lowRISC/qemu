@@ -71,6 +71,9 @@ source xtensa/Kconfig
 # Ibex Demo System devices
 source ibexdemo/Kconfig
 
+# JTAG devices
+source jtag/Kconfig
+
 # OpenTitan devices
 source opentitan/Kconfig
 

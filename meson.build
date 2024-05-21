@@ -31,7 +31,7 @@ if targetos == 'darwin' and \
   objc = meson.get_compiler('objc')
 endif
 
-# Temporary directory used for files created while
+# Temporary direct gory used for files created while
 # configure runs. Since it is in the build directory
 # we can safely blow away any previous version of it
 # (and we need not jump through hoops to try to delete
@@ -3267,8 +3267,7 @@ trace_events_subdirs = [
   'qom',
   'monitor',
   'util',
-  'gdbstub',
-  'jtag'
+  'gdbstub'
 ]
 if have_linux_user
   trace_events_subdirs += [ 'linux-user' ]
@@ -3314,6 +3313,7 @@ if have_system
     'hw/input',
     'hw/intc',
     'hw/isa',
+    'hw/jtag',
     'hw/mem',
     'hw/mips',
     'hw/misc',
@@ -3398,7 +3398,6 @@ subdir('crypto')
 subdir('ui')
 subdir('hw')
 subdir('gdbstub')
-subdir('jtag')
 
 if enable_modules
   libmodulecommon = static_library('module-common', files('module-common.c') + genh, pic: true, c_args: '-DBUILD_DSO')

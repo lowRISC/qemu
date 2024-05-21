@@ -4444,23 +4444,6 @@ SRST
     (see the :ref:`GDB usage` chapter in the System Emulation Users Guide).
 ERST
 
-DEF("jtag", HAS_ARG, QEMU_OPTION_jtag, \
-    "-jtag dev       accept jtag connection on 'dev'. (QEMU defaults to starting\n"
-    "                the guest without waiting for jtag to connect; use -S too\n"
-    "                if you want it to not start execution.)\n",
-    QEMU_ARCH_ALL)
-SRST
-``-jtag dev``
-    Accept a jtag connection on device dev. Note that this option does not pause
-    QEMU execution -- if you want QEMU to not start the guest until you
-    connect with jtag and issue a ``continue`` command, you will need to
-    also pass the ``-S`` option to QEMU.
-
-    The most usual configuration is to listen on a local TCP socket::
-
-        -jtag tcp::3335
-ERST
-
 DEF("d", HAS_ARG, QEMU_OPTION_d, \
     "-d item1,...    enable logging of specified items (use '-d help' for a list of log items)\n",
     QEMU_ARCH_ALL)
