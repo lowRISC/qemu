@@ -515,4 +515,17 @@ enum {
  */
 void ibex_log_vcpu_registers(uint64_t regbm);
 
+/* ------------------------------------------------------------------------ */
+/* CharDev utilities */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Find a char device by its id, e.g. "-chardev type,id=<id>,...`"
+ *
+ * @chrid the id of the char device
+ * @return the char device if found, @c NULL otherwise.
+ */
+Chardev *ibex_get_chardev_by_id(const char *chrid);
+
+
 #endif /* HW_RISCV_IBEX_COMMON_H */

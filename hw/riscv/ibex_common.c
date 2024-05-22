@@ -25,6 +25,7 @@
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "qom/object.h"
+#include "chardev/chardev-internal.h"
 #include "cpu.h"
 #include "disas/disas.h"
 #include "elf.h"
@@ -590,6 +591,40 @@ DeviceState *ibex_get_child_device(DeviceState *s, const char *typename,
     }
 
     return DEVICE(match.child);
+}
+
+typedef struct {
+    Chardev *chr;
+    const char *label;
+} IbexChrMatch;
+
+static int ibex_match_chardev(Object *child, void *opaque)
+{
+    IbexChrMatch *match = opaque;
+    Chardev *chr = CHARDEV(child);
+
+    if (strcmp(match->label, chr->label) != 0) {
+        return 0;
+    }
+
+    match->chr = chr;
+    return 1;
+}
+
+Chardev *ibex_get_chardev_by_id(const char *chrid)
+{
+    IbexChrMatch match = {
+        .chr = NULL,
+        .label = chrid,
+    };
+
+    /* "chardev-internal.h" inclusion is required for get_chardevs_root() */
+    if (!object_child_foreach(get_chardevs_root(), &ibex_match_chardev,
+                              &match)) {
+        return NULL;
+    }
+
+    return match.chr;
 }
 
 void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,

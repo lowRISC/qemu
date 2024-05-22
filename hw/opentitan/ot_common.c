@@ -27,7 +27,6 @@
 
 #include "qemu/osdep.h"
 #include "qom/object.h"
-#include "chardev/chardev-internal.h"
 #include "hw/opentitan/ot_common.h"
 
 typedef struct {
@@ -107,40 +106,6 @@ void ot_common_ignore_chr_status_lines(CharBackend *chr)
     tty.c_cflag |= CLOCAL; /* ignore modem status lines */
     tcsetattr(fioc->fd, TCSANOW, &tty);
 #endif
-}
-
-typedef struct {
-    Chardev *chr;
-    const char *label;
-} OtCommonChrMatch;
-
-static int ot_common_match_chardev(Object *child, void *opaque)
-{
-    OtCommonChrMatch *match = opaque;
-    Chardev *chr = CHARDEV(child);
-
-    if (strcmp(match->label, chr->label) != 0) {
-        return 0;
-    }
-
-    match->chr = chr;
-    return 1;
-}
-
-Chardev *ot_common_get_chardev_by_id(const char *chrid)
-{
-    OtCommonChrMatch match = {
-        .chr = NULL,
-        .label = chrid,
-    };
-
-    /* "chardev-internal.h" inclusion is required for get_chardevs_root() */
-    if (!object_child_foreach(get_chardevs_root(), &ot_common_match_chardev,
-                              &match)) {
-        return NULL;
-    }
-
-    return match.chr;
 }
 
 int ot_common_string_ends_with(const char *str, const char *suffix)
