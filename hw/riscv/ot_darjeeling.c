@@ -817,28 +817,28 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_MBX0] = {
-        OT_DJ_SOC_DEV_MBX(0, 0x22000000u, "ot-mbx-sram", 134, 75),
+        OT_DJ_SOC_DEV_MBX(0, 0x22000000u, "ot-mbx.sram", 134, 75),
     },
     [OT_DJ_SOC_DEV_MBX1] = {
-        OT_DJ_SOC_DEV_MBX(1, 0x22000100u, "ot-mbx-sram", 137, 77),
+        OT_DJ_SOC_DEV_MBX(1, 0x22000100u, "ot-mbx.sram", 137, 77),
     },
     [OT_DJ_SOC_DEV_MBX2] = {
-        OT_DJ_SOC_DEV_MBX(2, 0x22000200u, "ot-mbx-sram", 140, 79),
+        OT_DJ_SOC_DEV_MBX(2, 0x22000200u, "ot-mbx.sram", 140, 79),
     },
     [OT_DJ_SOC_DEV_MBX3] = {
-        OT_DJ_SOC_DEV_MBX(3, 0x22000300u, "ot-mbx-sram", 143, 81),
+        OT_DJ_SOC_DEV_MBX(3, 0x22000300u, "ot-mbx.sram", 143, 81),
     },
     [OT_DJ_SOC_DEV_MBX4] = {
-        OT_DJ_SOC_DEV_MBX(4, 0x22000400u, "ot-mbx-sram", 146, 83),
+        OT_DJ_SOC_DEV_MBX(4, 0x22000400u, "ot-mbx.sram", 146, 83),
     },
     [OT_DJ_SOC_DEV_MBX5] = {
-        OT_DJ_SOC_DEV_MBX(5, 0x22000500u, "ot-mbx-sram", 149, 85),
+        OT_DJ_SOC_DEV_MBX(5, 0x22000500u, "ot-mbx.sram", 149, 85),
     },
     [OT_DJ_SOC_DEV_MBX6] = {
-        OT_DJ_SOC_DEV_MBX(6, 0x22000600u, "ot-mbx-sram", 152, 87),
+        OT_DJ_SOC_DEV_MBX(6, 0x22000600u, "ot-mbx.sram", 152, 87),
     },
     [OT_DJ_SOC_DEV_MBX_JTAG] = {
-        OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, "ot-mbx-sram", 155, 89,
+        OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, "ot-mbx.sram", 155, 89,
 		                       DEBUG_MEMORY(OT_DJ_DEBUG_MBX_JTAG_ADDR)),
     },
     [OT_DJ_SOC_DEV_DMA] = {
@@ -931,10 +931,10 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_MBX_PCIE0] = {
-        OT_DJ_SOC_DEV_MBX(8, 0x22040000u, "ot-mbx-sram", 158, 91),
+        OT_DJ_SOC_DEV_MBX(8, 0x22040000u, "ot-mbx.sram", 158, 91),
     },
     [OT_DJ_SOC_DEV_MBX_PCIE1] = {
-        OT_DJ_SOC_DEV_MBX(9, 0x22040100u, "ot-mbx-sram", 161, 93),
+        OT_DJ_SOC_DEV_MBX(9, 0x22040100u, "ot-mbx.sram", 161, 93),
     },
     [OT_DJ_SOC_DEV_PLIC] = {
         .type = TYPE_SIFIVE_PLIC,
@@ -1553,12 +1553,12 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
 
     Object *oas;
 
-    oas = object_property_get_link(OBJECT(s)->parent, "ctn-as", errp);
+    oas = object_property_get_link(OBJECT(s)->parent, "ctn.as", errp);
     g_assert(oas);
     AddressSpace *ctn_as = ot_address_space_get(OT_ADDRESS_SPACE(oas));
 
     MemoryRegion *dbg_mr = g_new0(MemoryRegion, 1u);
-    memory_region_init(dbg_mr, OBJECT(dev), "dbg-xbar", OT_DJ_DBG_XBAR_SIZE);
+    memory_region_init(dbg_mr, OBJECT(dev), "dbg.xbar", OT_DJ_DBG_XBAR_SIZE);
 
     MemoryRegion *mrs[IBEX_MEMMAP_REGIDX_COUNT] = {
         [OT_DJ_DEFAULT_MEMORY_REGION] = cpu->memory,
@@ -1573,24 +1573,24 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
                                   OT_DJ_DEBUG_MEMORY_REGION));
 
     MemoryRegion *mbx_sram_root_mr = g_new0(MemoryRegion, 1u);
-    memory_region_init(mbx_sram_root_mr, OBJECT(s), "mbx-sram-root",
+    memory_region_init(mbx_sram_root_mr, OBJECT(s), "mbx.sram",
                        OT_DJ_PRIVATE_REGION_SIZE);
     AddressSpace *mbx_sram_as = g_new0(AddressSpace, 1u);
-    address_space_init(mbx_sram_as, mbx_sram_root_mr, "mbx_sram-as");
+    address_space_init(mbx_sram_as, mbx_sram_root_mr, "mbx.sram.as");
     Object *mbx_sram_oas = object_new(TYPE_OT_ADDRESS_SPACE);
-    object_property_add_child(OBJECT(dev), "ot-mbx-sram", mbx_sram_oas);
+    object_property_add_child(OBJECT(dev), "ot-mbx.sram", mbx_sram_oas);
     ot_address_space_set(OT_ADDRESS_SPACE(mbx_sram_oas), mbx_sram_as);
     SysBusDevice *sram_dev = SYS_BUS_DEVICE(s->devices[OT_DJ_SOC_DEV_SRAM_MBX]);
     /* first MMIO maps to register, second MMIO maps to SRAM */
     MemoryRegion *mbx_sram_mr = sysbus_mmio_get_region(sram_dev, 1);
     MemoryRegion *mbx_sram_alias_mr = g_new0(MemoryRegion, 1u);
-    memory_region_init_alias(mbx_sram_alias_mr, OBJECT(s), "mbx-sram",
+    memory_region_init_alias(mbx_sram_alias_mr, OBJECT(s), "mbx.sram",
                              mbx_sram_mr, 0u, int128_getlo(mbx_sram_mr->size));
     memory_region_add_subregion(mbx_sram_root_mr, mbx_sram_mr->addr,
                                 mbx_sram_alias_mr);
 
     AddressSpace *dbg_as = g_new0(AddressSpace, 1u);
-    address_space_init(dbg_as, dbg_mr, "dbg-as");
+    address_space_init(dbg_as, dbg_mr, "dbg.as");
 
     oas = object_new(TYPE_OT_ADDRESS_SPACE);
     object_property_add_child(OBJECT(dev), "ot-dbg", oas);
@@ -1607,16 +1607,16 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
      * range is kept empty
      */
     MemoryRegion *ctn_dma_mr = g_new0(MemoryRegion, 1u);
-    memory_region_init(ctn_dma_mr, OBJECT(dev), "ctn-dma",
+    memory_region_init(ctn_dma_mr, OBJECT(dev), "ctn.dma",
                        OT_DJ_CTN_REGION_OFFSET + OT_DJ_CTN_REGION_SIZE);
 
     /* create an AS view for this new root region */
     AddressSpace *ctn_dma_as = g_new0(AddressSpace, 1u);
-    address_space_init(ctn_dma_as, ctn_dma_mr, "ctn-dma-as");
+    address_space_init(ctn_dma_as, ctn_dma_mr, "ctn.dma.as");
 
     /* create and map an alias to the CTN MR into the elevated region */
     MemoryRegion *ctn_amr = g_new0(MemoryRegion, 1u);
-    memory_region_init_alias(ctn_amr, OBJECT(dev), "ctn-dma-alias",
+    memory_region_init_alias(ctn_amr, OBJECT(dev), "ctn.dma.alias",
                              ctn_as->root, 0u, (uint64_t)OT_DJ_CTN_REGION_SIZE);
     memory_region_add_subregion(ctn_dma_mr, (hwaddr)OT_DJ_CTN_REGION_OFFSET,
                                 ctn_amr);
@@ -1688,12 +1688,12 @@ static void ot_dj_board_realize(DeviceState *dev, Error **errp)
 
     /* CTN memory region */
     MemoryRegion *ctn_mr = g_new0(MemoryRegion, 1u);
-    memory_region_init(ctn_mr, OBJECT(dev), "ctn-xbar",
+    memory_region_init(ctn_mr, OBJECT(dev), "ctn.xbar",
                        (uint64_t)OT_DJ_CTN_REGION_SIZE);
 
     /* CTN address space */
     AddressSpace *ctn_as = g_new0(AddressSpace, 1);
-    address_space_init(ctn_as, ctn_mr, "ctn-as");
+    address_space_init(ctn_as, ctn_mr, "ctn.as");
     Object *oas = object_new(TYPE_OT_ADDRESS_SPACE);
     object_property_add_child(OBJECT(dev), ctn_as->name, oas);
     ot_address_space_set(OT_ADDRESS_SPACE(oas), ctn_as);
@@ -1705,13 +1705,13 @@ static void ot_dj_board_realize(DeviceState *dev, Error **errp)
 
     /* CTN RAM */
     MemoryRegion *ctn_ram = g_new0(MemoryRegion, 1u);
-    memory_region_init_ram_nomigrate(ctn_ram, OBJECT(s), "ctn-ram",
+    memory_region_init_ram_nomigrate(ctn_ram, OBJECT(s), "ctn.ram",
                                      OT_DJ_CTN_RAM_SIZE, errp);
     memory_region_add_subregion(ctn_mr, OT_DJ_CTN_RAM_ADDR, ctn_ram);
 
     /* CTN aliased memory in CPU address space */
     MemoryRegion *ctn_alias_mr = g_new0(MemoryRegion, 1u);
-    memory_region_init_alias(ctn_alias_mr, OBJECT(dev), "ctn-alias", ctn_mr, 0u,
+    memory_region_init_alias(ctn_alias_mr, OBJECT(dev), "ctn.alias", ctn_mr, 0u,
                              (uint64_t)OT_DJ_CTN_REGION_SIZE);
     memory_region_add_subregion(get_system_memory(),
                                 (hwaddr)OT_DJ_CTN_REGION_OFFSET, ctn_alias_mr);

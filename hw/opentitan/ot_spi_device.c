@@ -2631,19 +2631,19 @@ static void ot_spi_device_init(Object *obj)
     SpiDeviceFlash *f = &s->flash;
     SpiDeviceBus *bus = &s->bus;
 
-    memory_region_init(&s->mmio.main, obj, TYPE_OT_SPI_DEVICE "-mmio",
+    memory_region_init(&s->mmio.main, obj, TYPE_OT_SPI_DEVICE ".mmio",
                        SPI_DEVICE_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.main);
     memory_region_init_io(&s->mmio.spi, obj, &ot_spi_device_spi_regs_ops, s,
-                          TYPE_OT_SPI_DEVICE "-spi-regs", SPI_REGS_SIZE);
+                          TYPE_OT_SPI_DEVICE ".spi-regs", SPI_REGS_SIZE);
     memory_region_add_subregion(&s->mmio.main, SPI_DEVICE_SPI_REGS_OFFSET,
                                 &s->mmio.spi);
     memory_region_init_io(&s->mmio.tpm, obj, &ot_spi_device_tpm_regs_ops, s,
-                          TYPE_OT_SPI_DEVICE "-tpm-regs", TPM_REGS_SIZE);
+                          TYPE_OT_SPI_DEVICE ".tpm-regs", TPM_REGS_SIZE);
     memory_region_add_subregion(&s->mmio.main, SPI_DEVICE_TPM_REGS_OFFSET,
                                 &s->mmio.tpm);
     memory_region_init_io(&s->mmio.buf, obj, &ot_spi_device_buf_ops, s,
-                          TYPE_OT_SPI_DEVICE "-buf", SRAM_SIZE);
+                          TYPE_OT_SPI_DEVICE ".buf", SRAM_SIZE);
     memory_region_add_subregion(&s->mmio.main, SPI_DEVICE_SRAM_OFFSET,
                                 &s->mmio.buf);
 

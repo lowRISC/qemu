@@ -1634,15 +1634,15 @@ static void ot_kmac_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     memory_region_init_io(&s->regs_mmio, obj, &ot_kmac_regs_ops, s,
-                          TYPE_OT_KMAC "-regs", REGS_SIZE);
+                          TYPE_OT_KMAC ".regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio, OT_KMAC_REGS_BASE, &s->regs_mmio);
 
     memory_region_init_io(&s->state_mmio, obj, &ot_kmac_state_ops, s,
-                          TYPE_OT_KMAC "-state", OT_KMAC_STATE_SIZE);
+                          TYPE_OT_KMAC ".state", OT_KMAC_STATE_SIZE);
     memory_region_add_subregion(&s->mmio, OT_KMAC_STATE_BASE, &s->state_mmio);
 
     memory_region_init_io(&s->msgfifo_mmio, obj, &ot_kmac_msgfifo_ops, s,
-                          TYPE_OT_KMAC "-msgfifo", OT_KMAC_MSG_FIFO_SIZE);
+                          TYPE_OT_KMAC ".msgfifo", OT_KMAC_MSG_FIFO_SIZE);
     memory_region_add_subregion(&s->mmio, OT_KMAC_MSG_FIFO_BASE,
                                 &s->msgfifo_mmio);
 

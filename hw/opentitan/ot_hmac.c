@@ -609,11 +609,11 @@ static void ot_hmac_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     memory_region_init_io(&s->regs_mmio, obj, &ot_hmac_regs_ops, s,
-                          TYPE_OT_HMAC "-regs", REGS_SIZE);
+                          TYPE_OT_HMAC ".regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio, OT_HMAC_REGS_BASE, &s->regs_mmio);
 
     memory_region_init_io(&s->fifo_mmio, obj, &ot_hmac_fifo_ops, s,
-                          TYPE_OT_HMAC "-fifo", OT_HMAC_FIFO_SIZE);
+                          TYPE_OT_HMAC ".fifo", OT_HMAC_FIFO_SIZE);
     memory_region_add_subregion(&s->mmio, OT_HMAC_FIFO_BASE, &s->fifo_mmio);
 
     /* setup FIFO Interrupt Timer */

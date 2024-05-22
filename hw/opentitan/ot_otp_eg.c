@@ -1372,21 +1372,21 @@ static void ot_otp_eg_init(Object *obj)
 {
     OtOTPEgState *s = OT_OTP_EG(obj);
 
-    memory_region_init(&s->mmio.ctrl, obj, TYPE_OT_OTP "-ctrl", 0x2000u);
+    memory_region_init(&s->mmio.ctrl, obj, TYPE_OT_OTP ".ctrl", 0x2000u);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.ctrl);
 
     memory_region_init_io(&s->mmio.sub.regs, obj, &ot_otp_eg_regs_ops, s,
-                          TYPE_OT_OTP "-regs", REGS_SIZE);
+                          TYPE_OT_OTP ".regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, 0u, &s->mmio.sub.regs);
 
     /* TODO: it might be worthwhile to use a ROM-kind here */
     memory_region_init_io(&s->mmio.sub.swcfg, obj, &ot_otp_eg_swcfg_ops, s,
-                          TYPE_OT_OTP "-swcfg", SW_CFG_WINDOW_SIZE);
+                          TYPE_OT_OTP ".swcfg", SW_CFG_WINDOW_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, SW_CFG_WINDOW,
                                 &s->mmio.sub.swcfg);
 
     memory_region_init_io(&s->prim.csrs, obj, &ot_otp_eg_csrs_ops, s,
-                          TYPE_OT_OTP "-prim", CSRS_SIZE);
+                          TYPE_OT_OTP ".prim", CSRS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->prim.csrs);
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {

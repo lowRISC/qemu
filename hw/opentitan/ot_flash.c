@@ -1796,10 +1796,10 @@ static void ot_flash_realize(DeviceState *dev, Error **errp)
 
 #if DATA_PART_USE_IO_OPS
     memory_region_init_io(mr, OBJECT(dev), &ot_flash_mem_ops, s,
-                          TYPE_OT_FLASH "-mem", size);
+                          TYPE_OT_FLASH ".mem", size);
 #else
     /* there is no "memory_region_init_rom_ptr" - use ram_ptr variant and r/o */
-    memory_region_init_ram_ptr(mr, OBJECT(dev), TYPE_OT_FLASH "-mem", size,
+    memory_region_init_ram_ptr(mr, OBJECT(dev), TYPE_OT_FLASH ".mem", size,
                                (void *)s->flash.data);
     mr->readonly = true;
 #endif /* DATA_PART_USE_IO_OPS */
@@ -1812,11 +1812,11 @@ static void ot_flash_init(Object *obj)
     OtFlashState *s = OT_FLASH(obj);
 
     memory_region_init_io(&s->mmio.regs, obj, &ot_flash_regs_ops, s,
-                          TYPE_OT_FLASH "-regs", REGS_SIZE);
+                          TYPE_OT_FLASH ".regs", REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.regs);
 
     memory_region_init_io(&s->mmio.csrs, obj, &ot_flash_csrs_ops, s,
-                          TYPE_OT_FLASH "-csrs", CSRS_SIZE);
+                          TYPE_OT_FLASH ".csrs", CSRS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.csrs);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);

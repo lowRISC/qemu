@@ -572,7 +572,7 @@ static void ot_rom_ctrl_realize(DeviceState *dev, Error **errp)
 
     memory_region_init_rom_device_nomigrate(&s->mem, OBJECT(dev),
                                             &ot_rom_ctrl_mem_ops, s,
-                                            TYPE_OT_ROM_CTRL "-mem", s->size,
+                                            TYPE_OT_ROM_CTRL ".mem", s->size,
                                             errp);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mem);
 
@@ -595,7 +595,7 @@ static void ot_rom_ctrl_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->pwrmgr_done, OT_ROM_CTRL_DONE);
 
     memory_region_init_io(&s->mmio, obj, &ot_rom_ctrl_regs_ops, s,
-                          TYPE_OT_ROM_CTRL "-regs", REGS_SIZE);
+                          TYPE_OT_ROM_CTRL ".regs", REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);

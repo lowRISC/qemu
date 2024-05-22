@@ -680,7 +680,7 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
          * uninitialized and should not be used.
          */
         memory_region_init_ram_nomigrate(&s->mem->sram, OBJECT(dev),
-                                         TYPE_OT_SRAM_CTRL "-mem", size, errp);
+                                         TYPE_OT_SRAM_CTRL ".mem", size, errp);
         sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mem->sram);
 
         return;
@@ -717,9 +717,9 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 
     memory_region_init_io(&s->mem->init, OBJECT(dev),
                           &ot_sram_ctrl_mem_init_ops, s,
-                          TYPE_OT_SRAM_CTRL "-mem-init", size);
+                          TYPE_OT_SRAM_CTRL ".mem.init", size);
     memory_region_init_ram_nomigrate(&s->mem->sram, OBJECT(dev),
-                                     TYPE_OT_SRAM_CTRL "-mem-sram", size, errp);
+                                     TYPE_OT_SRAM_CTRL ".mem.sram", size, errp);
 
     /*
      * use an alias than points to the currently selected RAM backend, either
@@ -732,7 +732,7 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
      * object while changing its actual backend on initialization demand.
      */
     memory_region_init_alias(&s->mem->alias, OBJECT(dev),
-                             TYPE_OT_SRAM_CTRL "-mem", &s->mem->init, 0, size);
+                             TYPE_OT_SRAM_CTRL ".mem", &s->mem->init, 0, size);
     /*
      * at start up, the SRAM memory is aliased to the I/O backend, so that
      * access can be controlled
@@ -745,7 +745,7 @@ static void ot_sram_ctrl_init(Object *obj)
     OtSramCtrlState *s = OT_SRAM_CTRL(obj);
 
     memory_region_init_io(&s->mmio, obj, &ot_sram_ctrl_regs_ops, s,
-                          TYPE_OT_SRAM_CTRL "-regs", REGS_SIZE);
+                          TYPE_OT_SRAM_CTRL ".regs", REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);

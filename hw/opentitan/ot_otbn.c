@@ -657,7 +657,7 @@ static void ot_otbn_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     memory_region_init_io(&s->regs, obj, &ot_otbn_regs_ops, s,
-                          TYPE_OT_OTBN "-regs", REGS_SIZE);
+                          TYPE_OT_OTBN ".regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio, OT_OTBN_REGS_BASE, &s->regs);
 
     /*
@@ -665,7 +665,7 @@ static void ot_otbn_init(Object *obj)
      * controlled and checksum to be computed in-order
      */
     memory_region_init_io(&s->imem, obj, &ot_otbn_imem_ops, s,
-                          TYPE_OT_OTBN "-imem", OT_OTBN_IMEM_SIZE);
+                          TYPE_OT_OTBN ".imem", OT_OTBN_IMEM_SIZE);
     memory_region_add_subregion(&s->mmio, OT_OTBN_IMEM_BASE, &s->imem);
 
     /*
@@ -673,7 +673,7 @@ static void ot_otbn_init(Object *obj)
      * controlled and checksum to be computed in-order
      */
     memory_region_init_io(&s->dmem, obj, &ot_otbn_dmem_ops, s,
-                          TYPE_OT_OTBN "-dmem", OT_OTBN_DMEM_SIZE);
+                          TYPE_OT_OTBN ".dmem", OT_OTBN_DMEM_SIZE);
     memory_region_add_subregion(&s->mmio, OT_OTBN_DMEM_BASE, &s->dmem);
 
     ibex_sysbus_init_irq(obj, &s->irq_done);
