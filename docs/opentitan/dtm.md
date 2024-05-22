@@ -82,8 +82,8 @@ Extras:
   operation, `--file` argument is mandatory. The content of the binary file is copied into the
   memory, starting at the `--address`. See also the `--elf` option for uploading applications.
 
-* `-P` specify the TCP port of the JTAG server in the QEMU VM, should match the port part of `-jtag`
-  option for invoking QEMU.
+* `-P` specify the TCP port of the JTAG server in the QEMU VM, should follow the TCP setting of the
+  `-chardev socket,id=taprbb,...` option for invoking QEMU.
 
 * `-Q` do not send QEMU a request for termination when this script exits.
 
@@ -106,7 +106,8 @@ Extras:
 
 ### Examples
 
-Running QEMU VM with the `-jtag tcp::3335` option:
+Running QEMU VM with the `-chardev socket,id=taprbb,host=localhost,port=3335,server=on,wait=off`
+option:
 
 * Retrieve JTAG/DTM/DM information and `mtvec` CSR value
   ````sh

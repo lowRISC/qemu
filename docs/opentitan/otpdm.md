@@ -67,8 +67,8 @@ Extras:
 
 * `-l` specify the length of the TAP instruction register length.
 
-* `-P` specify the TCP port of the JTAG server in the QEMU VM, should match the port part of `-jtag`
-       option for invoking QEMU.
+* `-P` specify the TCP port of the JTAG server in the QEMU VM, should follow the TCP setting of the
+  `-chardev socket,id=taprbb,...` option for invoking QEMU.
 
 * `-p` select a partition using its name. See option `-L` to get a list of valid partition names.
        Requires option `-j`.
@@ -85,7 +85,8 @@ Extras:
 
 ### Examples
 
-Running QEMU VM with the `-jtag tcp::3335` option:
+Running QEMU VM with the `-chardev socket,id=taprbb,host=localhost,port=33355,server=on,wait=off`
+option:
 
 * List all supported partitions
   ````sh

@@ -28,17 +28,9 @@ where:
   `P` is the private OT bus
   `D` is the debug bus
 
-QEMU should be started with an option such as `-jtag tcp::3335` so that the JTAG server is
-instantiated and listen for incoming connection on TCP port 3335.
-
-#### macOS
-
-If you want to avoid the boring pop-up window from macOS
-```
-Do you want the application “qemu-system-riscv32” to accept incoming network connections?
-```
-restrict the listening interfaces to the localhost with `-jtag tcp:localhost:3335` as QEMU defaults
-to listening on all interfaces, _i.e._ 0.0.0.0
+QEMU should be started with an option such as:
+`-chardev socket,id=taprbb,host=localhost,port=3335,server=on,wait=off` so that the JTAG server is
+instantiated and listens for incoming connection on TCP port 3335.
 
 ## Communicating with JTAG server and JTAG MailBox using Python
 

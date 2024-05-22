@@ -46,7 +46,8 @@ See also [JTAG mailbox](jtagmbx.md) and [Life Controller](lc_ctrl_dmi.md) for ot
 The JTAG server supports the Remote Bitbang Protocol which is compatible with other tools such as
 Spike and [OpenOCD](https://github.com/riscv/riscv-openocd).
 
-QEMU should be started with an option such as `-jtag tcp::3335` so that the JTAG server is
+QEMU should be started with an option such as:
+`-chardev socket,id=taprbb,host=localhost,port=3335,server=on,wait=off` so that the JTAG server is
 instantiated and listens for incoming connection on TCP port 3335.
 
 #### Remote termination feature
@@ -58,16 +59,7 @@ example.
 It is nevertheless possible to disable this feature and ignore the remote exit request so that
 multiple JTAG sessions can be run without terminating the QEMU VM.
 
-To disable this feature, use the `quit` option: `-jtag tcp::3335,quit=off`.
-
-#### macOS
-
-If you want to avoid the boring pop-up window from macOS
-```
-Do you want the application “qemu-system-riscv32” to accept incoming network connections?
-```
-restrict the listening interfaces to the localhost with `-jtag tcp:localhost:3335` as QEMU defaults
-to listening on all interfaces, _i.e._ 0.0.0.0
+To disable this feature, use the `quit` option: `-global tap-ctrl-rbb,quit=off`.
 
 #### Implementation
 
