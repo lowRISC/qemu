@@ -29,10 +29,11 @@
 #include "qapi/qmp/qlist.h"
 #include "cpu.h"
 #include "exec/address-spaces.h"
-#include "exec/jtagstub.h"
 #include "hw/boards.h"
 #include "hw/core/split-irq.h"
 #include "hw/intc/sifive_plic.h"
+#include "hw/jtag/tap_ctrl.h"
+#include "hw/jtag/tap_ctrl_rbb.h"
 #include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_address_space.h"
@@ -88,6 +89,8 @@ static void ot_dj_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
 static void ot_dj_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent);
 static void ot_dj_soc_otp_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+static void ot_dj_soc_tap_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_dj_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent);
@@ -152,6 +155,7 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_SRAM_MAIN,
     OT_DJ_SOC_DEV_SRAM_MBX,
     OT_DJ_SOC_DEV_SRAM_RET,
+    OT_DJ_SOC_DEV_TAP_CTRL,
     OT_DJ_SOC_DEV_TIMER,
     OT_DJ_SOC_DEV_UART0,
     /* IRQ splitters, i.e. 1-to-N signal dispatchers */
@@ -488,8 +492,19 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
+    [OT_DJ_SOC_DEV_TAP_CTRL] = {
+        .type = TYPE_TAP_CTRL_RBB,
+        .cfg = &ot_dj_soc_tap_ctrl_configure,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("ir_length", IBEX_TAP_IR_LENGTH),
+            IBEX_DEV_UINT_PROP("idcode", DARJEELING_TAP_IDCODE)
+        ),
+    },
     [OT_DJ_SOC_DEV_DTM] = {
         .type = TYPE_RISCV_DTM,
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("tap_ctrl", TAP_CTRL)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("abits", 12u)
         ),
@@ -1439,6 +1454,20 @@ static void ot_dj_soc_otp_ctrl_configure(
     }
 }
 
+static void ot_dj_soc_tap_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    (void)parent;
+    (void)def;
+
+    Chardev *chr;
+
+    chr = ibex_get_chardev_by_id("taprbb");
+    if (chr) {
+        qdev_prop_set_chr(dev, "chardev", chr);
+    }
+}
+
 static void ot_dj_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent)
 {
@@ -1601,8 +1630,6 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
 static void ot_dj_soc_init(Object *obj)
 {
     OtDjSoCState *s = RISCV_OT_DJ_SOC(obj);
-
-    jtag_configure_tap(IBEX_TAP_IR_LENGTH, DARJEELING_TAP_IDCODE);
 
     s->devices = ibex_create_devices(ot_dj_soc_devices,
                                      ARRAY_SIZE(ot_dj_soc_devices), DEVICE(s));

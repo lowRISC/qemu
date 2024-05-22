@@ -1,0 +1,8 @@
+# JTAG devices
+
+config TAP_CTRL
+    bool
+
+config TAP_CTRL_RBB
+    select TAP_CTRL
+    bool

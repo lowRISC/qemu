@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan JTAG TAP controller
+ * QEMU JTAG TAP controller
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
  * Author(s):
@@ -24,21 +24,21 @@
  * THE SOFTWARE.
  */
 
-#ifndef JTAGSTUB_H
-#define JTAGSTUB_H
+#ifndef HW_JTAG_TAP_CTRL_H
+#define HW_JTAG_TAP_CTRL_H
 
-#include "qemu/osdep.h"
+#include "qom/object.h"
 
-struct _TAPDataHandler;
-typedef struct _TAPDataHandler TAPDataHandler;
+struct _TapDataHandler;
+typedef struct _TapDataHandler TapDataHandler;
 
-struct _TAPDataHandler {
+struct _TapDataHandler {
     const char *name; /**< Name */
     size_t length; /**< Data register length */
     uint64_t value; /**< Capture/Update value */
     void *opaque; /**< Arbitrary data */
-    void (*capture)(TAPDataHandler *tdh);
-    void (*update)(TAPDataHandler *tdh);
+    void (*capture)(TapDataHandler *tdh);
+    void (*update)(TapDataHandler *tdh);
 };
 
 #define JTAG_MEMTX_REQUESTER_ID UINT16_MAX
@@ -63,39 +63,32 @@ struct _TAPDataHandler {
 #define JEDEC_MANUFACTURER_ID(_tbl_, _id_) \
     (((((_tbl_) - 1u) & 0xfu) << 7u) | ((_id_) & 0x7fu))
 
-/*
- * Start the JTAG server
- * @port_or_device: connection spec for JTAG
- */
-int jtagserver_start(const char *port_or_device);
+#define TYPE_TAP_CTRL_IF "tap-ctrl-interface"
+typedef struct TapCtrlIfClass TapCtrlIfClass;
+DECLARE_CLASS_CHECKERS(TapCtrlIfClass, TAP_CTRL_IF, TYPE_TAP_CTRL_IF)
+#define TAP_CTRL_IF(_obj_) INTERFACE_CHECK(TapCtrlIf, (_obj_), TYPE_TAP_CTRL_IF)
 
-/*
- * Exit JTAG server
- */
-void jtagserver_exit(void);
+typedef struct TapCtrlIf TapCtrlIf;
 
-/*
- * Configure the JTAG TAP controller
- *
- * @irlength the length in bits of the instruction register
- * @idcode the unique identifier code of the device
- */
-void jtag_configure_tap(size_t irlength, uint32_t idcode);
+struct TapCtrlIfClass {
+    InterfaceClass parent_class;
 
-/**
- * Report whether TAP is configured and available.
- *
- * @return @c true if the TAP can be used.
- */
-bool jtag_tap_enabled(void);
+    /**
+     * Report whether TAP controller is enabled.
+     *
+     * @return @c true if the TAP can be used.
+     */
+    bool (*is_enabled)(TapCtrlIf *dev);
 
-/*
- * Register TAP data handler
- *
- * @code instruction code for which to register the handler
- * @tdh TAP data handler to register
- * @return non-zero on error
- */
-int jtag_register_handler(unsigned code, const TAPDataHandler *tdh);
+    /*
+     * Register instruction support on the TAP controller
+     *
+     * @code instruction code for which to register the handler
+     * @tdh TAP data handler to register
+     * @return non-zero on error
+     */
+    int (*register_instruction)(TapCtrlIf *dev, unsigned code,
+                                const TapDataHandler *tdh);
+};
 
-#endif // JTAGSTUB_H
+#endif // HW_JTAG_TAP_CTRL_H

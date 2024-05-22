@@ -99,9 +99,10 @@ ot_dev_proxy_write_reg(const char *prefix, unsigned devix, unsigned offset, unsi
 
 # ot_dm_tl.c
 
-ot_dm_tl_capture(uint32_t addr, uint32_t value) "0x%x: 0x%08x"
-ot_dm_tl_invalid_addr(uint32_t addr) "0x%x"
-ot_dm_tl_update(uint32_t addr, uint32_t value, const char *msg, uint32_t res) "0x%x: 0x%x (%s): %u"
+ot_dm_tl_capture(const char *devname, uint32_t addr, uint32_t value) "%s: @ 0x%x: 0x%08x"
+ot_dm_tl_invalid_addr(const char *devname, uint32_t addr) "%s: 0x%x"
+ot_dm_tl_dtm_not_available(const char *devname) "%s"
+ot_dm_tl_update(const char *devname, uint32_t addr, uint32_t value, const char *msg, uint32_t res) "%s @ 0x%x: 0x%x (%s): %u"
 
 # ot_dma.c
 

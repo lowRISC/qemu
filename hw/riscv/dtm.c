@@ -38,34 +38,17 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/bitmap.h"
 #include "qemu/compiler.h"
-#include "qemu/guest-random.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
-#include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
-#include "disas/dis-asm.h"
-#include "exec/address-spaces.h"
-#include "exec/cpu_ldst.h"
-#include "exec/jtagstub.h"
-#include "hw/boards.h"
-#include "hw/core/cpu.h"
-#include "hw/irq.h"
-#include "hw/qdev-properties-system.h"
+#include "hw/jtag/tap_ctrl.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/debug.h"
 #include "hw/riscv/dtm.h"
-#include "hw/sysbus.h"
-#include "sysemu/cpus.h"
-#include "sysemu/hw_accel.h"
 #include "sysemu/runstate.h"
-#include "target/riscv/cpu.h"
-#include "trace-target_riscv.h"
 #include "trace.h"
-
 
 /*
  * Register definitions
@@ -122,9 +105,9 @@ struct RISCVDTMState {
     uint32_t address; /* last updated address */
     RISCVDebugResult dmistat; /* Operation result */
     bool cmd_busy; /* A command is being executed */
-    bool jtag_ok; /* JTAG server initialized */
 
     /* properties */
+    DeviceState *tap_ctrl;
     unsigned abits; /* address bit count */
 };
 
@@ -136,10 +119,10 @@ static void riscv_dtm_reset(DeviceState *dev);
 static RISCVDebugModule* riscv_dtm_get_dm(RISCVDTMState *s, uint32_t addr);
 static void riscv_dtm_sort_dms(RISCVDTMState *s);
 
-static void riscv_dtm_tap_dtmcs_capture(TAPDataHandler *tdh);
-static void riscv_dtm_tap_dtmcs_update(TAPDataHandler *tdh);
-static void riscv_dtm_tap_dmi_capture(TAPDataHandler *tdh);
-static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh);
+static void riscv_dtm_tap_dtmcs_capture(TapDataHandler *tdh);
+static void riscv_dtm_tap_dtmcs_update(TapDataHandler *tdh);
+static void riscv_dtm_tap_dmi_capture(TapDataHandler *tdh);
+static void riscv_dtm_tap_dmi_update(TapDataHandler *tdh);
 
 /*
  * Constants
@@ -149,7 +132,7 @@ static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh);
 #define RISCVDMI_DTMCS_IR        0x10u
 #define RISCVDMI_DMI_IR          0x11u
 
-static const TAPDataHandler RISCVDMI_DTMCS = {
+static const TapDataHandler RISCVDMI_DTMCS = {
     .name = "dtmcs",
     .length = 32u,
     .value = RISCV_DEBUG_DMI_VERSION, /* abits updated at runtime */
@@ -157,7 +140,7 @@ static const TAPDataHandler RISCVDMI_DTMCS = {
     .update = &riscv_dtm_tap_dtmcs_update,
 };
 
-static const TAPDataHandler RISCVDMI_DMI = {
+static const TapDataHandler RISCVDMI_DMI = {
     .name = "dmi",
     /* data, op; abits updated at runtime */
     .length = R_DMI_OP_LENGTH + R_DMI_DATA_LENGTH,
@@ -210,6 +193,17 @@ bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
                    s->abits);
     }
 
+    if (!s->tap_ctrl) {
+        xtrace_riscv_dtm_info("TAP controller not available", 0);
+        return false;
+    }
+
+    TapCtrlIfClass *tapcls = TAP_CTRL_IF_GET_CLASS(s->tap_ctrl);
+    TapCtrlIf *tap = TAP_CTRL_IF(s->tap_ctrl);
+
+    /* may fail if TAP controller is not active */
+    bool tap_ok = tapcls->is_enabled(tap);
+
     RISCVDebugModule *node;
     unsigned count = 0;
     QLIST_FOREACH(node, &s->dms, entry) {
@@ -217,7 +211,7 @@ bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
         if ((node->dev == dbgdev) && (node->base == base_addr) &&
             (node->size == size)) {
             /* already registered */
-            return s->jtag_ok;
+            return tap_ok;
         }
         if (base_addr > (node->base + node->size - 1u)) {
             continue;
@@ -241,18 +235,18 @@ bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
     s->last_dm = dm;
 
     trace_riscv_dtm_register_dm(count, base_addr, base_addr + size - 1u,
-                                s->jtag_ok);
+                                tap_ok);
 
     riscv_dtm_sort_dms(s);
 
-    return s->jtag_ok;
+    return tap_ok;
 }
 
 /* -------------------------------------------------------------------------- */
 /* DTMCS/DMI implementation */
 /* -------------------------------------------------------------------------- */
 
-static void riscv_dtm_tap_dtmcs_capture(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dtmcs_capture(TapDataHandler *tdh)
 {
     RISCVDTMState *s = tdh->opaque;
 
@@ -260,7 +254,7 @@ static void riscv_dtm_tap_dtmcs_capture(TAPDataHandler *tdh)
                  ((uint64_t)s->dmistat << 10u); /* see DMI op result */
 }
 
-static void riscv_dtm_tap_dtmcs_update(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dtmcs_update(TapDataHandler *tdh)
 {
     RISCVDTMState *s = tdh->opaque;
     if (tdh->value & (1u << 16u)) {
@@ -274,7 +268,7 @@ static void riscv_dtm_tap_dtmcs_update(TAPDataHandler *tdh)
     }
 }
 
-static void riscv_dtm_tap_dmi_capture(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dmi_capture(TapDataHandler *tdh)
 {
     RISCVDTMState *s = tdh->opaque;
 
@@ -304,7 +298,7 @@ static void riscv_dtm_tap_dmi_capture(TAPDataHandler *tdh)
                  ((uint64_t)(s->dmistat & 0b11));
 }
 
-static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh)
+static void riscv_dtm_tap_dmi_update(TapDataHandler *tdh)
 {
     RISCVDTMState *s = tdh->opaque;
 
@@ -357,25 +351,32 @@ static void riscv_dtm_tap_dmi_update(TAPDataHandler *tdh)
 
 static void riscv_dtm_register_tap_handlers(RISCVDTMState *s)
 {
+    if (!s->tap_ctrl) {
+        return;
+    }
+
+    TapCtrlIfClass *tapcls = TAP_CTRL_IF_GET_CLASS(s->tap_ctrl);
+    TapCtrlIf *tap = TAP_CTRL_IF(s->tap_ctrl);
+
     /*
      * copy the template to update the opaque value
      * no lifetime issue as the data handler is copied by the TAP controller
      */
-    TAPDataHandler tdh;
+    TapDataHandler tdh;
 
-    memcpy(&tdh, &RISCVDMI_DTMCS, sizeof(TAPDataHandler));
+    memcpy(&tdh, &RISCVDMI_DTMCS, sizeof(TapDataHandler));
     tdh.value |= s->abits << 4u; /* add address bit count */
     tdh.opaque = s;
-    if (jtag_register_handler(RISCVDMI_DTMCS_IR, &tdh)) {
+    if (tapcls->register_instruction(tap, RISCVDMI_DTMCS_IR, &tdh)) {
         xtrace_riscv_dtm_error("cannot register DMTCS");
         return;
     }
 
-    memcpy(&tdh, &RISCVDMI_DMI, sizeof(TAPDataHandler));
+    memcpy(&tdh, &RISCVDMI_DMI, sizeof(TapDataHandler));
     tdh.length += s->abits; /* add address bit count */
     tdh.opaque = s;
     /* the data handler is copied by the TAP controller */
-    if (jtag_register_handler(RISCVDMI_DMI_IR, &tdh)) {
+    if (tapcls->register_instruction(tap, RISCVDMI_DMI_IR, &tdh)) {
         xtrace_riscv_dtm_error("cannot register DMI");
         return;
     }
@@ -455,6 +456,8 @@ static void riscv_dtm_sort_dms(RISCVDTMState *s)
 
 static Property riscv_dtm_properties[] = {
     DEFINE_PROP_UINT32("abits", RISCVDTMState, abits, 0x7u),
+    DEFINE_PROP_LINK("tap_ctrl", RISCVDTMState, tap_ctrl, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -475,12 +478,7 @@ static void riscv_dtm_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    /* may fail if no JTAG server is active */
-    s->jtag_ok = jtag_tap_enabled();
-
-    if (s->jtag_ok) {
-        (void)riscv_dtm_register_tap_handlers(s);
-    }
+    riscv_dtm_register_tap_handlers(s);
 }
 
 static void riscv_dtm_init(Object *obj)

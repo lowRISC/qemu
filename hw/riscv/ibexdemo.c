@@ -20,14 +20,11 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/cutils.h"
-#include "qemu/units.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qlist.h"
+#include "chardev/chardev-internal.h"
 #include "cpu.h"
-#include "elf.h"
 #include "exec/address-spaces.h"
-#include "exec/jtagstub.h"
 #include "hw/boards.h"
 #include "hw/display/st7735.h"
 #include "hw/ibexdemo/ibexdemo_gpio.h"
@@ -35,7 +32,8 @@
 #include "hw/ibexdemo/ibexdemo_spi.h"
 #include "hw/ibexdemo/ibexdemo_timer.h"
 #include "hw/ibexdemo/ibexdemo_uart.h"
-#include "hw/loader.h"
+#include "hw/jtag/tap_ctrl.h"
+#include "hw/jtag/tap_ctrl_rbb.h"
 #include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/qdev-properties.h"
@@ -55,6 +53,8 @@ static void ibexdemo_soc_dm_configure(
 static void ibexdemo_soc_gpio_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ibexdemo_soc_hart_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+static void ibexdemo_soc_tap_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ibexdemo_soc_uart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
@@ -89,8 +89,9 @@ enum IbexDemoSocDevice {
     IBEXDEMO_SOC_DEV_HART,
     IBEXDEMO_SOC_DEV_PWM,
     IBEXDEMO_SOC_DEV_RV_DM,
-    IBEXDEMO_SOC_DEV_SIMCTRL,
+    IBEXDEMO_SOC_DEV_SIM_CTRL,
     IBEXDEMO_SOC_DEV_SPI,
+    IBEXDEMO_SOC_DEV_TAP_CTRL,
     IBEXDEMO_SOC_DEV_TIMER,
     IBEXDEMO_SOC_DEV_UART,
 };
@@ -138,8 +139,19 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
                 PULP_RV_DM_ROM_BASE + PULP_RV_DM_EXCEPTION_OFFSET)
         ),
     },
+    [IBEXDEMO_SOC_DEV_TAP_CTRL] = {
+        .type = TYPE_TAP_CTRL_RBB,
+        .cfg = &ibexdemo_soc_tap_ctrl_configure,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("ir_length", IBEX_TAP_IR_LENGTH),
+            IBEX_DEV_UINT_PROP("idcode", IBEXDEMO_TAP_IDCODE)
+        ),
+    },
     [IBEXDEMO_SOC_DEV_DTM] = {
         .type = TYPE_RISCV_DTM,
+        .link = IBEXDEVICELINKDEFS(
+            IBEXDEMO_SOC_DEVLINK("tap_ctrl", TAP_CTRL)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("abits", 7u)
         ),
@@ -183,7 +195,7 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
             IBEXDEMO_DM_CONNECTION(IBEXDEMO_SOC_DEV_DM, 3)
         ),
     },
-    [IBEXDEMO_SOC_DEV_SIMCTRL] = {
+    [IBEXDEMO_SOC_DEV_SIM_CTRL] = {
         .type = TYPE_IBEXDEMO_SIMCTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x00020000u, .size = 0x0400u }
@@ -291,6 +303,20 @@ static void ibexdemo_soc_hart_configure(
     qdev_prop_set_uint64(dev, "resetvec", s->resetvec);
 }
 
+static void ibexdemo_soc_tap_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    (void)parent;
+    (void)def;
+
+    Chardev *chr;
+
+    chr = ibex_get_chardev_by_id("taprbb");
+    if (chr) {
+        qdev_prop_set_chr(dev, "chardev", chr);
+    }
+}
+
 static void ibexdemo_soc_uart_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
@@ -353,8 +379,6 @@ static void ibexdemo_soc_realize(DeviceState *dev, Error **errp)
 static void ibexdemo_soc_init(Object *obj)
 {
     IbexDemoSoCState *s = RISCV_IBEXDEMO_SOC(obj);
-
-    jtag_configure_tap(IBEX_TAP_IR_LENGTH, IBEXDEMO_TAP_IDCODE);
 
     s->devices =
         ibex_create_devices(ibexdemo_soc_devices,

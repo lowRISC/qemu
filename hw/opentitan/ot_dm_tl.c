@@ -26,7 +26,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <stdint.h>
 #include "qapi/error.h"
 #include "exec/memory.h"
 #include "hw/opentitan/ot_address_space.h"
@@ -45,6 +44,7 @@ struct OtDMTLState {
     hwaddr tl_offset;
     uint32_t value;
     MemTxAttrs attrs;
+    char *dev_name;
     bool dtm_ok; /* DTM is available */
 
     RISCVDTMState *dtm;
@@ -65,8 +65,13 @@ ot_dm_tl_write_rq(RISCVDebugDeviceState *dev, uint32_t addr, uint32_t value)
 {
     OtDMTLState *dmtl = OT_DM_TL(dev);
 
+    if (!dmtl->dtm_ok) {
+        trace_ot_dm_tl_dtm_not_available(dmtl->dev_name);
+        return RISCV_DEBUG_FAILED;
+    }
+
     if (addr >= dmtl->dmi_size) {
-        trace_ot_dm_tl_invalid_addr(addr);
+        trace_ot_dm_tl_invalid_addr(dmtl->dev_name, addr);
         return RISCV_DEBUG_FAILED;
     }
 
@@ -78,7 +83,7 @@ ot_dm_tl_write_rq(RISCVDebugDeviceState *dev, uint32_t addr, uint32_t value)
     res = address_space_rw(dmtl->as, dmtl->tl_base + dmtl->tl_offset,
                            dmtl->attrs, &value, sizeof(value), true);
 
-    trace_ot_dm_tl_update(addr, value, "write", res);
+    trace_ot_dm_tl_update(dmtl->dev_name, addr, value, "write", res);
 
     return (res == MEMTX_OK) ? RISCV_DEBUG_NOERR : RISCV_DEBUG_FAILED;
 }
@@ -88,8 +93,13 @@ ot_dm_tl_read_rq(RISCVDebugDeviceState *dev, uint32_t addr)
 {
     OtDMTLState *dmtl = OT_DM_TL(dev);
 
+    if (!dmtl->dtm_ok) {
+        trace_ot_dm_tl_dtm_not_available(dmtl->dev_name);
+        return RISCV_DEBUG_FAILED;
+    }
+
     if (addr >= dmtl->dmi_size) {
-        trace_ot_dm_tl_invalid_addr(addr);
+        trace_ot_dm_tl_invalid_addr(dmtl->dev_name, addr);
         return RISCV_DEBUG_FAILED;
     }
 
@@ -102,7 +112,7 @@ ot_dm_tl_read_rq(RISCVDebugDeviceState *dev, uint32_t addr)
         address_space_rw(dmtl->as, dmtl->tl_base + dmtl->tl_offset, dmtl->attrs,
                          &dmtl->value, sizeof(dmtl->value), false);
 
-    trace_ot_dm_tl_update(addr, 0, "read", res);
+    trace_ot_dm_tl_update(dmtl->dev_name, addr, 0, "read", res);
 
     return (res == MEMTX_OK) ? RISCV_DEBUG_NOERR : RISCV_DEBUG_FAILED;
 }
@@ -113,7 +123,7 @@ static uint32_t ot_dm_tl_read_value(RISCVDebugDeviceState *dev)
 
     uint32_t value = dmtl->value;
 
-    trace_ot_dm_tl_capture(dmtl->tl_offset, value);
+    trace_ot_dm_tl_capture(dmtl->dev_name, dmtl->tl_offset, value);
 
     return value;
 }
@@ -137,9 +147,11 @@ static void ot_dm_tl_reset(DeviceState *dev)
     g_assert(dmtl->dtm != NULL);
     g_assert(dmtl->dmi_size);
 
-    dmtl->dtm_ok =
-        riscv_dtm_register_dm(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(dev),
-                              dmtl->dmi_addr, dmtl->dmi_size);
+    if (!dmtl->dtm_ok) {
+        dmtl->dtm_ok =
+            riscv_dtm_register_dm(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(dev),
+                                  dmtl->dmi_addr, dmtl->dmi_size);
+    }
 
     if (dmtl->dtm_ok) {
         Object *soc = OBJECT(dev)->parent;
@@ -164,6 +176,12 @@ static void ot_dm_tl_realize(DeviceState *dev, Error **errp)
         dmtl->attrs = MEMTXATTRS_UNSPECIFIED;
     } else {
         dmtl->attrs = MEMTXATTRS_WITH_ROLE(dmtl->role);
+    }
+
+    if (dmtl->tl_dev) {
+        dmtl->dev_name = g_strdup(object_get_typename(OBJECT(dmtl->tl_dev)));
+    } else {
+        dmtl->dev_name = g_strdup("");
     }
 }
 

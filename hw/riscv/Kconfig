@@ -51,6 +51,7 @@ config OT_DARJEELING
     select RISCV_DTM
     select SIFIVE_PLIC
     select SPLIT_IRQ
+    select TAP_CTRL_RBB
 
 config OT_EARLGREY
     bool
@@ -87,6 +88,7 @@ config OT_EARLGREY
     select RISCV_DM
     select RISCV_DTM
     select SIFIVE_PLIC
+    select TAP_CTRL_RBB
 
 config IBEXDEMO
     bool
@@ -100,6 +102,7 @@ config IBEXDEMO
     select RISCV_DM
     select RISCV_DTM
     select ST7735
+    select TAP_CTRL_RBB
     select UNIMP
 
 config MICROCHIP_PFSOC
@@ -153,6 +156,7 @@ config RISCV_DM
     bool
 
 config RISCV_DTM
+    select TAP_CTRL
     bool
 
 config SHAKTI_C

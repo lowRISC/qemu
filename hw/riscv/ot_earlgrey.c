@@ -28,9 +28,10 @@
 #include "qapi/qmp/qlist.h"
 #include "cpu.h"
 #include "exec/address-spaces.h"
-#include "exec/jtagstub.h"
 #include "hw/boards.h"
 #include "hw/intc/sifive_plic.h"
+#include "hw/jtag/tap_ctrl.h"
+#include "hw/jtag/tap_ctrl_rbb.h"
 #include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_aes.h"
@@ -80,6 +81,8 @@ static void ot_eg_soc_flash_ctrl_configure(
 static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent);
 static void ot_eg_soc_otp_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+static void ot_eg_soc_tap_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_eg_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent);
@@ -131,6 +134,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_SPI_HOST1,
     OT_EG_SOC_DEV_SRAM_MAIN_CTRL,
     OT_EG_SOC_DEV_SYSRST_CTRL,
+    OT_EG_SOC_DEV_TAP_CTRL,
     OT_EG_SOC_DEV_TIMER,
     OT_EG_SOC_DEV_UART0,
     OT_EG_SOC_DEV_UART1,
@@ -269,8 +273,19 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("start-powered-off", true)
         ),
     },
+    [OT_EG_SOC_DEV_TAP_CTRL] = {
+        .type = TYPE_TAP_CTRL_RBB,
+        .cfg = &ot_eg_soc_tap_ctrl_configure,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("ir_length", IBEX_TAP_IR_LENGTH),
+            IBEX_DEV_UINT_PROP("idcode", EG_TAP_IDCODE)
+        ),
+    },
     [OT_EG_SOC_DEV_DTM] = {
         .type = TYPE_RISCV_DTM,
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("tap_ctrl", TAP_CTRL)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("abits", 7u)
         ),
@@ -1063,6 +1078,20 @@ static void ot_eg_soc_otp_ctrl_configure(
     }
 }
 
+static void ot_eg_soc_tap_ctrl_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    (void)parent;
+    (void)def;
+
+    Chardev *chr;
+
+    chr = ibex_get_chardev_by_id("taprbb");
+    if (chr) {
+        qdev_prop_set_chr(dev, "chardev", chr);
+    }
+}
+
 static void ot_eg_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent)
 {
@@ -1142,8 +1171,6 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 static void ot_eg_soc_init(Object *obj)
 {
     OtEGSoCState *s = RISCV_OT_EG_SOC(obj);
-
-    jtag_configure_tap(IBEX_TAP_IR_LENGTH, EG_TAP_IDCODE);
 
     s->devices = ibex_create_devices(ot_eg_soc_devices,
                                      ARRAY_SIZE(ot_eg_soc_devices), DEVICE(s));
