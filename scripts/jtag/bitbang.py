@@ -58,7 +58,7 @@ class JtagBitbangController(JtagController):
     """JTAG bitbang code to quit."""
 
     def __init__(self, sock: socket, link_log: bool = False):
-        self._log = getLogger('jtag.ctrl')
+        self._log = getLogger('jtag.rbb')
         self._sock = sock
         self._link_log = link_log
         self._last: Optional[bool] = None  # Last deferred TDO bit
