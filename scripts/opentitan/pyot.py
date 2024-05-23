@@ -1216,7 +1216,7 @@ class QEMUExecuter:
                 raise ValueError(f'Unable to find ROM file {rom_path}')
             rom_ids = []
             if args.first_soc:
-                rom_ids.append(args.first_soc)
+                rom_ids.append(f'{args.first_soc}.')
             rom_ids.append('rom')
             if multi_rom:
                 rom_ids.append(f'{rom_count}')
@@ -1239,7 +1239,7 @@ class QEMUExecuter:
                     # generate ROM option for the application itself
                     rom_ids = []
                     if args.first_soc:
-                        rom_ids.append(args.first_soc)
+                        rom_ids.append(f'{args.first_soc}.')
                     rom_ids.append('rom')
                     if multi_rom:
                         rom_ids.append(f'{rom_count}')
