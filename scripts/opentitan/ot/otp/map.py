@@ -7,7 +7,7 @@
 """
 
 from logging import getLogger
-from typing import Any, Dict, Iterator, List, Optional, TextIO, Tuple
+from typing import Any, Iterator, Optional, TextIO
 
 try:
     # try to load HJSON if available
@@ -39,9 +39,9 @@ class OtpMap:
 
     def __init__(self):
         self._log = getLogger('otptool.map')
-        self._map: Dict = {}
+        self._map: dict = {}
         self._otp_size = 0
-        self._partitions: List[OtpPartition] = []
+        self._partitions: list[OtpPartition] = []
 
     def load(self, hfp: TextIO) -> None:
         """Parse a HJSON configuration file, typically otp_ctrl_mmap.hjson
@@ -55,12 +55,12 @@ class OtpMap:
         self._compute_locations()
 
     @property
-    def partitions(self) -> Dict[str, Any]:
+    def partitions(self) -> dict[str, Any]:
         """Return the partitions (in any)"""
         return {p['name']: p for p in self._map.get('partitions', [])}
 
     @classmethod
-    def part_offset(cls, part: Dict[str, Any]) -> int:
+    def part_offset(cls, part: dict[str, Any]) -> int:
         """Get the offset of a partition."""
         # expect a KeyError if missing
         return int(part['offset'])
@@ -136,10 +136,10 @@ class OtpMap:
                            {'name': name, '__doc__': desc})
             self._partitions.append(newpart(part))
 
-    def _check_keymgr_materials(self, partname: str, items: Dict[str, Dict]) \
-            -> Optional[Tuple[str, bool]]:
+    def _check_keymgr_materials(self, partname: str, items: dict[str, dict]) \
+            -> Optional[tuple[str, bool]]:
         """Check partition for key manager material fields."""
-        kms: Dict[str, bool] = {}
+        kms: dict[str, bool] = {}
         kmprefix = 'iskeymgr'
         for props in items.values():
             for prop, value in props.items():

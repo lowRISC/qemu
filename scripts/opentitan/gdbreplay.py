@@ -19,7 +19,7 @@ from socket import (SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR, socket,
 from string import ascii_uppercase
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
-from typing import BinaryIO, Dict, List, Optional, TextIO, Tuple
+from typing import BinaryIO, Optional, TextIO
 
 from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
@@ -33,7 +33,7 @@ class QEMUMemoryController:
 
     def __init__(self):
         self._log = getLogger('gdbrp.mem')
-        self._banks: Dict[Tuple(int, int), bytes] = {}
+        self._banks: dict[tuple(int, int), bytes] = {}
 
     def add_memory(self, addr: int, blob: bytes) -> None:
         """Add a new memory bank.
@@ -78,11 +78,11 @@ class QEMUVCPU:
 
     def __init__(self, memctrl: QEMUMemoryController):
         self._log = getLogger('gdbrp.vcpu')
-        self._seq: List[Tuple[int, str]] = []
-        self._regs: List[Optional[int]] = [None] * 33
+        self._seq: list[tuple[int, str]] = []
+        self._regs: list[Optional[int]] = [None] * 33
         self._xpos = 0
         self._memctrl = memctrl
-        self._hwbreaks: List[range] = []
+        self._hwbreaks: list[range] = []
 
     def record(self, pc: int, func: Optional[str]) -> None:
         """Record execution of a single instruction.
@@ -209,7 +209,7 @@ class QEMUVCPU:
         return last_pc + self._get_instruction_length(last_pc)
 
     @property
-    def regs(self) -> List[int]:
+    def regs(self) -> list[int]:
         """Return the values of the GPRs.
 
            This is a requirement of GDB.
@@ -302,7 +302,7 @@ class QEMUGDBReplay:
         self._select_thread_id: Optional[int] = None
         self._conn: Optional[socket] = None
         self._no_ack = False
-        self._vcpus: Dict[int, QEMUVCPU] = {}
+        self._vcpus: dict[int, QEMUVCPU] = {}
         self._memctrl = QEMUMemoryController()
 
     @property
@@ -313,7 +313,7 @@ class QEMUGDBReplay:
         """
         return self._xlen or 4
 
-    def load(self, qfp: TextIO, cpus: Optional[List[int]] = None) -> None:
+    def load(self, qfp: TextIO, cpus: Optional[list[int]] = None) -> None:
         """Load a recorded execution stream from a QEMU log file.
            see QEMU `-d exec` option.
 

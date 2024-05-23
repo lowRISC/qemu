@@ -15,7 +15,7 @@ from socket import create_server, socket, SHUT_RDWR
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from time import sleep
-from typing import Optional, TextIO, Tuple
+from typing import Optional, TextIO
 
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt
@@ -65,7 +65,7 @@ class GpioChecker:
         def __iter__(self):
             return self
 
-        def __next__(self) -> Tuple[str, int]:
+        def __next__(self) -> tuple[str, int]:
             self._pos, value = next(self._iter)
             return value
 

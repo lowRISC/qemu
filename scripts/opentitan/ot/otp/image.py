@@ -11,7 +11,7 @@ from io import BytesIO
 from logging import getLogger
 from re import match as re_match, sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
-from typing import Any, BinaryIO, Dict, List, Optional, Set, TextIO
+from typing import Any, BinaryIO, Optional, TextIO
 
 from .map import OtpMap
 from .partition import OtpPartition, OtpLifecycleExtension
@@ -48,7 +48,7 @@ class OtpImage:
 
     def __init__(self, ecc_bits: Optional[int] = None):
         self._log = getLogger('otptool.img')
-        self._header: Dict[str, Any] = {}
+        self._header: dict[str, Any] = {}
         self._magic = b''
         self._data = b''
         self._ecc = b''
@@ -59,7 +59,7 @@ class OtpImage:
         self._ecc_granule = 0
         self._digest_iv: Optional[int] = None
         self._digest_constant: Optional[int] = None
-        self._partitions: List[OtpPartition] = []
+        self._partitions: list[OtpPartition] = []
 
     @property
     def version(self) -> int:
@@ -77,7 +77,7 @@ class OtpImage:
         return self._magic == b'vOTP'
 
     @classproperty
-    def vmem_kinds(cls) -> List[str]:
+    def vmem_kinds(cls) -> list[str]:
         """Reports the supported content kinds of VMEM files."""
         # pylint: disable=no-self-argument
         return ['auto'] + list(cls.KINDS.values())
@@ -111,10 +111,10 @@ class OtpImage:
     def load_vmem(self, vfp: TextIO, vmem_kind: Optional[str] = None,
                   swap: bool = True):
         """Parse a VMEM '24' text stream."""
-        data_buf: List[bytes] = []
-        ecc_buf: List[bytes] = []
+        data_buf: list[bytes] = []
+        ecc_buf: list[bytes] = []
         last_addr = 0
-        granule_sizes: Set[int] = set()
+        granule_sizes: set[int] = set()
         vkind: Optional[str] = None
         row_count = 0
         byte_count = 0
@@ -226,7 +226,7 @@ class OtpImage:
         """Verify the partition digests, if any."""
         if any(c is None for c in (self._digest_iv, self._digest_constant)):
             raise RuntimeError('Missing Present constants')
-        results: Dict[str, Optional[bool]] = {}
+        results: dict[str, Optional[bool]] = {}
         for part in self._partitions:
             if not part.hw_digest:
                 continue
@@ -258,7 +258,7 @@ class OtpImage:
         for part in self._partitions:
             part.decode(decode, wide, ofp)
 
-    def _load_header(self, bfp: BinaryIO) -> Dict[str, Any]:
+    def _load_header(self, bfp: BinaryIO) -> dict[str, Any]:
         hfmt = self.HEADER_FORMAT
         fhfmt = ''.join(hfmt.values())
         # hlength is the length of header minus the two first items (T, L)

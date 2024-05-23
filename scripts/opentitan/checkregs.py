@@ -14,7 +14,7 @@ from os.path import (basename, dirname, join as joinpath, normpath, relpath,
 from re import compile as re_compile, sub as re_sub
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
-from typing import Dict, NamedTuple, Optional, Set, TextIO, Tuple
+from typing import NamedTuple, Optional, TextIO
 
 
 class ValueLocation(NamedTuple):
@@ -24,7 +24,7 @@ class ValueLocation(NamedTuple):
     end: int  # end column
 
 
-RegisterDefs = Dict[str, Tuple[int, ValueLocation]]
+RegisterDefs = dict[str, tuple[int, ValueLocation]]
 """Definition of a register value (name, value, location)."""
 
 # pylint: disable=missing-function-docstring
@@ -119,13 +119,13 @@ class OtRegisters:
 
     def compare(self, name: str, hdefs: RegisterDefs,
                 qdefs: RegisterDefs, show_all: bool) \
-            -> Tuple[int, Dict[ValueLocation, int], Set[int]]:
+            -> tuple[int, dict[ValueLocation, int], set[int]]:
         name = basename(name)
         chdefs = {k: v[0] for k, v in hdefs.items()}
         cqdefs = {k: v[0] for k, v in qdefs.items()}
-        deprecated: Set[int] = set()
-        appendable: Dict[str, int] = {}
-        fixes: Dict[ValueLocation, int] = {}
+        deprecated: set[int] = set()
+        appendable: dict[str, int] = {}
+        fixes: dict[ValueLocation, int] = {}
         if chdefs == cqdefs:
             self._log.info('%s: ok, %d register definitions', name, len(hdefs))
             return 0, fixes, deprecated, appendable
@@ -166,8 +166,8 @@ class OtRegisters:
         self._log.error('%s: %d discrepancies', name, mismatch_count)
         return mismatch_count, fixes, deprecated, appendable
 
-    def fix(self, filename: str, suffix: str, fixes: Dict[ValueLocation, int],
-            deprecated: Set[int], newvalues: Dict[str, int]) \
+    def fix(self, filename: str, suffix: str, fixes: dict[ValueLocation, int],
+            deprecated: set[int], newvalues: dict[str, int]) \
             -> None:
         fix_lines = {loc.line: (loc.start, loc.end, val)
                      for loc, val in fixes.items()}

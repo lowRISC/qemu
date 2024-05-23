@@ -14,7 +14,7 @@ from os.path import basename, splitext
 from re import compile as re_compile, sub as re_sub
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
-from typing import Dict, TextIO, Tuple
+from typing import TextIO
 
 from ot.util.log import configure_loggers
 
@@ -23,7 +23,7 @@ from ot.util.log import configure_loggers
 REG_CRE = re_compile(r'^#define ([A-Z][\w]+)_REG_(OFFSET|RESVAL)\s+'
                      r'((?:0x)?[A-Fa-f0-9]+)(?:\s|$)')
 
-RegisterDefs = Dict[str, Tuple[int, int]]
+RegisterDefs = dict[str, tuple[int, int]]
 
 
 def parse_defs(hfp: TextIO) -> RegisterDefs:

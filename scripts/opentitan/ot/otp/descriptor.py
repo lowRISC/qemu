@@ -7,7 +7,7 @@
 """
 
 from logging import getLogger
-from typing import TYPE_CHECKING, List, TextIO, Tuple
+from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
     from .map import OtpMap
@@ -88,7 +88,7 @@ class OTPPartitionDesc:
         return str(value).lower()
 
     @classmethod
-    def _convert_to_buffer(cls, value) -> Tuple[str, bool]:
+    def _convert_to_buffer(cls, value) -> tuple[str, bool]:
         return {
             'unbuffered': ('buffered', False),
             'buffered': ('buffered', True),
@@ -100,7 +100,7 @@ class OTPPartitionDesc:
         return value == 'digest'
 
     @classmethod
-    def _convert_to_rlock(cls, value) -> List[Tuple[str, bool]]:
+    def _convert_to_rlock(cls, value) -> list[tuple[str, bool]]:
         value = value.lower()
         if value == 'csr':
             return [('read_lock_csr', True), ('read_lock', True)]

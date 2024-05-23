@@ -15,7 +15,7 @@ from socketserver import StreamRequestHandler, ThreadingTCPServer
 from sys import exit as sysexit, modules, stderr, stdout
 from threading import Event, Lock, Thread
 from traceback import format_exc
-from typing import Deque, List, Optional, Set, TextIO, Tuple
+from typing import Optional, TextIO
 
 from ot.util.log import configure_loggers
 
@@ -87,7 +87,7 @@ class UartMuxer(ThreadingTCPServer):
     COLOR_SUFFIX = ';1m'
     RESET = '\x1b[0m'
 
-    def __init__(self, addr: Tuple[str, int], out: TextIO, debug: bool = False,
+    def __init__(self, addr: tuple[str, int], out: TextIO, debug: bool = False,
                  separator: Optional[str] = None):
         super().__init__(addr, UartHandler)
         self._out = out
@@ -95,13 +95,13 @@ class UartMuxer(ThreadingTCPServer):
         self._log = getLogger('mux.muxer')
         self._runner = Thread(target=self._pop, daemon=True)
         self._resume = False
-        self._que: Deque[Tuple[int, bytes]] = deque()
+        self._que: deque[tuple[int, bytes]] = deque()
         self._evt = Event()
         self._lock = Lock()
-        self._handlers: List[UartHandler] = []
-        self._discarded: Set[UartHandler] = set()
+        self._handlers: list[UartHandler] = []
+        self._discarded: set[UartHandler] = set()
         self._channel_count = 1
-        self._channels: List[str] = []
+        self._channels: list[str] = []
         self._use_color = out.isatty()
         if separator:
             sep = separator if ' ' in separator else (separator * 80)[:80]
@@ -129,7 +129,7 @@ class UartMuxer(ThreadingTCPServer):
         else:
             self._resume = value
 
-    def run(self, channel_count: int, channels: List[str]) -> None:
+    def run(self, channel_count: int, channels: list[str]) -> None:
         """Start listening on QEMU streams."""
         self._channel_count = min(channel_count, 8)
         self._channels = channels

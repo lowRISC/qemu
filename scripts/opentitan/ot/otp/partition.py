@@ -12,7 +12,7 @@ from logging import getLogger
 from os.path import basename
 from re import match as re_match
 from textwrap import fill
-from typing import BinaryIO, Dict, List, Optional, TextIO
+from typing import BinaryIO, Optional, TextIO
 
 try:
     # try to load Present if available
@@ -185,7 +185,7 @@ class OtpLifecycleExtension(OtpPartitionDecoder):
 
     def __init__(self):
         self._log = getLogger('otptool.lc')
-        self._tables: Dict[str, Dict[str, str]] = {}
+        self._tables: dict[str, dict[str, str]] = {}
 
     def decode(self, category: str, seq: str) -> Optional[str | int]:
         return self._tables.get(category, {}).get(seq, None)
@@ -198,8 +198,8 @@ class OtpLifecycleExtension(OtpPartitionDecoder):
         ab_re = (r"\s*parameter\s+logic\s+\[\d+:\d+\]\s+"
                  r"([ABCD]\d+|ZRO)\s+=\s+\d+'(b(?:[01]+)|h(?:[0-9a-fA-F]+));")
         tbl_re = r"\s*Lc(St|Cnt)(\w+)\s+=\s+\{([^\}]+)\}\s*,?"
-        codes: Dict[str, int] = {}
-        sequences: Dict[str, List[str]] = {}
+        codes: dict[str, int] = {}
+        sequences: dict[str, list[str]] = {}
         for line in svp:
             cmt = line.find('//')
             if cmt >= 0:

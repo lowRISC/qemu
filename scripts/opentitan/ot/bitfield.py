@@ -6,7 +6,7 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from .util.misc import HexInt
 
@@ -34,7 +34,7 @@ class BitField:
                 raise ValueError(f'Invalid selector name: {enum_.__name__}')
             self._selector = enum_
 
-    def decode(self, value: int) -> Dict[str, Any]:
+    def decode(self, value: int) -> dict[str, Any]:
         """Decode a value into a dictionary."""
         bits = dict(self._bits)
         if self._selector:
@@ -62,7 +62,7 @@ class BitField:
                     values[name] = HexInt(val)
         return values
 
-    def encode(self, *init, **values: Dict[str, Any]) -> HexInt:
+    def encode(self, *init, **values: dict[str, Any]) -> HexInt:
         """Encode a dictionary into a value."""
         if init:
             value = init[0]

@@ -8,7 +8,6 @@
 
 from os import isatty
 from sys import stderr
-from typing import List, Tuple
 
 import logging
 
@@ -77,8 +76,8 @@ class ColorLogFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def configure_loggers(level: int, *lognames: List[str], **kwargs) \
-        -> List[logging.Logger]:
+def configure_loggers(level: int, *lognames: list[str], **kwargs) \
+        -> list[logging.Logger]:
     """Configure loggers.
 
        :param level: level (stepping: 1)
@@ -98,8 +97,8 @@ def configure_loggers(level: int, *lognames: List[str], **kwargs) \
     formatter = ColorLogFormatter(**kwargs)
     logh = logging.StreamHandler(stderr)
     logh.setFormatter(formatter)
-    loggers: List[logging.Logger] = []
-    logdefs: List[Tuple[List[str], logging.Logger]] = []
+    loggers: list[logging.Logger] = []
+    logdefs: list[tuple[list[str], logging.Logger]] = []
     for logdef in lognames:
         if isinstance(logdef, int):
             loglevel += -10 * logdef

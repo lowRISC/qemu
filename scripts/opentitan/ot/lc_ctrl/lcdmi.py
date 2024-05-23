@@ -9,7 +9,7 @@
 from binascii import Error as BinasciiError, hexlify, unhexlify
 from logging import getLogger
 from struct import pack as spack, unpack as sunpack
-from typing import Dict, NamedTuple, Tuple
+from typing import NamedTuple
 
 from . import LifeCycleError
 from ..dtm import DebugTransportModule
@@ -100,7 +100,7 @@ class LifeCycleController:
         self._write_reg('alert_test', 1 << alix)
 
     @property
-    def status(self) -> Dict[str, bool]:
+    def status(self) -> dict[str, bool]:
         """Retrieve the current status."""
         value = self._read_reg('status')
         status = {self.STATUS[b]: bool(value & (1 << b))
@@ -205,7 +205,7 @@ class LifeCycleController:
             self._write_reg('transition_token', tok, tix)
 
     @property
-    def transition_target(self) -> Tuple[str, int]:
+    def transition_target(self) -> tuple[str, int]:
         """Read back the transition target."""
         target = self._read_reg('transition_target')
         starget = self._decode_state(target)

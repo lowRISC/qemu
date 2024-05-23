@@ -19,7 +19,7 @@ from re import sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import exit as sysexit, modules, stderr, version_info
 from traceback import format_exc
-from typing import Any, BinaryIO, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, BinaryIO, NamedTuple, Optional
 
 from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
@@ -211,8 +211,8 @@ class FlashGen:
     def info_part_size(cls) -> int:
         return sum(cls.INFOS) * cls.BYTES_PER_PAGE
 
-    def read_boot_info(self) -> Dict[BootLocation,
-                                     Dict[str, [int | bytes]]]:
+    def read_boot_info(self) -> dict[BootLocation,
+                                     dict[str, [int | bytes]]]:
         size = self._boot_header_size
         fmt = ''.join(self.BOOT_HEADER_FORMAT.values())
         boot_entries = {}
@@ -361,7 +361,7 @@ class FlashGen:
                 self._log.warning(msg)
         self._store_debug_info(ename, elfpath)
 
-    def store_ot_files(self, otdescs: List[str]) -> None:
+    def store_ot_files(self, otdescs: list[str]) -> None:
         for dpos, otdesc in enumerate(otdescs, start=1):
             parts = otdesc.rsplit(':', 1)
             if len(parts) > 1:
@@ -447,8 +447,8 @@ class FlashGen:
                 loc.page * self.BYTES_PER_PAGE +
                 loc.seq * self._boot_header_size)
 
-    def _build_field(self, fmtdict: Dict[str, Any], field: str, value: Any) \
-            -> Tuple[int, bytes]:
+    def _build_field(self, fmtdict: dict[str, Any], field: str, value: Any) \
+            -> tuple[int, bytes]:
         offset = 0
         for name, fmt in fmtdict.items():
             if name == field:

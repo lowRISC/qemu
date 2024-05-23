@@ -14,8 +14,7 @@ from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import modules
 from threading import Event, Thread, get_ident
 from time import sleep, time as now
-from typing import (Any, Callable, Dict, Iterator, List, NamedTuple, Optional,
-                    Tuple, Union)
+from typing import Any, Callable, Iterator, NamedTuple, Optional, Union
 
 from .mailbox.doe import DOEHeader
 
@@ -135,7 +134,7 @@ class DeviceProxy:
         self._regcount = count
         self._offset = offset * 4
         self._end = offset + count * 4
-        self._interrupts: Optional[Dict[str, Tuple[int, int, int]]] = None
+        self._interrupts: Optional[dict[str, tuple[int, int, int]]] = None
         self._new()
 
     @property
@@ -277,7 +276,7 @@ class DeviceProxy:
         else:
             self.release_interrupts(mask)
 
-    def enumerate_interrupts(self, out: bool) -> Iterator[Tuple[str, int]]:
+    def enumerate_interrupts(self, out: bool) -> Iterator[tuple[str, int]]:
         """Enumerate supported interrupt lines.
 
            :param out: True to enumerate output IRQ lines, False for input ones
@@ -629,7 +628,7 @@ class MbxHostProxy(DeviceProxy):
         self._log.debug('%s: 0x%08x', reg, res)
         return res
 
-    def get_interrupt_info(self) -> Tuple[int, int]:
+    def get_interrupt_info(self) -> tuple[int, int]:
         """Return the system-side interrupt information.
 
            :return: address and data values
@@ -817,7 +816,7 @@ class MbxSysProxy(DeviceProxy):
             raise ProxyCommandError(0x402, f'Cannot write full buffer {count}/'
                                     f'{len(buffer)}')
 
-    def read_mbox(self, dwcount: int) -> Tuple[DOEHeader, bytes]:
+    def read_mbox(self, dwcount: int) -> tuple[DOEHeader, bytes]:
         """Read a DOE object from the remote mailbox.
 
            Each read word is automatically acknowledged on the remote mailbox,
@@ -832,7 +831,7 @@ class MbxSysProxy(DeviceProxy):
         self._log.debug('len %d', len(buf)-DOEHeader.SIZE)
         return pcie, buf[DOEHeader.SIZE:]
 
-    def get_interrupt_info(self) -> Tuple[int, int]:
+    def get_interrupt_info(self) -> tuple[int, int]:
         """Return the system-side interrupt information.
 
            :return: address and data values
@@ -1139,12 +1138,12 @@ class ProxyEngine:
         self._resp_event = Event()
         self._rx_uid = 0
         self._tx_uid = 0
-        self._devices: Dict[str, int] = {}
-        self._mroots: Dict[int, MemoryRoot] = {}
+        self._devices: dict[str, int] = {}
+        self._mroots: dict[int, MemoryRoot] = {}
         self._request_handler: Optional[RequestHandler] = None
-        self._request_args: List[Any] = []
+        self._request_args: list[Any] = []
         self._notifier_handler: Optional[RequestHandler] = None
-        self._notifier_args: List[Any] = []
+        self._notifier_args: list[Any] = []
         self._proxies = self._discover_proxies()
 
     def connect(self, host: str, port: int) -> None:
@@ -1559,7 +1558,7 @@ class ProxyEngine:
             raise ValueError('Unsuppported version: {vmaj}.{vmin}')
 
     @classmethod
-    def _discover_proxies(cls) -> Dict[str, DeviceProxy]:
+    def _discover_proxies(cls) -> dict[str, DeviceProxy]:
         """Create a map of device proxies.
         """
         proxymap = {}

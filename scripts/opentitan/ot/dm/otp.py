@@ -10,7 +10,7 @@ from binascii import unhexlify
 from enum import IntEnum
 from logging import getLogger
 from time import sleep, time as now
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 from .dm import DebugModule
 from ..bitfield import BitField
@@ -127,10 +127,10 @@ class OTPController:
         self._base = base
         self._max_addr = self.BITFIELDS['ADDRESS'].encode(address=-1)
         self._map: Optional[OtpMap] = None
-        self._partitions: Dict[str, OtpPartition] = {}
-        self._item_offsets: Dict[str,  # partition name
-                                 Dict[str,  # item name
-                                      Tuple[int,  # offset
+        self._partitions: dict[str, OtpPartition] = {}
+        self._item_offsets: dict[str,  # partition name
+                                 dict[str,  # item name
+                                      tuple[int,  # offset
                                             int]]] = {}  # size
 
     def set_map(self, otpmap: 'OtpMap'):
@@ -153,8 +153,8 @@ class OTPController:
         self._log.info('%s HW digest %016x', partname, digest)
         return digest
 
-    def get_hw_partition_digests(self) -> Dict[str, int]:
-        digests: Dict[str, int] = {}
+    def get_hw_partition_digests(self) -> dict[str, int]:
+        digests: dict[str, int] = {}
         for name, part in self._partitions.items():
             if not part.hw_digest:
                 continue

@@ -8,7 +8,7 @@
 
 from io import BytesIO
 from logging import getLogger
-from typing import BinaryIO, Iterator, Optional, Tuple
+from typing import BinaryIO, Iterator, Optional
 
 try:
     # note: pyelftools package is an OpenTitan toolchain requirement, see
@@ -107,7 +107,7 @@ class ElfBlob:
         return self._payload
 
     @property
-    def code_span(self) -> Tuple[int, int]:
+    def code_span(self) -> tuple[int, int]:
         """Report the extent of the executable portion of the ELF file.
 
            :return: (start address, end address)
@@ -154,7 +154,7 @@ class ElfBlob:
                 continue
             yield segment
 
-    def _parse_segments(self) -> Tuple[int, int]:
+    def _parse_segments(self) -> tuple[int, int]:
         """Parse ELF segments and extract physical location and size.
 
            :return: the location of the first byte and the overall payload size

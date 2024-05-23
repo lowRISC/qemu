@@ -10,7 +10,7 @@ from enum import IntEnum
 from io import SEEK_END
 from logging import getLogger
 from time import sleep, time as now
-from typing import Any, BinaryIO, Dict, Optional
+from typing import Any, BinaryIO, dict, Optional
 
 from .regs import CSRS, GPRS
 from ..bitfield import BitField
@@ -174,14 +174,14 @@ class DebugModule:
         self._dmi = dtm['dmi']
         self._address = address
         self._hart: int = 0  # currently selected hart
-        self._cache: Dict[str, int] = {}
+        self._cache: dict[str, int] = {}
 
     def restart_system(self) -> None:
         """Restart the remote machine."""
         self._dtm.engine.controller.system_reset()
 
     @classmethod
-    def decode(cls, name: str, value: int) -> Dict[str, Any]:
+    def decode(cls, name: str, value: int) -> dict[str, Any]:
         """Decode a bitfield register."""
         bitfield = cls.BITFIELDS.get(f'{name.upper()}')
         if not bitfield:
@@ -210,21 +210,21 @@ class DebugModule:
             self._log.warning('Detected incompatible DM version %r', version)
 
     @property
-    def status(self) -> Dict[str, int]:
+    def status(self) -> dict[str, int]:
         """Report debug module status."""
         btf = self.BITFIELDS['DMSTATUS']
         # TODO would need to check if another hart needs to be selected first
         return btf.decode(self.dmstatus)
 
     @property
-    def hart_info(self) -> Dict[str, int]:
+    def hart_info(self) -> dict[str, int]:
         """Report current hart information."""
         btf = self.BITFIELDS['HARTINFO']
         # TODO would need to check if another hart needs to be selected first
         return btf.decode(self.hartinfo)
 
     @property
-    def system_bus_info(self) -> Dict[str, int]:
+    def system_bus_info(self) -> dict[str, int]:
         """Report system bus capabilities."""
         btf = self.BITFIELDS['SBCS']
         return btf.decode(self.sbcs)

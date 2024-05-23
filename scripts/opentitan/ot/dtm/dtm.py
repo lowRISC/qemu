@@ -9,7 +9,7 @@
 
 from logging import getLogger
 from sys import modules
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 # pylint: disable=import-error
 from jtag.bits import BitSequence  # noqa: E402
@@ -115,7 +115,7 @@ class DTMCS(DTMRegister):
         return version
 
     @property
-    def dmi_version(self) -> Tuple[int, int]:
+    def dmi_version(self) -> tuple[int, int]:
         """Version of the supported DMI specification."""
         try:
             tversion = {0: (0, 11), 1: (0, 13)}[self.version]
@@ -304,7 +304,7 @@ class DebugTransportModule:
             raise DMIError('Missing DTMCS register') from exc
         return dtmcs.abits
 
-    def _load_registers(self) -> Dict[str, DTMRegister]:
+    def _load_registers(self) -> dict[str, DTMRegister]:
         module = modules[__name__]
         regs = {}
         for name in dir(module):

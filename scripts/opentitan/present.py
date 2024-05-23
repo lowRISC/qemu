@@ -42,7 +42,7 @@ Encrypting with a 128-bit key:
 '0x123456789abcdef'
 """
 
-from typing import List
+from typing import list
 
 
 def _tinvert(tpl):
@@ -107,7 +107,7 @@ class Present:
         return decipher
 
     @classmethod
-    def _generate_roundkeys(cls, key: int, rounds: int) -> List[int]:
+    def _generate_roundkeys(cls, key: int, rounds: int) -> list[int]:
         """Generate the roundkeys for a 128-bit key
 
            :param key: the key as a 128-bit integer

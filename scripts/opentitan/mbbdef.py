@@ -15,7 +15,7 @@ from os.path import basename, dirname, join as joinpath, splitext
 from pprint import pprint
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
-from typing import Dict, Iterator, List, TextIO
+from typing import Iterator, TextIO
 
 from ot.util.log import configure_loggers
 
@@ -27,7 +27,7 @@ except ImportError as imp_exc:
 
 
 @staticmethod
-def flatten(lst: List) -> List:
+def flatten(lst: list) -> list:
     """Flatten nested list.
     """
     return [item for sublist in lst for item in sublist]
@@ -77,18 +77,18 @@ class MbbChecker:
                 pprint(regs)
                 raise
 
-    def _enumerate_registers(self, values: [List, Dict]) -> Iterator[Dict]:
+    def _enumerate_registers(self, values: [list, dict]) -> Iterator[dict]:
         if isinstance(values, list):
             for sub in values:
                 yield from self._enumerate_registers(sub)
-        if isinstance(values, Dict):
+        if isinstance(values, dict):
             if 'fields' in values:
                 yield values
             else:
                 for regs in values.values():
                     yield from self._enumerate_registers(regs)
 
-    def _parse_register(self, ipname: str,  reg: Dict) -> None:
+    def _parse_register(self, ipname: str,  reg: dict) -> None:
         regname = reg.get('name')
         self._log.debug('Parsing %s.%s', ipname, regname)
         reg_swaccess = reg.get('swaccess')

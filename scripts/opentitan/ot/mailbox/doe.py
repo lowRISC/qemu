@@ -8,7 +8,6 @@
 
 from logging import getLogger
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
-from typing import Tuple
 
 from .sysmbox import SysMbox, SysMboxError
 
@@ -134,7 +133,7 @@ class DOEMailbox:
         if self._mbox.on_error:
             raise SysMboxError('JTAG mailbox on error')
 
-    def read(self) -> Tuple[int, bytes]:
+    def read(self) -> tuple[int, bytes]:
         """Receive a DOE message."""
         resp = self._mbox.read()
         if not resp:
