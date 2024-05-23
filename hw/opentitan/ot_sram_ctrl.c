@@ -637,8 +637,6 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
 {
     OtSramCtrlState *s = OT_SRAM_CTRL(dev);
 
-    g_assert(s->ot_id);
-
     memset(s->regs, 0, REGS_SIZE);
 
     /* note: SRAM storage is -not- reset */
@@ -670,8 +668,15 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->size);
 
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
+
     s->wsize = DIV_ROUND_UP(s->size, sizeof(uint32_t));
     unsigned size = s->wsize * sizeof(uint32_t);
+
+    char *mr_name;
 
     if (s->noinit) {
         /*
@@ -679,10 +684,11 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
          * region as the memory backend. Init-related arrays are left
          * uninitialized and should not be used.
          */
-        memory_region_init_ram_nomigrate(&s->mem->sram, OBJECT(dev),
-                                         TYPE_OT_SRAM_CTRL ".mem", size, errp);
+        mr_name = g_strdup_printf(TYPE_OT_SRAM_CTRL ".%s.mem", s->ot_id);
+        memory_region_init_ram_nomigrate(&s->mem->sram, OBJECT(dev), mr_name,
+                                         size, errp);
         sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mem->sram);
-
+        g_free(mr_name);
         return;
     }
 
@@ -715,11 +721,14 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
         s->init_slot_bm[s->init_slot_count - 1u] = (1ull << slot_offset) - 1u;
     }
 
+    mr_name = g_strdup_printf(TYPE_OT_SRAM_CTRL ".%s.mem.init", s->ot_id);
     memory_region_init_io(&s->mem->init, OBJECT(dev),
-                          &ot_sram_ctrl_mem_init_ops, s,
-                          TYPE_OT_SRAM_CTRL ".mem.init", size);
-    memory_region_init_ram_nomigrate(&s->mem->sram, OBJECT(dev),
-                                     TYPE_OT_SRAM_CTRL ".mem.sram", size, errp);
+                          &ot_sram_ctrl_mem_init_ops, s, mr_name, size);
+    g_free(mr_name);
+    mr_name = g_strdup_printf(TYPE_OT_SRAM_CTRL ".%s.mem.sram", s->ot_id);
+    memory_region_init_ram_nomigrate(&s->mem->sram, OBJECT(dev), mr_name, size,
+                                     errp);
+    g_free(mr_name);
 
     /*
      * use an alias than points to the currently selected RAM backend, either
@@ -731,8 +740,11 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
      * backend is swapped. The alias enables to expose the same MemoryRegion
      * object while changing its actual backend on initialization demand.
      */
-    memory_region_init_alias(&s->mem->alias, OBJECT(dev),
-                             TYPE_OT_SRAM_CTRL ".mem", &s->mem->init, 0, size);
+    mr_name = g_strdup_printf(TYPE_OT_SRAM_CTRL ".%s.mem", s->ot_id);
+    memory_region_init_alias(&s->mem->alias, OBJECT(dev), mr_name,
+                             &s->mem->init, 0, size);
+    g_free(mr_name);
+
     /*
      * at start up, the SRAM memory is aliased to the I/O backend, so that
      * access can be controlled
