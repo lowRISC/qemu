@@ -123,6 +123,9 @@ class QEMUWrapper:
        such as SIGABRT.
     """
 
+    ANSI_CRE = re_compile(rb'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
+    """ANSI escape sequences."""
+
     GUEST_ERROR_OFFSET = 40
     """Offset for guest errors. Should be larger than the host max signal value.
     """
@@ -261,6 +264,7 @@ class QEMUWrapper:
                 lines = vcp_buf.split(b'\n')
                 vcp_buf = bytearray(lines[-1])
                 for line in lines[:-1]:
+                    line = self.ANSI_CRE.sub(b'', line)
                     xmo = xre.search(line)
                     if xmo:
                         xend = now()
