@@ -957,6 +957,14 @@ class QEMUExecuter:
             raise ValueError('Invalid suffixes sub-section')
         self._suffixes.extend(suffixes)
 
+    def enumerate_tests(self) -> Iterator[str]:
+        """Enumerate tests to execute.
+        """
+        self._argdict = dict(self._args.__dict__)
+        for tst in sorted(self._build_test_list()):
+            ttype = self.guess_test_type(tst)
+            yield f'{basename(tst)} ({ttype})'
+
     def run(self, debug: bool, allow_no_test: bool) -> int:
         """Execute all requested tests.
 
@@ -1101,6 +1109,20 @@ class QEMUExecuter:
         if isabs(path):
             return normpath(path)
         return normpath(joinpath(getcwd(), path))
+
+    @staticmethod
+    def guess_test_type(filepath: str) -> str:
+        """Guess a test file type from its contents.
+
+           :return: identified content
+        """
+        with open(filepath, 'rb') as bfp:
+            header = bfp.read(4)
+        if header == b'\x7fELF':
+            return 'elf'
+        if header == b'OTPT':
+            return 'spiflash'
+        return 'bin'
 
     def _cleanup_temp_files(self, storage: dict[str, set[str]]) -> None:
         if self._qfm.keep_temporary:
@@ -1494,6 +1516,8 @@ def main():
         exe.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
                          help=f'exit after the specified seconds '
                               f'(default: {DEFAULT_TIMEOUT} secs)')
+        exe.add_argument('-z', '--list', action='store_true',
+                         help='show a list of tests to execute and exit')
         exe.add_argument('-R', '--summary', action='store_true',
                          help='show a result summary')
         exe.add_argument('-T', '--timeout-factor', type=float, metavar='FACTOR',
@@ -1589,6 +1613,10 @@ def main():
         qfm.set_qemu_src_dir(qemu_dir)
         qfm.set_qemu_bin_dir(dirname(args.qemu))
         qexc = QEMUExecuter(qfm, json, args)
+        if args.list:
+            for tst in qexc.enumerate_tests():
+                print(tst)
+            sysexit(0)
         try:
             qexc.build()
         except ValueError as exc:

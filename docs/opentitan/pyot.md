@@ -8,7 +8,7 @@
 usage: pyot.py [-h] [-D DELAY] [-i N] [-L LOG_FILE] [-M LOG] [-m MACHINE] [-Q OPTS] [-q QEMU]
                [-p DEVICE] [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c JSON] [-e] [-f RAW]
                [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
-               [-k SECONDS] [-R] [-T FACTOR] [-Z] [-v] [-d]
+               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-d]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -57,6 +57,7 @@ Execution:
                         run tests with matching filter, prefix with "!" to exclude matching tests
   -k SECONDS, --timeout SECONDS
                         exit after the specified seconds (default: 60 secs)
+  -z, --list            show a list of tests to execute and exit
   -R, --summary         show a result summary
   -T FACTOR, --timeout-factor FACTOR
                         timeout factor
@@ -154,6 +155,7 @@ This tool may be used in two ways, which can be combined:
 * `-Z`, `--zero` do not report an error if no test can be executed with the specified filters and
    detected test applications. Default behavior is to report an error should such a condition arise,
    as it likely comes from a misconfiguration or build issue.
+* `-z` / `--list` list all tests to be executed and exit
 
 ### File options
 
