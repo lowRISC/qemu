@@ -1600,11 +1600,11 @@ def main():
                            help='increase verbosity')
         extra.add_argument('-d', action='store_true',
                            help='enable debug mode')
-        extra.add_argument('--debug', action='append',
+        extra.add_argument('--debug', action='append', metavar='LOGGER',
                            help='assign debug level to logger(s)')
-        extra.add_argument('--info', action='append',
+        extra.add_argument('--info', action='append', metavar='LOGGER',
                            help='assign info level to logger(s)')
-        extra.add_argument('--warn', action='append',
+        extra.add_argument('--warn', action='append', metavar='LOGGER',
                            help='assign warning level to logger(s)')
 
         try:
@@ -1624,8 +1624,7 @@ def main():
             args.result = tmp_result
 
         log = configure_loggers(args.verbose, 'pyot', debug=args.debug,
-                                info=args.info, warning=args.warn,
-                                error=args.error)[0]
+                                info=args.info, warning=args.warn)[0]
 
         qfm = QEMUFileManager(args.keep_tmp)
 

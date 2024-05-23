@@ -8,7 +8,8 @@
 usage: pyot.py [-h] [-D DELAY] [-i N] [-L LOG_FILE] [-M LOG] [-m MACHINE] [-Q OPTS] [-q QEMU]
                [-p DEVICE] [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c JSON] [-e] [-f RAW]
                [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
-               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-d]
+               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-d] [--debug DEBUG] [--info INFO]
+               [--warn WARN]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -65,7 +66,10 @@ Execution:
 
 Extras:
   -v, --verbose         increase verbosity
-  -d, --debug           enable debug mode
+  -d                    enable debug mode
+  --debug LOGGER        assign debug level to logger(s)
+  --info LOGGER         assign info level to logger(s)
+  --warn LOGGER         assign warning level to logger(s)
 ````
 
 This tool may be used in two ways, which can be combined:
@@ -157,11 +161,13 @@ This tool may be used in two ways, which can be combined:
    as it likely comes from a misconfiguration or build issue.
 * `-z` / `--list` list all tests to be executed and exit
 
-### File options
+### Extras
 
 * `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
-* `-d` / `--debug` only useful to debug the script, reports any Python traceback to the standard
-  error stream.
+* `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
+* `--debug` enable the debug level for the selected logger, may be repeated
+* `--info` enable the info level for the selected logger, may be repeated
+* `--warn` enable the warning level for the selected logger, may be repeated
 
 ## Configuration file
 
