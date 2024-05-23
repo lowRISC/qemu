@@ -9,7 +9,8 @@
 from argparse import ArgumentParser
 from logging import DEBUG, ERROR, getLogger, Formatter, StreamHandler
 from os import pardir, walk
-from os.path import basename, dirname, join as joinpath, relpath, splitext
+from os.path import (basename, dirname, join as joinpath, normpath, relpath,
+                     splitext)
 from re import compile as re_compile, sub as re_sub
 from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
@@ -205,7 +206,7 @@ class OtRegisters:
 def main():
     """Main routine"""
     debug = False
-    qemu_default_dir = dirname(dirname(dirname(__file__)))
+    qemu_default_dir = dirname(dirname(dirname(normpath(__file__))))
     try:
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')

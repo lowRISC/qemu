@@ -642,7 +642,7 @@ class QEMUGDBReplay:
 def main():
     """Main routine"""
     debug = True
-    qemu_path = normpath(joinpath(dirname(dirname(dirname(__file__))),
+    qemu_path = normpath(joinpath(dirname(dirname(dirname(normpath(__file__)))),
                                   'build', 'qemu-system-riscv32'))
     if not isfile(qemu_path):
         qemu_path = None

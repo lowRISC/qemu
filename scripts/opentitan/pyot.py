@@ -1511,7 +1511,7 @@ class QEMUExecuter:
 def main():
     """Main routine"""
     debug = True
-    qemu_dir = normpath(joinpath(dirname(dirname(dirname(__file__)))))
+    qemu_dir = normpath(joinpath(dirname(dirname(dirname(normpath(__file__))))))
     qemu_path = normpath(joinpath(qemu_dir, 'build', 'qemu-system-riscv32'))
     if not isfile(qemu_path):
         qemu_path = None
