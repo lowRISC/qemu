@@ -516,7 +516,7 @@ void ibex_identify_devices(DeviceState **devices, const char *id_prop,
 
         bool res;
         if (is_set && id_prepend) {
-            char *pvalue = g_strconcat(id_value, value, NULL);
+            char *pvalue = g_strconcat(id_value, ".", value, NULL);
             res = object_property_set_str(obj, id_prop, pvalue, NULL);
             g_free(pvalue);
         } else {
