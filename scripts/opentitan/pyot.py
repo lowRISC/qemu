@@ -24,12 +24,12 @@ from logging import CRITICAL, DEBUG, INFO, ERROR, WARNING, getLogger
 from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
 from os.path import (abspath, basename, dirname, exists, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
-from re import Match, compile as re_compile, sub as re_sub
+from re import Match, compile as re_compile, error as re_error, sub as re_sub
 from shutil import rmtree
 from socket import socket, timeout as LegacyTimeoutError
 from subprocess import Popen, PIPE, TimeoutExpired
 from sys import argv, exit as sysexit, modules, stderr
-from threading import Thread
+from threading import Event, Thread
 from tempfile import mkdtemp, mkstemp
 from time import time as now
 from traceback import format_exc
@@ -145,7 +145,8 @@ class QEMUWrapper:
         self._otlog = getLogger('pyot.ot')
 
     def run(self, qemu_args: list[str], timeout: int, name: str,
-            ctx: Optional['QEMUContext'], start_delay: float) -> \
+            ctx: Optional['QEMUContext'], start_delay: float,
+            trigger: str = None) -> \
             tuple[int, ExecTime, str]:
         """Execute the specified QEMU command, aborting execution if QEMU does
            not exit after the specified timeout.
@@ -156,6 +157,8 @@ class QEMUWrapper:
            :param name: the tested application name
            :param ctx: execution context, if any
            :param start_delay: start up delay
+           :param trigger: if not empty, the string to wait for triggering
+                           'with' context execution
            :return: a 3-uple of exit code, execution time, and last guest error
         """
         # stdout and stderr belongs to QEMU VM
@@ -164,6 +167,24 @@ class QEMUWrapper:
         xre = re_compile(self.EXIT_ON)
         otre = r'^([' + ''.join(self.LOG_LEVELS.keys()) + r'])\d{5}\s'
         lre = re_compile(otre)
+        if trigger:
+            sync_event = Event()
+            if trigger.startswith("r'") and trigger.endswith("'"):
+                try:
+                    tmo = re_compile(trigger[2:-1].encode())
+                except re_error as exc:
+                    raise ValueError('Invalid trigger regex: {exc}') from exc
+
+                def trig_match(bline):
+                    return tmo.match(bline)
+            else:
+                btrigger = trigger.encode()
+
+                def trig_match(bline):
+                    return bline.find(btrigger) >= 0
+        else:
+            sync_event = None
+            trig_match = None
         ret = None
         proc = None
         sock = None
@@ -215,9 +236,10 @@ class QEMUWrapper:
             Thread(target=self._qemu_logger, name='qemu_err_logger',
                    args=(proc, log_q, False)).start()
             xstart = now()
+            # sync_event.set()
             if ctx:
                 try:
-                    ctx.execute('with')
+                    ctx.execute('with', sync=sync_event)
                 except OSError as exc:
                     ret = exc.errno
                     last_error = exc.strerror
@@ -251,8 +273,8 @@ class QEMUWrapper:
                         xend = now()
                     ret = xret
                     if ret != 0:
-                        self._log.critical('Abnormal QEMU termination: %d '
-                                           'for "%s"', ret, name)
+                        log.critical('Abnormal QEMU termination: %d for "%s"',
+                                     ret, name)
                     break
                 try:
                     data = sock.recv(4096)
@@ -265,6 +287,13 @@ class QEMUWrapper:
                 vcp_buf = bytearray(lines[-1])
                 for line in lines[:-1]:
                     line = self.ANSI_CRE.sub(b'', line)
+                    if trig_match and trig_match(line):
+                        self._log.info('Trigger pattern detected')
+                        # reset timeout from this event
+                        abstimeout = float(timeout) + now()
+                        log.debug('Resuming for %.0f secs', timeout)
+                        sync_event.set()
+                        trig_match = None
                     xmo = xre.search(line)
                     if xmo:
                         xend = now()
@@ -688,10 +717,12 @@ class QEMUContextWorker:
     """Background task for QEMU context.
     """
 
-    def __init__(self, cmd: str, env: dict[str, str]):
+    def __init__(self, cmd: str, env: dict[str, str],
+                 sync: Optional[Event] = None):
         self._log = getLogger('pyot.cmd')
         self._cmd = cmd
         self._env = env
+        self._sync = sync
         self._log_q = deque()
         self._resume = False
         self._thread: Optional[Thread] = None
@@ -727,6 +758,13 @@ class QEMUContextWorker:
 
     def _run(self):
         self._resume = True
+        if self._sync and not self._sync.is_set():
+            self._log.info('Waiting for sync')
+            while self._resume:
+                if self._sync.wait(0.1):
+                    self._log.info('Sync triggered')
+                    break
+            self._sync.clear()
         # pylint: disable=consider-using-with
         proc = Popen(self._cmd,  bufsize=1, stdout=PIPE, stderr=PIPE,
                      shell=True, env=self._env, encoding='utf-8',
@@ -802,7 +840,8 @@ class QEMUContext:
         self._env = env or {}
         self._workers: list[Popen] = []
 
-    def execute(self, ctx_name: str, code: int = 0) -> None:
+    def execute(self, ctx_name: str, code: int = 0,
+                sync: Optional[Event] = None) -> None:
         """Execute all commands, in order, for the selected context.
 
            Synchronous commands are executed in order. If one command fails,
@@ -811,7 +850,10 @@ class QEMUContext:
            Background commands are started in order, but a failure does not
            stop other commands.
 
+           :param ctx_name: the name of the execution context
            :param code: a previous error completion code, if any
+           :param sync: an optional synchronisation event to start up the
+                        execution
         """
         ctx = self._context.get(ctx_name, None)
         if ctx_name == 'post' and code:
@@ -835,10 +877,12 @@ class QEMUContext:
                         rcmd = cmd
                     self._clog.debug('Execute "%s" in background for [%s] '
                                      'context', rcmd, ctx_name)
-                    worker = QEMUContextWorker(cmd, env)
+                    worker = QEMUContextWorker(cmd, env, sync)
                     worker.run()
                     self._workers.append(worker)
                 else:
+                    if sync:
+                        self._clog.debug('Synchronization ignored')
                     cmd = normpath(cmd.rstrip())
                     rcmd = relpath(cmd)
                     if rcmd.startswith(pardir):
@@ -846,7 +890,7 @@ class QEMUContext:
                     self._clog.debug('Execute "%s" in sync for [%s] context',
                                      rcmd, ctx_name)
                     # pylint: disable=consider-using-with
-                    proc = Popen(cmd,  bufsize=1, stdout=PIPE, stderr=PIPE,
+                    proc = Popen(cmd, bufsize=1, stdout=PIPE, stderr=PIPE,
                                  shell=True, env=env, encoding='utf-8',
                                  errors='ignore', text=True)
                     ret = 0
@@ -1019,11 +1063,11 @@ class QEMUExecuter:
                         'UTFILE': basename(test),
                     })
                     test_name = self.get_test_radix(test)
-                    qemu_cmd, targs, timeout, temp_files, ctx, sdelay, texp = \
+                    qemu_cmd, targs, timeout, temp_files, ctx, sdelay, texp, trig = \
                         self._build_qemu_test_command(test)
                     ctx.execute('pre')
                     tret, xtime, err = qot.run(qemu_cmd, timeout, test_name,
-                                               ctx, sdelay)
+                                               ctx, sdelay, trig)
                     cret = ctx.finalize()
                     ctx.execute('post', tret)
                     if texp != 0:
@@ -1138,7 +1182,8 @@ class QEMUExecuter:
 
     def _build_qemu_command(self, args: Namespace,
                             opts: Optional[list[str]] = None) \
-            -> tuple[list[str], tuple[str, int], dict[str, set[str]], float]:
+            -> tuple[list[str], tuple[str, int], dict[str, set[str]], float,
+                     str]:
         """Build QEMU command line from argparser values.
 
            :param args: the parsed arguments
@@ -1146,7 +1191,8 @@ class QEMUExecuter:
            :return: a tuple of a list of QEMU command line,
                     the TCP device descriptor to connect to the QEMU VCP,
                     a dictionary of generated temporary files and the start
-                    delay
+                    delay, the start delay and a trigger string which may be
+                    empty
         """
         if args.qemu is None:
             raise ValueError('QEMU path is not defined')
@@ -1257,6 +1303,7 @@ class QEMUExecuter:
             raise ValueError(f'Invalid start up delay {args.start_delay}') \
                 from exc
         start_delay *= args.timeout_factor
+        trigger = getattr(args, 'trigger', '')
         device = args.device
         devdesc = device.split(':')
         try:
@@ -1274,17 +1321,18 @@ class QEMUExecuter:
         qemu_args.extend(args.global_opts or [])
         if opts:
             qemu_args.extend((str(o) for o in opts))
-        return qemu_args, tcpdev, temp_files, start_delay
+        return qemu_args, tcpdev, temp_files, start_delay, trigger
 
     def _build_qemu_test_command(self, filename: str) -> \
             tuple[list[str], Namespace, int, dict[str, set[str]], QEMUContext,
-                  float, int]:
+                  float, int, str]:
         test_name = self.get_test_radix(filename)
         args, opts, timeout, texp = self._build_test_args(test_name)
         setattr(args, 'exec', filename)
-        qemu_cmd, _, temp_files, sdelay = self._build_qemu_command(args, opts)
+        qemu_cmd, _, temp_files, sdelay, trig = self._build_qemu_command(args,
+                                                                         opts)
         ctx = self._build_test_context(test_name)
-        return qemu_cmd, args, timeout, temp_files, ctx, sdelay, texp
+        return qemu_cmd, args, timeout, temp_files, ctx, sdelay, texp, trig
 
     def _build_test_list(self, alphasort: bool = True) -> list[str]:
         pathnames = set()
