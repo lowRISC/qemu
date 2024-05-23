@@ -47,7 +47,7 @@ Files:
   -O RAW, --otp-raw RAW
                         OTP image file
   -o VMEM, --otp VMEM   OTP VMEM file
-  -r ELF, --rom ELF     ROM file
+  -r ELF, --rom ELF     ROM file (can be repeated, in load order)
   -w CSV, --result CSV  path to output result file
   -x file, --exec file  application to load
   -X, --rom-exec        load application as ROM image (default: as kernel)
@@ -135,7 +135,7 @@ This tool may be used in two ways, which can be combined:
 * `-r` / `--rom` specify a ROM ELF file. Without a ROM file, it is unlikely to start up any regular
   application since the emulated lowRISC vCPU is preconfigured with a locked PMP, as the real HW.
   When no ROM is specified, test applications are executed immediately, as a replacement of the ROM
-  executable.
+  executable. This option may be repeated, to load several ROMs, in the same order as specified
 * `-w` / `--result` specify an output CSV report file where the result of all the QEMU sessions,
   one per test, are reported.
 * `-x` / ` --exec` specify a ROM extension, an application or a test to execute. This option is

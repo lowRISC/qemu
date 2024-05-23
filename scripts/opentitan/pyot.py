@@ -1152,33 +1152,49 @@ class QEMUExecuter:
             args.machine
         ]
         rom_exec = bool(args.rom_exec)
-        rom_count = int(rom_exec)
-        if args.rom:
-            rom_count += 1
-            rom_path = self.abspath(args.rom)
+        multi_rom = (len(args.rom) + int(rom_exec)) > 1
+        # generate pre-application ROM option
+        rom_count = 0
+        for rom in args.rom:
+            rom_path = self._qfm.interpolate(rom)
+            if not isfile(rom_path):
+                raise ValueError(f'Unable to find ROM file {rom_path}')
             rom_ids = []
             if args.first_soc:
                 rom_ids.append(args.first_soc)
             rom_ids.append('rom')
-            if rom_count > 1:
-                rom_ids.append('0')
+            if multi_rom:
+                rom_ids.append(f'{rom_count}')
             rom_id = ''.join(rom_ids)
             rom_opt = f'ot-rom-img,id={rom_id},file={rom_path},digest=fake'
             qemu_args.extend(('-object', rom_opt))
+            rom_count += 1
+        xtype = None
         if args.exec:
             exec_path = self.abspath(args.exec)
-            if rom_exec:
-                rom_ids = []
-                if args.first_soc:
-                    rom_ids.append(args.first_soc)
-                rom_ids.append('rom')
-                if rom_count > 1:
-                    rom_ids.append('1')
-                rom_id = ''.join(rom_ids)
-                rom_opt = f'ot-rom-img,id={rom_id},file={exec_path},digest=fake'
-                qemu_args.extend(('-object', rom_opt))
+            xtype = self.guess_test_type(exec_path)
+            if xtype == 'spiflash':
+                qemu_args.extend(('-drive',
+                                  f'if=mtd,format=raw,file={exec_path}'))
             else:
-                qemu_args.extend(('-kernel', exec_path))
+                if xtype != 'elf':
+                    raise ValueError(f'No support for test type: {xtype} '
+                                     f'({basename(exec_path)})')
+                if rom_exec:
+                    # generate ROM option for the application itself
+                    rom_ids = []
+                    if args.first_soc:
+                        rom_ids.append(args.first_soc)
+                    rom_ids.append('rom')
+                    if multi_rom:
+                        rom_ids.append(f'{rom_count}')
+                    rom_id = ''.join(rom_ids)
+                    rom_opt = (f'ot-rom-img,id={rom_id},file={exec_path},'
+                               f'digest=fake')
+                    qemu_args.extend(('-object', rom_opt))
+                    rom_count += 1
+                else:
+                    qemu_args.extend(('-kernel', exec_path))
         temp_files = defaultdict(set)
         if all((args.otp, args.otp_raw)):
             raise ValueError('OTP VMEM and RAW options are mutually exclusive')
@@ -1194,6 +1210,8 @@ class QEMUExecuter:
             qemu_args.extend(('-drive',
                               f'if=pflash,file={otp_raw_path},format=raw'))
         if args.flash:
+            if xtype == 'spiflash':
+                raise ValueError('Cannot use a flash file with a flash test')
             if not isfile(args.flash):
                 raise ValueError(f'No such flash file: {args.flash}')
             if any((args.exec, args.boot)):
@@ -1268,7 +1286,6 @@ class QEMUExecuter:
         pathnames = set()
         testdir = normpath(self._qfm.interpolate(self._config.get('testdir',
                                                                   curdir)))
-        rom = self._argdict.get('rom')
         self._qfm.define({'testdir': testdir})
         cfilters = self._args.filter or []
         pfilters = [f for f in cfilters if not f.startswith('!')]
@@ -1300,8 +1317,8 @@ class QEMUExecuter:
                     pathnames.add(testfile)
         if not pathnames:
             return []
-        if rom:
-            pathnames -= {normpath(rom)}
+        roms = self._argdict.get('rom')
+        pathnames -= {normpath(rom) for rom in roms}
         xtfilters = [f[1:].strip() for f in cfilters if f.startswith('!')]
         exc_filters = self._build_config_list('exclude')
         xtfilters.extend(exc_filters)
@@ -1501,7 +1518,8 @@ def main():
         files.add_argument('-O', '--otp-raw', metavar='RAW',
                            help='OTP image file')
         files.add_argument('-o', '--otp', metavar='VMEM', help='OTP VMEM file')
-        files.add_argument('-r', '--rom', metavar='ELF', help='ROM file')
+        files.add_argument('-r', '--rom', metavar='ELF', action='append',
+                           help='ROM file (can be repeated, in load order)')
         files.add_argument('-w', '--result', metavar='CSV',
                            help='path to output result file')
         files.add_argument('-x', '--exec', metavar='file',
