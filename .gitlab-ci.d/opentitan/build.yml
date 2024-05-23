@@ -63,7 +63,8 @@ format:
   script:
     - scripts/opentitan/ot-format.sh --ci -i
     - git status -s
-    - test $(git status -s | wc -l) -eq 0
+    - test -z "$(git status -s)" || git diff
+    - test -z "$(git status -s)"
 
 tidy:
   tags:
