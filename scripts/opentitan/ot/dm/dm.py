@@ -10,7 +10,7 @@ from enum import IntEnum
 from io import SEEK_END
 from logging import getLogger
 from time import sleep, time as now
-from typing import Any, BinaryIO, dict, Optional
+from typing import Any, BinaryIO, Optional
 
 from .regs import CSRS, GPRS
 from ..bitfield import BitField

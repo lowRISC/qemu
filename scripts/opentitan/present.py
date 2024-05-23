@@ -42,8 +42,6 @@ Encrypting with a 128-bit key:
 '0x123456789abcdef'
 """
 
-from typing import list
-
 
 def _tinvert(tpl):
     return tuple(tpl.index(x) for x in range(len(tpl)))

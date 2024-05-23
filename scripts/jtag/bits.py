@@ -9,7 +9,7 @@
    Imported from pyftdi project.
 """
 
-from typing import Any, Iterable, List, Union
+from typing import Any, Iterable, Union
 
 
 class BitSequenceError(Exception):
@@ -258,7 +258,7 @@ class BitSequence:
         """
         return bytes((int(b) for b in self))
 
-    def to_bool_list(self) -> List[bool]:
+    def to_bool_list(self) -> list[bool]:
         """Convert the sequence into a list of boolean values.
 
         >>> BitSequence(0xC4, 8).to_bool_list()
@@ -280,7 +280,7 @@ class BitSequence:
         >>> hexlify(BitSequence(0xC4A5D0, 24).to_bytestream(False, False))
         b'0ba523'
         """
-        out: List[int] = []
+        out: list[int] = []
         bseq = BitSequence(self)
         if not msb:
             bseq.reverse()
@@ -758,7 +758,7 @@ class BitSequence:
         [0, 1, 0]
         """
         if isinstance(index, slice):
-            bits: List[int] = []
+            bits: list[int] = []
             for bpos in range(index.start or 0, index.stop or 0,
                               index.step or 1):
                 if bpos >= self._width:

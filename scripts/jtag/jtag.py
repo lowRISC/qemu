@@ -10,7 +10,7 @@
 """
 
 from logging import getLogger
-from typing import Dict, List, Tuple, Union
+from typing import Union
 
 from .bits import BitSequence
 
@@ -26,7 +26,7 @@ class JtagState:
        :param modes: categories to which the state belongs
     """
 
-    def __init__(self, name: str, modes: Tuple[str, str]):
+    def __init__(self, name: str, modes: tuple[str, str]):
         self.name = name
         self.modes = modes
         self.exits = [self, self]  # dummy value before initial configuration
@@ -99,7 +99,7 @@ class JtagStateMachine:
         self['exit_2_ir'].setx(self['shift_ir'], self['update_ir'])
         self['update_ir'].setx(self['run_test_idle'], self['select_dr_scan'])
         self._current = self['test_logic_reset']
-        self._tr_cache: Dict[Tuple[str,  # current state name
+        self._tr_cache: dict[tuple[str,  # current state name
                                    int,  # event length
                                    int],  # event value
                              JtagState] = {}  # new state
@@ -122,7 +122,7 @@ class JtagStateMachine:
 
     def find_path(self, target: Union[JtagState, str],
                   source: Union[JtagState, str, None] = None) \
-            -> List[JtagState]:
+            -> list[JtagState]:
         """Find the shortest event sequence to move from source state to
            target state. If source state is not specified, used the current
            state.
@@ -241,7 +241,7 @@ class JtagEngine:
         self._ctrl = ctrl
         self._log = getLogger('jtag.eng')
         self._fsm = JtagStateMachine()
-        self._tr_cache: Dict[Tuple[str,  # from state
+        self._tr_cache: dict[tuple[str,  # from state
                                    str],  # to state
                              BitSequence] = {}  # TMS sequence
         self._seq = bytearray()
