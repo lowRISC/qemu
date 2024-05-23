@@ -142,7 +142,7 @@ class QEMUWrapper:
         self._debug = debug
         self._log = getLogger('pyot')
         self._qlog = getLogger('pyot.qemu')
-        self._otlog = getLogger('pyot.ot')
+        self._vcplog = getLogger('pyot.vcp')
 
     def run(self, qemu_args: list[str], timeout: int, name: str,
             ctx: Optional['QEMUContext'], start_delay: float,
@@ -316,7 +316,7 @@ class QEMUWrapper:
                             last_error = err.strip('"').replace(',', ';')
                     else:
                         level = DEBUG  # fall back when no prefix is found
-                    self._otlog.log(level, sline)
+                    self._vcplog.log(level, sline)
                 else:
                     # no match
                     continue
@@ -1598,8 +1598,14 @@ def main():
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
-        extra.add_argument('-d', '--debug', action='store_true',
+        extra.add_argument('-d', action='store_true',
                            help='enable debug mode')
+        extra.add_argument('--debug', action='append',
+                           help='assign debug level to logger(s)')
+        extra.add_argument('--info', action='append',
+                           help='assign info level to logger(s)')
+        extra.add_argument('--warn', action='append',
+                           help='assign warning level to logger(s)')
 
         try:
             # all arguments after `--` are forwarded to QEMU
@@ -1617,7 +1623,9 @@ def main():
             close(tmpfd)
             args.result = tmp_result
 
-        log = configure_loggers(args.verbose, 'pyot')[0]
+        log = configure_loggers(args.verbose, 'pyot', debug=args.debug,
+                                info=args.info, warning=args.warn,
+                                error=args.error)[0]
 
         qfm = QEMUFileManager(args.keep_tmp)
 
