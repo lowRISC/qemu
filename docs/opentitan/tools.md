@@ -50,9 +50,7 @@ directory to help with these tasks.
 
 ## Python modules
 
-* Available from `scripts/jtag` and `scripts/opentitan/ot`
-* [JTAG mailbox](jtagmbx.md) provides an API to access the system side of the mailbox over JTAG/DMI
-* [LC DMI](lc_ctrl_dmi.md) provides an API to control the Life Cycle controller over JTAG/DMI
+See [Python modules](pymod.md) documentation.
 
 ## Configuration files
 
