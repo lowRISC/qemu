@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Device Proxy
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -149,6 +149,13 @@ struct OtDevProxyState {
     guint watch_tag; /* tracker for comm device change */
 };
 
+typedef void ot_dev_proxy_register_device_fn(GArray *array, Object *obj);
+
+typedef struct {
+    const char *typename;
+    ot_dev_proxy_register_device_fn *reg_dev;
+} OtDevProxyDevice;
+
 enum OtDevProxyErr {
     /* No error */
     PE_NO_ERROR,
@@ -182,6 +189,26 @@ enum OtDevProxyErr {
 #define PROXY_UID(_u_)          ((_u_) & ~(1u << 31u))
 #define PROXY_MAKE_UID(_uid_, _req_) \
     (((_uid_) & ~(1u << 31u)) | (((uint32_t)(bool)(_req_)) << 31u))
+
+static void ot_dev_proxy_reg_mr(GArray *array, Object *obj);
+static void ot_dev_proxy_reg_mbx(GArray *array, Object *obj);
+static void ot_dev_proxy_reg_soc_proxy(GArray *array, Object *obj);
+static void ot_dev_proxy_reg_sram_ctrl(GArray *array, Object *obj);
+
+static OtDevProxyDevice SUPPORTED_DEVICES[] = {
+    {
+        .typename = TYPE_OT_MBX,
+        .reg_dev = &ot_dev_proxy_reg_mbx,
+    },
+    {
+        .typename = TYPE_OT_SOC_PROXY,
+        .reg_dev = &ot_dev_proxy_reg_soc_proxy,
+    },
+    {
+        .typename = TYPE_OT_SRAM_CTRL,
+        .reg_dev = &ot_dev_proxy_reg_sram_ctrl,
+    },
+};
 
 static void ot_dev_proxy_send(OtDevProxyState *s, unsigned uid, int dir,
                               uint16_t command, const void *payload,
@@ -284,12 +311,6 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
     };
     g_assert(sizeof(struct entry) == 7u * sizeof(uint32_t));
 
-    static const char *SUPPORTED_DEVICE_TYPES[] = {
-        TYPE_OT_MBX,
-        TYPE_OT_SOC_PROXY,
-        TYPE_OT_SRAM_CTRL,
-    };
-
     struct entry *entries = g_new0(struct entry, s->dev_count);
     unsigned count = 0;
     unsigned mrcount = 0;
@@ -301,9 +322,9 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
         memset(entry, 0, sizeof(*entry));
         memset(desc, 0, sizeof(desc));
         const char *oid = NULL;
-        for (unsigned dix = 0; dix < ARRAY_SIZE(SUPPORTED_DEVICE_TYPES);
-             dix++) {
-            if (object_dynamic_cast(item->obj, SUPPORTED_DEVICE_TYPES[dix])) {
+        for (unsigned dix = 0; dix < ARRAY_SIZE(SUPPORTED_DEVICES); dix++) {
+            if (object_dynamic_cast(item->obj,
+                                    SUPPORTED_DEVICES[dix].typename)) {
                 oid = object_property_get_str(item->obj, "ot_id", &error_fatal);
                 (void)snprintf(desc, sizeof(desc), "%s%s", item->prefix, oid);
                 break;
@@ -1437,79 +1458,101 @@ static void ot_dev_proxy_reset(DeviceState *dev)
 static int ot_dev_proxy_discover_device(Object *child, void *opaque)
 {
     GArray *array = opaque;
-    if (object_dynamic_cast(child, TYPE_OT_MBX)) {
-        SysBusDevice *sysdev = SYS_BUS_DEVICE(child);
-        g_assert(sysdev->num_mmio == 2u);
-        OtDevProxyItem *item;
-        /* host side */
-        item = g_new0(OtDevProxyItem, 1);
-        object_ref(child);
-        item->obj = child;
-        item->caps.mr = sysdev->mmio[0u].memory; /* 0: host */
-        item->caps.reg_count = OT_MBX_HOST_REGS_COUNT;
-        item->caps.irq_mask = UINT32_MAX; /* all IRQs can be routed */
-        item->prefix = "MBH/";
-        g_array_append_val(array, item);
-        /* sys side */
-        item = g_new0(OtDevProxyItem, 1);
-        object_ref(child);
-        item->obj = child;
-        item->caps.mr = sysdev->mmio[1u].memory; /* 1: sys */
-        item->caps.reg_count = OT_MBX_SYS_REGS_COUNT;
-        item->caps.irq_mask = 0; /* no IRQ on sys side */
-        item->prefix = "MBS/";
-        g_array_append_val(array, item);
-    } else if (object_dynamic_cast(child, TYPE_OT_SOC_PROXY)) {
-        OtDevProxyItem *item = g_new0(OtDevProxyItem, 1);
-        object_ref(child);
-        item->obj = child;
-        SysBusDevice *sysdev = SYS_BUS_DEVICE(child);
-        g_assert(sysdev->num_mmio == 1u);
-        item->caps.mr = sysdev->mmio[0u].memory;
-        item->caps.reg_count = OT_SOC_PROXY_REGS_COUNT; /* per slot */
-        item->caps.irq_mask = UINT32_MAX; /* all IRQs can be routed */
-        item->prefix = "SOC/";
-        g_array_append_val(array, item);
-    } else if (object_dynamic_cast(child, TYPE_OT_SRAM_CTRL)) {
-        SysBusDevice *sysdev = SYS_BUS_DEVICE(child);
-        if (sysdev->mmio[0].memory && /* ctrl */
-            sysdev->mmio[1].memory /* mem */) {
-            OtDevProxyItem *item;
-            item = g_new0(OtDevProxyItem, 1);
-            object_ref(child);
-            item->obj = child;
-            item->caps.mr = sysdev->mmio[0].memory;
-            item->caps.reg_count =
-                int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
-            item->prefix = "SRC/"; /* SRAM control */
-            g_array_append_val(array, item);
-            item = g_new0(OtDevProxyItem, 1);
-            object_ref(child);
-            item->obj = child;
-            item->caps.mr = sysdev->mmio[1].memory;
-            item->caps.reg_count =
-                int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
-            item->prefix = "SRM/"; /* SRAM memory */
-            g_array_append_val(array, item);
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(SUPPORTED_DEVICES); ix++) {
+        const OtDevProxyDevice *pd = &SUPPORTED_DEVICES[ix];
+        if (object_dynamic_cast(child, pd->typename)) {
+            (*pd->reg_dev)(array, child);
+            return 0;
         }
-    } else if (object_dynamic_cast(child, TYPE_MEMORY_REGION)) {
-        MemoryRegion *mr = MEMORY_REGION(child);
-        if (mr->ram && child->parent) {
-            if (!object_dynamic_cast(child->parent, TYPE_OT_SRAM_CTRL)) {
-                OtDevProxyItem *item = g_new0(OtDevProxyItem, 1);
-                object_ref(child);
-                item->obj = child;
-                item->caps.mr = mr;
-                g_assert(item->caps.mr);
-                item->caps.reg_count =
-                    int128_getlo(mr->size) / sizeof(uint32_t);
-                item->prefix = "M/";
-                g_array_append_val(array, item);
-            }
-        }
+    }
+    if (object_dynamic_cast(child, TYPE_MEMORY_REGION)) {
+        ot_dev_proxy_reg_mr(array, child);
+        return 0;
     }
 
     return 0;
+}
+
+static void ot_dev_proxy_reg_mr(GArray *array, Object *obj)
+{
+    MemoryRegion *mr = MEMORY_REGION(obj);
+    if (mr->ram && obj->parent) {
+        if (!object_dynamic_cast(obj->parent, TYPE_OT_SRAM_CTRL)) {
+            OtDevProxyItem *item = g_new0(OtDevProxyItem, 1);
+            object_ref(obj);
+            item->obj = obj;
+            item->caps.mr = mr;
+            g_assert(item->caps.mr);
+            item->caps.reg_count = int128_getlo(mr->size) / sizeof(uint32_t);
+            item->prefix = "M/";
+            g_array_append_val(array, item);
+        }
+    }
+}
+
+static void ot_dev_proxy_reg_mbx(GArray *array, Object *obj)
+{
+    SysBusDevice *sysdev = SYS_BUS_DEVICE(obj);
+    g_assert(sysdev->num_mmio == 2u);
+    OtDevProxyItem *item;
+    /* host side */
+    item = g_new0(OtDevProxyItem, 1);
+    object_ref(obj);
+    item->obj = obj;
+    item->caps.mr = sysdev->mmio[0u].memory; /* 0: host */
+    item->caps.reg_count = OT_MBX_HOST_REGS_COUNT;
+    item->caps.irq_mask = UINT32_MAX; /* all IRQs can be routed */
+    item->prefix = "MBH/";
+    g_array_append_val(array, item);
+    /* sys side */
+    item = g_new0(OtDevProxyItem, 1);
+    object_ref(obj);
+    item->obj = obj;
+    item->caps.mr = sysdev->mmio[1u].memory; /* 1: sys */
+    item->caps.reg_count = OT_MBX_SYS_REGS_COUNT;
+    item->caps.irq_mask = 0; /* no IRQ on sys side */
+    item->prefix = "MBS/";
+    g_array_append_val(array, item);
+}
+
+static void ot_dev_proxy_reg_soc_proxy(GArray *array, Object *obj)
+{
+    OtDevProxyItem *item = g_new0(OtDevProxyItem, 1);
+    object_ref(obj);
+    item->obj = obj;
+    SysBusDevice *sysdev = SYS_BUS_DEVICE(obj);
+    g_assert(sysdev->num_mmio == 1u);
+    item->caps.mr = sysdev->mmio[0u].memory;
+    item->caps.reg_count = OT_SOC_PROXY_REGS_COUNT; /* per slot */
+    item->caps.irq_mask = UINT32_MAX; /* all IRQs can be routed */
+    item->prefix = "SOC/";
+    g_array_append_val(array, item);
+}
+
+static void ot_dev_proxy_reg_sram_ctrl(GArray *array, Object *obj)
+{
+    SysBusDevice *sysdev = SYS_BUS_DEVICE(obj);
+    if (sysdev->mmio[0].memory && /* ctrl */
+        sysdev->mmio[1].memory /* mem */) {
+        OtDevProxyItem *item;
+        item = g_new0(OtDevProxyItem, 1);
+        object_ref(obj);
+        item->obj = obj;
+        item->caps.mr = sysdev->mmio[0].memory;
+        item->caps.reg_count =
+            int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
+        item->prefix = "SRC/"; /* SRAM control */
+        g_array_append_val(array, item);
+        item = g_new0(OtDevProxyItem, 1);
+        object_ref(obj);
+        item->obj = obj;
+        item->caps.mr = sysdev->mmio[1].memory;
+        item->caps.reg_count =
+            int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
+        item->prefix = "SRM/"; /* SRAM memory */
+        g_array_append_val(array, item);
+    }
 }
 
 static int ot_dev_proxy_discover_memory_root(Object *child, void *opaque)
