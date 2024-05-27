@@ -947,6 +947,13 @@ static void ot_dev_proxy_intercept_interrupts(OtDevProxyState *s, bool enable)
         return;
     }
 
+    const char *dev_name = object_get_typename(item->obj);
+    Error *errp = NULL;
+    char *dev_id = object_property_get_str(item->obj, "ot_id", &errp);
+    if (errp) {
+        error_free(errp);
+    }
+
     /* reroute all marked IRQs */
     irqs = s->rx_buffer[1u];
     while (irqs) {
@@ -961,6 +968,8 @@ static void ot_dev_proxy_intercept_interrupts(OtDevProxyState *s, bool enable)
                 old_irq = qdev_intercept_gpio_out(dev, dest_irq,
                                                   SYSBUS_DEVICE_GPIO_IRQ, ix);
                 item->intctrl_irqs[ix] = old_irq;
+                trace_ot_dev_proxy_intercept_irq(dev_name, dev_id ?: "?", ix,
+                                                 enable);
             }
         } else {
             /* release intercepted interrupt */
@@ -968,9 +977,13 @@ static void ot_dev_proxy_intercept_interrupts(OtDevProxyState *s, bool enable)
                 qdev_intercept_gpio_out(dev, item->intctrl_irqs[ix],
                                         SYSBUS_DEVICE_GPIO_IRQ, ix);
                 item->intctrl_irqs[ix] = NULL;
+                trace_ot_dev_proxy_intercept_irq(dev_name, dev_id ?: "?", ix,
+                                                 enable);
             }
         }
     }
+
+    g_free(dev_id);
 
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', enable ? 'i' : 'r'), NULL,
                                0);
@@ -1023,8 +1036,19 @@ static void ot_dev_proxy_signal_interrupt(OtDevProxyState *s)
         return;
     }
 
+    const char *dev_name = object_get_typename(item->obj);
+    Error *errp = NULL;
+    char *dev_id = object_property_get_str(item->obj, "ot_id", &errp);
+    if (errp) {
+        error_free(errp);
+    }
+
+    trace_ot_dev_proxy_signal_irq(dev_name, dev_id ?: "?", irq_num, irq_level);
+
     qemu_irq irq = gl->in[irq_num];
     qemu_set_irq(irq, irq_level);
+
+    g_free(dev_id);
 
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', 's'), NULL, 0);
 }
@@ -1246,8 +1270,21 @@ static void ot_dev_proxy_intercepted_irq(void *opaque, int irq, int level)
     OtDevProxyIrq *proxy_irq = &s->proxy_irq_map[irq];
     g_assert(proxy_irq->dev_num < s->dev_count);
 
+    OtDevProxyItem *item = &s->items[proxy_irq->dev_num];
+
+    const char *dev_name = object_get_typename(item->obj);
+    Error *errp = NULL;
+    char *dev_id = object_property_get_str(item->obj, "ot_id", &errp);
+    if (errp) {
+        error_free(errp);
+    }
+
+    trace_ot_dev_proxy_route_irq(dev_name, dev_id, proxy_irq->irq_num, level);
+
     ot_dev_proxy_signal(s, PROXY_COMMAND('^', 'W'), proxy_irq->dev_num,
                         proxy_irq->irq_num, level);
+
+    g_free(dev_id);
 }
 
 static void ot_dev_proxy_notify_mmio_access(
