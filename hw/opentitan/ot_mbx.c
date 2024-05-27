@@ -51,6 +51,7 @@
 /* ------------------------------------------------------------------------ */
 
 #define PARAM_NUM_ALERTS 2u
+#define PARAM_NUM_IRQS   3u
 
 /* clang-format off */
 
@@ -127,7 +128,6 @@ REG32(SYS_INTR_MSG_DATA, 0x1cu)
 
 #define HOST_INTR_MASK \
     (INTR_MBX_READY_MASK | INTR_MBX_ABORT_MASK | INTR_MBX_ERROR_MASK)
-#define HOST_INTR_COUNT (HOST_INTR_MASK - 1u)
 #define HOST_ALERT_TEST_MASK \
     (R_HOST_ALERT_TEST_FATAL_FAULT_MASK | R_HOST_ALERT_TEST_RECOV_FAULT_MASK)
 #define HOST_CONTROL_MASK \
@@ -189,7 +189,7 @@ enum {
 
 typedef struct {
     MemoryRegion mmio;
-    IbexIRQ irqs[HOST_INTR_COUNT];
+    IbexIRQ irqs[PARAM_NUM_IRQS];
     IbexIRQ alerts[PARAM_NUM_ALERTS];
     uint32_t regs[REGS_HOST_COUNT];
 } OtMbxHost;
@@ -217,7 +217,7 @@ static void ot_mbx_host_update_irqs(OtMbxState *s)
 
     uint32_t levels = hregs[R_HOST_INTR_STATE] & hregs[R_HOST_INTR_ENABLE];
 
-    for (unsigned ix = 0; ix < ARRAY_SIZE(s->host.irqs); ix++) {
+    for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         int level = (int)(bool)(levels & (1u << ix));
         if (level != ibex_irq_get_level(&host->irqs[ix])) {
             trace_ot_mbx_host_update_irq(ibex_irq_get_level(&host->irqs[ix]),
@@ -783,9 +783,9 @@ static void ot_mbx_init(Object *obj)
     OtMbxState *s = OT_MBX(obj);
 
     memory_region_init_io(&s->host.mmio, obj, &ot_mbx_host_regs_ops, s,
-                          TYPE_OT_MBX, REGS_HOST_SIZE);
+                          TYPE_OT_MBX "-host", REGS_HOST_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->host.mmio);
-    for (unsigned ix = 0; ix < ARRAY_SIZE(s->host.irqs); ix++) {
+    for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         ibex_sysbus_init_irq(obj, &s->host.irqs[ix]);
     }
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
@@ -793,7 +793,7 @@ static void ot_mbx_init(Object *obj)
     }
 
     memory_region_init_io(&s->sys.mmio, obj, &ot_mbx_sys_regs_ops, s,
-                          TYPE_OT_MBX, REGS_SYS_SIZE);
+                          TYPE_OT_MBX "-sys", REGS_SYS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->sys.mmio);
 }
 
