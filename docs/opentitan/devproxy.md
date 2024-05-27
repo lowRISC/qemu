@@ -137,7 +137,11 @@ Not applicable
 +------------+---------------+----------------------------------+
 |    0x404   | Local         | Incomplete write                 |
 +------------+---------------+----------------------------------+
+|    0x405   | Local         | Out of resources                 |
++------------+---------------+----------------------------------+
 |    0x801   | Internal      | Unsupported device               |
++------------+---------------+----------------------------------+
+|    0x802   | Internal      | Duplicated unique identifier     |
 +------------+---------------+----------------------------------+
 ```
 
@@ -182,7 +186,7 @@ Only initiated by the application.
 +---------------+---------------+---------------+---------------+
 ```
 
-The current version for this documentation is v0.13.
+The current version for this documentation is v0.14.
 
 Note that semantic versionning does not apply for v0 series.
 
@@ -268,7 +272,7 @@ Reponse contains 0 up to N devices, each device is described with a 28-byte entr
 
 The count of device entries can be retrieved from the `LENGTH` field.
 
-#### Enumerate Memory Spaces [enumerate-region]
+#### Enumerate Memory Spaces [enumerate-mr-spaces]
 
 Enumerate should be called by the Application to retrieve the list of remote memory spaces that can
 be used from the Application over the communication link.
@@ -295,11 +299,11 @@ Each memory space is a top-level memory region, _i.e._ a root memory region.
 +---------------+---------------+---------------+---------------+
 |0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
 +---------------+---------------+---------------+---------------+
-|             'es'              |            0..7*4N            |
+|             'es'              |            0..11*4N           |
 +---------------+---------------+---------------+---------------+
 |                              UID                            |0|
 +---------------+---------------+---------------+---------------+
-|                             -                         | MSpc  |
+|                             -                 |      MSpc     |
 +---------------+---------------+---------------+---------------+
 |                         Start Address                         |
 +---------------+---------------+---------------+---------------+
@@ -311,7 +315,7 @@ Each memory space is a top-level memory region, _i.e._ a root memory region.
 |                                                               |
 |                                                               |
 +---------------+---------------+---------------+---------------+
-|                             -                         | MSpc  |
+|                             -                 |      MSpc     |
 +---------------+---------------+---------------+---------------+
 |                         Start Address                         |
 +---------------+---------------+---------------+---------------+
@@ -325,7 +329,7 @@ Each memory space is a top-level memory region, _i.e._ a root memory region.
 +---------------+---------------+---------------+---------------+
 |                             ....                              |
 +---------------+---------------+---------------+---------------+
-|                             -                         | MSpc  |
+|                             -                 |      MSpc     |
 +---------------+---------------+---------------+---------------+
 |                         Start Address                         |
 +---------------+---------------+---------------+---------------+
@@ -338,13 +342,13 @@ Each memory space is a top-level memory region, _i.e._ a root memory region.
 |                                                               |
 +---------------+---------------+---------------+---------------+
 ```
-Reponse contains 0 up to N devices, each device is described with a 28-byte entry, where:
+Reponse contains 0 up to N devices, each device is described with a 44-byte entry, where:
 
 * `MSpc` is a unique address space identifier than can be used as a selector in other proxy
   commands.
 * `Start Address` is the lowest valid address in the address space.
 * `Size` is the size (in bytes) of the address space
-* `Identifier` is an arbitrary 16-character string that describes the memory space.
+* `Identifier` is an arbitrary 32-character string that describes the memory space.
 
 The count of address spaces can be retrieved from the `LENGTH` field.
 
@@ -631,7 +635,7 @@ The Application is in charge of formatting the payload to ensure that it contain
 
 Read the content of a memory device, where
 
-* `Address` is the index of the first 32-bit word
+* `Address` is the address in bytes of the first 32-bit word
 * `Role` is the initiator role to use to access the device
 * `Device` is the device to access (see [Enumerate](#enumerate-devices))
 * `Count` is the number of 32-bit word to be read.
@@ -678,9 +682,9 @@ Read the content of a memory device, where
 
 Write a buffer to a memory device
 
-* `Address` is the index of the first 32-bit word to be written
+* `Address` is the address in bytes of the first 32-bit word to be written
 * `Role` is the initiator role to use to access the device
-* `Device` is the device to access (see [Enumerate](#enumerate-devices))
+* `Device` is the device to access (see [Enumerate Devices](#enumerate-devices))
 * `Value` are the values to write in memory word.
 
 ##### Request
@@ -751,7 +755,6 @@ When VM is started in stod mode `-S`, proxy can be used to configure the VM befo
 +---------------+---------------+---------------+---------------+
 ```
 
-
 #### Quit
 
 Stop QEMU emulation and return an error code to the caller.
@@ -784,126 +787,11 @@ Stop QEMU emulation and return an error code to the caller.
 
 This is the last command, as QEMU should exit upon receiving this request.
 
-#### Intercept Interrupts [intercept-interrupt]
-
-Route one or more device output interrupt to the proxy (vs. the internal PLIC)
-
-* `Device` is the device to access (see [Enumerate](#enumerate-devices))
-* `Interrupt mask` define which interrupt should be routed (1 bit per interrupt)
-
-##### Request
-```
-+---------------+---------------+---------------+---------------+
-|       0       |       1       |       2       |       3       |
-|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
-+---------------+---------------+---------------+---------------+
-|             'II'              |               8               |
-+---------------+---------------+---------------+---------------+
-|                              UID                            |0|
-+---------------+---------------+---------------+---------------+
-|               0               |         Device        |   -   |
-+---------------+---------------+---------------+---------------+
-|                        Interrupt mask                         |
-+---------------+---------------+---------------+---------------+
-```
-
-##### Response
-```
-+---------------+---------------+---------------+---------------+
-|       0       |       1       |       2       |       3       |
-|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
-+---------------+---------------+---------------+---------------+
-|             'ii'              |               0               |
-+---------------+---------------+---------------+---------------+
-|                              UID                            |0|
-+---------------+---------------+---------------+---------------+
-```
-
-#### Release Interrupts
-
-Revert any previous interception, reconnecting selected IRQ to their original
-destination device.
-
-* `Device` is the device to access (see [Enumerate](#enumerate-devices))
-* `Interrupt mask` define which interrupt should be released (1 bit per interrupt)
-
-##### Request
-```
-+---------------+---------------+---------------+---------------+
-|       0       |       1       |       2       |       3       |
-|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
-+---------------+---------------+---------------+---------------+
-|             'IR'              |               8               |
-+---------------+---------------+---------------+---------------+
-|                              UID                            |0|
-+---------------+---------------+---------------+---------------+
-|               0               |         Device        |   -   |
-+---------------+---------------+---------------+---------------+
-|                        Interrupt mask                         |
-+---------------+---------------+---------------+---------------+
-```
-
-##### Response
-```
-+---------------+---------------+---------------+---------------+
-|       0       |       1       |       2       |       3       |
-|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
-+---------------+---------------+---------------+---------------+
-|             'ir'              |               0               |
-+---------------+---------------+---------------+---------------+
-|                              UID                            |0|
-+---------------+---------------+---------------+---------------+
-```
-
-#### Signal Interrupt [signal-interrupt]
-
-Set or Reset an input interrupt line.
-
-* `Device` is the device to access (see [Enumerate](#enumerate-devices))
-* `GID` the identifier of the IRQ group.
-   * The group identifier can be retrieved using the [Enumerate Device Interrupt](#enumerate-irq)
-     API.
-* `Interrupt line` the number of the interrupt line to signal within the group. The interrupt line
-   should range between 0 and the input IRQ count for this group.
-* `Level` the new interrupt line level. Usually `1` to assert/set (1) or `0` to deassert/release,
-  even if any 32-bit value is accepted.
-
-##### Request
-```
-+---------------+---------------+---------------+---------------+
-|       0       |       1       |       2       |       3       |
-|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
-+---------------+---------------+---------------+---------------+
-|             'IS'              |               12              |
-+---------------+---------------+---------------+---------------+
-|                              UID                            |0|
-+---------------+---------------+---------------+---------------+
-|              GID              |         Device        |   -   |
-+---------------+---------------+---------------+---------------+
-|          Interrupt line       |               -               |
-+---------------+---------------+---------------+---------------+
-|                             Level                             |
-+---------------+---------------+---------------+---------------+
-```
-
-##### Response
-```
-+---------------+---------------+---------------+---------------+
-|       0       |       1       |       2       |       3       |
-|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
-+---------------+---------------+---------------+---------------+
-|             'is'              |               0               |
-+---------------+---------------+---------------+---------------+
-|                              UID                            |0|
-+---------------+---------------+---------------+---------------+
-```
-
 #### Enumerate Device Interrupt [enumerate-irq]
 
-Enumerate can be called by the Application to retrieve the list of interrupt
-group of a supported device. The group position in the response can be further
-use with the [Signal Interrupt API](#signal-interrupt) to set the level of
-each individual IRQ line.
+Enumerate can be called by the Application to retrieve the list of interrupt groups of a supported
+device. The group in the response can be further used with the [Signal Interrupt API](#signal-interrupt),
+[Intercept Interrupts](#intercept-interrupt) and [Release Interrupts](#release-interrupt).
 
 ##### Request
 ```
@@ -927,11 +815,11 @@ each individual IRQ line.
 +---------------+---------------+---------------+---------------+
 |0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
 +---------------+---------------+---------------+---------------+
-|             'ie'              |            0..20N             |
+|             'ie'              |            0..36N             |
 +---------------+---------------+---------------+---------------+
 |                              UID                            |0|
 +---------------+---------------+---------------+---------------+
-|        IRQ input count        |        IRQ output count       |
+|            IRQ count          |     Group     |O|        -    |
 +---------------+---------------+---------------+---------------+
 |                                                               |
 |                                                               |
@@ -939,7 +827,7 @@ each individual IRQ line.
 |                                                               |
 |                                                               |
 +---------------+---------------+---------------+---------------+
-|        IRQ input count        |        IRQ output count       |
+|            IRQ count          |     Group     |O|      -      |
 +---------------+---------------+---------------+---------------+
 |                                                               |
 |                                                               |
@@ -949,7 +837,7 @@ each individual IRQ line.
 +---------------+---------------+---------------+---------------+
 |                             ....                              |
 +---------------+---------------+---------------+---------------+
-|        IRQ input count        |        IRQ output count       |
+|            IRQ count          |     Group     |O|      -      |
 +---------------+---------------+---------------+---------------+
 |                                                               |
 |                                                               |
@@ -958,15 +846,136 @@ each individual IRQ line.
 |                                                               |
 +---------------+---------------+---------------+---------------+
 ```
-Reponse contains 0 up to N interrupt groups, each group is described with a 20-byte entry, where:
+Reponse contains 0 up to N interrupt groups, each group is described with a 36-byte entry, where:
 
-* `IRQ input count` is the count of the input interrupts for this group,
-* `IRQ output count` is the count of the output interrupts for this group,
-* `Identifier` is an arbitrary 16-character string that describes this group.
+* `IRQ count` is the count of the input interrupts for this group,
+* `O` is set if IRQ in this group are output interrupts or or not set if they are input interrupts,
+* `Group` is the interrupt group identifier identifier.
+* `Identifier` defines the interrupt group name
 
 The count of address spaces can be retrieved from the `LENGTH` field.
 
-#### Intercept arbitrary MMIO region
+#### Intercept Interrupts [intercept-interrupt]
+
+Route one or more device output interrupts to the proxy (vs. the internal PLIC)
+
+* `Device` is the device to access (see [Enumerate Device](#enumerate-devices))
+* `Group` is the IRQ group in the device (see [Enumerate Interrupt](#enumerate-irq))
+* `Interrupt mask` define which interrupts should be released (1 bit per interrupt). The count of
+  32-bit interrupt mask word can be retrieved from the header length.
+
+##### Request
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'II'              |              8..              |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+|     Group     |        -      |         Device        |   -   |
++---------------+---------------+---------------+---------------+
+|                                                               |
+|                        Interrupt mask                         |
+|                                                               |
++---------------+---------------+---------------+---------------+
+```
+
+##### Response
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'ii'              |               0               |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+```
+
+#### Release Interrupts [release-interrupt]
+
+Revert any previous interception, reconnecting selected IRQ to their original
+destination device.
+
+* `Device` is the device to access (see [Enumerate Device](#enumerate-devices))
+* `Group` is the IRQ group in the device (see [Enumerate Interrupt](#enumerate-irq))
+* `Interrupt mask` define which interrupts should be released (1 bit per interrupt). The count of
+  32-bit interrupt mask word can be retrieved from the header length.
+
+##### Request
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'IR'              |              8..              |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+|     Group     |        -      |         Device        |   -   |
++---------------+---------------+---------------+---------------+
+|                                                               |
+|                        Interrupt mask                         |
+|                                                               |
++---------------+---------------+---------------+---------------+
+```
+
+##### Response
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'ir'              |               0               |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+```
+
+#### Signal Interrupt [signal-interrupt]
+
+Set or Reset an input interrupt line.
+
+* `Device` is the device to access (see [Enumerate Device](#enumerate-devices)),
+* `Group` the identifier of the IRQ group (see [Enumerate Interrupt](#enumerate-irq)),
+* `Interrupt line` the index of the interrupt line to signal within the group. The interrupt line
+   should range between 0 and the input IRQ count for this group,
+* `Level` the new interrupt line level. Usually `1` to assert/set (1) or `0` to deassert/release,
+  even if any 32-bit value is accepted.
+
+##### Request
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'IS'              |               12              |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+|             Group             |         Device        |   -   |
++---------------+---------------+---------------+---------------+
+|          Interrupt line       |               -               |
++---------------+---------------+---------------+---------------+
+|                             Level                             |
++---------------+---------------+---------------+---------------+
+```
+
+##### Response
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'is'              |               0               |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---------------+---------------+---------------+---------------+
+```
+
+#### Intercept arbitrary MMIO region [intercept-region]
 
 It is possible to get intercept access to a memory region. Any intercepted region cannot
 be any longer accessed by the remote vCPU.
@@ -984,7 +993,7 @@ intercepted location should be kept small.
 +---------------+---------------+---------------+---------------+
 |                              UID                            |0|
 +---------------+---------------+---------------+---------------+
-|R|W| Priority  | - |   Stop    |           0xfff       | MSpc  |
+|R|W| Priority  | - |   Stop    |       -       |      MSpc     |
 +---------------+---------------+---------------+---------------+
 |                            Address                            |
 +---------------+---------------+---------------+---------------+
@@ -997,7 +1006,7 @@ intercepted location should be kept small.
 * `Priority` is the priority order (increasing order). 0 is reserved. If not sure, use 1.
 * `Stop` auto-stop count. If non-zero, only the specified count of notifications are reported,
    after which the MMIO location intercepter is automatically discarded.
-* `MSpc` is the memory space of the region to select (see [Enumerate](#enumerate-regions))
+* `MSpc` is the memory space of the region to select (see [Enumerate Memory Spaces](#enumerate-mr-spaces))
 * `Address` is the byte address of the first byte to intercept in the selected memory space
 * `Size` is the width in bytes of the region to intercept
 
@@ -1064,18 +1073,21 @@ interrupt(s) to receive.
 |       0       |       1       |       2       |       3       |
 |0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
 +---------------+---------------+---------------+---------------+
-|              '^W'             |               8               |
+|              '^W'             |               12              |
 +---------------+---------------+---------------+---------------+
 |                              UID                            |1|
 +---------------+---------------+---------------+---------------+
-|            Channel            |         Device        |   -   |
+|               -               |         Device        |   -   |
++---------------+---------------+---------------+---------------+
+|            Channel            |     Group     |O|      -      |
 +---------------+---------------+---------------+---------------+
 |                            Value                              |
 +---------------+---------------+---------------+---------------+
 ```
 
 * `Device` that triggered the interrupt
-* `Channel` which interrupt channel on the device has been triggered
+* `Group` which interrupt group has been triggered
+* `Channel` which interrupt channel for the group has been triggered
 * `Value` the new interrupt value. For binary IRQs, `1` when IRQ is raised, `0` when it is lowered.
 
 #### MSI Interrupt
@@ -1098,12 +1110,15 @@ To be defined.
 ```
 
 #### Region Access
+
+See [Intercept arbitrary MMIO region](#intercept-region) to register a watcher
+
 ```
 +---------------+---------------+---------------+---------------+
 |       0       |       1       |       2       |       3       |
 |0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
 +---------------+---------------+---------------+---------------+
-|              '^L'             |              12               |
+|              '^R'             |              12               |
 +---------------+---------------+---------------+---------------+
 |                              UID                            |1|
 +---------------+---------------+---------------+---------------+
@@ -1115,7 +1130,7 @@ To be defined.
 +---------------+---------------+---------------+---------------+
 ```
 
-* `Device` that triggered the notification
+* `Region` the region watcher identifier, as returned in the interception registration response
 * `R` read access
 * `W` write access
 * `Width` the width in byte of the MMIO access (1/2/4)

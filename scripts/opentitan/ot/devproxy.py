@@ -48,8 +48,10 @@ class ProxyCommandError(Exception):
         0x402: 'PE_CANNOT_WRITE_DEVICE',
         0x403: 'PE_TRUNCATED_RESPONSE',
         0x404: 'PE_INCOMPLETE_WRITE',
+        0x405: 'PE_OOM',
         # internal error
         0x801: 'PE_UNSUPPORTED_DEVICE',
+        0x802: 'PE_DUPLICATED_UID'
     }
     """Proxy error codes."""
 
@@ -97,6 +99,38 @@ class MemoryRoot(NamedTuple):
     size: int
 
 
+class InterruptGroup(NamedTuple):
+    """Descriptor of a named group of interrupts.
+       Interrupts follow the meaning of QEMU IRQ: an "asynchronous" wire.
+       They are not only "interrupts" between a device and an interrupt
+       controller.
+    """
+    out: bool  # output or input IRQ group
+    num: int  # group identifier
+    count: int  # number of IRQ lines in the group
+
+
+class MemoryHitEvent(NamedTuple):
+    """Event triggered when a memory watcher has been matched."""
+    address: int
+    value: int
+    write: bool
+    width: int
+    role: int
+
+
+InterruptHandler = Callable[['DeviceProxy', str, int, int, Any], None]
+"""qemu_irq handler (device, group name, channel, value, *args)
+"""
+
+RequestHandler = Callable[[str, bytes, Any], None]
+"""Remote request handler."""
+
+
+MemoryWatcherHandler = Callable[[MemoryHitEvent, Any], None]
+"""Memory Watcher handler."""
+
+
 class DeviceProxy:
     """Remote device wrapper.
 
@@ -121,6 +155,12 @@ class DeviceProxy:
     NO_ROLE = 0xf
     """Disabled role."""
 
+    IRQ_NAME = 'sysbus-irq'
+    """SysBus Interrupt IRQ identifier."""
+
+    ALERT_NAME = 'ot-alert-sig'
+    """OpenTitan Alert IRQ identifier."""
+
     def __init__(self, proxy: 'ProxyEngine', name: str, devid: int, addr: int,
                  count: int, offset: int):
         logname = self.__class__.__name__.lower().replace('proxy', '')
@@ -134,7 +174,9 @@ class DeviceProxy:
         self._regcount = count
         self._offset = offset * 4
         self._end = offset + count * 4
-        self._interrupts: Optional[dict[str, tuple[int, int, int]]] = None
+        self._interrupts: Optional[dict[str, InterruptGroup]] = None
+        self._interrupt_handler: Optional[InterruptHandler] = None
+        self._interrupt_args: list[Any] = []
         self._new()
 
     @property
@@ -234,7 +276,19 @@ class DeviceProxy:
         value, = sunpack('<I', response)
         return value * 4
 
-    def intercept_interrupts(self, mask: int) -> None:
+    def register_interrupt_handler(self, handler: InterruptHandler, *args) \
+            -> None:
+        """Register a handler to receive notification from the remote peer.
+
+           :param handler: the handler function
+           :param args: any argument to forward to the handler
+        """
+        if self._interrupt_handler:
+            self._log.warning('Overridding previous IRQ handler')
+        self._interrupt_handler = handler
+        self._interrupt_args = args
+
+    def intercept_interrupts(self, group: int, mask: int) -> None:
         """Request the remote proxy to intercept output interrupt for the device
 
            Interrupted are reported to the proxy rather than delivered them to
@@ -245,38 +299,59 @@ class DeviceProxy:
            It is safe to intercept the same interrupts several time (in which
            case the remote proxy should ignore the requests for these IRQ
            channels and intercept the selected ones that were not intercepted)
+
+           :param group: IRQ group identifier
            :param mask: a bitmask of interrupt (0..31) to intercept.
         """
-        if not 0 <= mask <= 0xffff_ffff:
-            raise ValueError('Invalid interupt mask')
-        request = spack('<HHI', 0, self._make_sel(self._devid), mask)
+        if not isinstance(group, int) or not 0 <= group <= 0xff:
+            raise ValueError(f'Invalid group value {group}')
+        if not isinstance(mask, int) or not 0 <= mask <= 0xffff_ffff:
+            raise ValueError(f'Invalid interrupt mask {mask}')
+        request = spack('<BxHI', group, self._make_sel(self._devid), mask)
         self._proxy.exchange('II', request)
 
-    def release_interrupts(self, mask: int) -> None:
-        """Release previously intercepted interrupts
+    def release_interrupts(self, group: int, mask: int) -> None:
+        """Release previously intercepted IRQ lines
 
            Interrupted are connected back to their initial destination device.
 
+           :param group: IRQ group identifier
            :param mask: a bitmask of interrupt (0..31) to release.
         """
-        if not 0 <= mask <= 0xffff_ffff:
-            raise ValueError('Invalid interupt mask')
-        request = spack('<HHI', 0, self._make_sel(self._devid), mask)
+        if not isinstance(group, int) or not 0 <= group <= 0xff:
+            raise ValueError(f'Invalid group value {group}')
+        if not isinstance(mask, int) or not 0 <= mask <= 0xffff_ffff:
+            raise ValueError(f'Invalid interrupt mask {mask}')
+        request = spack('<BxHI', group, self._make_sel(self._devid), mask)
         self._proxy.exchange('IR', request)
 
-    def capture_interrupt(self, irq: int, enable: bool):
-        """Capture or release one or more IRQ output channels.
+    def capture_sysbus_irq(self, irq: int, enable: bool) -> None:
+        """Capture or release one or more sysbus interrupts output channels.
+
+           :param irq: the interrupt number to manage
+           :param enable: whether to intercept or release IRQ channels.
+        """
+        self.capture_sysbus_irqs(1 << irq, enable)
+
+    def capture_sysbus_irqs(self, irq_mask: int, enable: bool) -> None:
+        """Capture or release one or more sysbus interrupts output channels.
 
            :param irq: a bitfield of interrupt channel to manage
            :param enable: whether to intercept or release IRQ channels.
         """
-        mask = 1 << irq
+        if self._interrupts is None:
+            self._enumerate_interrupts()
+        try:
+            gnum = self._interrupts[self.IRQ_NAME].num
+        except KeyError as exc:
+            raise ValueError(f'No {self.IRQ_NAME} interruption support for '
+                             f'{self.__class__.__name__}') from exc
         if enable:
-            self.intercept_interrupts(mask)
+            self.intercept_interrupts(gnum, irq_mask)
         else:
-            self.release_interrupts(mask)
+            self.release_interrupts(gnum, irq_mask)
 
-    def enumerate_interrupts(self, out: bool) -> Iterator[tuple[str, int]]:
+    def enumerate_interrupts(self, out: bool) -> Iterator[InterruptGroup]:
         """Enumerate supported interrupt lines.
 
            :param out: True to enumerate output IRQ lines, False for input ones
@@ -285,13 +360,9 @@ class DeviceProxy:
         """
         if self._interrupts is None:
             self._enumerate_interrupts()
-        for name, (_, gin, gout) in self._interrupts.items():
-            if not out:
-                if gin:
-                    yield name, gin
-            else:
-                if gout:
-                    yield name, gout
+        for name, group in self._interrupts.items():
+            if group.out == out:
+                yield name, group
 
     def signal_interrupt(self, group: str, irq: int, level: int | bool) -> None:
         """Set the level of an input interrupt line.
@@ -305,21 +376,41 @@ class DeviceProxy:
         if self._interrupts is None:
             self._enumerate_interrupts()
         if group not in self._interrupts:
-            raise ValueError(f'No such interrupt group "{group}"')
+            raise ValueError(f"No such interrupt group '{group}'")
         grp = self._interrupts[group]
-        grp_num, irq_count = grp[0:2]
-        if irq >= irq_count:
-            raise ValueError(f'No such interrupt {irq} in {group}')
+        if irq >= grp.count:
+            raise ValueError(f"No such interrupt {irq} in '{group}' "
+                             f"(<{grp.count})")
         level = int(level)
         if level >= (1 << 32):
             raise ValueError(f'Invalied interrupt level {level}')
-        request = spack('<HHHHI', grp_num, self._make_sel(self._devid), irq, 0,
+        request = spack('<HHHHI', grp.num, self._make_sel(self._devid), irq, 0,
                         level)
         try:
             self._proxy.exchange('IS', request)
         except ProxyCommandError as exc:
             self._log.fatal('%s', exc)
             raise
+
+    def notify_interrupt(self, group: int, channel: int, value: int) -> None:
+        """Wired IRQ notification handler."""
+        if not self._interrupt_handler:
+            self._log.warning('Missed IRQ notification')
+            return
+        if self._interrupts is None:
+            self._log.error('IRQ received w/o registration')
+            return
+        for gname, igroup in self._interrupts.items():
+            if igroup.num == group:
+                if channel >= igroup.count:
+                    self._log.error('Interrupt %s out of bound: %d', gname,
+                                    channel)
+                    return
+                self._interrupt_handler(self, gname, channel, value,
+                                        *self._interrupt_args)
+                break
+        else:
+            self._log.error('Unknow interrupt group %d, ignored', igroup)
 
     @classmethod
     def _make_sel(cls, device: int, role: int = 0xf) -> int:
@@ -341,7 +432,7 @@ class DeviceProxy:
         except ProxyCommandError as exc:
             self._log.fatal('%s', exc)
             raise
-        grpfmt = '<HH16s'
+        grpfmt = '<HBB32s'
         grplen = scalc(grpfmt)
         if len(irqgroups) % grplen:
             raise ValueError('Unexpected response length')
@@ -349,18 +440,17 @@ class DeviceProxy:
         self._log.info('Found %d remote interrupt groups for %s', grpcount,
                        str(self))
         self._interrupts = {}
-        gnum = 0
         while irqgroups:
             grphdr = irqgroups[0:grplen]
             irqgroups = irqgroups[grplen:]
-            gin, gout, gname = sunpack(grpfmt, grphdr)
+            gcount, gnum, gdir, gname = sunpack(grpfmt, grphdr)
             grpname = gname.rstrip(b'\x00').decode().lower()
             if grpname in self._interrupts:
                 self._log.error("Multiple devices w/ identical identifier: "
                                 "'%s'", grpname)
             else:
-                self._interrupts[grpname] = (gnum, gin, gout)
-            gnum += 1
+                group = InterruptGroup(bool(gdir & 0x80), gnum, gcount)
+                self._interrupts[grpname] = group
 
 
 class MbxHostProxy(DeviceProxy):
@@ -938,7 +1028,7 @@ class SoCProxy(DeviceProxy):
 
 
 class MemProxy(DeviceProxy):
-    """Memroy device proxy.
+    """Memory device proxy.
 
        Specialized DeviceProxy that helps managing random access memory.
 
@@ -982,6 +1072,8 @@ class MemProxy(DeviceProxy):
         """
         if self._role > 0xf:
             raise ValueError(f'Invalid role {self._role}')
+        # if specified address is an absolute address, compute the relative
+        # address within the device
         addr = (address - self._addr) if not rel else address
         if not 0 <= addr < self.size:
             raise ValueError(f'Invalid address 0x{addr:08x}')
@@ -1000,6 +1092,8 @@ class MemProxy(DeviceProxy):
         """
         if self._role > 0xf:
             raise ValueError(f'Invalid role {self._role}')
+        # if specified address is an absolute address, compute the relative
+        # address within the device
         addr = (address - self._addr) if not rel else address
         if not 0 <= addr < self.size:
             raise ValueError(f'Invalid address 0x{address:08x}')
@@ -1089,15 +1183,11 @@ class SramCtrlProxy(DeviceProxy):
         self.write_word(self._role, self.REGS['CTRL'], ctrl)
 
 
-RequestHandler = Callable[[str, bytes, Any], None]
-"""Remote request handler."""
-
-
 class ProxyEngine:
     """Tool to access and remotely drive devices and memories.
     """
 
-    VERSION = (0, 13)
+    VERSION = (0, 14)
     """Protocol version."""
 
     TIMEOUT = 2.0
@@ -1125,6 +1215,12 @@ class ProxyEngine:
     HEADER_SIZE = scalc(HEADER)
     """Proxy header size."""
 
+    NOTIFICATIONS = {
+        'W': 'wired_irq',
+        'R': 'mr_hit',
+    }
+    """Notification dispatch map."""
+
     def __init__(self):
         self._log = getLogger('proxy.proxy')
         self._socket: Optional[socket] = None
@@ -1142,8 +1238,7 @@ class ProxyEngine:
         self._mroots: dict[int, MemoryRoot] = {}
         self._request_handler: Optional[RequestHandler] = None
         self._request_args: list[Any] = []
-        self._notifier_handler: Optional[RequestHandler] = None
-        self._notifier_args: list[Any] = []
+        self._watchers: dict[int, tuple[MemoryWatcherHandler, Any]] = {}
         self._proxies = self._discover_proxies()
 
     def connect(self, host: str, port: int) -> None:
@@ -1241,7 +1336,7 @@ class ProxyEngine:
         except ProxyCommandError as exc:
             self._log.fatal('%s', exc)
             raise
-        mrfmt = '<xxxBII16s'
+        mrfmt = '<xxxBII32s'
         mrlen = scalc(mrfmt)
         if len(mregions) % mrlen:
             raise ValueError('Unexpected response length')
@@ -1252,11 +1347,10 @@ class ProxyEngine:
             mrhdr = mregions[0:mrlen]
             mregions = mregions[mrlen:]
             mspc, address, size, mname = sunpack(mrfmt, mrhdr)
-            mspc >>= 4
             mrname = mname.rstrip(b'\x00').decode().lower()
             if mspc in self._mroots:
                 self._log.error("Multiple memory regions w/ identical "
-                                "identifier: '%d'", mrname)
+                                "identifier: '%s' @ %d", mrname, mspc)
                 continue
             self._mroots[mspc] = MemoryRoot(mrname, address, size)
 
@@ -1265,7 +1359,7 @@ class ProxyEngine:
         """
         yield from self._devices
 
-    def enumerate_memory_spaces(self) -> Iterator[str]:
+    def enumerate_memory_spaces(self) -> Iterator[int]:
         """Provide an iterator on discovered memory spaces.
         """
         yield from self._mroots
@@ -1305,8 +1399,9 @@ class ProxyEngine:
         return self._mroots.get(uid)
 
     def intercept_mmio_access(self, root: Optional[MemoryRoot], address: int,
-                              size: int, read: bool, write: bool, stop: int = 0,
-                              priority: int = 1):
+                              size: int, read: bool, write: bool,
+                              handler: MemoryWatcherHandler, *args, **kwargs) \
+            -> None:
         """Request the remote proxy to intercept memory/IO access to a specified
            region.
 
@@ -1316,12 +1411,17 @@ class ProxyEngine:
            :param size: the size of the region to intercept
            :param read: whether to intercept read access
            :param write: whether to intercept write access
-           :param stop: whether to stop auto-discard intercepter after the
+           :param kwargs:
+              * 'stop': whether to stop auto-discard intercepter after the
                         specified count of access. Use 0 to disable auto-discard
-           :param prority: priority of the intercepter
+              * 'prority': priority of the intercepter
         """
         if not read and not write:
             raise ValueError('Read or/and Write should be specified')
+        priority = kwargs.pop('priority', 1)
+        stop = kwargs.pop('stop', 0)
+        if kwargs:
+            raise ValueError(f'Unknown arguements: {", ".join(kwargs)}')
         if not isinstance(priority, int) or not priority or priority > 0x3f:
             raise ValueError('Invalid priority')
         if not isinstance(stop, int) or stop > 0x3f:
@@ -1343,15 +1443,16 @@ class ProxyEngine:
             header |= 0b10
         header |= priority << 2
         header |= stop << 10
-        header |= 0x3ff << 16
-        header |= rid << 28
+        header |= rid << 24
         request = spack('<III', header, address, size)
         response = self.exchange('MI', request)
         if len(response) != scalc('<xxH'):
             raise ProxyCommandError(0x403)
         region, = sunpack('<xxH', response)
         region &= 0x3f
-        return region
+        if region in self._watchers:
+            raise ProxyCommandError(0x802)
+        self._watchers[region] = (handler, *args)
 
     def register_request_handler(self, handler: RequestHandler, *args) -> None:
         """Register a handler to receive requests from the remote peer.
@@ -1361,16 +1462,6 @@ class ProxyEngine:
         """
         self._request_handler = handler
         self._request_args = args
-
-    def register_notification_handler(self, handler: RequestHandler, *args) \
-            -> None:
-        """Register a handler to receive notification from the remote peer.
-
-           :param handler: the handler function
-           :param args: any argument to forward to the handler
-        """
-        self._notifier_handler = handler
-        self._notifier_args = args
 
     def exchange(self, command: str, payload: Optional[bytes] = None) -> bytes:
         """Execute a communication trip with the remote target.
@@ -1508,14 +1599,20 @@ class ProxyEngine:
                 rcmd, payload = self._requ_q.popleft()
                 notify = rcmd.startswith('^')
                 if notify:
-                    if not self._notifier_handler:
-                        self._log.warning('Missed notification %s', rcmd)
+                    try:
+                        handler = self.NOTIFICATIONS[rcmd[1:]]
+                    except KeyError:
+                        self._log.error('Unknown notification type: %s',
+                                        rcmd[1:])
                         continue
-                    self._notifier_handler(rcmd[1:], payload,
-                                           *self._notifier_args)
+                    dispatcher = getattr(self, f'_dispatch_{handler}', None)
+                    if not dispatcher:
+                        self._log.error('Unsupported notification: %s', handler)
+                        continue
+                    dispatcher(payload)
                 else:
                     if not self._request_handler:
-                        self._log.warning('Missed notification %s', rcmd)
+                        self._log.warning('Missed request %s', rcmd)
                         continue
                     self._request_handler(rcmd, payload, *self._request_args)
 
@@ -1523,6 +1620,44 @@ class ProxyEngine:
             except Exception as exc:
                 self._log.fatal('Exception: %s', exc)
                 break
+
+    def _dispatch_wired_irq(self, payload: bytes) -> None:
+        wifmt = '<xxHHBxI'
+        wisize = scalc(wifmt)
+        if len(payload) != wisize:
+            self._log.error('Unexpected W notification length')
+            return
+        devid, channel, group, value = sunpack(wifmt, payload[:wisize])
+        devid &= 0xfff
+        device = self.get_device_by_uid(devid)
+        try:
+            device.notify_interrupt(group, channel, value)
+        except Exception as exc:
+            self._log.critical('Exception in notify_interrupt: %s', exc)
+            raise
+
+    def _dispatch_mr_hit(self, payload: bytes) -> None:
+        rifmt = '<BxHII'
+        risize = scalc(rifmt)
+        if len(payload) != risize:
+            self._log.error('Unexpected R notification length')
+            return
+        info, reg, addr, val = sunpack(rifmt, payload[:risize])
+        write = bool(info & 0b10)
+        width = info >> 4
+        wid = reg & 0x3f
+        role = reg >> 12
+        mhevent = MemoryHitEvent(addr, val, write, width, role)
+        try:
+            handler, args = self._watchers[wid]
+        except KeyError:
+            self._log.error('Memory Hit on unknown watcher: %d', wid)
+            return
+        try:
+            handler(mhevent, *args)
+        except Exception as exc:
+            self._log.critical('Exception in Memory Hit hit handler: %s', exc)
+            raise
 
     def _kick_off(self) -> None:
         """Start engine.

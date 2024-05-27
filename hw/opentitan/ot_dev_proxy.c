@@ -93,16 +93,14 @@ typedef struct {
     Object *obj; /* proxied object */
     OtDevProxyCaps caps; /* object capabilities */
     const char *prefix; /* prefix name for idenfifying the device */
-    /* the following fields are only meaningful for SUS_BUS_DEVICE items */
-    qemu_irq *intctrl_irqs; /* original IRQ destination (to QEMU devices) */
-    qemu_irq *routed_irqs; /* rerouted IRQ (to proxy) */
-    unsigned irq_count; /* count of IRQ for the device */
-    unsigned irq_route_base; /* offset of the first IRQ in the proxy */
+    GHashTable *iirq_ht; /* intercepted IRQs, may be NULL */
 } OtDevProxyItem;
 
 typedef struct {
+    qemu_irq irq_orig; /* original IRQ destination (to QEMU device) */
     unsigned dev_num; /* device number (in device array) */
-    unsigned irq_num; /* irq number (in proxied device) */
+    uint16_t irq_num; /* IRQ number (in proxied device) */
+    uint8_t grp_num; /* IRQ group (in proxied device) */
 } OtDevProxyIrq;
 
 typedef struct {
@@ -131,12 +129,11 @@ struct OtDevProxyState {
     DeviceState parent_obj;
 
     OtDevProxyItem *items; /* proxied devices */
-    OtDevProxyIrq *proxy_irq_map; /* IRQ mapping */
-    unsigned proxy_irq_count; /* count of IRQ slots in proxy_irq_map */
-    unsigned dev_count; /* count of IRQ in itms */
+    OtDevProxyIrq *proxy_irq_map; /* IRQ interception mapping */
     OtDevProxySystem *subsys; /*subsystem array */
-    unsigned subsys_count; /* count of memory roots */
     QSIMPLEQ_HEAD(, OtDevProxyWatcherState) watchers;
+    unsigned dev_count; /* count of IRQ in items */
+    unsigned subsys_count; /* count of memory roots */
     unsigned last_wid;
 
     Fifo8 rx_fifo; /* input FIFO */
@@ -176,12 +173,16 @@ enum OtDevProxyErr {
     PE_CANNOT_WRITE_DEVICE,
     PE_TRUNCATED_RESPONSE,
     PE_INCOMPLETE_WRITE,
+    PE_OOM, /* out of resources */
     /* internal error */
     PE_UNSUPPORTED_DEVICE = 0x801,
 };
 
 #define PROXY_VER_MAJ 0
-#define PROXY_VER_MIN 13u
+#define PROXY_VER_MIN 14u
+
+#define PROXY_IRQ_INTERCEPT_COUNT 32u
+#define PROXY_IRQ_INTERCEPT_NAME  "irq-intercept"
 
 #define PROXY_DISABLED_ROLE 0xfu
 
@@ -256,12 +257,12 @@ static void ot_dev_proxy_reply_payload(OtDevProxyState *s, uint16_t command,
 }
 
 static void ot_dev_proxy_signal(OtDevProxyState *s, uint16_t command,
-                                unsigned device, unsigned channel, int value)
+                                const OtDevProxyIrq *proxy_irq, int value)
 {
-    uint32_t buffer[2u] = {
-        (uint32_t)((channel & 0xffffu) | ((device & 0x3fu) << 24u)),
-        (uint32_t)value
-    };
+    uint32_t buffer[3u] = { ((uint32_t)(proxy_irq->dev_num & 0xfffu) << 16u),
+                            ((uint32_t)(proxy_irq->irq_num)) |
+                                ((uint32_t)(proxy_irq->grp_num) << 16u),
+                            (uint32_t)value };
 
     ot_dev_proxy_send(s, s->initiator_uid, 1, command, buffer, sizeof(buffer));
 
@@ -396,16 +397,16 @@ static void ot_dev_proxy_enumerate_memory_spaces(OtDevProxyState *s)
         uint32_t header;
         uint32_t address;
         uint32_t size;
-        char desc[16u];
+        char desc[32u];
     };
-    g_assert(sizeof(struct entry) == 7u * sizeof(uint32_t));
+    g_assert(sizeof(struct entry) == 11u * sizeof(uint32_t));
 
     struct entry *entries = g_new0(struct entry, s->subsys_count);
     unsigned count = 0;
     for (unsigned ix = 0; ix < s->subsys_count; ix++) {
         const OtDevProxySystem *subsys = &s->subsys[ix];
         struct entry *entry = &entries[count];
-        entry->header = ix << 28u;
+        entry->header = ix << 24u;
         entry->address = subsys->mr->addr;
         uint64_t size = int128_getlo(subsys->mr->size);
         entry->size = (uint32_t)MIN(size, UINT32_MAX);
@@ -418,13 +419,84 @@ static void ot_dev_proxy_enumerate_memory_spaces(OtDevProxyState *s)
             memcpy(entry->desc, name, namelen);
         }
         count++;
-        if (ix >= 15u) {
+        if (ix >= 0xffu) {
+            /* only 256 root regions are supported for now */
             break;
         }
     }
 
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('e', 's'), entries,
                                count * sizeof(struct entry));
+    g_free(entries);
+}
+
+static void ot_dev_proxy_enumerate_interrupts(OtDevProxyState *s)
+{
+    if (s->rx_hdr.length != 1u * sizeof(uint32_t)) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_COMMAND_LENGTH, NULL);
+        return;
+    }
+
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
+
+    if (devix >= s->dev_count) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, NULL);
+        return;
+    }
+
+    OtDevProxyItem *item = &s->items[devix];
+
+    if (!object_dynamic_cast(item->obj, TYPE_DEVICE)) {
+        ot_dev_proxy_reply_error(s, PE_UNSUPPORTED_DEVICE, NULL);
+        return;
+    }
+
+    DeviceState *dev = DEVICE(item->obj);
+
+    unsigned group_count = 0;
+    NamedGPIOList *ngl;
+    QLIST_FOREACH(ngl, &dev->gpios, node) {
+        group_count++;
+    }
+
+    struct irq_id {
+        uint16_t count;
+        uint8_t group;
+        uint8_t dir;
+        char name[32u];
+    };
+    static_assert(sizeof(struct irq_id) == 9u * sizeof(uint32_t),
+                  "invalid struct irq_id, need packing");
+
+    struct irq_id *entries;
+
+    if (group_count) {
+        entries = g_new0(struct irq_id, group_count);
+        struct irq_id *irq_id = entries;
+        unsigned group = 0;
+        QLIST_FOREACH(ngl, &dev->gpios, node) {
+            if (group > UINT8_MAX) {
+                /* cannot handle more groups (unlikely) */
+                break;
+            }
+            if (ngl->num_out) {
+                irq_id->count = ngl->num_out;
+                irq_id->dir = (1u << 7u);
+            } else {
+                irq_id->count = ngl->num_in;
+                irq_id->dir = (0u << 7u);
+            }
+            /* input sysbus IRQs are typically unnamed */
+            strncpy(irq_id->name, ngl->name ?: "", sizeof(irq_id->name) - 1u);
+            irq_id->group = group++;
+            irq_id++;
+        }
+    } else {
+        entries = NULL;
+    }
+
+    ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', 'e'), entries,
+                               group_count * sizeof(struct irq_id));
     g_free(entries);
 }
 
@@ -437,7 +509,7 @@ static void ot_dev_proxy_read_reg(OtDevProxyState *s)
 
     hwaddr reg = (hwaddr)(s->rx_buffer[0] & 0xffffu);
     unsigned role = s->rx_buffer[0] >> 28u;
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
 
     if (devix >= s->dev_count) {
         ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, NULL);
@@ -494,7 +566,7 @@ static void ot_dev_proxy_write_reg(OtDevProxyState *s)
 
     hwaddr reg = (hwaddr)(s->rx_buffer[0] & 0xffffu);
     unsigned role = s->rx_buffer[0] >> 28u;
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
     uint32_t value = s->rx_buffer[1u];
     uint32_t mask = s->rx_buffer[2u];
 
@@ -573,7 +645,7 @@ static void ot_dev_proxy_read_buffer(OtDevProxyState *s, bool mbx_mode)
 
     hwaddr reg = (hwaddr)(s->rx_buffer[0] & 0xffffu);
     unsigned role = s->rx_buffer[0] >> 28u;
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
     unsigned count = s->rx_buffer[1u];
 
     if (devix >= s->dev_count) {
@@ -686,7 +758,7 @@ static void ot_dev_proxy_write_buffer(OtDevProxyState *s, bool mbx_mode)
 
     hwaddr reg = (hwaddr)(s->rx_buffer[0] & 0xffffu);
     unsigned role = s->rx_buffer[0] >> 28u;
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
     unsigned count = s->rx_hdr.length / sizeof(uint32_t) - 1u;
 
     if (devix >= s->dev_count) {
@@ -806,7 +878,7 @@ static void ot_dev_proxy_read_memory(OtDevProxyState *s)
         return;
     }
 
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
     unsigned offset = s->rx_buffer[1u];
     unsigned count = s->rx_buffer[2u];
 
@@ -818,10 +890,11 @@ static void ot_dev_proxy_read_memory(OtDevProxyState *s)
     OtDevProxyItem *item = &s->items[devix];
     OtDevProxyCaps *caps = &item->caps;
     Object *obj = item->obj;
-    if (offset > item->caps.reg_count) {
+    unsigned woffset = offset / sizeof(uint32_t);
+    if (woffset > item->caps.reg_count) {
         count = 0;
     } else {
-        unsigned maxcount = item->caps.reg_count - offset;
+        unsigned maxcount = item->caps.reg_count - woffset;
         if (count > maxcount) {
             count = maxcount;
         }
@@ -860,7 +933,7 @@ static void ot_dev_proxy_write_memory(OtDevProxyState *s)
         return;
     }
 
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
     unsigned offset = s->rx_buffer[1];
     unsigned count = s->rx_hdr.length / sizeof(uint32_t) - 2u;
     const uint32_t *buffer = &s->rx_buffer[2];
@@ -873,10 +946,11 @@ static void ot_dev_proxy_write_memory(OtDevProxyState *s)
     OtDevProxyItem *item = &s->items[devix];
     OtDevProxyCaps *caps = &item->caps;
     Object *obj = item->obj;
-    if (offset > item->caps.reg_count) {
+    unsigned woffset = offset / sizeof(uint32_t);
+    if (woffset > item->caps.reg_count) {
         count = 0;
     } else {
-        unsigned maxcount = item->caps.reg_count - offset;
+        unsigned maxcount = item->caps.reg_count - woffset;
         if (count > maxcount) {
             count = maxcount;
         }
@@ -907,14 +981,102 @@ static void ot_dev_proxy_write_memory(OtDevProxyState *s)
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('w', 'm'), &obuf, sizeof(obuf));
 }
 
+static void
+ot_dev_proxy_route_interrupt(OtDevProxyState *s, OtDevProxyItem *item,
+                             const char *group, unsigned grp_n, unsigned irq_n)
+{
+    const char *dev_name = object_get_typename(item->obj);
+    char *dev_id = object_property_get_str(item->obj, "ot_id", NULL);
+    char *irq_name = g_strdup_printf("%s[%u]", group, irq_n);
+
+    OtDevProxyIrq *proxy_irq =
+        item->iirq_ht ? g_hash_table_lookup(item->iirq_ht, irq_name) : NULL;
+    /* do not reroute IRQ if it is already routed */
+    if (proxy_irq) {
+        g_free(irq_name);
+        g_free(dev_id);
+        return;
+    }
+
+    unsigned six;
+    for (six = 0; six < PROXY_IRQ_INTERCEPT_COUNT; six++) {
+        if (!s->proxy_irq_map[six].irq_orig) {
+            proxy_irq = &s->proxy_irq_map[six];
+            break;
+        }
+    }
+    /* caller should have verified that there are enough free slots */
+    g_assert(proxy_irq);
+
+    DeviceState *dev = DEVICE(item->obj);
+
+    qemu_irq icpt_irq;
+    icpt_irq =
+        qdev_get_gpio_in_named(DEVICE(s), PROXY_IRQ_INTERCEPT_NAME, (int)six);
+    proxy_irq->irq_orig =
+        qdev_intercept_gpio_out(dev, icpt_irq, group, (int)irq_n);
+    proxy_irq->dev_num = (unsigned)(uintptr_t)(item - s->items);
+    proxy_irq->grp_num = grp_n;
+    proxy_irq->irq_num = irq_n;
+    trace_ot_dev_proxy_intercept_irq(dev_name, dev_id ?: "?", irq_name, true);
+    if (!item->iirq_ht) {
+        /*
+         * delete key (g_char strings), but never delete value that are
+         * persisent, reassigned items
+         */
+        item->iirq_ht =
+            g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    }
+    char *ht_key = g_strdup(irq_name);
+    g_hash_table_insert(item->iirq_ht, ht_key, proxy_irq);
+
+    g_free(irq_name);
+    g_free(dev_id);
+}
+
+static void ot_dev_proxy_restore_interrupt(OtDevProxyItem *item,
+                                           const char *group, unsigned irq_n)
+{
+    const char *dev_name = object_get_typename(item->obj);
+    char *dev_id = object_property_get_str(item->obj, "ot_id", NULL);
+    char *irq_name = g_strdup_printf("%s[%u]", group, irq_n);
+
+    if (!item->iirq_ht) {
+        warn_report("Cannot restore interrupt, none intercepted: %s %s %s",
+                    dev_name, dev_id ?: "?", irq_name);
+        g_free(irq_name);
+        g_free(dev_id);
+        return;
+    }
+
+    OtDevProxyIrq *proxy_irq = g_hash_table_lookup(item->iirq_ht, irq_name);
+    if (proxy_irq) {
+        DeviceState *dev = DEVICE(item->obj);
+
+        /* irq_orig == NULL is a valid use case */
+        qdev_intercept_gpio_out(dev, proxy_irq->irq_orig, group, (int)irq_n);
+        /* hash table takes care of deleting the key */
+        g_hash_table_remove(item->iirq_ht, irq_name);
+        memset(proxy_irq, 0, sizeof(*proxy_irq)); /* mark as free_slot */
+        trace_ot_dev_proxy_intercept_irq(dev_name, dev_id ?: "?", irq_name,
+                                         false);
+    } else {
+        warn_report("Cannot restore interrupt, not intercepted: %s %s %s",
+                    dev_name, dev_id ?: "?", irq_name);
+    }
+
+    g_free(irq_name);
+    g_free(dev_id);
+}
+
 static void ot_dev_proxy_intercept_interrupts(OtDevProxyState *s, bool enable)
 {
-    if (s->rx_hdr.length != 2u * sizeof(uint32_t)) {
+    if (s->rx_hdr.length < 2u * sizeof(uint32_t)) {
         ot_dev_proxy_reply_error(s, PE_INVALID_COMMAND_LENGTH, NULL);
         return;
     }
 
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
 
     if (devix >= s->dev_count) {
         ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, NULL);
@@ -927,63 +1089,88 @@ static void ot_dev_proxy_intercept_interrupts(OtDevProxyState *s, bool enable)
         return;
     }
 
-    DeviceState *dev = DEVICE(item->obj);
-    SysBusDevice *sysdev = SYS_BUS_DEVICE(dev);
+    unsigned group = s->rx_buffer[0] & 0xffu;
 
-    /* validate all marked IRQs first */
-    uint32_t irqs = s->rx_buffer[1u];
-    unsigned irq_count = 0;
-    while (irq_count < 32u) {
-        if (!sysbus_has_irq(sysdev, (int)irq_count)) {
-            break;
+    /* check that the group identifier is actually valid for the device */
+    DeviceState *dev = DEVICE(item->obj);
+    NamedGPIOList *ngl = NULL;
+    NamedGPIOList *tngl;
+    unsigned grp = 0;
+    QLIST_FOREACH(tngl, &dev->gpios, node) {
+        if (!tngl->name) {
+            /* anonymous IRQs are ignored, see enumerate_interrupts */
+            continue;
         }
-        irq_count += 1;
+        if (grp++ < group) {
+            continue;
+        }
+        ngl = tngl;
+        break;
     }
-    if (irq_count) {
-        irqs &= ~((1u << irq_count) - 1u);
-    }
-    if (irqs) {
+
+    if (!ngl) {
         ot_dev_proxy_reply_error(s, PE_INVALID_IRQ, NULL);
         return;
     }
 
-    const char *dev_name = object_get_typename(item->obj);
-    Error *errp = NULL;
-    char *dev_id = object_property_get_str(item->obj, "ot_id", &errp);
-    if (errp) {
-        error_free(errp);
-    }
-
-    /* reroute all marked IRQs */
-    irqs = s->rx_buffer[1u];
-    while (irqs) {
-        int ix = ctz32(irqs);
-        irqs &= ~(1u << ix);
-        if (enable) {
-            /* do not reroute IRQ if it is already routed */
-            if (!item->intctrl_irqs[ix]) {
-                qemu_irq old_irq;
-                unsigned irq_num = item->irq_route_base + ix;
-                qemu_irq dest_irq = qdev_get_gpio_in(DEVICE(s), (int)irq_num);
-                old_irq = qdev_intercept_gpio_out(dev, dest_irq,
-                                                  SYSBUS_DEVICE_GPIO_IRQ, ix);
-                item->intctrl_irqs[ix] = old_irq;
-                trace_ot_dev_proxy_intercept_irq(dev_name, dev_id ?: "?", ix,
-                                                 enable);
-            }
-        } else {
-            /* release intercepted interrupt */
-            if (item->intctrl_irqs[ix]) {
-                qdev_intercept_gpio_out(dev, item->intctrl_irqs[ix],
-                                        SYSBUS_DEVICE_GPIO_IRQ, ix);
-                item->intctrl_irqs[ix] = NULL;
-                trace_ot_dev_proxy_intercept_irq(dev_name, dev_id ?: "?", ix,
-                                                 enable);
+    /* check that all selected interrupts exits for the selected group */
+    unsigned mask_count;
+    mask_count = (s->rx_hdr.length - sizeof(uint32_t)) / sizeof(uint32_t);
+    unsigned max_irq = 0;
+    unsigned irq_count = 0;
+    uint32_t *irqbms = &s->rx_buffer[1u];
+    for (unsigned ix = 0; ix < mask_count; ix++) {
+        uint32_t bm = irqbms[ix];
+        if (bm) {
+            unsigned hi = ctz32(bm);
+            max_irq = ix * 32u + hi;
+            while (bm) {
+                irq_count += 1;
+                bm &= ~(1u << ctz32(bm));
             }
         }
     }
 
-    g_free(dev_id);
+    /*
+     * count how many IRQ can be intercepted and tracked. Already intercepted
+     * IRQs may be counted twice, remote peer should be more careful.
+     */
+    unsigned free_slot = 0;
+    for (unsigned ix = 0; ix < PROXY_IRQ_INTERCEPT_COUNT; ix++) {
+        if (!s->proxy_irq_map[ix].irq_orig) {
+            free_slot += 1;
+        }
+    }
+    if (irq_count > free_slot) {
+        warn_report("IRQ interception slots exhausted %u for %u free",
+                    irq_count, free_slot);
+        ot_dev_proxy_reply_error(s, PE_OOM, NULL);
+        return;
+    }
+
+    char *irq_name;
+    irq_name = g_strdup_printf("%s[%u]", ngl->name, max_irq);
+    ObjectProperty *prop = object_property_find(item->obj, irq_name);
+    g_free(irq_name);
+    irq_name = NULL;
+
+    if (!prop) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_IRQ, NULL);
+        return;
+    }
+
+    /* reroute all marked IRQs */
+    for (unsigned ix = 0; ix < mask_count; ix++) {
+        while (irqbms[ix]) {
+            unsigned irq_n = ctz32(irqbms[ix]);
+            irqbms[ix] &= ~(1u << irq_n);
+            if (enable) {
+                ot_dev_proxy_route_interrupt(s, item, ngl->name, group, irq_n);
+            } else {
+                ot_dev_proxy_restore_interrupt(item, ngl->name, irq_n);
+            }
+        }
+    }
 
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', enable ? 'i' : 'r'), NULL,
                                0);
@@ -996,7 +1183,7 @@ static void ot_dev_proxy_signal_interrupt(OtDevProxyState *s)
         return;
     }
 
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned devix = (s->rx_buffer[0] >> 16u) & 0xfffu;
     unsigned gid = s->rx_buffer[0u] & 0xffffu;
 
     if (devix >= s->dev_count) {
@@ -1053,65 +1240,6 @@ static void ot_dev_proxy_signal_interrupt(OtDevProxyState *s)
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', 's'), NULL, 0);
 }
 
-static void ot_dev_proxy_enumerate_interrupts(OtDevProxyState *s)
-{
-    if (s->rx_hdr.length != 1u * sizeof(uint32_t)) {
-        ot_dev_proxy_reply_error(s, PE_INVALID_COMMAND_LENGTH, NULL);
-        return;
-    }
-
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
-
-    if (devix >= s->dev_count) {
-        ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, NULL);
-        return;
-    }
-
-    OtDevProxyItem *item = &s->items[devix];
-
-    if (!object_dynamic_cast(item->obj, TYPE_DEVICE)) {
-        ot_dev_proxy_reply_error(s, PE_UNSUPPORTED_DEVICE, NULL);
-        return;
-    }
-
-    DeviceState *dev = DEVICE(item->obj);
-
-    unsigned group_count = 0;
-    NamedGPIOList *ngl;
-    QLIST_FOREACH(ngl, &dev->gpios, node) {
-        group_count++;
-    }
-
-    struct irq_id {
-        uint16_t in_count;
-        uint16_t out_count;
-        char name[16u];
-    };
-    static_assert(sizeof(struct irq_id) == 5 * sizeof(uint32_t),
-                  "invalid struct irq_id, need packing");
-
-    struct irq_id *entries;
-
-    if (group_count) {
-        entries = g_new0(struct irq_id, group_count);
-        struct irq_id *irq_id = entries;
-        QLIST_FOREACH(ngl, &dev->gpios, node) {
-            irq_id->in_count = ngl->num_in;
-            irq_id->out_count = ngl->num_out;
-            if (ngl->name) {
-                strncpy(irq_id->name, ngl->name, sizeof(irq_id->name));
-            }
-            irq_id++;
-        }
-    } else {
-        entries = NULL;
-    }
-
-    ot_dev_proxy_reply_payload(s, PROXY_COMMAND('i', 'e'), entries,
-                               group_count * sizeof(struct irq_id));
-    g_free(entries);
-}
-
 static void ot_dev_proxy_intercept_mmio(OtDevProxyState *s)
 {
     if (s->rx_hdr.length != 3u * sizeof(uint32_t)) {
@@ -1119,14 +1247,7 @@ static void ot_dev_proxy_intercept_mmio(OtDevProxyState *s)
         return;
     }
 
-    unsigned devix = (s->rx_buffer[0] >> 16u) & 0x3ffu;
-
-    if (devix != 0x3ffu) {
-        ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, NULL);
-        return;
-    }
-
-    unsigned mspc = s->rx_buffer[0] >> 28u;
+    unsigned mspc = s->rx_buffer[0] >> 24u;
     if (mspc >= s->subsys_count) {
         ot_dev_proxy_reply_error(s, PE_INVALID_DEVICE_ID, "Invalid MSpc");
         return;
@@ -1206,7 +1327,7 @@ static void ot_dev_proxy_release_mmio(OtDevProxyState *s)
         return;
     }
 
-    unsigned wid = (s->rx_buffer[0] >> 16u) & 0x3ffu;
+    unsigned wid = (s->rx_buffer[0] >> 16u) & 0xfffu;
 
     OtDevProxyWatcherState *watcher = NULL;
     OtDevProxyWatcherState *node;
@@ -1222,7 +1343,6 @@ static void ot_dev_proxy_release_mmio(OtDevProxyState *s)
     }
 
     qdev_unrealize(DEVICE(watcher));
-    // object_unref(OBJECT(watcher));
 
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('m', 'r'), NULL, 0);
 }
@@ -1265,9 +1385,13 @@ static void ot_dev_proxy_quit(OtDevProxyState *s)
 static void ot_dev_proxy_intercepted_irq(void *opaque, int irq, int level)
 {
     OtDevProxyState *s = opaque;
-    g_assert(irq < s->proxy_irq_count);
+    g_assert(irq < PROXY_IRQ_INTERCEPT_COUNT);
 
     OtDevProxyIrq *proxy_irq = &s->proxy_irq_map[irq];
+    if (!proxy_irq->irq_orig) {
+        warn_report("%d non-assigned intercepted IRQ signaled", irq);
+        return;
+    }
     g_assert(proxy_irq->dev_num < s->dev_count);
 
     OtDevProxyItem *item = &s->items[proxy_irq->dev_num];
@@ -1281,8 +1405,7 @@ static void ot_dev_proxy_intercepted_irq(void *opaque, int irq, int level)
 
     trace_ot_dev_proxy_route_irq(dev_name, dev_id, proxy_irq->irq_num, level);
 
-    ot_dev_proxy_signal(s, PROXY_COMMAND('^', 'W'), proxy_irq->dev_num,
-                        proxy_irq->irq_num, level);
+    ot_dev_proxy_signal(s, PROXY_COMMAND('^', 'W'), proxy_irq, level);
 
     g_free(dev_id);
 }
@@ -1477,21 +1600,6 @@ static int ot_dev_proxy_be_change(void *opaque)
     return 0;
 }
 
-static Property ot_dev_proxy_properties[] = {
-    DEFINE_PROP_CHR("chardev", OtDevProxyState, chr),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
-static void ot_dev_proxy_reset(DeviceState *dev)
-{
-    OtDevProxyState *s = OT_DEV_PROXY(dev);
-
-    fifo8_reset(&s->rx_fifo);
-    memset(&s->rx_hdr, 0, sizeof(s->rx_hdr));
-    s->requester_uid = 0;
-    s->initiator_uid = 0;
-}
-
 static int ot_dev_proxy_discover_device(Object *child, void *opaque)
 {
     GArray *array = opaque;
@@ -1598,7 +1706,12 @@ static int ot_dev_proxy_discover_memory_root(Object *child, void *opaque)
 
     if (object_dynamic_cast(child, TYPE_MEMORY_REGION)) {
         MemoryRegion *mr = MEMORY_REGION(child);
-        if (mr->container) {
+        /*
+         * This is a hack. A proper implementation would require to search
+         * the address spaces for memory root regions, unfortunately QEMU APIs
+         * do not expose address_spaces, which are hidden in memory.c
+         */
+        if (mr->container || mr->ram || mr->mapped_via_alias) {
             /* not a root memory region */
             return 0;
         }
@@ -1679,15 +1792,8 @@ static gint ot_dev_proxy_device_compare(gconstpointer a, gconstpointer b)
     return (gint)(ma->addr > mb->addr);
 }
 
-static void ot_dev_proxy_realize(DeviceState *dev, Error **errp)
+static void ot_dev_proxy_discover(OtDevProxyState *s)
 {
-    OtDevProxyState *s = OT_DEV_PROXY(dev);
-    (void)errp;
-
-    qemu_chr_fe_set_handlers(&s->chr, &ot_dev_proxy_can_receive,
-                             &ot_dev_proxy_receive, NULL,
-                             &ot_dev_proxy_be_change, s, NULL, true);
-
     Object *ms = qdev_get_machine();
     /* search for 'proxyfi-able' devices */
     GArray *array;
@@ -1697,51 +1803,23 @@ static void ot_dev_proxy_realize(DeviceState *dev, Error **errp)
 
     g_array_sort(array, &ot_dev_proxy_device_compare);
 
-    /* only system Mailbox side is exposed */
     s->dev_count = array->len;
     s->items = g_new0(OtDevProxyItem, s->dev_count);
-    unsigned total_irq_count = 0;
+
     for (unsigned ix = 0; ix < array->len; ix++) {
         OtDevProxyItem *item;
         item = (OtDevProxyItem *)(g_array_index(array, OtDevProxyItem *, ix));
-        if (object_dynamic_cast(item->obj, TYPE_SYS_BUS_DEVICE)) {
-            SysBusDevice *sysdev = SYS_BUS_DEVICE(item->obj);
-            unsigned irq_count = 0;
-            while (irq_count < 32u) {
-                if (item->caps.irq_mask & (1u << irq_count)) {
-                    if (!sysbus_has_irq(sysdev, (int)irq_count)) {
-                        break;
-                    }
-                }
-                irq_count += 1;
-            }
-            item->intctrl_irqs = g_new0(qemu_irq, irq_count);
-            item->routed_irqs = g_new0(qemu_irq, irq_count);
-            item->irq_count = irq_count;
-            total_irq_count += irq_count;
-        }
         /* deep copy */
         s->items[ix] = *item;
         /* allocated from ot_dev_proxy_discover */
         g_free(item);
     }
     g_array_free(array, TRUE);
-    s->proxy_irq_map = g_new0(OtDevProxyIrq, total_irq_count);
-    s->proxy_irq_count = total_irq_count;
-    /* finally get how many IRQs can be re-routed, so initialize input IRQs */
-    qdev_init_gpio_in(DEVICE(s), &ot_dev_proxy_intercepted_irq,
-                      (int)total_irq_count);
-    unsigned irq_num = 0;
-    for (unsigned ix = 0; ix < s->dev_count; ix++) {
-        OtDevProxyItem *item = &s->items[ix];
-        if (!item->irq_count) {
-            continue;
-        }
-        item->irq_route_base = irq_num;
-        for (unsigned irq_off = 0; irq_off < item->irq_count; irq_off++) {
-            s->proxy_irq_map[irq_num++] = (OtDevProxyIrq){ ix, irq_off };
-        }
-    }
+
+    s->proxy_irq_map = g_new0(OtDevProxyIrq, PROXY_IRQ_INTERCEPT_COUNT);
+    qdev_init_gpio_in_named(DEVICE(s), &ot_dev_proxy_intercepted_irq,
+                            PROXY_IRQ_INTERCEPT_NAME,
+                            PROXY_IRQ_INTERCEPT_COUNT);
 
     array = g_array_new(FALSE, TRUE, sizeof(MemoryRegion *));
     object_child_foreach_recursive(ms, &ot_dev_proxy_discover_memory_root,
@@ -1760,6 +1838,36 @@ static void ot_dev_proxy_realize(DeviceState *dev, Error **errp)
     object_child_foreach_recursive(ms, &ot_dev_proxy_map_bus, s);
 }
 
+static Property ot_dev_proxy_properties[] = {
+    DEFINE_PROP_CHR("chardev", OtDevProxyState, chr),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
+static void ot_dev_proxy_reset(DeviceState *dev)
+{
+    OtDevProxyState *s = OT_DEV_PROXY(dev);
+
+    if (!s->items) {
+        /* only done once */
+        ot_dev_proxy_discover(s);
+    }
+
+    fifo8_reset(&s->rx_fifo);
+    memset(&s->rx_hdr, 0, sizeof(s->rx_hdr));
+    s->requester_uid = 0;
+    s->initiator_uid = 0;
+}
+
+static void ot_dev_proxy_realize(DeviceState *dev, Error **errp)
+{
+    OtDevProxyState *s = OT_DEV_PROXY(dev);
+    (void)errp;
+
+    qemu_chr_fe_set_handlers(&s->chr, &ot_dev_proxy_can_receive,
+                             &ot_dev_proxy_receive, NULL,
+                             &ot_dev_proxy_be_change, s, NULL, true);
+}
+
 static void ot_dev_proxy_init(Object *obj)
 {
     OtDevProxyState *s = OT_DEV_PROXY(obj);
@@ -1775,7 +1883,7 @@ static void ot_dev_proxy_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->reset = &ot_dev_proxy_reset;
-    dc->realize = ot_dev_proxy_realize;
+    dc->realize = &ot_dev_proxy_realize;
     device_class_set_props(dc, ot_dev_proxy_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

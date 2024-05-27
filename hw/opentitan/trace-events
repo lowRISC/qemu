@@ -89,7 +89,7 @@ ot_csrng_try_schedule_genbits(unsigned slot, bool ready, bool queued, unsigned r
 
 ot_dev_proxy_dispatch_request(char a, char b) "%c%c"
 ot_dev_proxy_fe_error(int err) "error: %d"
-ot_dev_proxy_intercept_irq(const char *dname, const char *did, unsigned irq, bool enable) "%s (%s) %u: enable %u"
+ot_dev_proxy_intercept_irq(const char *dname, const char *did, const char *iid, bool enable) "%s (%s) %s: enable %u"
 ot_dev_proxy_read_buffer(const char *prefix, unsigned devix, bool mbx, unsigned offset, unsigned count) "%s #%u mbx:%u 0x%02x %u"
 ot_dev_proxy_read_memory(const char *prefix, unsigned devix, unsigned offset, unsigned count) "%s #%u 0x%08x 0x%x"
 ot_dev_proxy_read_reg(const char *prefix, unsigned devix, unsigned offset) "%s #%u 0x%08x"
