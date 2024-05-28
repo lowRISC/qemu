@@ -1669,6 +1669,14 @@ type_init(ot_dj_soc_register_types);
 /* Board */
 /* ------------------------------------------------------------------------ */
 
+static void ot_dj_board_reset(DeviceState *dev)
+{
+    OtDjBoardState *s = RISCV_OT_DJ_BOARD(dev);
+
+    resettable_reset(OBJECT(s->devices[OT_DJ_BOARD_DEV_DEV_PROXY]),
+                     RESET_TYPE_COLD);
+}
+
 static void ot_dj_board_realize(DeviceState *dev, Error **errp)
 {
     OtDjBoardState *board = RISCV_OT_DJ_BOARD(dev);
@@ -1742,6 +1750,7 @@ static void ot_dj_board_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     (void)data;
 
+    dc->reset = &ot_dj_board_reset;
     dc->realize = &ot_dj_board_realize;
 }
 
@@ -1839,6 +1848,13 @@ static void ot_dj_machine_init(MachineState *state)
     DeviceState *dev = qdev_new(TYPE_RISCV_OT_DJ_BOARD);
 
     object_property_add_child(OBJECT(state), "board", OBJECT(dev));
+
+    /*
+     * any object not part of the default system bus hiearchy is never reset
+     * otherwise
+     */
+    qemu_register_reset(resettable_cold_reset_fn, dev);
+
     qdev_realize(dev, NULL, &error_fatal);
 }
 
