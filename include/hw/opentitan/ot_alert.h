@@ -35,14 +35,7 @@
 #define TYPE_OT_ALERT "ot-alert"
 OBJECT_DECLARE_TYPE(OtAlertState, OtAlertStateClass, OT_ALERT)
 
-#define OT_DEVICE_ALERT TYPE_OT_ALERT "-sig"
-
-struct OtAlertState {
-    SysBusDevice parent_obj;
-};
-
-struct OtAlertStateClass {
-    SysBusDeviceClass parent_class;
-};
+#define OT_DEVICE_ALERT   TYPE_OT_ALERT "-sig"
+#define OT_ALERT_ESCALATE TYPE_OT_ALERT "-esc"
 
 #endif /* HW_OPENTITAN_OT_ALERT_H */

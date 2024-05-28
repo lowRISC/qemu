@@ -10,14 +10,6 @@ config OT_AES
 config OT_ALERT
     bool
 
-config OT_ALERT_DJ
-    select OT_ALERT
-    bool
-
-config OT_ALERT_EG
-    select OT_ALERT
-    bool
-
 config OT_AON_TIMER
     bool
 
