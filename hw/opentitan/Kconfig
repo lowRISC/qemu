@@ -105,6 +105,9 @@ config OT_PINMUX_DJ
 config OT_PINMUX_EG
     bool
 
+config OT_PLIC_EXT
+    bool
+
 config OT_PRESENT
     bool
 
