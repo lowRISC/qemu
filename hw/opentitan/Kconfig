@@ -141,6 +141,7 @@ config OT_SPI_HOST
     select SSI
 
 config OT_SRAM_CTRL
+    select OT_PRESENT
     bool
 
 config OT_TIMER
