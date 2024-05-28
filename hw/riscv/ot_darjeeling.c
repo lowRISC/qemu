@@ -37,6 +37,7 @@
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_aes.h"
+#include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_aon_timer.h"
 #include "hw/opentitan/ot_ast_dj.h"
 #include "hw/opentitan/ot_clkmgr.h"
@@ -1042,9 +1043,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("kmac-app", 1u)
         )
     },
-#if 0
     [OT_DJ_SOC_DEV_ALERT_HANDLER] = {
-        .type = TYPE_OT_ALERT_DJ,
+        .type = TYPE_OT_ALERT,
         .memmap = MEMMAPENTRIES(
             { 0x30150000u, 0x800u }
         ),
@@ -1058,10 +1058,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ),
+            IBEX_DEV_UINT_PROP("n_alerts", 99u),
+            IBEX_DEV_UINT_PROP("n_classes", 4u),
+            IBEX_DEV_UINT_PROP("n_lpg", 18u),
             IBEX_DEV_UINT_PROP("edn-ep", 4u)
         ),
     },
-#endif
     [OT_DJ_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_OT_SPI_HOST,
         .instance = 0,
