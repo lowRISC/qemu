@@ -15,7 +15,6 @@ config OT_DARJEELING
     select IBEX_COMMON
     select OT_ADDRESS_SPACE
     select OT_AES
-    select OT_ALERT_DJ
     select OT_AON_TIMER
     select OT_AST_DJ
     select OT_CLKMGR
@@ -56,7 +55,6 @@ config OT_EARLGREY
     select IBEX
     select IBEX_COMMON
     select OT_AES
-    select OT_ALERT_EG
     select OT_AON_TIMER
     select OT_AST_EG
     select OT_CLKMGR

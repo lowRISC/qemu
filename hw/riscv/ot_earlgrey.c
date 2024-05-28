@@ -34,7 +34,6 @@
 #include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_aes.h"
-#include "hw/opentitan/ot_alert_eg.h"
 #include "hw/opentitan/ot_aon_timer.h"
 #include "hw/opentitan/ot_ast_eg.h"
 #include "hw/opentitan/ot_clkmgr.h"
@@ -536,6 +535,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_UINT_PROP("kmac-app", 1u)
         )
     },
+#if 0
     [OT_EG_SOC_DEV_ALERT_HANDLER] = {
         .type = TYPE_OT_ALERT_EG,
         .memmap = MEMMAPENTRIES(
@@ -554,6 +554,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_UINT_PROP("edn-ep", 4u)
         ),
     },
+#endif
     [OT_EG_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_OT_SPI_HOST,
         .instance = 0,
