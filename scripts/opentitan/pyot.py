@@ -278,8 +278,12 @@ class QEMUWrapper:
                         xend = now()
                     ret = xret
                     if ret != 0:
-                        log.critical('Abnormal QEMU termination: %d for "%s"',
-                                     ret, tdef.test_name)
+                        if ret != tdef.expect_result:
+                            logfn = getattr(log, 'critical')
+                        else:
+                            logfn = getattr(log, 'warning')
+                        logfn('Abnormal QEMU termination: %d for "%s"',
+                              ret, tdef.test_name)
                     break
                 try:
                     data = sock.recv(4096)
@@ -1075,7 +1079,6 @@ class QEMUExecuter:
                     exec_info.context.execute('pre')
                     tret, xtime, err = qot.run(exec_info)
                     cret = exec_info.context.finalize()
-                    exec_info.context.execute('post', tret)
                     if exec_info.expect_result != 0:
                         if tret == exec_info.expect_result:
                             self._log.info('QEMU failed with expected error, '
@@ -1087,6 +1090,7 @@ class QEMUExecuter:
                             tret = 98
                     if tret == 0 and cret != 0:
                         tret = 99
+                    exec_info.context.execute('post', tret)
                 # pylint: disable=broad-except
                 except Exception as exc:
                     self._log.critical('%s', str(exc))
