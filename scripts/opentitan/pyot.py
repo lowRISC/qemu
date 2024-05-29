@@ -10,7 +10,7 @@
 
 from argparse import ArgumentParser, FileType, Namespace
 from atexit import register
-from collections import defaultdict
+from collections import defaultdict, deque
 from csv import reader as csv_reader, writer as csv_writer
 from fnmatch import fnmatchcase
 from glob import glob
@@ -33,8 +33,7 @@ from threading import Thread
 from tempfile import mkdtemp, mkstemp
 from time import time as now
 from traceback import format_exc
-from typing import (Any, Deque, Dict, Iterator, List, NamedTuple, Optional, Set,
-                    Tuple)
+from typing import Any, Iterator, NamedTuple, Optional
 
 from ot.util.log import configure_loggers
 
@@ -96,10 +95,10 @@ class ResultFormatter:
         if spacing:
             print('')
 
-    def _show_line(self, widths: List[int], csep: str) -> None:
+    def _show_line(self, widths: list[int], csep: str) -> None:
         print(f'+{"+".join([csep * (w+2) for w in widths])}+')
 
-    def _show_row(self, widths: List[int], cols: List[str]) -> None:
+    def _show_row(self, widths: list[int], cols: list[str]) -> None:
         line = '|'.join([f' {c:{">" if p else "<"}{w}s} '
                          for p, (w, c) in enumerate(zip(widths, cols))])
         print(f'|{line}|')
@@ -134,7 +133,7 @@ class QEMUWrapper:
     LOG_LEVELS = {'D': DEBUG, 'I': INFO, 'E': ERROR}
     """OpenTitan log levels."""
 
-    def __init__(self, tcpdev: Tuple[str, int], debug: bool):
+    def __init__(self, tcpdev: tuple[str, int], debug: bool):
         # self._mterm: Optional[MiniTerm] = None
         self._device = tcpdev
         self._debug = debug
@@ -142,9 +141,9 @@ class QEMUWrapper:
         self._qlog = getLogger('pyot.qemu')
         self._otlog = getLogger('pyot.ot')
 
-    def run(self, qemu_args: List[str], timeout: int, name: str,
+    def run(self, qemu_args: list[str], timeout: int, name: str,
             ctx: Optional['QEMUContext'], start_delay: float) -> \
-            Tuple[int, ExecTime, str]:
+            tuple[int, ExecTime, str]:
         """Execute the specified QEMU command, aborting execution if QEMU does
            not exit after the specified timeout.
 
@@ -207,7 +206,7 @@ class QEMUWrapper:
             # queue, which is popped and logged to the local logger on each
             # loop. Note that Popen's communicate() also relies on threads to
             # perform stdout/stderr read out.
-            log_q = Deque()
+            log_q = deque()
             Thread(target=self._qemu_logger, name='qemu_out_logger',
                    args=(proc, log_q, True)).start()
             Thread(target=self._qemu_logger, name='qemu_err_logger',
@@ -348,7 +347,7 @@ class QEMUWrapper:
             return DEBUG
         return default
 
-    def _qemu_logger(self, proc: Popen, queue: Deque, err: bool):
+    def _qemu_logger(self, proc: Popen, queue: deque, err: bool):
         # worker thread, blocking on VM stdout/stderr
         stream = proc.stderr if err else proc.stdout
         while proc.poll() is None:
@@ -394,11 +393,11 @@ class QEMUFileManager:
     def __init__(self, keep_temp: bool = False):
         self._log = getLogger('pyot.file')
         self._keep_temp = keep_temp
-        self._in_fly: Set[str] = set()
-        self._otp_files: Dict[str, Tuple[str, int]] = {}
-        self._env: Dict[str, str] = {}
-        self._transient_vars: Set[str] = set()
-        self._dirs: Dict[str, str] = {}
+        self._in_fly: set[str] = set()
+        self._otp_files: dict[str, tuple[str, int]] = {}
+        self._env: dict[str, str] = {}
+        self._transient_vars: set[str] = set()
+        self._dirs: dict[str, str] = {}
         register(self._cleanup)
 
     @property
@@ -411,14 +410,14 @@ class QEMUFileManager:
         return self._keep_temp
 
     def set_qemu_src_dir(self, path: str) -> None:
-        """Set the QEMU "source" directory.
+        """set the QEMU "source" directory.
 
            :param path: the path to the QEMU source directory
         """
         self._env['QEMU_SRC_DIR'] = abspath(path)
 
     def set_qemu_bin_dir(self, path: str) -> None:
-        """Set the QEMU executable directory.
+        """set the QEMU executable directory.
 
            :param path: the path to the QEMU binary directory
         """
@@ -450,7 +449,7 @@ class QEMUFileManager:
             self._log.debug('Interpolate %s with %s', value, nvalue)
         return nvalue
 
-    def define(self, aliases: Dict[str, Any]) -> None:
+    def define(self, aliases: dict[str, Any]) -> None:
         """Store interpolation variables into a local dictionary.
 
             Variable values are interpolated before being stored.
@@ -471,7 +470,7 @@ class QEMUFileManager:
             self._env[name.upper()] = value
             self._log.debug('Store %s as %s', name.upper(), value)
 
-    def define_transient(self, aliases: Dict[str, Any]) -> None:
+    def define_transient(self, aliases: dict[str, Any]) -> None:
         """Add short-lived aliases that are all discarded when cleanup_transient
            is called.
 
@@ -640,7 +639,7 @@ class QEMUFileManager:
     def _cleanup(self) -> None:
         """Remove a generated, temporary flash image file.
         """
-        removed: Set[str] = set()
+        removed: set[str] = set()
         for tmpfile in self._in_fly:
             if not isfile(tmpfile):
                 removed.add(tmpfile)
@@ -659,7 +658,7 @@ class QEMUFileManager:
                               f'removed')
             for tmpfile in self._in_fly:
                 self._log.warning('Temporary file %s not suppressed', tmpfile)
-        removed: Set[str] = set()
+        removed: set[str] = set()
         if not self._keep_temp:
             for tmpname, tmpdir in self._dirs.items():
                 if not isdir(tmpdir):
@@ -685,11 +684,11 @@ class QEMUContextWorker:
     """Background task for QEMU context.
     """
 
-    def __init__(self, cmd: str, env: Dict[str, str]):
+    def __init__(self, cmd: str, env: dict[str, str]):
         self._log = getLogger('pyot.cmd')
         self._cmd = cmd
         self._env = env
-        self._log_q = Deque()
+        self._log_q = deque()
         self._resume = False
         self._thread: Optional[Thread] = None
         self._ret = None
@@ -788,8 +787,8 @@ class QEMUContext:
     """
 
     def __init__(self, test_name: str, qfm: QEMUFileManager,
-                 qemu_cmd: List[str], context: Dict[str, List[str]],
-                 env: Optional[Dict[str, str]] = None):
+                 qemu_cmd: list[str], context: dict[str, list[str]],
+                 env: Optional[dict[str, str]] = None):
         # pylint: disable=too-many-arguments
         self._clog = getLogger('pyot.ctx')
         self._test_name = test_name
@@ -797,7 +796,7 @@ class QEMUContext:
         self._qemu_cmd = qemu_cmd
         self._context = context
         self._env = env or {}
-        self._workers: List[Popen] = []
+        self._workers: list[Popen] = []
 
     def execute(self, ctx_name: str, code: int = 0) -> None:
         """Execute all commands, in order, for the selected context.
@@ -929,15 +928,15 @@ class QEMUExecuter:
        virtual UART port.
     """
 
-    def __init__(self, qfm: QEMUFileManager, config: Dict[str, any],
+    def __init__(self, qfm: QEMUFileManager, config: dict[str, any],
                  args: Namespace):
         self._log = getLogger('pyot.exec')
         self._qfm = qfm
         self._config = config
         self._args = args
-        self._argdict: Dict[str, Any] = {}
-        self._qemu_cmd: List[str] = []
-        self._vcp: Optional[Tuple[str, int]] = None
+        self._argdict: dict[str, Any] = {}
+        self._qemu_cmd: list[str] = []
+        self._vcp: Optional[tuple[str, int]] = None
         self._suffixes = []
         if hasattr(self._args, 'opts'):
             setattr(self._args, 'global_opts', getattr(self._args, 'opts'))
@@ -1091,7 +1090,7 @@ class QEMUExecuter:
         return args.__dict__.get(name)
 
     @staticmethod
-    def flatten(lst: List) -> List:
+    def flatten(lst: list) -> list:
         """Flatten a list.
         """
         return [item for sublist in lst for item in sublist]
@@ -1103,7 +1102,7 @@ class QEMUExecuter:
             return normpath(path)
         return normpath(joinpath(getcwd(), path))
 
-    def _cleanup_temp_files(self, storage: Dict[str, Set[str]]) -> None:
+    def _cleanup_temp_files(self, storage: dict[str, set[str]]) -> None:
         if self._qfm.keep_temporary:
             return
         for kind, files in storage.items():
@@ -1112,8 +1111,8 @@ class QEMUExecuter:
                 delete_file(filename)
 
     def _build_qemu_command(self, args: Namespace,
-                            opts: Optional[List[str]] = None) \
-            -> Tuple[List[str], Tuple[str, int], Dict[str, Set[str]], float]:
+                            opts: Optional[list[str]] = None) \
+            -> tuple[list[str], tuple[str, int], dict[str, set[str]], float]:
         """Build QEMU command line from argparser values.
 
            :param args: the parsed arguments
@@ -1234,7 +1233,7 @@ class QEMUExecuter:
         return qemu_args, tcpdev, temp_files, start_delay
 
     def _build_qemu_test_command(self, filename: str) -> \
-            Tuple[List[str], Namespace, int, Dict[str, Set[str]], QEMUContext,
+            tuple[list[str], Namespace, int, dict[str, set[str]], QEMUContext,
                   float, int]:
         test_name = self.get_test_radix(filename)
         args, opts, timeout, texp = self._build_test_args(test_name)
@@ -1243,7 +1242,7 @@ class QEMUExecuter:
         ctx = self._build_test_context(test_name)
         return qemu_cmd, args, timeout, temp_files, ctx, sdelay, texp
 
-    def _build_test_list(self, alphasort: bool = True) -> List[str]:
+    def _build_test_list(self, alphasort: bool = True) -> list[str]:
         pathnames = set()
         testdir = normpath(self._qfm.interpolate(self._config.get('testdir',
                                                                   curdir)))
@@ -1314,7 +1313,7 @@ class QEMUExecuter:
                             testfile = joinpath(incf_dir, testfile)
                         yield normpath(testfile)
 
-    def _build_config_list(self, config_entry: str) -> List:
+    def _build_config_list(self, config_entry: str) -> list:
         cfglist = []
         items = self._config.get(config_entry)
         if not items:
@@ -1343,7 +1342,7 @@ class QEMUExecuter:
         return cfglist
 
     def _build_test_args(self, test_name: str) \
-            -> Tuple[Namespace, List[str], int]:
+            -> tuple[Namespace, list[str], int]:
         tests_cfg = self._config.get('tests', {})
         if not isinstance(tests_cfg, dict):
             raise ValueError('Invalid tests sub-section')
