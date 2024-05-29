@@ -1621,7 +1621,8 @@ def main():
             opts = []
         cli_opts = list(opts)
         args = argparser.parse_args(sargv)
-        debug = args.debug
+        if args.debug is not None:
+            debug = args.debug
         if args.summary and not args.result:
             tmpfd, tmp_result = mkstemp(suffix='.csv')
             close(tmpfd)
