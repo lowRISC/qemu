@@ -36,6 +36,7 @@ from traceback import format_exc
 from typing import Any, Iterator, NamedTuple, Optional
 
 from ot.util.log import configure_loggers
+from ot.util.misc import EasyDict
 
 
 DEFAULT_MACHINE = 'ot-earlgrey'
@@ -144,21 +145,26 @@ class QEMUWrapper:
         self._qlog = getLogger('pyot.qemu')
         self._vcplog = getLogger('pyot.vcp')
 
-    def run(self, qemu_args: list[str], timeout: int, name: str,
-            ctx: Optional['QEMUContext'], start_delay: float,
-            trigger: str = None) -> \
-            tuple[int, ExecTime, str]:
+    def run(self, tdef: EasyDict[str, Any]) -> tuple[int, ExecTime, str]:
         """Execute the specified QEMU command, aborting execution if QEMU does
            not exit after the specified timeout.
 
-           :param qemu_args: QEMU argument list (first arg is the path to QEMU)
-           :param timeout: the delay in seconds after which the QEMU session
-                            is aborted
-           :param name: the tested application name
-           :param ctx: execution context, if any
-           :param start_delay: start up delay
-           :param trigger: if not empty, the string to wait for triggering
-                           'with' context execution
+           :param tdef: test definition and parameters
+                - command, a list of strings defining the QEMU command to
+                           execute with all its options
+                - timeout, the allowed time for the command to execute,
+                           specified as a real number
+                - expect_result, the expected outcome of QEMU (exit code). Some
+                           tests may expect that QEMU terminates with a non-zero
+                           exit code
+                - context, an option QEMUContextWorker instance, to execute
+                           concurrently with the QEMU process. Many tests
+                           expect to communicate with the QEMU process.
+                - trigger, a string to match on the QEMU virtual comm port
+                           output to trigger the context execution. It may be
+                           defined as a regular expression.
+                - start_delay, the delay to wait before starting the execution
+                           of the context once QEMU command has been started.
            :return: a 3-uple of exit code, execution time, and last guest error
         """
         # stdout and stderr belongs to QEMU VM
@@ -167,18 +173,18 @@ class QEMUWrapper:
         xre = re_compile(self.EXIT_ON)
         otre = r'^([' + ''.join(self.LOG_LEVELS.keys()) + r'])\d{5}\s'
         lre = re_compile(otre)
-        if trigger:
+        if tdef.trigger:
             sync_event = Event()
-            if trigger.startswith("r'") and trigger.endswith("'"):
+            if tdef.trigger.startswith("r'") and tdef.trigger.endswith("'"):
                 try:
-                    tmo = re_compile(trigger[2:-1].encode())
+                    tmo = re_compile(tdef.trigger[2:-1].encode())
                 except re_error as exc:
                     raise ValueError('Invalid trigger regex: {exc}') from exc
 
                 def trig_match(bline):
                     return tmo.match(bline)
             else:
-                btrigger = trigger.encode()
+                btrigger = tdef.trigger.encode()
 
                 def trig_match(bline):
                     return bline.find(btrigger) >= 0
@@ -193,22 +199,22 @@ class QEMUWrapper:
         log = self._log
         last_error = ''
         try:
-            workdir = dirname(qemu_args[0])
-            log.debug('Executing QEMU as %s', ' '.join(qemu_args))
+            workdir = dirname(tdef.command[0])
+            log.debug('Executing QEMU as %s', ' '.join(tdef.command))
             # pylint: disable=consider-using-with
-            proc = Popen(qemu_args, bufsize=1, cwd=workdir, stdout=PIPE,
+            proc = Popen(tdef.command, bufsize=1, cwd=workdir, stdout=PIPE,
                          stderr=PIPE, encoding='utf-8', errors='ignore',
                          text=True)
             try:
                 # ensure that QEMU starts and give some time for it to set up
                 # its VCP before attempting to connect to it
-                self._log.debug('Waiting %.1fs for VM init', start_delay)
-                proc.wait(start_delay)
+                self._log.debug('Waiting %.1fs for VM init', tdef.start_delay)
+                proc.wait(tdef.start_delay)
             except TimeoutExpired:
                 pass
             else:
                 ret = proc.returncode
-                log.error('QEMU bailed out: %d for "%s"', ret, name)
+                log.error('QEMU bailed out: %d for "%s"', ret, tdef.test_name)
                 raise OSError()
             sock = socket()
             log.debug('Connecting QEMU VCP as %s:%d', *self._device)
@@ -221,7 +227,7 @@ class QEMUWrapper:
                 raise
             # timeout for communicating over VCP
             sock.settimeout(0.05)
-            log.debug('Execute QEMU for %.0f secs', timeout)
+            log.debug('Execute QEMU for %.0f secs', tdef.timeout)
             vcp_buf = bytearray()
             # unfortunately, subprocess's stdout calls are blocking, so the
             # only way to get near real-time output from QEMU is to use a
@@ -236,10 +242,9 @@ class QEMUWrapper:
             Thread(target=self._qemu_logger, name='qemu_err_logger',
                    args=(proc, log_q, False)).start()
             xstart = now()
-            # sync_event.set()
-            if ctx:
+            if tdef.context:
                 try:
-                    ctx.execute('with', sync=sync_event)
+                    tdef.context.execute('with', sync=sync_event)
                 except OSError as exc:
                     ret = exc.errno
                     last_error = exc.strerror
@@ -249,7 +254,7 @@ class QEMUWrapper:
                     ret = 126
                     last_error = str(exc)
                     raise
-            abstimeout = float(timeout) + now()
+            abstimeout = float(tdef.timeout) + now()
             while now() < abstimeout:
                 while log_q:
                     err, qline = log_q.popleft()
@@ -261,8 +266,8 @@ class QEMUWrapper:
                     else:
                         level = INFO
                     self._qlog.log(level, qline)
-                if ctx:
-                    wret = ctx.check_error()
+                if tdef.context:
+                    wret = tdef.context.check_error()
                     if wret:
                         ret = wret
                         last_error = 'Fail to execute worker'
@@ -274,7 +279,7 @@ class QEMUWrapper:
                     ret = xret
                     if ret != 0:
                         log.critical('Abnormal QEMU termination: %d for "%s"',
-                                     ret, name)
+                                     ret, tdef.test_name)
                     break
                 try:
                     data = sock.recv(4096)
@@ -290,8 +295,8 @@ class QEMUWrapper:
                     if trig_match and trig_match(line):
                         self._log.info('Trigger pattern detected')
                         # reset timeout from this event
-                        abstimeout = float(timeout) + now()
-                        log.debug('Resuming for %.0f secs', timeout)
+                        abstimeout = float(tdef.timeout) + now()
+                        log.debug('Resuming for %.0f secs', tdef.timeout)
                         sync_event.set()
                         trig_match = None
                     xmo = xre.search(line)
@@ -323,7 +328,7 @@ class QEMUWrapper:
                 # match
                 break
             if ret is None:
-                log.warning('Execution timed out for "%s"', name)
+                log.warning('Execution timed out for "%s"', tdef.test_name)
                 ret = 124  # timeout
         except (OSError, ValueError) as exc:
             if ret is None:
@@ -997,7 +1002,9 @@ class QEMUExecuter:
 
            :raise ValueError: if some argument is invalid
         """
-        self._qemu_cmd, self._vcp = self._build_qemu_command(self._args)[:2]
+        exec_info = self._build_qemu_command(self._args)
+        self._qemu_cmd = exec_info.command
+        self._vcp = exec_info.connection
         self._argdict = dict(self._args.__dict__)
         self._suffixes = []
         suffixes = self._config.get('suffixes', [])
@@ -1063,15 +1070,14 @@ class QEMUExecuter:
                         'UTFILE': basename(test),
                     })
                     test_name = self.get_test_radix(test)
-                    qemu_cmd, targs, timeout, temp_files, ctx, sdelay, texp, trig = \
-                        self._build_qemu_test_command(test)
-                    ctx.execute('pre')
-                    tret, xtime, err = qot.run(qemu_cmd, timeout, test_name,
-                                               ctx, sdelay, trig)
-                    cret = ctx.finalize()
-                    ctx.execute('post', tret)
-                    if texp != 0:
-                        if tret == texp:
+                    exec_info = self._build_qemu_test_command(test)
+                    exec_info.test_name = test_name
+                    exec_info.context.execute('pre')
+                    tret, xtime, err = qot.run(exec_info)
+                    cret = exec_info.context.finalize()
+                    exec_info.context.execute('post', tret)
+                    if exec_info.expect_result != 0:
+                        if tret == exec_info.expect_result:
                             self._log.info('QEMU failed with expected error, '
                                            'assume success')
                             tret = 0
@@ -1182,17 +1188,12 @@ class QEMUExecuter:
 
     def _build_qemu_command(self, args: Namespace,
                             opts: Optional[list[str]] = None) \
-            -> tuple[list[str], tuple[str, int], dict[str, set[str]], float,
-                     str]:
+            -> EasyDict[str, Any]:
         """Build QEMU command line from argparser values.
 
            :param args: the parsed arguments
            :param opts: any QEMU-specific additional options
-           :return: a tuple of a list of QEMU command line,
-                    the TCP device descriptor to connect to the QEMU VCP,
-                    a dictionary of generated temporary files and the start
-                    delay, the start delay and a trigger string which may be
-                    empty
+           :return: a dictionary defining how to execute the command
         """
         if args.qemu is None:
             raise ValueError('QEMU path is not defined')
@@ -1321,18 +1322,21 @@ class QEMUExecuter:
         qemu_args.extend(args.global_opts or [])
         if opts:
             qemu_args.extend((str(o) for o in opts))
-        return qemu_args, tcpdev, temp_files, start_delay, trigger
+        return EasyDict(command=qemu_args, connection=tcpdev,
+                        tmpfiles=temp_files, start_delay=start_delay,
+                        trigger=trigger)
 
-    def _build_qemu_test_command(self, filename: str) -> \
-            tuple[list[str], Namespace, int, dict[str, set[str]], QEMUContext,
-                  float, int, str]:
+    def _build_qemu_test_command(self, filename: str) -> EasyDict[str, Any]:
         test_name = self.get_test_radix(filename)
         args, opts, timeout, texp = self._build_test_args(test_name)
         setattr(args, 'exec', filename)
-        qemu_cmd, _, temp_files, sdelay, trig = self._build_qemu_command(args,
-                                                                         opts)
-        ctx = self._build_test_context(test_name)
-        return qemu_cmd, args, timeout, temp_files, ctx, sdelay, texp, trig
+        exec_info = self._build_qemu_command(args, opts)
+        exec_info.pop('connection', None)
+        exec_info.args = args
+        exec_info.context = self._build_test_context(test_name)
+        exec_info.timeout = timeout
+        exec_info.expect_result = texp
+        return exec_info
 
     def _build_test_list(self, alphasort: bool = True) -> list[str]:
         pathnames = set()
