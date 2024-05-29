@@ -35,7 +35,7 @@ from time import time as now
 from traceback import format_exc
 from typing import Any, Iterator, NamedTuple, Optional
 
-from ot.util.log import configure_loggers
+from ot.util.log import Color as LogColor, configure_loggers
 from ot.util.misc import EasyDict
 
 
@@ -1632,7 +1632,9 @@ def main():
             close(tmpfd)
             args.result = tmp_result
 
-        log = configure_loggers(args.verbose, 'pyot', debug=args.debug,
+        log = configure_loggers(args.verbose, 'pyot',
+                                LogColor('blue'), 'pyot.vcp',
+                                debug=args.debug,
                                 info=args.info, warning=args.warn)[0]
 
         qfm = QEMUFileManager(args.keep_tmp)
