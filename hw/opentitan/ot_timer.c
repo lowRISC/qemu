@@ -169,7 +169,8 @@ static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
         s->origin_ns = now;
     }
 
-    if (!ot_timer_is_active(s)) {
+    uint32_t step = FIELD_EX32(s->regs[R_CFG0], CFG0, STEP);
+    if (!ot_timer_is_active(s) || !step) {
         timer_del(s->timer);
         return;
     }
