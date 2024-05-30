@@ -47,7 +47,8 @@ The ROM image ID may depend on the SoC.
 
 * for EarlGrey which has a single ROM, the ID is expected to be `rom`.
 * for a SoC with two ROMs, the IDs would be expected to be `rom0` and `rom1`.
-* for a machine with multiple SoCs, the IDs would be additionnally prefixed with the SoC name.
+* for a machine with multiple SoCs, the IDs would be additionnally prefixed with the SoC name and a
+  full stop, _e.g._ `soc0.rom0`
 
 ## Booting with and without ROM
 
