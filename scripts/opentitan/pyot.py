@@ -1608,6 +1608,8 @@ def main():
                            help='increase verbosity')
         extra.add_argument('-d', action='store_true',
                            help='enable debug mode')
+        extra.add_argument('--log-time', action='store_true',
+                           help='show local time in log messages')
         extra.add_argument('--debug', action='append', metavar='LOGGER',
                            help='assign debug level to logger(s)')
         extra.add_argument('--info', action='append', metavar='LOGGER',
@@ -1634,7 +1636,7 @@ def main():
 
         log = configure_loggers(args.verbose, 'pyot',
                                 LogColor('blue'), 'pyot.vcp',
-                                debug=args.debug,
+                                ms=args.log_time, debug=args.debug,
                                 info=args.info, warning=args.warn)[0]
 
         qfm = QEMUFileManager(args.keep_tmp)

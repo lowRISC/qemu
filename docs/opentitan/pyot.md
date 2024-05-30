@@ -5,11 +5,12 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-D DELAY] [-i N] [-L LOG_FILE] [-M LOG] [-m MACHINE] [-Q OPTS] [-q QEMU]
-               [-p DEVICE] [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c JSON] [-e] [-f RAW]
-               [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
-               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-d] [--debug DEBUG] [--info INFO]
-               [--warn WARN]
+usage: pyot.py [-h] [-D DELAY] [-i N] [-L LOG_FILE] [-M LOG] [-m MACHINE]
+               [-Q OPTS] [-q QEMU] [-p DEVICE] [-t TRACE] [-S FIRST_SOC] [-s]
+               [-U] [-b file] [-c JSON] [-e] [-f RAW] [-K] [-l file] [-O RAW]
+               [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
+               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-d] [--log-time]
+               [--debug LOGGER] [--info LOGGER] [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -19,14 +20,16 @@ options:
 Virtual machine:
   -D DELAY, --start-delay DELAY
                         QEMU start up delay before initial comm
-  -i N, --icount N      virtual instruction counter with 2^N clock ticks per inst.
+  -i N, --icount N      virtual instruction counter with 2^N clock ticks per
+                        inst.
   -L LOG_FILE, --log_file LOG_FILE
                         log file for trace and log messages
   -M LOG, --log LOG     log message types
   -m MACHINE, --machine MACHINE
                         virtual machine (default to ot-earlgrey)
   -Q OPTS, --opts OPTS  QEMU verbatim option (can be repeated)
-  -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-riscv32)
+  -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-
+                        riscv32)
   -p DEVICE, --device DEVICE
                         serial port device name (default to localhost:8000)
   -t TRACE, --trace TRACE
@@ -34,7 +37,8 @@ Virtual machine:
   -S FIRST_SOC, --first-soc FIRST_SOC
                         Identifier of the first SoC, if any
   -s, --singlestep      enable "single stepping" QEMU execution mode
-  -U, --muxserial       enable multiple virtual UARTs to be muxed into same host output channel
+  -U, --muxserial       enable multiple virtual UARTs to be muxed into same
+                        host output channel
 
 Files:
   -b file, --boot file  bootloader 0 file
@@ -42,7 +46,8 @@ Files:
                         path to configuration file
   -e, --embedded-flash  generate an embedded flash image file
   -f RAW, --flash RAW   SPI flash image file
-  -K, --keep-tmp        Do not automatically remove temporary files and dirs on exit
+  -K, --keep-tmp        Do not automatically remove temporary files and dirs
+                        on exit
   -l file, --loader file
                         ROM trampoline to execute, if any
   -O RAW, --otp-raw RAW
@@ -55,7 +60,8 @@ Files:
 
 Execution:
   -F TEST, --filter TEST
-                        run tests with matching filter, prefix with "!" to exclude matching tests
+                        run tests with matching filter, prefix with "!" to
+                        exclude matching tests
   -k SECONDS, --timeout SECONDS
                         exit after the specified seconds (default: 60 secs)
   -z, --list            show a list of tests to execute and exit
@@ -67,6 +73,7 @@ Execution:
 Extras:
   -v, --verbose         increase verbosity
   -d                    enable debug mode
+  --log-time            show local time in log messages
   --debug LOGGER        assign debug level to logger(s)
   --info LOGGER         assign info level to logger(s)
   --warn LOGGER         assign warning level to logger(s)
@@ -165,6 +172,7 @@ This tool may be used in two ways, which can be combined:
 
 * `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
+* `--log-time` show local time before each logged message
 * `--debug` enable the debug level for the selected logger, may be repeated
 * `--info` enable the info level for the selected logger, may be repeated
 * `--warn` enable the warning level for the selected logger, may be repeated
