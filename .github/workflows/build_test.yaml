@@ -16,9 +16,9 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
           sudo apt-get update &&
-          sudo apt-get install -y git make pkg-config clang-17 cmake ninja-build python3 rust-all \
+          sudo apt-get install -y git make pkg-config clang-18 cmake ninja-build python3 rust-all \
             libpixman-1-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           git clean -dffx subprojects
           mkdir build-clang
           (cd build-clang &&
-           ../configure --cc=clang-17 --disable-werror --target-list=riscv32-softmmu,riscv64-softmmu)
+           ../configure --cc=clang-18 --disable-werror --target-list=riscv32-softmmu,riscv64-softmmu)
       - name: Build
         run: |
           ninja -C build-clang &&
@@ -69,9 +69,9 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
           sudo apt-get update &&
-          sudo apt-get install -y clang-format-17
+          sudo apt-get install -y clang-format-18
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Check execution
@@ -86,9 +86,9 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
           sudo apt-get update &&
-          sudo apt-get install -y clang-tidy-17
+          sudo apt-get install -y clang-tidy-18
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Download QEMU source artifacts
@@ -137,7 +137,7 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
           sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
           sudo apt-get update &&
           sudo apt-get install -y git make pkg-config gcc cmake ninja-build python3 rust-all \
             libpixman-1-dev
