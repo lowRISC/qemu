@@ -13,7 +13,16 @@ from typing import NamedTuple, Union
 import logging
 
 
-_LEVELS = {k: v for k, v in logging.getLevelNamesMapping().items()
+try:
+    getLevelNamesMapping = logging.getLevelNamesMapping
+except AttributeError:
+    # getLevelNamesMapping not supported on old Python versions (< 3.11)
+    def getLevelNamesMapping() -> dict[str, int]:
+        # pylint: disable=invalid-name,missing-function-docstring
+        return {lvl: getattr(logging, lvl) for lvl in
+                'CRITICAL FATAL ERROR WARNING INFO DEBUG'.split()}
+
+_LEVELS = {k: v for k, v in getLevelNamesMapping().items()
            if k not in ('NOTSET', 'WARN')}
 
 
