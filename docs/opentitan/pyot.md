@@ -5,7 +5,7 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-D DELAY] [-i N] [-L LOG_FILE] [-M LOG] [-m MACHINE]
+usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M LOG] [-m MACHINE]
                [-Q OPTS] [-q QEMU] [-p DEVICE] [-t TRACE] [-S FIRST_SOC] [-s]
                [-U] [-b file] [-c JSON] [-e] [-f RAW] [-K] [-l file] [-O RAW]
                [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
@@ -20,8 +20,9 @@ options:
 Virtual machine:
   -D DELAY, --start-delay DELAY
                         QEMU start up delay before initial comm
-  -i N, --icount N      virtual instruction counter with 2^N clock ticks per
-                        inst.
+  -i ICOUNT, --icount ICOUNT
+                        virtual instruction counter with 2^ICOUNT clock ticks
+                        per inst. or 'auto'
   -L LOG_FILE, --log_file LOG_FILE
                         log file for trace and log messages
   -M LOG, --log LOG     log message types
@@ -91,14 +92,8 @@ This tool may be used in two ways, which can be combined:
 * `-D` / `--start-delay` VM start up delay. Grace period to wait for the VM to start up before
   attempting to communicate with its char devices.
 * `-i` / `--icount` to specify virtual instruction counter with 2^N clock ticks per instruction.
-  This option if often used with two specific values:
-   * `-i 0` can be used to improve time synchronisation between the virtual CPU and the virtual HW:
-     as many OpenTitan tests rely on specific CPU clock counts for the HW to complete some action,
-     running QEMU without this option tends to favor CPU execution speed over HW emulation. With
-     this option, the vCPU is better synchronized, trying to emulate a 1GHz-clock vCPU.
-   * `-i 6` can be used to slow down vCPU virtual clock to a ~10-15MHz clock pace, which better
-     matches the expected FPGA-based lowRISC CPU.
-  Note that this option slows down the execution of guest applications.
+  Use 'auto' to enable QEMU adaptive icount counter. Note that this option slows down the execution
+  of guest applications.
 * `-L` / `--log_file` specify the log file for trace and log messages from QEMU.
 * `-M` / `--log` specify which log message types should be logged; most useful types are:
   * `in_asm` for guest instruction disassembly,

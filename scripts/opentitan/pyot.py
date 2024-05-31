@@ -59,7 +59,7 @@ class TestResult(NamedTuple):
     name: str
     result: str
     time: ExecTime
-    icount: Optional[int]
+    icount: Optional[str]
     error: str
 
 
@@ -1299,7 +1299,7 @@ class QEMUExecuter:
             qemu_args.append('-singlestep')
         if 'icount' in args:
             if args.icount is not None:
-                qemu_args.extend(('-icount', f'{args.icount}'))
+                qemu_args.extend(('-icount', f'shift={args.icount}'))
         mux = f'mux={"on" if args.muxserial else "off"}'
         try:
             start_delay = float(getattr(args, 'start_delay') or
@@ -1532,9 +1532,9 @@ def main():
         rel_qemu_path = relpath(qemu_path) if qemu_path else '?'
         qvm.add_argument('-D', '--start-delay', type=float, metavar='DELAY',
                          help='QEMU start up delay before initial comm')
-        qvm.add_argument('-i', '--icount', metavar='N', type=int,
-                         help='virtual instruction counter with 2^N clock ticks'
-                              ' per inst.')
+        qvm.add_argument('-i', '--icount',
+                         help='virtual instruction counter with 2^ICOUNT clock '
+                              'ticks per inst. or \'auto\'')
         qvm.add_argument('-L', '--log_file',
                          help='log file for trace and log messages')
         qvm.add_argument('-M', '--log', action='append',
