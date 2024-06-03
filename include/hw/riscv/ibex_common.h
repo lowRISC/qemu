@@ -157,6 +157,7 @@ typedef struct {
 
 typedef struct IbexMemMapEntry {
     hwaddr base;
+    int8_t priority;
 } IbexMemMapEntry;
 
 /* Device definition */

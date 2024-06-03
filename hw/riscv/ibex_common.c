@@ -45,12 +45,17 @@ static void rust_demangle_fn(const char *st_name, int st_info,
                              uint64_t st_value, uint64_t st_size);
 
 static void ibex_mmio_map_device(SysBusDevice *dev, MemoryRegion *mr,
-                                 unsigned nr, hwaddr addr)
+                                 unsigned nr, hwaddr addr, int priority)
 {
     g_assert(nr < dev->num_mmio);
     g_assert(dev->mmio[nr].addr == (hwaddr)-1);
     dev->mmio[nr].addr = addr;
-    memory_region_add_subregion(mr, addr, dev->mmio[nr].memory);
+    if (priority) {
+        memory_region_add_subregion_overlap(mr, addr, dev->mmio[nr].memory,
+                                            priority);
+    } else {
+        memory_region_add_subregion(mr, addr, dev->mmio[nr].memory);
+    }
 }
 
 DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
@@ -251,7 +256,8 @@ void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
                         if (mr) {
                             ibex_mmio_map_device(busdev, mr, mem,
                                                  IBEX_MEMMAP_GET_ADDRESS(
-                                                     memmap->base));
+                                                     memmap->base),
+                                                 memmap->priority);
                         }
                     }
                     mem++;
@@ -288,7 +294,8 @@ void ibex_map_devices_ext_mask(DeviceState *dev, MemoryRegion **mrs,
                     if (mr) {
                         ibex_mmio_map_device(sdev, mr, mem,
                                              IBEX_MEMMAP_GET_ADDRESS(
-                                                 memmap->base));
+                                                 memmap->base),
+                                             memmap->priority);
                     }
                 }
             }
