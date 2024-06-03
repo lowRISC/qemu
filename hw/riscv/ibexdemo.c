@@ -63,9 +63,6 @@ static void ibexdemo_soc_uart_configure(
 /* Constants */
 /* ------------------------------------------------------------------------ */
 
-static const MemMapEntry ibexdemo_ram = { .base = 0x00100000u,
-                                          .size = 0x10000u };
-
 static const uint32_t IBEXDEMO_BOOT[] = {
     /* Exception vectors */
     0x0840006fu, 0x0800006fu, 0x07c0006fu, 0x0780006fu, 0x0740006fu,
@@ -111,7 +108,9 @@ enum IbexDemoBoardDevice {
  */
 #define IBEXDEMO_TAP_IDCODE IBEX_JTAG_IDCODE(256, 1, 0)
 
-#define PULP_DM_BASE 0x00010000u
+#define PULP_DM_BASE   0x00010000u
+#define SRAM_MAIN_BASE 0x100000u
+#define SRAM_MAIN_SIZE 0x10000u
 
 #define IBEXDEMO_DM_CONNECTION(_dst_dev_, _num_) \
     { \
@@ -186,7 +185,7 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
     [IBEXDEMO_SOC_DEV_RV_DM] = {
         .type = TYPE_PULP_RV_DM,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x00000000u, .size = 0x1000u }
+            { .base = 0x00000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             IBEXDEMO_DM_CONNECTION(IBEXDEMO_SOC_DEV_DM, 0),
@@ -198,21 +197,21 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
     [IBEXDEMO_SOC_DEV_SIM_CTRL] = {
         .type = TYPE_IBEXDEMO_SIMCTRL,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x00020000u, .size = 0x0400u }
+            { .base = 0x00020000u }
         ),
     },
     [IBEXDEMO_SOC_DEV_GPIO] = {
         .type = TYPE_IBEXDEMO_GPIO,
         .cfg = &ibexdemo_soc_gpio_configure,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x80000000u, .size = 0x1000u }
+            { .base = 0x80000000u }
         ),
     },
     [IBEXDEMO_SOC_DEV_UART] = {
         .type = TYPE_IBEXDEMO_UART,
         .cfg = &ibexdemo_soc_uart_configure,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x80001000u, .size = 0x1000u }
+            { .base = 0x80001000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             IBEX_GPIO_SYSBUS_IRQ(0, IBEXDEMO_SOC_DEV_HART, 16)
@@ -221,7 +220,7 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
     [IBEXDEMO_SOC_DEV_TIMER] = {
         .type = TYPE_IBEXDEMO_TIMER,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x80002000u, .size = 0x1000u }
+            { .base = 0x80002000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             IBEX_GPIO_SYSBUS_IRQ(0, IBEXDEMO_SOC_DEV_HART, IRQ_M_TIMER)
@@ -232,13 +231,13 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         .name = "ibexdemo-pwm",
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x80003000u, .size = 0x1000u }
+            { .base = 0x80003000u }
         ),
     },
     [IBEXDEMO_SOC_DEV_SPI] = {
         .type = TYPE_IBEXDEMO_SPI,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x80004000u, .size = 0x0400u }
+            { .base = 0x80004000u }
         ),
     },
     /* clang-format on */
@@ -359,7 +358,7 @@ static void ibexdemo_soc_realize(DeviceState *dev, Error **errp)
 
     MachineState *ms = MACHINE(qdev_get_machine());
     MemoryRegion *sys_mem = get_system_memory();
-    memory_region_add_subregion(sys_mem, ibexdemo_ram.base, ms->ram);
+    memory_region_add_subregion(sys_mem, SRAM_MAIN_BASE, ms->ram);
 
     ibex_link_devices(s->devices, ibexdemo_soc_devices,
                       ARRAY_SIZE(ibexdemo_soc_devices));
@@ -507,7 +506,7 @@ static void ibexdemo_machine_class_init(ObjectClass *oc, void *data)
     mc->max_cpus = 1u;
     mc->default_cpu_type = ibexdemo_soc_devices[IBEXDEMO_SOC_DEV_HART].type;
     mc->default_ram_id = "ibexdemo.ram";
-    mc->default_ram_size = ibexdemo_ram.size;
+    mc->default_ram_size = SRAM_MAIN_SIZE;
 }
 
 static const TypeInfo ibexdemo_machine_type_info = {
