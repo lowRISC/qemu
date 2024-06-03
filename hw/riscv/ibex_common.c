@@ -636,8 +636,6 @@ void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
         qdev_prop_set_string(dev, "name", def->name);
     }
     g_assert(def->memmap != NULL);
-    g_assert(def->memmap->size != 0);
-    qdev_prop_set_uint64(dev, "size", def->memmap->size);
 }
 
 uint32_t ibex_load_kernel(CPUState *cpu)
