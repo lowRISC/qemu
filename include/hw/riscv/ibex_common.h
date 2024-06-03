@@ -155,6 +155,10 @@ typedef struct {
     };
 } IbexDevicePropDef;
 
+typedef struct IbexMemMapEntry {
+    hwaddr base;
+} IbexMemMapEntry;
+
 /* Device definition */
 struct IbexDeviceDef {
     /** Registered type of the device */
@@ -166,7 +170,7 @@ struct IbexDeviceDef {
     /** Optional configuration function */
     ibex_dev_cfg_fn cfg;
     /** Array of memory map */
-    const MemMapEntry *memmap;
+    const IbexMemMapEntry *memmap;
     /** Array of GPIO connections */
     const IbexGpioConnDef *gpio;
     /** Array of linked devices */
@@ -184,7 +188,7 @@ typedef struct {
     /** Instance number, default to 0 */
     int instance;
     /** Array of memory map */
-    const MemMapEntry *memmap;
+    const IbexMemMapEntry *memmap;
 } IbexDeviceMapDef;
 
 /*
@@ -226,18 +230,20 @@ typedef struct {
     (((_par_) << IBEX_DEVLINK_RMT_SHIFT) | ((_ix_) & IBEX_DEVLINK_IDX_MASK))
 
 /* MemMapEntry that should be ignored (i.e. skipped, not mapped) */
-#define MEMMAPSKIP          { .base = HWADDR_MAX, .size = HWADDR_MAX }
-#define SKIP_MEMMAP(_mmap_) ((_mmap_)->size == HWADDR_MAX)
+#define IBEX_MEMMAP_LAST            ((hwaddr)0ull)
+#define IBEX_MEMMAP_SKIP            { .base = HWADDR_MAX }
+#define IBEX_MEMMAP_IS_LAST(_mmap_) ((_mmap_)->base == IBEX_MEMMAP_LAST)
+#define IBEX_MEMMAP_IGNORE(_mmap_)  ((_mmap_)->base == HWADDR_MAX)
 
 /**
  * Create memory map entries, each arg is MemMapEntry definition
  */
 #define MEMMAPENTRIES(...) \
-    (const MemMapEntry[]) \
+    (const IbexMemMapEntry[]) \
     { \
         __VA_ARGS__, \
         { \
-            .size = 0u \
+            .base = IBEX_MEMMAP_LAST \
         } \
     }
 

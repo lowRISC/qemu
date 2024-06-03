@@ -242,9 +242,9 @@ void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
                 (SysBusDevice *)object_dynamic_cast(OBJECT(dev),
                                                     TYPE_SYS_BUS_DEVICE);
             if (busdev) {
-                const MemMapEntry *memmap = def->memmap;
+                const IbexMemMapEntry *memmap = def->memmap;
                 unsigned mem = 0;
-                while (memmap->size) {
+                while (!IBEX_MEMMAP_IS_LAST(memmap)) {
                     unsigned region = IBEX_MEMMAP_GET_REGIDX(memmap->base);
                     if (region_mask & (1u << region)) {
                         MemoryRegion *mr = mrs[region];
@@ -278,10 +278,10 @@ void ibex_map_devices_ext_mask(DeviceState *dev, MemoryRegion **mrs,
         sdev = OBJECT_CHECK(SysBusDevice, child, TYPE_SYS_BUS_DEVICE);
         g_free(name);
 
-        const MemMapEntry *memmap = def->memmap;
+        const IbexMemMapEntry *memmap = def->memmap;
         unsigned mem = 0;
-        while (memmap->size) {
-            if (!SKIP_MEMMAP(memmap)) {
+        while (!IBEX_MEMMAP_IS_LAST(memmap)) {
+            if (!IBEX_MEMMAP_IGNORE(memmap)) {
                 unsigned region = IBEX_MEMMAP_GET_REGIDX(memmap->base);
                 if (region_mask & (1u << region)) {
                     MemoryRegion *mr = mrs[region];
