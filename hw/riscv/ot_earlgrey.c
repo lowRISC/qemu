@@ -250,7 +250,8 @@ static const uint32_t ot_eg_pmp_addrs[] = {
 /* Earlgrey M2.5.2-RC0 RV DM */
 #define EG_TAP_IDCODE IBEX_JTAG_IDCODE(0, 1, 0)
 
-#define PULP_DM_BASE 0x00010000u
+#define PULP_DM_BASE   0x00010000u
+#define SRAM_MAIN_SIZE 0x20000u
 
 /*
  * MMIO/interrupt mapping as per:
@@ -322,7 +323,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ot_eg_soc_uart_configure,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
-            { 0x40000000u, 0x40u }
+            { .base = 0x40000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 1),
@@ -343,7 +344,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ot_eg_soc_uart_configure,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
-            { 0x40010000u, 0x40u }
+            { .base = 0x40010000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 9),
@@ -364,7 +365,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ot_eg_soc_uart_configure,
         .instance = 2,
         .memmap = MEMMAPENTRIES(
-            { 0x40020000u, 0x40u }
+            { .base = 0x40020000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 17),
@@ -385,7 +386,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ot_eg_soc_uart_configure,
         .instance = 3,
         .memmap = MEMMAPENTRIES(
-            { 0x40030000u, 0x1000u }
+            { .base = 0x40030000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 25),
@@ -404,7 +405,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_GPIO] = {
         .type = TYPE_OT_GPIO_EG,
         .memmap = MEMMAPENTRIES(
-            { 0x40040000u, 0x40u }
+            { .base = 0x40040000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 33),
@@ -444,7 +445,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_SPI_DEVICE] = {
         .type = TYPE_OT_SPI_DEVICE,
         .memmap = MEMMAPENTRIES(
-            { 0x40050000u, 0x2000u }
+            { .base = 0x40050000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 65),
@@ -470,8 +471,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ibex_unimp_configure,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
-            { 0x40080000u, 0x80u }
+            { .base = 0x40080000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x80u)
+        )
     },
     [OT_EG_SOC_DEV_I2C1] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
@@ -479,8 +483,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ibex_unimp_configure,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
-            { 0x40090000u, 0x80u }
+            { .base = 0x40090000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x80u)
+        )
     },
     [OT_EG_SOC_DEV_I2C2] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
@@ -488,21 +495,27 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ibex_unimp_configure,
         .instance = 2,
         .memmap = MEMMAPENTRIES(
-            { 0x400a0000u, 0x80u }
+            { .base = 0x400a0000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x80u)
+        )
     },
     [OT_EG_SOC_DEV_PATTGEN] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-pattgen",
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x400e0000u, 0x40u }
+            { .base = 0x400e0000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x80u)
+        )
     },
     [OT_EG_SOC_DEV_TIMER] = {
         .type = TYPE_OT_TIMER,
         .memmap = MEMMAPENTRIES(
-            { 0x40100000u, 0x200u }
+            { .base = 0x40100000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO(0, HART, IRQ_M_TIMER),
@@ -516,8 +529,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_OTP_EG,
         .cfg = &ot_eg_soc_otp_ctrl_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x40130000u, 0x2000u },
-            { 0x40132000u, 0x1000u }
+            { .base = 0x40130000u },
+            { .base = 0x40132000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 125),
@@ -533,7 +546,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_LC_CTRL] = {
         .type = TYPE_OT_LC_CTRL,
         .memmap = MEMMAPENTRIES(
-            { 0x40140000u, 0x100u }
+            { .base = 0x40140000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_RSP(OT_PWRMGR_LC, PWRMGR)
@@ -556,7 +569,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_ALERT_HANDLER] = {
         .type = TYPE_OT_ALERT,
         .memmap = MEMMAPENTRIES(
-            { 0x40150000u, 0x800u }
+            { .base = 0x40150000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
@@ -579,7 +592,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_SPI_HOST,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
-            { 0x40300000u, 0x40u }
+            { .base = 0x40300000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 131),
@@ -593,7 +606,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_SPI_HOST,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
-            { 0x40310000u, 0x40u }
+            { .base = 0x40310000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 133),
@@ -608,13 +621,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .name = "ot-usbdev",
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x40320000u, 0x1000u }
+            { .base = 0x40320000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x1000u)
+        )
     },
     [OT_EG_SOC_DEV_PWRMGR] = {
         .type = TYPE_OT_PWRMGR,
         .memmap = MEMMAPENTRIES(
-            { 0x40400000u, 0x80u }
+            { .base = 0x40400000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 152),
@@ -637,7 +653,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_RSTMGR] = {
         .type = TYPE_OT_RSTMGR,
         .memmap = MEMMAPENTRIES(
-            { 0x40410000u, 0x80u }
+            { .base = 0x40410000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_SIGNAL(OT_RSTMGR_SW_RST, 0, PWRMGR, \
@@ -647,7 +663,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_CLKMGR] = {
         .type = TYPE_OT_CLKMGR,
         .memmap = MEMMAPENTRIES(
-            { 0x40420000u, 0x80u }
+            { .base = 0x40420000u }
         ),
     },
     [OT_EG_SOC_DEV_SYSRST_CTRL] = {
@@ -655,35 +671,44 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .name = "ot-sysrst_ctrl",
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x40430000u, 0x100u }
+            { .base = 0x40430000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x100u)
+        )
     },
     [OT_EG_SOC_DEV_ADC_CTRL] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-adc_ctrl",
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x40440000u, 0x80u }
+            { .base = 0x40440000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x80u)
+        )
     },
     [OT_EG_SOC_DEV_PWM] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-pwm",
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x40450000u, 0x80u }
+            { .base = 0x40450000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x80u)
+        )
     },
     [OT_EG_SOC_DEV_PINMUX] = {
         .type = TYPE_OT_PINMUX_EG,
         .memmap = MEMMAPENTRIES(
-            { 0x40460000u, 0x1000u }
+            { .base = 0x40460000u }
         ),
     },
     [OT_EG_SOC_DEV_AON_TIMER] = {
         .type = TYPE_OT_AON_TIMER,
         .memmap = MEMMAPENTRIES(
-            { 0x40470000u, 0x40u }
+            { .base = 0x40470000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
@@ -700,21 +725,21 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_AST] = {
         .type = TYPE_OT_AST_EG,
         .memmap = MEMMAPENTRIES(
-            { 0x40480000u, 0x400u }
+            { .base = 0x40480000u }
         ),
     },
     [OT_EG_SOC_DEV_SENSOR_CTRL] = {
         .type = TYPE_OT_SENSOR,
         .memmap = MEMMAPENTRIES(
-            { 0x40490000u, 0x40u }
+            { .base = 0x40490000u }
         ),
     },
     [OT_EG_SOC_DEV_SRAM_RET_CTRL] = {
         .type = TYPE_OT_SRAM_CTRL,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
-            { 0x40500000u, 0x20u },
-            { 0x40600000u, 0x1000u }
+            { .base = 0x40500000u },
+            { .base = 0x40600000u }
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
@@ -728,9 +753,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_FLASH,
         .cfg = &ot_eg_soc_flash_ctrl_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x41000000u, 0x1000u },
-            { 0x41008000u, 0x1000u },
-            { 0x20000000u, 0x100000u }
+            { .base = 0x41000000u },
+            { .base = 0x41008000u },
+            { .base = 0x20000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 159),
@@ -744,7 +769,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_AES] = {
         .type = TYPE_OT_AES,
         .memmap = MEMMAPENTRIES(
-            { 0x41100000u, 0x100u }
+            { .base = 0x41100000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES)
@@ -759,7 +784,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_HMAC] = {
         .type = TYPE_OT_HMAC,
         .memmap = MEMMAPENTRIES(
-            { 0x41110000u, 0x1000u }
+            { .base = 0x41110000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 165),
@@ -771,7 +796,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_KMAC] = {
         .type = TYPE_OT_KMAC,
         .memmap = MEMMAPENTRIES(
-            { 0x41120000u, 0x1000u }
+            { .base = 0x41120000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 168),
@@ -789,7 +814,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_OTBN] = {
         .type = TYPE_OT_OTBN,
         .memmap = MEMMAPENTRIES(
-            { 0x41130000u, 0x10000u }
+            { .base = 0x41130000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 171),
@@ -809,13 +834,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .name = "ot-keymgr",
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
-            { 0x41140000u, 0x100u }
+            { .base = 0x41140000u }
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", 0x100u)
+        )
     },
     [OT_EG_SOC_DEV_CSRNG] = {
         .type = TYPE_OT_CSRNG,
         .memmap = MEMMAPENTRIES(
-            { 0x41150000u, 0x80u }
+            { .base = 0x41150000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 173),
@@ -831,7 +859,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_ENTROPY_SRC] = {
         .type = TYPE_OT_ENTROPY_SRC,
         .memmap = MEMMAPENTRIES(
-            { 0x41160000u, 0x100u }
+            { .base = 0x41160000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 177),
@@ -848,7 +876,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_EDN,
         .instance = 0,
         .memmap = MEMMAPENTRIES(
-            { 0x41170000u, 0x80u }
+            { .base = 0x41170000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 181),
@@ -865,7 +893,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_EDN,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
-            { 0x41180000u, 0x80u }
+            { .base = 0x41180000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 183),
@@ -882,14 +910,14 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_SRAM_CTRL,
         .instance = 1,
         .memmap = MEMMAPENTRIES(
-            { 0x411c0000u, 0x20u },
-            { 0x10000000u, 0x20000u }
+            { .base = 0x411c0000u },
+            { .base = 0x10000000u }
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("size", 0x20000u),
+            IBEX_DEV_UINT_PROP("size", SRAM_MAIN_SIZE),
             IBEX_DEV_STRING_PROP("ot_id", "ram")
         ),
     },
@@ -897,8 +925,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_ROM_CTRL,
         .name = "ot-rom_ctrl",
         .memmap = MEMMAPENTRIES(
-            { 0x411e0000u, 0x80u },
-            { 0x00008000u, 0x8000u }
+            { .base = 0x411e0000u },
+            { .base = 0x00008000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR, \
@@ -918,7 +946,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_IBEX_WRAPPER] = {
         .type = TYPE_OT_IBEX_WRAPPER_EG,
         .memmap = MEMMAPENTRIES(
-            { 0x411f0000u, 0x100u }
+            { .base = 0x411f0000u }
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
@@ -930,8 +958,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_RV_DM] = {
         .type = TYPE_PULP_RV_DM,
         .memmap = MEMMAPENTRIES(
-            { PULP_DM_BASE, 0x1000u },
-            { 0x41200000u, 0x1000u }
+            { .base = PULP_DM_BASE },
+            { .base = 0x41200000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 0),
@@ -943,7 +971,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_PLIC] = {
         .type = TYPE_SIFIVE_PLIC,
         .memmap = MEMMAPENTRIES(
-            { 0x48000000u, 0x4000000u }
+            { .base = 0x48000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO(1, HART, IRQ_M_EXT)
@@ -966,7 +994,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_PLIC_EXT] = {
         .type = TYPE_OT_PLIC_EXT,
         .memmap = MEMMAPENTRIES(
-            { 0x2c000000u, 0x10u }
+            { .base = 0x2c000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO(0, HART, IRQ_M_SOFT)
@@ -1341,7 +1369,7 @@ static void ot_eg_machine_class_init(ObjectClass *oc, void *data)
     const IbexDeviceDef *sram =
         &ot_eg_soc_devices[OT_EG_SOC_DEV_SRAM_MAIN_CTRL];
     mc->default_ram_id = sram->type;
-    mc->default_ram_size = sram->memmap[1].size;
+    mc->default_ram_size = SRAM_MAIN_SIZE;
 }
 
 static const TypeInfo ot_eg_machine_type_info = {
