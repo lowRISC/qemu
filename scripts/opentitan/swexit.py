@@ -33,11 +33,10 @@ def main():
     try:
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}')
-        grp = argparser.add_mutually_exclusive_group(required=True)
-        grp.add_argument('-a', '--address', type=to_int,
-                         help='Ibex wrapper base address')
-        grp.add_argument('-t', '--opentitan', choices=list(BASE_ADDRESS),
-                         help='Ibex wrapper base address')
+        argparser.add_argument('-a', '--address', type=to_int,
+                               help='Base address for swexit device (default: depends on SoC)')
+        argparser.add_argument('-t', '--soc', choices=list(BASE_ADDRESS),
+                               help='SoC type', required=True)
         argparser.add_argument('-o', '--output', type=FileType('wb'),
                                help='output file, default to stdout')
         argparser.add_argument('-d', '--debug', action='store_true',
@@ -45,7 +44,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        addr = BASE_ADDRESS[args.opentitan] if args.opentitan else args.address
+        addr = args.address if args.address else BASE_ADDRESS[args.soc]
         addr &= ~LUI_MASK
         lui = addr | 0x537
         bincode = spack('<IIII',
