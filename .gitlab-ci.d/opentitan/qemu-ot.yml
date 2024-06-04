@@ -1,5 +1,5 @@
 variables:
-  BAREMETAL_REF: "240531-1"
+  BAREMETAL_REF: "240604-2"
   QEMU_BUILD_OPTS: ""
 
 include:
