@@ -256,21 +256,26 @@ static void ot_aon_timer_rearm_wdog(OtAonTimerState *s, bool reset_origin)
     uint32_t count = ot_aon_timer_get_wdog_count(s, now);
     uint32_t bark_threshold = s->regs[R_WDOG_BARK_THOLD];
     uint32_t bite_threshold = s->regs[R_WDOG_BITE_THOLD];
-    uint32_t threshold = 0;
+    uint32_t threshold;
+    bool pending;
 
     if (count >= bark_threshold) {
         s->regs[R_INTR_STATE] |= INTR_WDOG_TIMER_BARK_MASK;
+        threshold = UINT32_MAX;
+        pending = false;
     } else {
         threshold = bark_threshold;
+        pending = true;
     }
 
     if (count >= bite_threshold) {
         s->wdog_bite = true;
-    } else if (bite_threshold < threshold) {
-        threshold = bite_threshold;
+    } else {
+        threshold = MIN(threshold, bite_threshold);
+        pending = true;
     }
 
-    if (count >= threshold) {
+    if (!pending) {
         timer_del(s->wdog_timer);
     } else {
         int64_t delta = ot_aon_timer_ticks_to_ns(s, 0u, threshold - count);
