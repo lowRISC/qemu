@@ -82,8 +82,6 @@ REG32(WAKE_STATUS, 0x24u)
 REG32(RESET_EN_REGWEN, 0x28u)
     FIELD(RESET_EN_REGWEN, EN, 0u, 1u)
 REG32(RESET_EN, 0x2cu)
-    SHARED_FIELD(RESET_CHANNEL_0, 0u, 1u)
-    SHARED_FIELD(RESET_CHANNEL_1, 1u, 1u)
 REG32(RESET_STATUS, 0x30u)
 REG32(ESCALATE_RESET_STATUS, 0x34u)
     FIELD(ESCALATE_RESET_STATUS, VAL, 0u, 1u)
@@ -106,7 +104,6 @@ REG32(FAULT_STATUS, 0x40u)
 #define WAKEUP_MASK \
     (WAKEUP_CHANNEL_0_MASK | WAKEUP_CHANNEL_1_MASK | WAKEUP_CHANNEL_2_MASK | \
      WAKEUP_CHANNEL_3_MASK | WAKEUP_CHANNEL_4_MASK | WAKEUP_CHANNEL_5_MASK)
-#define RESET_MASK (RESET_CHANNEL_0_MASK | RESET_CHANNEL_1_MASK)
 #define WAKE_INFO_MASK \
     (R_WAKE_INFO_REASONS_MASK | R_WAKE_INFO_FALL_THROUGH_MASK | \
      R_WAKE_INFO_ABORT_MASK)
@@ -114,7 +111,6 @@ REG32(FAULT_STATUS, 0x40u)
 #define CDC_SYNC_PULSE_DURATION_NS 100000u /* 100us */
 
 #define PWRMGR_WAKEUP_MAX 6u
-#define PWRMGR_RESET_MAX  3u
 
 /* special exit error code to report escalation panic */
 #define EXIT_ESCALATION_PANIC 39
@@ -123,8 +119,7 @@ REG32(FAULT_STATUS, 0x40u)
 #define NUM_SW_RST_REQ 1u
 #define HW_RESET_WIDTH \
     (PARAM_NUM_RST_REQS + PARAM_NUM_INT_RST_REQS + PARAM_NUM_DEBUG_RST_REQS)
-#define TOTAL_RESET_WIDTH (HW_RESET_WIDTH + NUM_SW_RST_REQ)
-#define RESET_SW_REQ_IDX  (TOTAL_RESET_WIDTH - 1u)
+#define RESET_SW_REQ_IDX (HW_RESET_WIDTH)
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
@@ -336,16 +331,14 @@ static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWMGR_VERSION_COUNT] = {
     },
 };
 
-static int PWRMGR_RESET_DISPATCH[OT_PWMGR_VERSION_COUNT][PWRMGR_RESET_MAX] = {
+static int PWRMGR_RESET_DISPATCH[OT_PWMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
     [OT_PWMGR_VERSION_EG] = {
         [0] = OT_RSTMGR_RESET_SYSCTRL,
         [1] = OT_RSTMGR_RESET_AON_TIMER,
-        [2] = -1
     },
     [OT_PWMGR_VERSION_DJ] = {
         [0] = OT_RSTMGR_RESET_AON_TIMER,
         [1] = OT_RSTMGR_RESET_SOC_PROXY,
-        [2] = -1,
     },
 };
 
@@ -369,11 +362,10 @@ PWRMGR_WAKEUP_NAMES[OT_PWMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
     },
 };
 
-static const char *PWRMGR_RST_NAMES[OT_PWMGR_VERSION_COUNT][PWRMGR_RESET_MAX] = {
+static const char *PWRMGR_RST_NAMES[OT_PWMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
     [OT_PWMGR_VERSION_EG] = {
         [0] = "SYSRST",
         [1] = "AON_TIMER",
-        [2] = "SENSOR",
     },
     [OT_PWMGR_VERSION_DJ] = {
         [0] = "AON_TIMER",
@@ -533,7 +525,7 @@ static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
     unsigned src = (unsigned)irq;
     g_assert(src < NUM_SW_RST_REQ);
 
-    uint32_t rstbit = 1u << (NUM_SW_RST_REQ + src);
+    uint32_t rstbit = 1u << (RESET_SW_REQ_IDX + src);
 
     if (level) {
         trace_ot_pwrmgr_rst_req(s->ot_id, "SW", src);
@@ -754,7 +746,6 @@ static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_WAKE_STATUS:
     case R_RESET_EN_REGWEN:
     case R_RESET_EN:
-    case R_RESET_STATUS:
     case R_ESCALATE_RESET_STATUS:
     case R_WAKE_INFO_CAPTURE_DIS:
     case R_WAKE_INFO:
@@ -767,6 +758,9 @@ static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
                       "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
                       __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0;
+        break;
+    case R_RESET_STATUS:
+        val32 = s->regs[reg] & PWRMGR_CONFIG[s->version].reset_mask;
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -848,7 +842,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_RESET_EN:
         if (s->regs[R_RESET_EN_REGWEN] & R_RESET_EN_REGWEN_EN_MASK) {
-            val32 &= RESET_MASK;
+            val32 &= PWRMGR_CONFIG[s->version].reset_mask;
             s->regs[reg] = val32;
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
@@ -905,6 +899,12 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     OtPwrMgrState *s = OT_PWRMGR(obj);
 
     g_assert(s->version < OT_PWMGR_VERSION_COUNT);
+
+    /* sanity checks for platform reset count and mask */
+    g_assert(PWRMGR_CONFIG[s->version].reset_count <= PARAM_NUM_RST_REQS);
+    g_assert(ctpop32(PWRMGR_CONFIG[s->version].reset_mask + 1u) == 1);
+    g_assert(PWRMGR_CONFIG[s->version].reset_mask <
+             (1u << PWRMGR_CONFIG[s->version].reset_count));
 
     if (!s->ot_id) {
         s->ot_id =
@@ -997,7 +997,7 @@ static void ot_pwrmgr_init(Object *obj)
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_wkup, OT_PWRMGR_WKUP,
                             PWRMGR_WAKEUP_MAX);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rst_req, OT_PWRMGR_RST,
-                            PWRMGR_RESET_MAX);
+                            PARAM_NUM_RST_REQS);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_sw_rst_req,
                             OT_PWRMGR_SW_RST, NUM_SW_RST_REQ);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_pwr_lc_rsp,
