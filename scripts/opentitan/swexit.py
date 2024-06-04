@@ -19,6 +19,7 @@ from traceback import format_exc
 BASE_ADDRESS = {
     'earlgrey': 0x411f0000,
     'darjeeling': 0x211f0000,
+    'ibexdemo': 0x20000,
 }
 
 LUI_MASK = (1 << 12) - 1
@@ -26,6 +27,26 @@ LUI_MASK = (1 << 12) - 1
 
 def to_int(value: str) -> int:
     return int(value.strip(), value.startswith('0x') and 16 or 10)
+
+
+def opentitan_code(addr: int) -> bytes:
+    addr &= ~LUI_MASK
+    lui = addr | 0x537
+    return spack('<IIII',
+                 lui,         # lui  a0,addr     # ibex_core_wrapper base
+                 0xc0de05b7,  # lui  a1,0xc0de0  # exit code (0)
+                 0x00b52423,  # sw   a1,8(a0)    # write to sw_fatal_err
+                 0x10500073)  # wfi              # stop here
+
+
+def ibexdemo_code(addr: int) -> bytes:
+    addr &= ~LUI_MASK
+    lui = addr | 0x537
+    return spack('<IIII',
+                 lui,         # lui  a0,addr     # simulator_ctrl base
+                 0x00100593,  # li   a1,1        # set bit 0 to exit
+                 0x00b52423,  # sw   a1,8(a0)    # write to sim_ctrl
+                 0x10500073)  # wfi              # stop here
 
 
 def main():
@@ -45,13 +66,10 @@ def main():
         debug = args.debug
 
         addr = args.address if args.address else BASE_ADDRESS[args.soc]
-        addr &= ~LUI_MASK
-        lui = addr | 0x537
-        bincode = spack('<IIII',
-                        lui,         # lui  a0,addr     # ibex_core_wrapper base
-                        0xc0de05b7,  # lui  a1,0xc0de0  # exit code (0)
-                        0x00b52423,  # sw   a1,8(a0)    # write to sw_fatal_err
-                        0x10500073)  # wfi              # stop here
+        if args.soc == 'ibexdemo':
+            bincode = ibexdemo_code(addr)
+        else:
+            bincode = opentitan_code(addr)
         out = args.output or stdout.buffer
         out.write(bincode)
 
