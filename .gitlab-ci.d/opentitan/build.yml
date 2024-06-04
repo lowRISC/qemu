@@ -26,6 +26,7 @@ build-clang:
     - strip qemu-system-riscv32 qemu-img
     - QEMU_DIR="$(cd .. && pwd -P)"; cat compile_commands.json |
         sed -E 's,'"$QEMU_DIR"',@QEMU_DIR@,g' > compile_commands.json.tpl
+    - ../scripts/opentitan/swexit.py -t ibexdemo -o exit_id.bin
     - ../scripts/opentitan/swexit.py -t earlgrey -o exit_eg.bin
     - ../scripts/opentitan/swexit.py -t darjeeling -o exit_dj.bin
   artifacts:
