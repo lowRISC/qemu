@@ -31,6 +31,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/sysbus.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 
 /* clang-format off */
@@ -74,7 +75,8 @@ static void ibexdemo_simctrl_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_CTRL:
         /* would be nicer to receive a value with the code for exiting... */
-        exit(100);
+        qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_SHUTDOWN,
+                                               100);
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
