@@ -112,6 +112,9 @@ enum IbexDemoBoardDevice {
 #define SRAM_MAIN_BASE 0x100000u
 #define SRAM_MAIN_SIZE 0x10000u
 
+#define NUM_PWM_MODULES 12u
+#define PWM_SIZE        (NUM_PWM_MODULES * 8u)
+
 #define IBEXDEMO_DM_CONNECTION(_dst_dev_, _num_) \
     { \
         .out = { \
@@ -232,6 +235,9 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x80003000u }
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("size", PWM_SIZE)
         ),
     },
     [IBEXDEMO_SOC_DEV_SPI] = {
