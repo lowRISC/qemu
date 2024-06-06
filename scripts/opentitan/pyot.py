@@ -1207,10 +1207,11 @@ class QEMUExecuter:
             args.machine
         ]
         rom_exec = bool(args.rom_exec)
-        multi_rom = (len(args.rom) + int(rom_exec)) > 1
+        roms = args.rom or []
+        multi_rom = (len(roms) + int(rom_exec)) > 1
         # generate pre-application ROM option
         rom_count = 0
-        for rom in args.rom:
+        for rom in roms:
             rom_path = self._qfm.interpolate(rom)
             if not isfile(rom_path):
                 raise ValueError(f'Unable to find ROM file {rom_path}')
