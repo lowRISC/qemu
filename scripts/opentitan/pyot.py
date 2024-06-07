@@ -1190,6 +1190,74 @@ class QEMUExecuter:
             for filename in files:
                 delete_file(filename)
 
+    def _build_qemu_fw_args(self, args: Namespace) \
+            -> tuple[str, str, list[str]]:
+        rom_exec = bool(args.rom_exec)
+        roms = args.rom or []
+        multi_rom = (len(roms) + int(rom_exec)) > 1
+        # generate pre-application ROM option
+        fw_args: list[str] = []
+        machine = args.machine
+        variant = args.variant
+        chiplet_count = 1
+        if variant:
+            machine = f'{machine},variant={variant}'
+            try:
+                chiplet_count = sum(int(x)
+                                    for x in re.split(r'[A-Za-z]', variant)
+                                    if x)
+            except ValueError:
+                self._log.warning('Unknown variant syntax %s', variant)
+        for chip_id in range(chiplet_count):
+            rom_count = 0
+            for rom in roms:
+                rom_path = self._qfm.interpolate(rom)
+                if not isfile(rom_path):
+                    raise ValueError(f'Unable to find ROM file {rom_path}')
+                rom_ids = []
+                if args.first_soc:
+                    if chiplet_count == 1:
+                        rom_ids.append(f'{args.first_soc}.')
+                    else:
+                        rom_ids.append(f'{args.first_soc}{chip_id}.')
+                rom_ids.append('rom')
+                if multi_rom:
+                    rom_ids.append(f'{rom_count}')
+                rom_id = ''.join(rom_ids)
+                rom_opt = f'ot-rom-img,id={rom_id},file={rom_path},digest=fake'
+                fw_args.extend(('-object', rom_opt))
+                rom_count += 1
+        xtype = None
+        if args.exec:
+            exec_path = self.abspath(args.exec)
+            xtype = self.guess_test_type(exec_path)
+            if xtype == 'spiflash':
+                fw_args.extend(('-drive',
+                                f'if=mtd,format=raw,file={exec_path}'))
+            else:
+                if xtype != 'elf':
+                    raise ValueError(f'No support for test type: {xtype} '
+                                     f'({basename(exec_path)})')
+                if rom_exec:
+                    # generate ROM option for the application itself
+                    rom_ids = []
+                    if args.first_soc:
+                        if chiplet_count == 1:
+                            rom_ids.append(f'{args.first_soc}.')
+                        else:
+                            rom_ids.append(f'{args.first_soc}0.')
+                    rom_ids.append('rom')
+                    if multi_rom:
+                        rom_ids.append(f'{rom_count}')
+                    rom_id = ''.join(rom_ids)
+                    rom_opt = (f'ot-rom-img,id={rom_id},file={exec_path},'
+                               f'digest=fake')
+                    fw_args.extend(('-object', rom_opt))
+                    rom_count += 1
+                else:
+                    fw_args.extend(('-kernel', exec_path))
+        return machine, xtype, fw_args
+
     def _build_qemu_command(self, args: Namespace,
                             opts: Optional[list[str]] = None) \
             -> EasyDict[str, Any]:
@@ -1201,56 +1269,9 @@ class QEMUExecuter:
         """
         if args.qemu is None:
             raise ValueError('QEMU path is not defined')
-        qemu_args = [
-            args.qemu,
-            '-M',
-            args.machine
-        ]
-        rom_exec = bool(args.rom_exec)
-        roms = args.rom or []
-        multi_rom = (len(roms) + int(rom_exec)) > 1
-        # generate pre-application ROM option
-        rom_count = 0
-        for rom in roms:
-            rom_path = self._qfm.interpolate(rom)
-            if not isfile(rom_path):
-                raise ValueError(f'Unable to find ROM file {rom_path}')
-            rom_ids = []
-            if args.first_soc:
-                rom_ids.append(f'{args.first_soc}.')
-            rom_ids.append('rom')
-            if multi_rom:
-                rom_ids.append(f'{rom_count}')
-            rom_id = ''.join(rom_ids)
-            rom_opt = f'ot-rom-img,id={rom_id},file={rom_path},digest=fake'
-            qemu_args.extend(('-object', rom_opt))
-            rom_count += 1
-        xtype = None
-        if args.exec:
-            exec_path = self.abspath(args.exec)
-            xtype = self.guess_test_type(exec_path)
-            if xtype == 'spiflash':
-                qemu_args.extend(('-drive',
-                                  f'if=mtd,format=raw,file={exec_path}'))
-            else:
-                if xtype != 'elf':
-                    raise ValueError(f'No support for test type: {xtype} '
-                                     f'({basename(exec_path)})')
-                if rom_exec:
-                    # generate ROM option for the application itself
-                    rom_ids = []
-                    if args.first_soc:
-                        rom_ids.append(f'{args.first_soc}.')
-                    rom_ids.append('rom')
-                    if multi_rom:
-                        rom_ids.append(f'{rom_count}')
-                    rom_id = ''.join(rom_ids)
-                    rom_opt = (f'ot-rom-img,id={rom_id},file={exec_path},'
-                               f'digest=fake')
-                    qemu_args.extend(('-object', rom_opt))
-                    rom_count += 1
-                else:
-                    qemu_args.extend(('-kernel', exec_path))
+        machine, xtype, fw_args = self._build_qemu_fw_args(args)
+        qemu_args = [args.qemu, '-M', machine]
+        qemu_args.extend(fw_args)
         temp_files = defaultdict(set)
         if all((args.otp, args.otp_raw)):
             raise ValueError('OTP VMEM and RAW options are mutually exclusive')
@@ -1561,6 +1582,8 @@ def main():
                          const=True,
                          help='enable multiple virtual UARTs to be muxed into '
                               'same host output channel')
+        qvm.add_argument('-V', '--variant',
+                         help='machine variant (machine specific)')
         files = argparser.add_argument_group(title='Files')
         files.add_argument('-b', '--boot',
                            metavar='file', help='bootloader 0 file')
