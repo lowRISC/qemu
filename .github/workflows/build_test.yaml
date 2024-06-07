@@ -36,6 +36,7 @@ jobs:
           strip build-clang/qemu-system-riscv32
       - name: Create minimal test binaries
         run: |
+          scripts/opentitan/swexit.py -t ibexdemo -o build-clang/exit_id.bin
           scripts/opentitan/swexit.py -t earlgrey -o build-clang/exit_eg.bin
           scripts/opentitan/swexit.py -t darjeeling -o build-clang/exit_dj.bin
       - name: Upload QEMU binary artifacts
@@ -118,8 +119,13 @@ jobs:
       - name: Check machine availability
         run: |
           chmod +x ./qemu-system-riscv32 &&
+          ./qemu-system-riscv32 -M help | grep ibexdemo &&
           ./qemu-system-riscv32 -M help | grep ot-earlgrey &&
           ./qemu-system-riscv32 -M help | grep ot-darjeeling
+      - name: Check IbexDemo VM execution
+        run: |
+          timeout -s KILL 4 ./qemu-system-riscv32 -M ibexdemo -nographic \
+            -device loader,addr=0x100080,file=exit_id.bin -d in_asm,int
       - name: Check EarlGrey VM execution
         run: |
           timeout -s KILL 4 ./qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -nographic \
