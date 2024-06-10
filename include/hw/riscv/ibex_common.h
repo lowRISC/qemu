@@ -424,14 +424,20 @@ void ibex_realize_devices(DeviceState **devices, BusState *bus,
 void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
                           unsigned count);
 #define ibex_map_devices(_devs_, _mrs_, _defs_, _cnt_) \
-    ibex_map_devices_mask(_devs_, _mrs_, _defs_, _cnt_, \
-                          IBEX_MEMMAP_DEFAULT_REG_MASK);
-void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
-                           const IbexDeviceDef *defs, unsigned count,
-                           uint32_t region_mask);
-void ibex_map_devices_ext_mask(DeviceState *dev, MemoryRegion **mrs,
-                               const IbexDeviceMapDef *defs, unsigned count,
-                               uint32_t region_mask);
+    ibex_map_devices_offset(_devs_, _mrs_, _defs_, _cnt_, 0u)
+#define ibex_map_devices_offset(_devs_, _mrs_, _defs_, _cnt_, _off_) \
+    ibex_map_devices_mask_offset(_devs_, _mrs_, _defs_, _cnt_, \
+                                 IBEX_MEMMAP_DEFAULT_REG_MASK, _off_)
+#define ibex_map_devices_mask(_devs_, _mrs_, _defs_, _cnt_, _msk_) \
+    ibex_map_devices_mask_offset(_devs_, _mrs_, _defs_, _cnt_, _msk_, 0u)
+void ibex_map_devices_mask_offset(DeviceState **devices, MemoryRegion **mrs,
+                                  const IbexDeviceDef *defs, unsigned count,
+                                  uint32_t region_mask, uint32_t offset);
+#define ibex_map_devices_ext_mask(_dev_, _mrs_, _defs_, _cnt_, _msk_) \
+    ibex_map_devices_ext_mask_offset(_dev_, _mrs_, _defs_, _cnt_, _msk_, 0u)
+void ibex_map_devices_ext_mask_offset(
+    DeviceState *dev, MemoryRegion **mrs, const IbexDeviceMapDef *defs,
+    unsigned count, uint32_t region_mask, uint32_t offset);
 void ibex_configure_devices(DeviceState **devices, BusState *bus,
                             const IbexDeviceDef *defs, unsigned count);
 void ibex_identify_devices(DeviceState **devices, const char *id_prop,

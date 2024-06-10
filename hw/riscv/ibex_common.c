@@ -231,9 +231,9 @@ void ibex_realize_devices(DeviceState **devices, BusState *bus,
     }
 }
 
-void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
-                           const IbexDeviceDef *defs, unsigned count,
-                           uint32_t region_mask)
+void ibex_map_devices_mask_offset(DeviceState **devices, MemoryRegion **mrs,
+                                  const IbexDeviceDef *defs, unsigned count,
+                                  uint32_t region_mask, uint32_t offset)
 {
     for (unsigned idx = 0; idx < count; idx++) {
         DeviceState *dev = devices[idx];
@@ -256,7 +256,8 @@ void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
                         if (mr) {
                             ibex_mmio_map_device(busdev, mr, mem,
                                                  IBEX_MEMMAP_GET_ADDRESS(
-                                                     memmap->base),
+                                                     memmap->base) +
+                                                     offset,
                                                  memmap->priority);
                         }
                     }
@@ -268,9 +269,9 @@ void ibex_map_devices_mask(DeviceState **devices, MemoryRegion **mrs,
     }
 }
 
-void ibex_map_devices_ext_mask(DeviceState *dev, MemoryRegion **mrs,
-                               const IbexDeviceMapDef *defs, unsigned count,
-                               uint32_t region_mask)
+void ibex_map_devices_ext_mask_offset(
+    DeviceState *dev, MemoryRegion **mrs, const IbexDeviceMapDef *defs,
+    unsigned count, uint32_t region_mask, uint32_t offset)
 {
     for (unsigned ix = 0; ix < count; ix++) {
         const IbexDeviceMapDef *def = &defs[ix];
@@ -294,7 +295,8 @@ void ibex_map_devices_ext_mask(DeviceState *dev, MemoryRegion **mrs,
                     if (mr) {
                         ibex_mmio_map_device(sdev, mr, mem,
                                              IBEX_MEMMAP_GET_ADDRESS(
-                                                 memmap->base),
+                                                 memmap->base) +
+                                                 offset,
                                              memmap->priority);
                     }
                 }
