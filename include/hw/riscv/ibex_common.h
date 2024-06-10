@@ -486,6 +486,14 @@ uint32_t ibex_load_kernel(CPUState *cpu);
  */
 uint32_t ibex_get_current_pc(void);
 
+/**
+ * Helper for device debugging: report the current guest CPU index, if any.
+ *
+ * If a HW access is performed from another device but the CPU, reported CPU
+ * is -1.
+ */
+int ibex_get_current_cpu(void);
+
 enum {
     RV_GPR_PC = (1u << 0u),
     RV_GPR_RA = (1u << 1u),

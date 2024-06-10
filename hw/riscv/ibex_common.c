@@ -712,6 +712,13 @@ uint32_t ibex_get_current_pc(void)
     return cs && cs->cc->get_pc ? (uint32_t)cs->cc->get_pc(cs) : 0u;
 }
 
+int ibex_get_current_cpu(void)
+{
+    CPUState *cs = current_cpu;
+
+    return cs ? cs->cpu_index : -1;
+}
+
 /* x0 is replaced with PC */
 static const char ibex_ireg_names[32u][4u] = {
     "pc", "ra", "sp", "gp", "tp",  "t0",  "t1", "t2", "s0", "s1", "a0",
