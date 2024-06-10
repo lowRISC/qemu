@@ -1233,7 +1233,7 @@ class QEMUExecuter:
             xtype = self.guess_test_type(exec_path)
             if xtype == 'spiflash':
                 fw_args.extend(('-drive',
-                                f'if=mtd,format=raw,file={exec_path}'))
+                                f'if=mtd,bus=0,format=raw,file={exec_path}'))
             else:
                 if xtype != 'elf':
                     raise ValueError(f'No support for test type: {xtype} '
