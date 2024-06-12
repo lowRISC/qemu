@@ -3436,6 +3436,38 @@ static void mtree_print_flatview(gpointer key, gpointer value,
     qemu_printf("\n");
 }
 
+void mtree_print_as_flatview(AddressSpace *as, bool dispatch_tree, bool owner)
+{
+    struct FlatViewInfo fvi = {
+        .counter = 0,
+        .dispatch_tree = dispatch_tree,
+        .owner = owner,
+    };
+
+    FlatView *view = address_space_get_flatview(as);
+    AccelClass *ac = ACCEL_GET_CLASS(current_accel());
+    if (ac->has_memory) {
+        fvi.ac = ac;
+    }
+
+    GArray *ases = g_array_new(false, false, sizeof(as));
+    g_array_append_val(ases, as);
+
+    mtree_print_flatview(view, ases, &fvi);
+
+    g_array_free(ases, false);
+}
+
+static void mtree_info_as(bool dispatch_tree, bool owner, bool disabled,
+                          AddressSpace *sas);
+
+void mtree_print_as_simple(AddressSpace *as, bool dispatch_tree, bool owner,
+                           bool disabled)
+{
+    mtree_info_as(dispatch_tree, owner, disabled, as);
+}
+
+
 static gboolean mtree_info_flatview_free(gpointer key, gpointer value,
                                       gpointer user_data)
 {
@@ -3529,7 +3561,8 @@ static gboolean mtree_info_as_free(gpointer key, gpointer value,
     return true;
 }
 
-static void mtree_info_as(bool dispatch_tree, bool owner, bool disabled)
+static void mtree_info_as(bool dispatch_tree, bool owner, bool disabled,
+                          AddressSpace *sas)
 {
     MemoryRegionListHead ml_head;
     MemoryRegionList *ml, *ml2;
@@ -3545,6 +3578,9 @@ static void mtree_info_as(bool dispatch_tree, bool owner, bool disabled)
     QTAILQ_INIT(&ml_head);
 
     QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
+        if (sas && as != sas) {
+            continue;
+        }
         /* Create hashtable, key=AS root MR, value = list of AS */
         as_same_root_mr_list = g_hash_table_lookup(views, as->root);
         as_same_root_mr_list = g_slist_insert_sorted(as_same_root_mr_list, as,
@@ -3574,7 +3610,7 @@ void mtree_info(bool flatview, bool dispatch_tree, bool owner, bool disabled)
     if (flatview) {
         mtree_info_flatview(dispatch_tree, owner);
     } else {
-        mtree_info_as(dispatch_tree, owner, disabled);
+        mtree_info_as(dispatch_tree, owner, disabled, NULL);
     }
 }
 

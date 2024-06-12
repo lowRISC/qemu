@@ -2578,6 +2578,9 @@ void memory_global_dirty_log_start(unsigned int flags);
 void memory_global_dirty_log_stop(unsigned int flags);
 
 void mtree_info(bool flatview, bool dispatch_tree, bool owner, bool disabled);
+void mtree_print_as_flatview(AddressSpace *as, bool dispatch_tree, bool owner);
+void mtree_print_as_simple(AddressSpace *as, bool dispatch_tree, bool owner,
+                           bool disabled);
 
 bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
                                 unsigned size, bool is_write,
