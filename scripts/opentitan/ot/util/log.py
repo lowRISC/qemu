@@ -95,8 +95,15 @@ class ColorLogFormatter(logging.Formatter):
         log_fmt = self._color_formats[record.levelno] if self._use_ansi \
                   else self._plain_format
         scr, ecr = ('', '')
-        if self._use_ansi and record.name in self._logger_colors:
-            scr, ecr = self._logger_colors[record.name]
+        if self._use_ansi:
+            logname = record.name
+            while logname:
+                if logname in self._logger_colors:
+                    scr, ecr = self._logger_colors[logname]
+                    break
+                if '.' not in logname:
+                    break
+                logname = logname.rsplit('.', 1)[0]
         setattr(record, 'scr', scr)
         setattr(record, 'ecr', ecr)
         formatter = logging.Formatter(log_fmt, *self._formatter_args)
