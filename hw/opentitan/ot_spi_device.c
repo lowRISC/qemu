@@ -1162,7 +1162,7 @@ static void ot_spi_device_flash_decode_command(OtSPIDeviceState *s, uint8_t cmd)
             return;
         }
 
-        bool set_busy = (bool)f->cmd_info & CMD_INFO_BUSY_MASK;
+        bool set_busy = (bool)(f->cmd_info & CMD_INFO_BUSY_MASK);
         if (set_busy) {
             s->spi_regs[R_FLASH_STATUS] |= R_FLASH_STATUS_BUSY_MASK;
         }
