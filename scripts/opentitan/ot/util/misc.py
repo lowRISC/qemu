@@ -62,6 +62,17 @@ class EasyDict(dict):
         yield from sorted(items)
 
 
+def group(lst, count):
+    """Group a list into consecutive count-tuples. Incomplete tuples are
+    discarded.
+
+    `group([0,3,4,10,2,3], 2) => [(0,3), (4,10), (2,3)]`
+
+    From: http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/303060
+    """
+    return list(zip(*[lst[i::count] for i in range(count)]))
+
+
 def dump_buffer(buffer: Buffer, addr: int = 0, file: Optional[TextIO] = None) \
         -> None:
     """Dump a binary buffer, same format as hexdump -C."""
