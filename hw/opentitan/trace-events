@@ -90,15 +90,15 @@ ot_csrng_try_schedule_genbits(unsigned slot, bool ready, bool queued, unsigned r
 ot_dev_proxy_dispatch_request(char a, char b) "%c%c"
 ot_dev_proxy_fe_error(int err) "error: %d"
 ot_dev_proxy_intercept_irq(const char *dname, const char *did, const char *iid, bool enable) "%s (%s) %s: enable %u"
-ot_dev_proxy_read_buffer(const char *prefix, unsigned devix, bool mbx, unsigned offset, unsigned count) "%s #%u mbx:%u 0x%02x %u"
-ot_dev_proxy_read_memory(const char *prefix, unsigned devix, unsigned offset, unsigned count) "%s #%u 0x%08x 0x%x"
-ot_dev_proxy_read_reg(const char *prefix, unsigned devix, unsigned offset) "%s #%u 0x%08x"
+ot_dev_proxy_read_buffer(const char *desc, bool mbx, unsigned offset, unsigned count) "%s mbx:%u 0x%02x %u"
+ot_dev_proxy_read_memory(const char *desc, unsigned offset, unsigned count) "%s 0x%08x 0x%x"
+ot_dev_proxy_read_reg(const char *desc, unsigned offset) "%s 0x%08x"
 ot_dev_proxy_route_irq(const char *dname, const char *did, unsigned irq, int level) "%s (%s) %u: level %d"
 ot_dev_proxy_signal_irq(const char *dname, const char *did, unsigned irq, int level) "%s (%s) %u: level %d"
 ot_dev_proxy_uid_error(const char *msg, unsigned expuid, unsigned realuid) "%s: expected %u, received %u"
-ot_dev_proxy_write_buffer(const char *prefix, unsigned devix, bool mbx, unsigned offset, unsigned count) "%s #%u mbx:%u 0x%02x %u"
-ot_dev_proxy_write_memory(const char *prefix, unsigned devix, unsigned offset, unsigned count) "%s #%u 0x%08x 0x%x"
-ot_dev_proxy_write_reg(const char *prefix, unsigned devix, unsigned offset, unsigned value) "%s #%u 0x%08x 0x%08x"
+ot_dev_proxy_write_buffer(const char *desc, bool mbx, unsigned offset, unsigned count) "%s mbx:%u 0x%02x %u"
+ot_dev_proxy_write_memory(const char *desc, unsigned offset, unsigned count) "%s 0x%08x 0x%x"
+ot_dev_proxy_write_reg(const char *desc, unsigned offset, unsigned value) "%s 0x%08x 0x%08x"
 
 # ot_dm_tl.c
 

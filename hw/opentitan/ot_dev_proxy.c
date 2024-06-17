@@ -74,6 +74,8 @@ REG32(MBX_DOE_READ_DATA, 0x014u)
 /* Mailbox proxy */
 /* ------------------------------------------------------------------------ */
 
+#define DEV_PROXY_DESC_LEN 16u
+
 typedef struct _DevProxyHeader {
     uint16_t command;
     uint16_t length;
@@ -94,6 +96,7 @@ typedef struct {
     OtDevProxyCaps caps; /* object capabilities */
     const char *prefix; /* prefix name for idenfifying the device */
     GHashTable *iirq_ht; /* intercepted IRQs, may be NULL */
+    char desc[DEV_PROXY_DESC_LEN]; /* user friendly name, for debug purposes */
 } OtDevProxyItem;
 
 typedef struct {
@@ -308,7 +311,7 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
         uint32_t header;
         uint32_t base;
         uint32_t count;
-        char desc[16u];
+        char desc[DEV_PROXY_DESC_LEN];
     };
     g_assert(sizeof(struct entry) == 7u * sizeof(uint32_t));
 
@@ -317,7 +320,7 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
     unsigned mrcount = 0;
     char desc[32u];
     for (unsigned ix = 0; ix < s->dev_count; ix++) {
-        const OtDevProxyItem *item = &s->items[ix];
+        OtDevProxyItem *item = &s->items[ix];
         const OtDevProxyCaps *caps = &item->caps;
         struct entry *entry = &entries[count];
         memset(entry, 0, sizeof(*entry));
@@ -372,6 +375,8 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
                        object_get_typename(item->obj), desc);
         }
         memcpy(entry->desc, desc, sizeof(entry->desc));
+        strncpy(item->desc, desc, sizeof(entry->desc));
+        item->desc[sizeof(entry->desc) - 1] = '\0';
         entry->header = ix << 16u;
         entry->base = (uint32_t)caps->mr->addr;
         entry->count = caps->reg_count;
@@ -529,7 +534,7 @@ static void ot_dev_proxy_read_reg(OtDevProxyState *s)
         return;
     }
 
-    trace_ot_dev_proxy_read_reg(item->prefix, devix, reg);
+    trace_ot_dev_proxy_read_reg(item->desc, reg);
 
     const MemoryRegionOps *ops = mr->ops;
     if (role != PROXY_DISABLED_ROLE ? !ops->read_with_attrs : !ops->read) {
@@ -588,7 +593,7 @@ static void ot_dev_proxy_write_reg(OtDevProxyState *s)
         return;
     }
 
-    trace_ot_dev_proxy_write_reg(item->prefix, devix, reg, value);
+    trace_ot_dev_proxy_write_reg(item->desc, reg, value);
 
     const MemoryRegionOps *ops = mr->ops;
     if (role != PROXY_DISABLED_ROLE ? !ops->write_with_attrs : !ops->write) {
@@ -672,7 +677,7 @@ static void ot_dev_proxy_read_buffer(OtDevProxyState *s, bool mbx_mode)
         return;
     }
 
-    trace_ot_dev_proxy_read_buffer(item->prefix, devix, mbx_mode, reg, count);
+    trace_ot_dev_proxy_read_buffer(item->desc, mbx_mode, reg, count);
 
     const MemoryRegionOps *ops = mr->ops;
     if (role != PROXY_DISABLED_ROLE ? !ops->read_with_attrs : !ops->read) {
@@ -786,7 +791,7 @@ static void ot_dev_proxy_write_buffer(OtDevProxyState *s, bool mbx_mode)
         return;
     }
 
-    trace_ot_dev_proxy_write_buffer(item->prefix, devix, mbx_mode, reg, count);
+    trace_ot_dev_proxy_write_buffer(item->desc, mbx_mode, reg, count);
 
     const MemoryRegionOps *ops = mr->ops;
     if (role != PROXY_DISABLED_ROLE ? !ops->write_with_attrs : !ops->write) {
@@ -900,7 +905,7 @@ static void ot_dev_proxy_read_memory(OtDevProxyState *s)
         }
     }
 
-    trace_ot_dev_proxy_read_memory(item->prefix, devix, offset, count);
+    trace_ot_dev_proxy_read_memory(item->desc, offset, count);
 
     uint32_t *buf = g_new0(uint32_t, count);
     if (count) {
@@ -956,7 +961,7 @@ static void ot_dev_proxy_write_memory(OtDevProxyState *s)
         }
     }
 
-    trace_ot_dev_proxy_write_memory(item->prefix, devix, offset, count);
+    trace_ot_dev_proxy_write_memory(item->desc, offset, count);
 
     if (object_dynamic_cast(obj, TYPE_OT_SRAM_CTRL)) {
         MemoryRegion *mr = caps->mr;
