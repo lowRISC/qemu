@@ -123,22 +123,22 @@ class LogMessageClassifier:
         if classifiers is None:
             classifiers = {}
         self._regexes: dict[int, re.Pattern] = {}
-        for kl in 'error warning info debug'.split():
-            ukl = kl.upper()
-            cstrs = classifiers.get(kl, [])
+        for klv in 'error warning info debug'.split():
+            uklv = klv.upper()
+            cstrs = classifiers.get(klv, [])
             if not isinstance(cstrs, list):
-                raise ValueError(f'Invalid log classifiers for {kl}')
-            regexes = [f'{kl}: ', f'^{ukl} ', f' {ukl} ']
+                raise ValueError(f'Invalid log classifiers for {klv}')
+            regexes = [f'{klv}: ', f'^{uklv} ', f' {uklv} ']
             for cstr in cstrs:
                 try:
                     # only sanity-check pattern, do not use result
                     re.compile(cstr)
                 except re.error as exc:
                     raise ValueError(f"Invalid log classifier '{cstr}' for "
-                                     f"{kl}: {exc}") from exc
+                                     f"{klv}: {exc}") from exc
                 regexes.append(cstr)
             if regexes:
-                lvl = getattr(logging, ukl)
+                lvl = getattr(logging, uklv)
                 self._regexes[lvl] = re.compile(f"({'|'.join(regexes)})")
             else:
                 lvl = getattr(logging, 'NOTSET')
@@ -1097,6 +1097,15 @@ class QEMUExecuter:
     DEFAULT_SERIAL_PORT = 'serial0'
     """Default VCP name."""
 
+    LOG_SHORTCUTS = {
+        'A': 'in_asm',
+        'E': 'exec',
+        'G': 'guest_errors',
+        'I': 'int',
+        'U': 'unimp',
+    }
+    """Shortcut names for QEMU log sources."""
+
     def __init__(self, qfm: QEMUFileManager, config: dict[str, any],
                  args: Namespace):
         self._log = getLogger('pyot.exec')
@@ -1371,7 +1380,24 @@ class QEMUExecuter:
                     fw_args.extend(('-kernel', exec_path))
         return machine, xtype, fw_args
 
-    def _build_qemu_vcp_args(self, args: Namespace):
+    def _build_qemu_log_sources(self, args: Namespace) -> list[str]:
+        if not args.log:
+            return []
+        log_args = []
+        for arg in args.log:
+            if arg.lower() == arg:
+                log_args.append(arg)
+                continue
+            for upch in arg:
+                try:
+                    logname = self.LOG_SHORTCUTS[upch]
+                except KeyError as exc:
+                    raise ValueError(f"Unknown log name '{upch}'") from exc
+                log_args.append(logname)
+        return ['-d', ','.join(log_args)]
+
+    def _build_qemu_vcp_args(self, args: Namespace) -> \
+            tuple[list[str], dict[str, tuple[str, int]]]:
         device = args.device
         devdesc = device.split(':')
         host = devdesc[0]
@@ -1452,9 +1478,7 @@ class QEMUExecuter:
             args.trace.close()
             qemu_args.extend(('-trace',
                               f'events={self.abspath(args.trace.name)}'))
-        if args.log:
-            qemu_args.append('-d')
-            qemu_args.append(','.join(args.log))
+        qemu_args.extend(self._build_qemu_log_sources(args))
         if args.singlestep:
             qemu_args.append('-singlestep')
         if 'icount' in args:
@@ -1684,7 +1708,9 @@ def main():
                               'ticks per inst. or \'auto\'')
         qvm.add_argument('-L', '--log_file',
                          help='log file for trace and log messages')
-        qvm.add_argument('-M', '--log', action='append',
+        qvm.add_argument('-M', '--variant',
+                         help='machine variant (machine specific)')
+        qvm.add_argument('-N', '--log', action='append',
                          help='log message types')
         qvm.add_argument('-m', '--machine',
                          help=f'virtual machine (default to {DEFAULT_MACHINE})')
@@ -1709,8 +1735,6 @@ def main():
                          const=True,
                          help='enable multiple virtual UARTs to be muxed into '
                               'same host output channel')
-        qvm.add_argument('-V', '--variant',
-                         help='machine variant (machine specific)')
         files = argparser.add_argument_group(title='Files')
         files.add_argument('-b', '--boot',
                            metavar='file', help='bootloader 0 file')
@@ -1757,6 +1781,8 @@ def main():
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
+        extra.add_argument('-V', '--vcp-verbose', action='count',
+                           help='increase verbosity of QEMU virtual comm ports')
         extra.add_argument('-d', action='store_true',
                            help='enable debug mode')
         extra.add_argument('--log-time', action='store_true',
@@ -1786,7 +1812,8 @@ def main():
             args.result = tmp_result
 
         log = configure_loggers(args.verbose, 'pyot',
-                                name_width=16,
+                                args.vcp_verbose or 0,
+                                'pyot.vcp', name_width=16,
                                 ms=args.log_time, debug=args.debug,
                                 info=args.info, warning=args.warn)[0]
 

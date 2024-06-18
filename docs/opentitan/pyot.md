@@ -5,12 +5,13 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M LOG] [-m MACHINE]
-               [-Q OPTS] [-q QEMU] [-p DEVICE] [-t TRACE] [-S FIRST_SOC] [-s]
-               [-U] [-b file] [-c JSON] [-e] [-f RAW] [-K] [-l file] [-O RAW]
-               [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
-               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-d] [--log-time]
-               [--debug LOGGER] [--info LOGGER] [--warn LOGGER]
+usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT] [-N LOG]
+               [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
+               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c JSON] [-e]
+               [-f RAW] [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF] [-w CSV]
+               [-x file] [-X] [-F TEST] [-k SECONDS] [-z] [-R] [-T FACTOR]
+               [-Z] [-v] [-V] [-d] [--log-time] [--debug LOGGER]
+               [--info LOGGER] [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -25,14 +26,18 @@ Virtual machine:
                         per inst. or 'auto'
   -L LOG_FILE, --log_file LOG_FILE
                         log file for trace and log messages
-  -M LOG, --log LOG     log message types
+  -M VARIANT, --variant VARIANT
+                        machine variant (machine specific)
+  -N LOG, --log LOG     log message types
   -m MACHINE, --machine MACHINE
                         virtual machine (default to ot-earlgrey)
   -Q OPTS, --opts OPTS  QEMU verbatim option (can be repeated)
   -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-
                         riscv32)
+  -P VCP, --vcp VCP     serial port devices (default: use serial0)
   -p DEVICE, --device DEVICE
-                        serial port device name (default to localhost:8000)
+                        serial port device name / template name (default to
+                        localhost:8000)
   -t TRACE, --trace TRACE
                         trace event definition file
   -S FIRST_SOC, --first-soc FIRST_SOC
@@ -73,6 +78,7 @@ Execution:
 
 Extras:
   -v, --verbose         increase verbosity
+  -V, --vcp-verbose     increase verbosity of QEMU virtual comm ports
   -d                    enable debug mode
   --log-time            show local time in log messages
   --debug LOGGER        assign debug level to logger(s)
@@ -95,12 +101,16 @@ This tool may be used in two ways, which can be combined:
   Use 'auto' to enable QEMU adaptive icount counter. Note that this option slows down the execution
   of guest applications.
 * `-L` / `--log_file` specify the log file for trace and log messages from QEMU.
-* `-M` / `--log` specify which log message types should be logged; most useful types are:
-  * `in_asm` for guest instruction disassembly,
-  * `unimp` for uimplemented guest features,
-  * `int` for guest interrupts and exceptions,
-  * `guest_errors` for unexpected guest behavior,
-  * `exec` for guest execution stream (caution: highly verbose).
+* `-N` / `--log` specify which log message types should be logged; most useful types are:
+  * `in_asm`/`A` for guest instruction disassembly,
+  * `unimp`/`U` for uimplemented guest features,
+  * `int`/`I` for guest interrupts and exceptions,
+  * `guest_errors`/`G` for unexpected guest behavior,
+  * `exec`/`E` for guest execution stream (caution: highly verbose).
+  These definitions may be abbreviated using their upper case, single char variants, _e.g._
+  `-N GIU` would enable _guest_errors_, _interruptions_ and _unimplemented features_ logs.
+* `-M` / `--variant` specify a variant of the selected machine. The accepted values depend on the
+  machine, see `-m` option.
 * `-m` / `--machine` specify the kind of virtual machine to run.
 * `-q` / `--qemu` specify an alternative path to the QEMU application.
 * `-Q` / `--opts` add a single QEMU option forwarded verbatim to QEMU (no check is performed)
@@ -165,6 +175,7 @@ This tool may be used in two ways, which can be combined:
 
 ### Extras
 
+* `-V` / `--vcp-verbose` can be repeated to increase verbosity of the QEMU virtual comm ports
 * `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 * `--log-time` show local time before each logged message
