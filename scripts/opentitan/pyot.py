@@ -20,11 +20,9 @@ try:
 except ImportError:
     # fallback on legacy JSON syntax otherwise
     from json import load as jload
-from logging import CRITICAL, DEBUG, INFO, ERROR, NOTSET, WARNING, getLogger
 from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
 from os.path import (abspath, basename, dirname, exists, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
-from re import Match, compile as re_compile, error as re_error, sub as re_sub
 from select import POLLIN, POLLERR, POLLHUP, poll as spoll
 from shutil import rmtree
 from socket import socket, timeout as LegacyTimeoutError
@@ -36,6 +34,9 @@ from time import time as now
 from traceback import format_exc
 from typing import Any, Iterator, NamedTuple, Optional
 
+import logging
+import re
+
 from ot.util.log import ColorLogFormatter, configure_loggers
 from ot.util.misc import EasyDict
 
@@ -44,6 +45,8 @@ DEFAULT_MACHINE = 'ot-earlgrey'
 DEFAULT_DEVICE = 'localhost:8000'
 DEFAULT_TIMEOUT = 60  # seconds
 DEFAULT_TIMEOUT_FACTOR = 1.0
+
+getLogger = logging.getLogger
 
 
 class ExecTime(float):
@@ -106,6 +109,58 @@ class ResultFormatter:
         print(f'|{line}|')
 
 
+class LogMessageClassifier:
+    """Log level classifier for log messages.
+
+       :param classifiers: a map of loglevel, list of RE-compatible strings
+                           to match messages
+       :param qemux: the QEMU executable name, to filter out useless messages
+    """
+
+    def __init__(self, classifiers: Optional[dict[str, list[str]]] = None,
+                 qemux: Optional[str] = None):
+        self._qemux = qemux
+        if classifiers is None:
+            classifiers = {}
+        self._regexes: dict[int, re.Pattern] = {}
+        for kl in 'error warning info debug'.split():
+            ukl = kl.upper()
+            cstrs = classifiers.get(kl, [])
+            if not isinstance(cstrs, list):
+                raise ValueError(f'Invalid log classifiers for {kl}')
+            regexes = [f'{kl}: ', f'^{ukl} ', f' {ukl} ']
+            for cstr in cstrs:
+                try:
+                    # only sanity-check pattern, do not use result
+                    re.compile(cstr)
+                except re.error as exc:
+                    raise ValueError(f"Invalid log classifier '{cstr}' for "
+                                     f"{kl}: {exc}") from exc
+                regexes.append(cstr)
+            if regexes:
+                lvl = getattr(logging, ukl)
+                self._regexes[lvl] = re.compile(f"({'|'.join(regexes)})")
+            else:
+                lvl = getattr(logging, 'NOTSET')
+                # never match RE
+                self._regexes[lvl] = re.compile(r'\A(?!x)x')
+
+    def classify(self, line: str, default: int = logging.ERROR) -> int:
+        """Classify log level of a line depending on its content.
+
+           :param line: line to classify
+           :param default: defaut log level in no classification is found
+           :return: the logger log level to use
+        """
+        if self._qemux and line.startswith(self._qemux):
+            # discard QEMU internal messages that cannot be disable from the VM
+            return logging.NOTSET
+        for lvl, pattern in self._regexes.items():
+            if pattern.search(line):
+                return lvl
+        return default
+
+
 class QEMUWrapper:
     """A small engine to run tests with QEMU.
 
@@ -125,7 +180,7 @@ class QEMUWrapper:
        such as SIGABRT.
     """
 
-    ANSI_CRE = re_compile(rb'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
+    ANSI_CRE = re.compile(rb'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
     """ANSI escape sequences."""
 
     GUEST_ERROR_OFFSET = 40
@@ -135,10 +190,8 @@ class QEMUWrapper:
     NO_MATCH_RETURN_CODE = 100
     """Return code when no matching string is found in guest output."""
 
-    LOG_LEVELS = {'D': DEBUG, 'I': INFO, 'E': ERROR}
-    """OpenTitan log levels."""
-
-    def __init__(self, debug: bool):
+    def __init__(self, log_classifiers: dict[str, list[str]], debug: bool):
+        self._log_classifiers = log_classifiers
         self._debug = debug
         self._log = getLogger('pyot')
         self._qlog = getLogger('pyot.qemu')
@@ -169,15 +222,13 @@ class QEMUWrapper:
         # stdout and stderr belongs to QEMU VM
         # OT's UART0 is redirected to a TCP stream that can be accessed through
         # self._device. The VM pauses till the TCP socket is connected
-        xre = re_compile(self.EXIT_ON)
-        otre = r'^([' + ''.join(self.LOG_LEVELS.keys()) + r'])\d{5}\s'
-        lre = re_compile(otre)
+        xre = re.compile(self.EXIT_ON)
         if tdef.trigger:
             sync_event = Event()
             if tdef.trigger.startswith("r'") and tdef.trigger.endswith("'"):
                 try:
-                    tmo = re_compile(tdef.trigger[2:-1].encode())
-                except re_error as exc:
+                    tmo = re.compile(tdef.trigger[2:-1].encode())
+                except re.error as exc:
                     raise ValueError('Invalid trigger regex: {exc}') from exc
 
                 def trig_match(bline):
@@ -246,7 +297,7 @@ class QEMUWrapper:
                         sock.settimeout(1)
                         sock.connect((host, port))
                         connected.append(vcpid)
-                        vcp_name = re_sub(r'^.*[-\.+]', '', vcpid)
+                        vcp_name = re.sub(r'^.*[-\.+]', '', vcpid)
                         vcp_lognames.append(vcp_name)
                         vcp_log = getLogger(f'{vcplogname}.{vcp_name}')
                         vcp_ctxs[sock.fileno()] = [vcpid, sock, bytearray(),
@@ -279,17 +330,21 @@ class QEMUWrapper:
                     last_error = str(exc)
                     raise
             qemu_exec = f'{basename(tdef.command[0])}: '
+            classifier = LogMessageClassifier(classifiers=self._log_classifiers,
+                                              qemux=qemu_exec)
             abstimeout = float(tdef.timeout) + now()
+            qemu_default_log = logging.ERROR
+            vcp_default_log = logging.DEBUG
             while now() < abstimeout:
                 while log_q:
                     err, qline = log_q.popleft()
                     if err:
-                        level = self.classify_log(qline, qemux=qemu_exec)
-                        if level == INFO and \
+                        level = classifier.classify(qline, qemu_default_log)
+                        if level == logging.INFO and \
                            qline.find('QEMU waiting for connection') >= 0:
-                            level = DEBUG
+                            level = logging.DEBUG
                     else:
-                        level = INFO
+                        level = logging.INFO
                     self._qlog.log(level, qline)
                 if tdef.context:
                     wret = tdef.context.check_error()
@@ -346,16 +401,12 @@ class QEMUWrapper:
                                 last_error = ''
                             break
                         sline = line.decode('utf-8', errors='ignore').rstrip()
-                        lmo = lre.search(sline)
-                        if lmo:
-                            level = self.LOG_LEVELS.get(lmo.group(1))
-                            if level == ERROR:
-                                err = re_sub(r'^.*:\d+]', '', sline).lstrip()
-                                # be sure not to preserve comma as this char is
-                                # used as a CSV separator.
-                                last_error = err.strip('"').replace(',', ';')
-                        else:
-                            level = DEBUG  # fall back when no prefix is found
+                        level = classifier.classify(sline, vcp_default_log)
+                        if level == logging.ERROR:
+                            err = re.sub(r'^.*:\d+]', '', sline).lstrip()
+                            # be sure not to preserve comma as this char is
+                            # used as a CSV separator.
+                            last_error = err.strip('"').replace(',', ';')
                         vcp_log.log(level, sline)
                     else:
                         # no match for exit sequence on current VCP
@@ -404,7 +455,7 @@ class QEMUWrapper:
         return abs(ret) or 0, xtime, last_error
 
     @classmethod
-    def classify_log(cls, line: str, default: int = ERROR,
+    def classify_log(cls, line: str, default: int = logging.ERROR,
                      qemux: Optional[str] = None) -> int:
         """Classify log level of a line depending on its content.
 
@@ -414,19 +465,19 @@ class QEMUWrapper:
         """
         if qemux and line.startswith(qemux):
             # discard QEMU internal messages that cannot be disable from the VM
-            return NOTSET
+            return logging.NOTSET
         if (line.find('info: ') >= 0 or
             line.startswith('INFO ') or
             line.find(' INFO ') >= 0):  # noqa
-            return INFO
+            return logging.INFO
         if (line.find('warning: ') >= 0 or
             line.startswith('WARNING ') or
             line.find(' WARNING ') >= 0):  # noqa
-            return WARNING
+            return logging.WARNING
         if (line.find('debug: ') >= 0 or
             line.startswith('DEBUG ') or
             line.find(' DEBUG ') >= 0):  # noqa
-            return DEBUG
+            return logging.DEBUG
         return default
 
     def _colorize_vcp_log(self, vcplogname: str, lognames: list[str]) -> None:
@@ -452,7 +503,7 @@ class QEMUWrapper:
             if line:
                 queue.append((err, line))
 
-    def _get_exit_code(self, xmo: Match) -> int:
+    def _get_exit_code(self, xmo: re.Match) -> int:
         groups = xmo.groups()
         if not groups:
             self._log.debug('No matching group, using defaut code')
@@ -465,7 +516,7 @@ class QEMUWrapper:
             pass
         # try to find in the regular expression whether the match is one of
         # the alternative in the first group
-        alts = re_sub(rb'^.*\((.*?)\).*$', r'\1', xmo.re.pattern).split(b'|')
+        alts = re.sub(rb'^.*\((.*?)\).*$', r'\1', xmo.re.pattern).split(b'|')
         try:
             pos = alts.index(match)
             if pos:
@@ -535,13 +586,13 @@ class QEMUFileManager:
            :param value: input value
            :return: interpolated value as a string
         """
-        def replace(smo: Match) -> str:
+        def replace(smo: re.Match) -> str:
             name = smo.group(1)
             val = self._env[name] if name in self._env \
                 else environ.get(name, '')
             return val
         svalue = str(value)
-        nvalue = re_sub(r'\$\{(\w+)\}', replace, svalue)
+        nvalue = re.sub(r'\$\{(\w+)\}', replace, svalue)
         if nvalue != svalue:
             self._log.debug('Interpolate %s with %s', value, nvalue)
         return nvalue
@@ -553,14 +604,14 @@ class QEMUFileManager:
 
            :param aliases: an alias JSON (sub-)tree
         """
-        def replace(smo: Match) -> str:
+        def replace(smo: re.Match) -> str:
             name = smo.group(1)
             val = self._env[name] if name in self._env \
                 else environ.get(name, '')
             return val
         for name in aliases:
             value = str(aliases[name])
-            value = re_sub(r'\$\{(\w+)\}', replace, value)
+            value = re.sub(r'\$\{(\w+)\}', replace, value)
             if exists(value):
                 value = normpath(value)
             aliases[name] = value
@@ -595,7 +646,7 @@ class QEMUFileManager:
                            none
            :return: the interpolated string
         """
-        def replace(smo: Match) -> str:
+        def replace(smo: re.Match) -> str:
             name = smo.group(1)
             if name == '':
                 name = default
@@ -607,7 +658,7 @@ class QEMUFileManager:
             if not tmp_dir.endswith(sep):
                 tmp_dir = f'{tmp_dir}{sep}'
             return tmp_dir
-        nvalue = re_sub(r'\@\{(\w*)\}/', replace, value)
+        nvalue = re.sub(r'\@\{(\w*)\}/', replace, value)
         if nvalue != value:
             self._log.debug('Interpolate %s with %s', value, nvalue)
         return nvalue
@@ -728,7 +779,7 @@ class QEMUFileManager:
         log = getLogger('pyot')
         flog = tool.logger
         # sub-tool get one logging level down to reduce log messages
-        floglevel = min(CRITICAL, log.getEffectiveLevel() + 10)
+        floglevel = min(logging.CRITICAL, log.getEffectiveLevel() + 10)
         flog.setLevel(floglevel)
         for hdlr in log.handlers:
             flog.addHandler(hdlr)
@@ -836,11 +887,12 @@ class QEMUContextWorker:
         Thread(target=self._logger, args=(proc, True)).start()
         Thread(target=self._logger, args=(proc, False)).start()
         qemu_exec = f'{basename(self._cmd[0])}: '
+        classifier = LogMessageClassifier(qemux=qemu_exec)
         while self._resume:
             while self._log_q:
                 err, qline = self._log_q.popleft()
                 if err:
-                    loglevel = QEMUWrapper.classify_log(qline, qemux=qemu_exec)
+                    loglevel = classifier.classify(qline)
                     self._log.log(loglevel, qline)
                 else:
                     self._log.debug(qline)
@@ -1087,7 +1139,8 @@ class QEMUExecuter:
 
            :return: success or the code of the first encountered error
         """
-        qot = QEMUWrapper(debug)
+        log_classifiers = self._config.get('logclass', {})
+        qot = QEMUWrapper(log_classifiers, debug)
         ret = 0
         results = defaultdict(int)
         result_file = self._argdict.get('result')
@@ -1498,7 +1551,7 @@ class QEMUExecuter:
                 incf_dir = dirname(incf)
                 with open(incf, 'rt', encoding='utf-8') as ifp:
                     for testfile in ifp:
-                        testfile = re_sub('#.*$', '', testfile).strip()
+                        testfile = re.sub('#.*$', '', testfile).strip()
                         if not testfile:
                             continue
                         testfile = self._qfm.interpolate(testfile)
@@ -1596,8 +1649,8 @@ class QEMUExecuter:
                     if not isinstance(cmd, str):
                         raise ValueError(f'Invalid command #{pos} in '
                                          f'"{ctx_name}" for test {test_name}')
-                    cmd = re_sub(r'[\n\r]', ' ', cmd.strip())
-                    cmd = re_sub(r'\s{2,}', ' ', cmd)
+                    cmd = re.sub(r'[\n\r]', ' ', cmd.strip())
+                    cmd = re.sub(r'\s{2,}', ' ', cmd)
                     cmd = self._qfm.interpolate(cmd)
                     cmd = self._qfm.interpolate_dirs(cmd, test_name)
                     context[ctx_name].append(cmd)
