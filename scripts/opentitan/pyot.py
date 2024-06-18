@@ -20,7 +20,7 @@ try:
 except ImportError:
     # fallback on legacy JSON syntax otherwise
     from json import load as jload
-from logging import CRITICAL, DEBUG, INFO, ERROR, WARNING, getLogger
+from logging import CRITICAL, DEBUG, INFO, ERROR, NOTSET, WARNING, getLogger
 from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
 from os.path import (abspath, basename, dirname, exists, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
@@ -251,8 +251,8 @@ class QEMUWrapper:
                         vcp_log = getLogger(f'{vcplogname}.{vcp_name}')
                         vcp_ctxs[sock.fileno()] = [vcpid, sock, bytearray(),
                                                    vcp_log]
-                        # timeout for communicating over VCP
-                        sock.settimeout(0.05)
+                        # remove timeout for VCP comm, as poll is used
+                        sock.settimeout(None)
                         poller.register(sock, POLLIN | POLLERR | POLLHUP)
                     except ConnectionRefusedError:
                         continue
@@ -278,12 +278,13 @@ class QEMUWrapper:
                     ret = 126
                     last_error = str(exc)
                     raise
+            qemu_exec = f'{basename(tdef.command[0])}: '
             abstimeout = float(tdef.timeout) + now()
             while now() < abstimeout:
                 while log_q:
                     err, qline = log_q.popleft()
                     if err:
-                        level = self.classify_log(qline)
+                        level = self.classify_log(qline, qemux=qemu_exec)
                         if level == INFO and \
                            qline.find('QEMU waiting for connection') >= 0:
                             level = DEBUG
@@ -309,7 +310,7 @@ class QEMUWrapper:
                         logfn('Abnormal QEMU termination: %d for "%s"',
                               ret, tdef.test_name)
                     break
-                for vfd, event in poller.poll(0.05):
+                for vfd, event in poller.poll(0.01):
                     if event in (POLLERR, POLLHUP):
                         poller.modify(vfd, 0)
                         continue
@@ -327,10 +328,10 @@ class QEMUWrapper:
                     for line in lines[:-1]:
                         line = self.ANSI_CRE.sub(b'', line)
                         if trig_match and trig_match(line):
-                            self._log.info('Trigger pattern detected')
                             # reset timeout from this event
                             abstimeout = float(tdef.timeout) + now()
-                            log.debug('Resuming for %.0f secs', tdef.timeout)
+                            log.info('Trigger pattern detected, resuming for '
+                                     '%.0f secs', tdef.timeout)
                             sync_event.set()
                             trig_match = None
                         xmo = xre.search(line)
@@ -403,13 +404,17 @@ class QEMUWrapper:
         return abs(ret) or 0, xtime, last_error
 
     @classmethod
-    def classify_log(cls, line: str, default: int = ERROR) -> int:
+    def classify_log(cls, line: str, default: int = ERROR,
+                     qemux: Optional[str] = None) -> int:
         """Classify log level of a line depending on its content.
 
            :param line: line to classify
            :param default: defaut log level in no classification is found
            :return: the logger log level to use
         """
+        if qemux and line.startswith(qemux):
+            # discard QEMU internal messages that cannot be disable from the VM
+            return NOTSET
         if (line.find('info: ') >= 0 or
             line.startswith('INFO ') or
             line.find(' INFO ') >= 0):  # noqa
@@ -821,7 +826,7 @@ class QEMUContextWorker:
             self._log.info('Waiting for sync')
             while self._resume:
                 if self._sync.wait(0.1):
-                    self._log.info('Sync triggered')
+                    self._log.debug('Synchronized')
                     break
             self._sync.clear()
         # pylint: disable=consider-using-with
@@ -830,11 +835,13 @@ class QEMUContextWorker:
                      errors='ignore', text=True)
         Thread(target=self._logger, args=(proc, True)).start()
         Thread(target=self._logger, args=(proc, False)).start()
+        qemu_exec = f'{basename(self._cmd[0])}: '
         while self._resume:
             while self._log_q:
                 err, qline = self._log_q.popleft()
                 if err:
-                    self._log.log(QEMUWrapper.classify_log(qline), qline)
+                    loglevel = QEMUWrapper.classify_log(qline, qemux=qemu_exec)
+                    self._log.log(loglevel, qline)
                 else:
                     self._log.debug(qline)
             if proc.poll() is not None:
