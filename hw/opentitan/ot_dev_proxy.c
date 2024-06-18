@@ -104,6 +104,7 @@ typedef struct {
     unsigned dev_num; /* device number (in device array) */
     uint16_t irq_num; /* IRQ number (in proxied device) */
     uint8_t grp_num; /* IRQ group (in proxied device) */
+    bool assigned; /* Proxy IRQ slot in use */
 } OtDevProxyIrq;
 
 typedef struct {
@@ -1005,7 +1006,7 @@ ot_dev_proxy_route_interrupt(OtDevProxyState *s, OtDevProxyItem *item,
 
     unsigned six;
     for (six = 0; six < PROXY_IRQ_INTERCEPT_COUNT; six++) {
-        if (!s->proxy_irq_map[six].irq_orig) {
+        if (!s->proxy_irq_map[six].assigned) {
             proxy_irq = &s->proxy_irq_map[six];
             break;
         }
@@ -1018,6 +1019,7 @@ ot_dev_proxy_route_interrupt(OtDevProxyState *s, OtDevProxyItem *item,
     qemu_irq icpt_irq;
     icpt_irq =
         qdev_get_gpio_in_named(DEVICE(s), PROXY_IRQ_INTERCEPT_NAME, (int)six);
+    proxy_irq->assigned = true;
     proxy_irq->irq_orig =
         qdev_intercept_gpio_out(dev, icpt_irq, group, (int)irq_n);
     proxy_irq->dev_num = (unsigned)(uintptr_t)(item - s->items);
@@ -1142,7 +1144,7 @@ static void ot_dev_proxy_intercept_interrupts(OtDevProxyState *s, bool enable)
      */
     unsigned free_slot = 0;
     for (unsigned ix = 0; ix < PROXY_IRQ_INTERCEPT_COUNT; ix++) {
-        if (!s->proxy_irq_map[ix].irq_orig) {
+        if (!s->proxy_irq_map[ix].assigned) {
             free_slot += 1;
         }
     }
@@ -1393,8 +1395,8 @@ static void ot_dev_proxy_intercepted_irq(void *opaque, int irq, int level)
     g_assert(irq < PROXY_IRQ_INTERCEPT_COUNT);
 
     OtDevProxyIrq *proxy_irq = &s->proxy_irq_map[irq];
-    if (!proxy_irq->irq_orig) {
-        warn_report("%d non-assigned intercepted IRQ signaled", irq);
+    if (!proxy_irq->assigned) {
+        trace_ot_dev_proxy_unassigned_irq(irq);
         return;
     }
     g_assert(proxy_irq->dev_num < s->dev_count);
