@@ -155,10 +155,19 @@ typedef struct {
     };
 } IbexDevicePropDef;
 
+typedef enum {
+    IBEX_MEM_MAP_ENTRY_FLAG_LAST,
+    IBEX_MEM_MAP_ENTRY_FLAG_SKIP,
+    IBEX_MEM_MAP_ENTRY_FLAG_COUNT
+} IbexMemMapEntryFlags;
+
 typedef struct IbexMemMapEntry {
     hwaddr base;
     int8_t priority;
+    uint8_t flags; /* bitfield of IbexMemMapEntryFlags */
 } IbexMemMapEntry;
+
+#define IBEX_MEM_MAP_ENTRY_FLAG(_f_) (1u << (IBEX_MEM_MAP_ENTRY_FLAG_##_f_))
 
 /* Device definition */
 struct IbexDeviceDef {
@@ -231,10 +240,12 @@ typedef struct {
     (((_par_) << IBEX_DEVLINK_RMT_SHIFT) | ((_ix_) & IBEX_DEVLINK_IDX_MASK))
 
 /* MemMapEntry that should be ignored (i.e. skipped, not mapped) */
-#define IBEX_MEMMAP_LAST            ((hwaddr)0ull)
-#define IBEX_MEMMAP_SKIP            { .base = HWADDR_MAX }
-#define IBEX_MEMMAP_IS_LAST(_mmap_) ((_mmap_)->base == IBEX_MEMMAP_LAST)
-#define IBEX_MEMMAP_IGNORE(_mmap_)  ((_mmap_)->base == HWADDR_MAX)
+#define IBEX_MEMMAP_LAST { .flags = IBEX_MEM_MAP_ENTRY_FLAG(LAST) }
+#define IBEX_MEMMAP_SKIP { .flags = IBEX_MEM_MAP_ENTRY_FLAG(SKIP) }
+#define IBEX_MEMMAP_IS_LAST(_mmap_) \
+    ((bool)((_mmap_)->flags & IBEX_MEM_MAP_ENTRY_FLAG(LAST)))
+#define IBEX_MEMMAP_IGNORE(_mmap_) \
+    ((bool)((_mmap_)->flags & IBEX_MEM_MAP_ENTRY_FLAG(SKIP)))
 
 /**
  * Create memory map entries, each arg is MemMapEntry definition
@@ -242,10 +253,7 @@ typedef struct {
 #define MEMMAPENTRIES(...) \
     (const IbexMemMapEntry[]) \
     { \
-        __VA_ARGS__, \
-        { \
-            .base = IBEX_MEMMAP_LAST \
-        } \
+        __VA_ARGS__, IBEX_MEMMAP_LAST \
     }
 
 /**
