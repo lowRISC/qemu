@@ -6,6 +6,7 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
+from io import BytesIO
 from sys import stdout
 from typing import Any, Iterable, Optional, TextIO
 
@@ -76,7 +77,9 @@ def group(lst, count):
 def dump_buffer(buffer: Buffer, addr: int = 0, file: Optional[TextIO] = None) \
         -> None:
     """Dump a binary buffer, same format as hexdump -C."""
-    if isinstance(buffer, memoryview):
+    if isinstance(buffer, BytesIO):
+        view = buffer.getbuffer()
+    elif isinstance(buffer, memoryview):
         view = buffer.getbuffer()
     else:
         view = buffer

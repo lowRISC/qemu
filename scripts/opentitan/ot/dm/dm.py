@@ -378,7 +378,10 @@ class DebugModule:
             self._wait_sb_idle(check=True)
         lap = now() - start
         rate = size / (lap * 1024)
-        self._log.info('copied %d KB @ %.1f KB/s', size//1024, rate)
+        if size > 1024:
+            self._log.info('copied %d KB @ %.1f KB/s', size//1024, rate)
+        else:
+            self._log.info('copied %d bytes @ %.1f KB/s', size, rate)
 
     def read32(self, addr: int) -> int:
         """Read a single word from memory."""

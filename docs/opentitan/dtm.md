@@ -1,14 +1,14 @@
 # `dtm.py`
 
-`dtm.py` checks that the JTAG/DTM/DM stack is up and running and demonstrates how to use the
-Debug Module to access the Ibex core.
+`dtm.py` checks that the JTAG/DTM/DM stack is up and running and demonstrates how to use the Debug
+Module to access the Ibex core.
 
 ## Usage
 
 ````text
-usage: dtm.py [-h] [-H HOST] [-P PORT] [-Q] [-l IR_LENGTH] [-b BASE] [-I] [-c]
-              [-C MISA_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}]
-              [-s SIZE] [-f FILE] [-e ELF] [-v] [-d]
+usage: dtm.py [-h] [-H HOST] [-P PORT] [-Q] [-t] [-l IR_LENGTH] [-b BASE] [-I]
+              [-c CSR] [-C CSR_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}]
+              [-s SIZE] [-f FILE] [-e ELF] [-F] [-v] [-d]
 
 Debug Transport Module tiny demo
 
@@ -18,12 +18,12 @@ options:
 Virtual machine:
   -H HOST, --host HOST  JTAG host (default: localhost)
   -P PORT, --port PORT  JTAG port, default: 3335
-  -Q, --no-quit         do not ask the QEMU to quit on exit
+  -t, --terminate       terminate QEMU when done
 
 DMI:
   -l IR_LENGTH, --ir-length IR_LENGTH
-                        bit length of the IR register
-  -b BASE, --base BASE  define DMI base address
+                        bit length of the IR register (default: 5)
+  -b BASE, --base BASE  define DMI base address (default: 0x0)
 
 Info:
   -I, --info            report JTAG ID code and DTM configuration
@@ -85,12 +85,12 @@ Extras:
 * `-P` specify the TCP port of the JTAG server in the QEMU VM, should follow the TCP setting of the
   `-chardev socket,id=taprbb,...` option for invoking QEMU.
 
-* `-Q` do not send QEMU a request for termination when this script exits.
-
 * `-s` specify the number of bytes to read from or write to memory. Useful with the `--mem` option.
   See also the `--address` option. This option may be omitted for the `write` memory operation, in
   which case the size of the specified file is used. Note that only sizes multiple of 4-byte are
   supported for now.
+
+* `-t` send QEMU a request for termination when this script exits.
 
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 

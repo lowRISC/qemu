@@ -65,8 +65,8 @@ def main():
                          default=JtagBitbangController.DEFAULT_PORT,
                          help=f'JTAG port, '
                               f'default: {JtagBitbangController.DEFAULT_PORT}')
-        qvm.add_argument('-Q', '--no-quit', action='store_true', default=False,
-                         help='do not ask the QEMU to quit on exit')
+        qvm.add_argument('-t', '--terminate', action='store_true',
+                         help='terminate QEMU when done')
         dmi = argparser.add_argument_group(title='DMI')
         dmi.add_argument('-l', '--ir-length', type=int,
                          default=DEFAULT_IR_LENGTH,
@@ -114,7 +114,11 @@ def main():
 
         configure_loggers(args.verbose, 'dtm.rvdm', -1, 'dtm', 'jtag')
 
-        sock = create_connection((args.host, args.port), timeout=0.5)
+        try:
+            sock = create_connection((args.host, args.port), timeout=0.5)
+        except OSError as exc:
+            raise RuntimeError(f'Cannot connect to {args.host}:{args.port}: '
+                               f'{exc}') from exc
         sock.settimeout(0.1)
         ctrl = JtagBitbangController(sock)
         eng = JtagEngine(ctrl)
@@ -172,21 +176,16 @@ def main():
                 if not rvdm:
                     rvdm = DebugModule(dtm, args.base)
                     rvdm.initialize()
-                try:
-                    rvdm.halt()
-                    if args.file:
-                        mode = 'rb' if args.mem == 'write' else 'wb'
-                        with open(args.file, mode) as mfp:
-                            rvdm.memory_copy(mfp, args.mem, args.address,
-                                             args.size, no_check=args.fast_mode)
-                    else:
-                        mfp = BytesIO()
-                        rvdm.memory_copy(mfp, args.mem, args.address, args.size,
-                                         no_check=args.fast_mode)
-                        dump_buffer(mfp, args.address)
-                finally:
-                    if not args.no_exec:
-                        rvdm.resume()
+                if args.file:
+                    mode = 'rb' if args.mem == 'write' else 'wb'
+                    with open(args.file, mode) as mfp:
+                        rvdm.memory_copy(mfp, args.mem, args.address,
+                                         args.size, no_check=args.fast_mode)
+                else:
+                    mfp = BytesIO()
+                    rvdm.memory_copy(mfp, args.mem, args.address, args.size,
+                                     no_check=args.fast_mode)
+                    dump_buffer(mfp, args.address)
             if args.elf:
                 if not ElfBlob.LOADED:
                     argparser.error('pyelftools module not available')
@@ -212,7 +211,7 @@ def main():
                 if args.execute:
                     argparser.error('Cannot execute without loaded an ELF file')
         finally:
-            if not args.no_quit:
+            if args.terminate:
                 ctrl.quit()
 
     # pylint: disable=broad-except
