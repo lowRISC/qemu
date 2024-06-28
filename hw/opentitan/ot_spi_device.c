@@ -978,8 +978,8 @@ static void ot_spi_device_update_irqs(OtSPIDeviceState *s)
     uint32_t levels = s->spi_regs[R_INTR_STATE] & s->spi_regs[R_INTR_ENABLE];
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         bool level = (bool)((levels >> ix) & 0x1u);
-        if (level && !ibex_irq_get_level(&s->irqs[ix])) {
-            trace_ot_spi_device_set_irq(IRQ_NAME(ix), ix);
+        if (level != (bool)ibex_irq_get_level(&s->irqs[ix])) {
+            trace_ot_spi_device_set_irq(IRQ_NAME(ix), ix, level);
         }
         ibex_irq_set(&s->irqs[ix], (int)level);
     }
@@ -1525,6 +1525,8 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
         FLASH_CHANGE_STATE(f, UP_DUMMY);
     } else if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
         ot_spi_device_flash_init_payload(s);
+    } else {
+        s->spi_regs[R_UPLOAD_STATUS2] = 0;
     }
 }
 
