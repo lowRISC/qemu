@@ -1330,22 +1330,10 @@ static bool ot_otp_dj_is_part_digest_offset(int part, hwaddr addr)
 static bool ot_otp_dj_is_readable(OtOTPDjState *s, int partition)
 {
     if (OtOTPPartDescs[partition].secret) {
-        /* secret partition cannot be read (except their digest) */
-        return false;
+        /* secret partitions are only readable if digest is not yet set. */
+        return ot_otp_dj_get_buffered_part_digest(s, partition) == 0u;
     }
 
-    if (!OtOTPPartDescs[partition].read_lock) {
-        /* read lock is not supported for this partition */
-        return true;
-    }
-
-    if (!OtOTPPartDescs[partition].read_lock_csr &&
-        !s->partctrls[partition].read_lock) {
-        /* hw read lock, not unlocked */
-        return false;
-    }
-
-    bool rdaccess;
     uint32_t reg;
 
     switch (partition) {
@@ -1413,20 +1401,21 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, int partition)
             error_setg(&error_fatal, "CSR register not defined");
             g_assert_not_reached();
         }
-        rdaccess = (bool)SHARED_FIELD_EX32(s->regs[reg], READ_LOCK);
-    } else {
-        if (reg != UINT32_MAX) {
-            error_setg(&error_fatal, "Unexpected CSR register");
-            g_assert_not_reached();
-        }
-        /*
-         * hwdigest-protected partition are only readable if digest is not yet
-         * set.
-         */
-        rdaccess = ot_otp_dj_get_buffered_part_digest(s, partition) == 0u;
+        return (bool)SHARED_FIELD_EX32(s->regs[reg], READ_LOCK);
     }
 
-    return rdaccess;
+    if (reg != UINT32_MAX) {
+        error_setg(&error_fatal, "Unexpected CSR register");
+        g_assert_not_reached();
+    }
+
+    if (!OtOTPPartDescs[partition].read_lock) {
+        /* read lock is not supported for this partition */
+        return true;
+    }
+
+    /* hw read lock, not locked */
+    return !s->partctrls[partition].read_lock;
 }
 
 static void
