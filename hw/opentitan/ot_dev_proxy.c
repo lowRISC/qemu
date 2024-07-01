@@ -414,7 +414,7 @@ static void ot_dev_proxy_enumerate_memory_spaces(OtDevProxyState *s)
         struct entry *entry = &entries[count];
         entry->header = ix << 24u;
         entry->address = subsys->mr->addr;
-        uint64_t size = int128_getlo(subsys->mr->size);
+        uint64_t size = memory_region_size(subsys->mr);
         entry->size = (uint32_t)MIN(size, UINT32_MAX);
         const char *name = memory_region_name(subsys->mr);
         size_t namelen = strlen(name);
@@ -1263,7 +1263,7 @@ static void ot_dev_proxy_intercept_mmio(OtDevProxyState *s)
     MemoryRegion *mr = s->subsys[mspc].mr;
     g_assert(mr->addr == 0);
 
-    uint64_t lmrsize = (uint64_t)int128_getlo(mr->size);
+    uint64_t lmrsize = memory_region_size(mr);
     uint64_t mrsize = MAX(lmrsize, UINT32_MAX);
 
     uint32_t address = s->rx_buffer[1];
@@ -1636,7 +1636,7 @@ static void ot_dev_proxy_reg_mr(GArray *array, Object *obj)
             item->obj = obj;
             item->caps.mr = mr;
             g_assert(item->caps.mr);
-            item->caps.reg_count = int128_getlo(mr->size) / sizeof(uint32_t);
+            item->caps.reg_count = memory_region_size(mr) / sizeof(uint32_t);
             item->prefix = "M/";
             g_array_append_val(array, item);
         }
@@ -1693,7 +1693,7 @@ static void ot_dev_proxy_reg_sram_ctrl(GArray *array, Object *obj)
         item->obj = obj;
         item->caps.mr = sysdev->mmio[0].memory;
         item->caps.reg_count =
-            int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
+            memory_region_size(item->caps.mr) / sizeof(uint32_t);
         item->prefix = "SRC/"; /* SRAM control */
         g_array_append_val(array, item);
         item = g_new0(OtDevProxyItem, 1);
@@ -1701,7 +1701,7 @@ static void ot_dev_proxy_reg_sram_ctrl(GArray *array, Object *obj)
         item->obj = obj;
         item->caps.mr = sysdev->mmio[1].memory;
         item->caps.reg_count =
-            int128_getlo(item->caps.mr->size) / sizeof(uint32_t);
+            memory_region_size(item->caps.mr) / sizeof(uint32_t);
         item->prefix = "SRM/"; /* SRAM memory */
         g_array_append_val(array, item);
     }
@@ -1722,7 +1722,7 @@ static int ot_dev_proxy_discover_memory_root(Object *child, void *opaque)
             /* not a root memory region */
             return 0;
         }
-        if (int128_getlo(mr->size) == 0) {
+        if (memory_region_size(mr) == 0) {
             /* empty region, useless */
             return 0;
         }
