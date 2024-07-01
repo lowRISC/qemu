@@ -582,7 +582,7 @@ ot_dma_check_device(OtDMAState *s, bool d_or_s, OtDMAAddrSpace *asix,
     MemoryRegionSection mrs = { 0 };
     mrs = memory_region_find(as->root, start, size);
 
-    if (!mrs.mr || !mrs.size) {
+    if (!mrs.mr || !int128_getlo(mrs.size)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: Invalid %s address as:%s "
                       "addr: 0x%" HWADDR_PRIx " size: 0x%" HWADDR_PRIx "\n",
@@ -592,7 +592,7 @@ ot_dma_check_device(OtDMAState *s, bool d_or_s, OtDMAAddrSpace *asix,
         return NULL;
     }
 
-    if (mrs.offset_within_region + mrs.size < size) {
+    if (mrs.offset_within_region + int128_getlo(mrs.size) < size) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid size\n", __func__,
                       s->ot_id);
         ot_dma_set_xerror(s, ERR_SIZE);
