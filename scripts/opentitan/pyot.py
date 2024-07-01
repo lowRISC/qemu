@@ -36,7 +36,7 @@ from time import time as now
 from traceback import format_exc
 from typing import Any, Iterator, NamedTuple, Optional
 
-from ot.util.log import Color as LogColor, configure_loggers
+from ot.util.log import ColorLogFormatter, configure_loggers
 from ot.util.misc import EasyDict
 
 
@@ -232,6 +232,8 @@ class QEMUWrapper:
             # ensure that QEMU starts and give some time for it to set up
             # when multiple VCPs are set to 'wait', one VCP can be connected at
             # a time, i.e. QEMU does not open all connections at once.
+            vcp_lognames = []
+            vcplogname = 'pyot.vcp'
             while connect_map:
                 if now() > timeout:
                     raise TimeoutError(f'Cannot connect to QEMU VCPs '
@@ -245,14 +247,14 @@ class QEMUWrapper:
                         sock.connect((host, port))
                         connected.append(vcpid)
                         vcp_name = re_sub(r'^.*[-\.+]', '', vcpid)
-                        vcp_log = getLogger(f'pyot.vcp.{vcp_name}')
+                        vcp_lognames.append(vcp_name)
+                        vcp_log = getLogger(f'{vcplogname}.{vcp_name}')
                         vcp_ctxs[sock.fileno()] = [vcpid, sock, bytearray(),
                                                    vcp_log]
                         # timeout for communicating over VCP
                         sock.settimeout(0.05)
                         poller.register(sock, POLLIN | POLLERR | POLLHUP)
                     except ConnectionRefusedError:
-                        log.debug('Cannot connect yet to %s', vcpid)
                         continue
                     except OSError as exc:
                         log.error('Cannot setup QEMU VCP connection %s: %s',
@@ -262,6 +264,7 @@ class QEMUWrapper:
                 # removal from dictionary cannot be done while iterating it
                 for vcpid in connected:
                     del connect_map[vcpid]
+            self._colorize_vcp_log(vcplogname, vcp_lognames)
             xstart = now()
             if tdef.context:
                 try:
@@ -420,6 +423,21 @@ class QEMUWrapper:
             line.find(' DEBUG ') >= 0):  # noqa
             return DEBUG
         return default
+
+    def _colorize_vcp_log(self, vcplogname: str, lognames: list[str]) -> None:
+        vlog = getLogger(vcplogname)
+        clr_fmt = None
+        while vlog:
+            for hdlr in vlog.handlers:
+                if isinstance(hdlr.formatter, ColorLogFormatter):
+                    clr_fmt = hdlr.formatter
+                    break
+            vlog = vlog.parent
+        if not clr_fmt:
+            return
+        colors = ('blue', 'yellow', 'red', 'magenta', 'cyan', 'green')
+        for logname, color in zip(lognames, colors):
+            clr_fmt.add_logger_colors(f'{vcplogname}.{logname}', color)
 
     def _qemu_logger(self, proc: Popen, queue: deque, err: bool):
         # worker thread, blocking on VM stdout/stderr
@@ -1708,7 +1726,6 @@ def main():
             args.result = tmp_result
 
         log = configure_loggers(args.verbose, 'pyot',
-                                LogColor('blue'), 'pyot.vcp',
                                 name_width=16,
                                 ms=args.log_time, debug=args.debug,
                                 info=args.info, warning=args.warn)[0]
