@@ -25,6 +25,7 @@ from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
 from os.path import (abspath, basename, dirname, exists, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
 from re import Match, compile as re_compile, error as re_error, sub as re_sub
+from select import POLLIN, POLLERR, POLLHUP, poll as spoll
 from shutil import rmtree
 from socket import socket, timeout as LegacyTimeoutError
 from subprocess import Popen, PIPE, TimeoutExpired
@@ -137,13 +138,10 @@ class QEMUWrapper:
     LOG_LEVELS = {'D': DEBUG, 'I': INFO, 'E': ERROR}
     """OpenTitan log levels."""
 
-    def __init__(self, tcpdev: tuple[str, int], debug: bool):
-        # self._mterm: Optional[MiniTerm] = None
-        self._device = tcpdev
+    def __init__(self, debug: bool):
         self._debug = debug
         self._log = getLogger('pyot')
         self._qlog = getLogger('pyot.qemu')
-        self._vcplog = getLogger('pyot.vcp')
 
     def run(self, tdef: EasyDict[str, Any]) -> tuple[int, ExecTime, str]:
         """Execute the specified QEMU command, aborting execution if QEMU does
@@ -152,6 +150,7 @@ class QEMUWrapper:
            :param tdef: test definition and parameters
                 - command, a list of strings defining the QEMU command to
                            execute with all its options
+                - vcp_map: how to connect to QEMU virtual communication ports
                 - timeout, the allowed time for the command to execute,
                            specified as a real number
                 - expect_result, the expected outcome of QEMU (exit code). Some
@@ -193,11 +192,12 @@ class QEMUWrapper:
             trig_match = None
         ret = None
         proc = None
-        sock = None
         xstart = None
         xend = None
         log = self._log
         last_error = ''
+        vcp_map = tdef.vcp_map
+        vcp_ctxs: dict[int, tuple[str, socket, bytearray]] = {}
         try:
             workdir = dirname(tdef.command[0])
             log.debug('Executing QEMU as %s', ' '.join(tdef.command))
@@ -206,29 +206,14 @@ class QEMUWrapper:
                          stderr=PIPE, encoding='utf-8', errors='ignore',
                          text=True)
             try:
-                # ensure that QEMU starts and give some time for it to set up
-                # its VCP before attempting to connect to it
-                self._log.debug('Waiting %.1fs for VM init', tdef.start_delay)
-                proc.wait(tdef.start_delay)
+                proc.wait(0.1)
             except TimeoutExpired:
                 pass
             else:
                 ret = proc.returncode
                 log.error('QEMU bailed out: %d for "%s"', ret, tdef.test_name)
                 raise OSError()
-            sock = socket()
-            log.debug('Connecting QEMU VCP as %s:%d', *self._device)
-            try:
-                # timeout for connecting to VCP
-                sock.settimeout(1)
-                sock.connect(self._device)
-            except OSError as exc:
-                log.error('Cannot connect to QEMU VCP port: %s', exc)
-                raise
-            # timeout for communicating over VCP
-            sock.settimeout(0.05)
             log.debug('Execute QEMU for %.0f secs', tdef.timeout)
-            vcp_buf = bytearray()
             # unfortunately, subprocess's stdout calls are blocking, so the
             # only way to get near real-time output from QEMU is to use a
             # dedicated thread that may block whenever no output is available
@@ -241,6 +226,42 @@ class QEMUWrapper:
                    args=(proc, log_q, True)).start()
             Thread(target=self._qemu_logger, name='qemu_err_logger',
                    args=(proc, log_q, False)).start()
+            poller = spoll()
+            connect_map = vcp_map.copy()
+            timeout = now() + tdef.start_delay
+            # ensure that QEMU starts and give some time for it to set up
+            # when multiple VCPs are set to 'wait', one VCP can be connected at
+            # a time, i.e. QEMU does not open all connections at once.
+            while connect_map:
+                if now() > timeout:
+                    raise TimeoutError(f'Cannot connect to QEMU VCPs '
+                                       f'{", ".join(connect_map)}')
+                connected = []
+                for vcpid, (host, port) in connect_map.items():
+                    try:
+                        # timeout for connecting to VCP
+                        sock = socket()
+                        sock.settimeout(1)
+                        sock.connect((host, port))
+                        connected.append(vcpid)
+                        vcp_name = re_sub(r'^.*[-\.+]', '', vcpid)
+                        vcp_log = getLogger(f'pyot.vcp.{vcp_name}')
+                        vcp_ctxs[sock.fileno()] = [vcpid, sock, bytearray(),
+                                                   vcp_log]
+                        # timeout for communicating over VCP
+                        sock.settimeout(0.05)
+                        poller.register(sock, POLLIN | POLLERR | POLLHUP)
+                    except ConnectionRefusedError:
+                        log.debug('Cannot connect yet to %s', vcpid)
+                        continue
+                    except OSError as exc:
+                        log.error('Cannot setup QEMU VCP connection %s: %s',
+                                  vcpid, exc)
+                        print(format_exc(chain=False), file=stderr)
+                        raise
+                # removal from dictionary cannot be done while iterating it
+                for vcpid in connected:
+                    del connect_map[vcpid]
             xstart = now()
             if tdef.context:
                 try:
@@ -285,52 +306,62 @@ class QEMUWrapper:
                         logfn('Abnormal QEMU termination: %d for "%s"',
                               ret, tdef.test_name)
                     break
-                try:
-                    data = sock.recv(4096)
-                except (TimeoutError, LegacyTimeoutError):
-                    continue
-                vcp_buf += data
-                if not vcp_buf:
-                    continue
-                lines = vcp_buf.split(b'\n')
-                vcp_buf = bytearray(lines[-1])
-                for line in lines[:-1]:
-                    line = self.ANSI_CRE.sub(b'', line)
-                    if trig_match and trig_match(line):
-                        self._log.info('Trigger pattern detected')
-                        # reset timeout from this event
-                        abstimeout = float(tdef.timeout) + now()
-                        log.debug('Resuming for %.0f secs', tdef.timeout)
-                        sync_event.set()
-                        trig_match = None
-                    xmo = xre.search(line)
-                    if xmo:
-                        xend = now()
-                        exit_word = xmo.group(1).decode('utf-8',
-                                                        errors='ignore')
-                        ret = self._get_exit_code(xmo)
-                        log.info("Exit sequence detected: '%s' -> %d",
-                                 exit_word, ret)
-                        if ret == 0:
-                            last_error = ''
-                        break
-                    sline = line.decode('utf-8', errors='ignore').rstrip()
-                    lmo = lre.search(sline)
-                    if lmo:
-                        level = self.LOG_LEVELS.get(lmo.group(1))
-                        if level == ERROR:
-                            err = re_sub(r'^.*:\d+]', '', sline).lstrip()
-                            # be sure not to preserve comma as this char is
-                            # used as a CSV separator.
-                            last_error = err.strip('"').replace(',', ';')
+                for vfd, event in poller.poll(0.05):
+                    if event in (POLLERR, POLLHUP):
+                        poller.modify(vfd, 0)
+                        continue
+                    vcpid, vcp, vcp_buf, vcp_log = vcp_ctxs[vfd]
+                    try:
+                        data = vcp.recv(4096)
+                    except (TimeoutError, LegacyTimeoutError):
+                        log.error('Unexpected timeout w/ poll on %s', vcp)
+                        continue
+                    vcp_buf += data
+                    if not vcp_buf:
+                        continue
+                    lines = vcp_buf.split(b'\n')
+                    vcp_buf[:] = bytearray(lines[-1])
+                    for line in lines[:-1]:
+                        line = self.ANSI_CRE.sub(b'', line)
+                        if trig_match and trig_match(line):
+                            self._log.info('Trigger pattern detected')
+                            # reset timeout from this event
+                            abstimeout = float(tdef.timeout) + now()
+                            log.debug('Resuming for %.0f secs', tdef.timeout)
+                            sync_event.set()
+                            trig_match = None
+                        xmo = xre.search(line)
+                        if xmo:
+                            xend = now()
+                            exit_word = xmo.group(1).decode('utf-8',
+                                                            errors='ignore')
+                            ret = self._get_exit_code(xmo)
+                            log.info("Exit sequence detected: '%s' -> %d",
+                                     exit_word, ret)
+                            if ret == 0:
+                                last_error = ''
+                            break
+                        sline = line.decode('utf-8', errors='ignore').rstrip()
+                        lmo = lre.search(sline)
+                        if lmo:
+                            level = self.LOG_LEVELS.get(lmo.group(1))
+                            if level == ERROR:
+                                err = re_sub(r'^.*:\d+]', '', sline).lstrip()
+                                # be sure not to preserve comma as this char is
+                                # used as a CSV separator.
+                                last_error = err.strip('"').replace(',', ';')
+                        else:
+                            level = DEBUG  # fall back when no prefix is found
+                        vcp_log.log(level, sline)
                     else:
-                        level = DEBUG  # fall back when no prefix is found
-                    self._vcplog.log(level, sline)
-                else:
-                    # no match
-                    continue
-                # match
-                break
+                        # no match for exit sequence on current VCP
+                        continue
+                    if ret is not None:
+                        # match for exit sequence on current VCP
+                        break
+                if ret is not None:
+                    # match for exit sequence on last VCP
+                    break
             if ret is None:
                 log.warning('Execution timed out for "%s"', tdef.test_name)
                 ret = 124  # timeout
@@ -341,8 +372,9 @@ class QEMUWrapper:
         finally:
             if xend is None:
                 xend = now()
-            if sock:
+            for _, sock, _, _ in vcp_ctxs.values():
                 sock.close()
+            vcp_ctxs.clear()
             if proc:
                 if xend is None:
                     xend = now()
@@ -985,6 +1017,9 @@ class QEMUExecuter:
        virtual UART port.
     """
 
+    DEFAULT_SERIAL_PORT = 'serial0'
+    """Default VCP name."""
+
     def __init__(self, qfm: QEMUFileManager, config: dict[str, any],
                  args: Namespace):
         self._log = getLogger('pyot.exec')
@@ -993,7 +1028,6 @@ class QEMUExecuter:
         self._args = args
         self._argdict: dict[str, Any] = {}
         self._qemu_cmd: list[str] = []
-        self._vcp: Optional[tuple[str, int]] = None
         self._suffixes = []
         if hasattr(self._args, 'opts'):
             setattr(self._args, 'global_opts', getattr(self._args, 'opts'))
@@ -1008,7 +1042,6 @@ class QEMUExecuter:
         """
         exec_info = self._build_qemu_command(self._args)
         self._qemu_cmd = exec_info.command
-        self._vcp = exec_info.connection
         self._argdict = dict(self._args.__dict__)
         self._suffixes = []
         suffixes = self._config.get('suffixes', [])
@@ -1029,7 +1062,7 @@ class QEMUExecuter:
 
            :return: success or the code of the first encountered error
         """
-        qot = QEMUWrapper(self._vcp, debug)
+        qot = QEMUWrapper(debug)
         ret = 0
         results = defaultdict(int)
         result_file = self._argdict.get('result')
@@ -1094,6 +1127,8 @@ class QEMUExecuter:
                 # pylint: disable=broad-except
                 except Exception as exc:
                     self._log.critical('%s', str(exc))
+                    if debug:
+                        print(format_exc(chain=False), file=stderr)
                     tret = 99
                     xtime = 0.0
                     err = str(exc)
@@ -1258,6 +1293,31 @@ class QEMUExecuter:
                     fw_args.extend(('-kernel', exec_path))
         return machine, xtype, fw_args
 
+    def _build_qemu_vcp_args(self, args: Namespace):
+        device = args.device
+        devdesc = device.split(':')
+        host = devdesc[0]
+        try:
+            port = int(devdesc[1])
+            if not 0 < port < 65536:
+                raise ValueError(f'Invalid serial TCP port: {port}')
+        except IndexError as exc:
+            raise ValueError(f'TCP port not specified: {device}') from exc
+        except TypeError as exc:
+            raise ValueError(f'Invalid TCP serial device: {device}') from exc
+        mux = f'mux={"on" if args.muxserial else "off"}'
+        vcps = args.vcp or [self.DEFAULT_SERIAL_PORT]
+        vcp_args = ['-display', 'none']
+        vcp_map = {}
+        for vix, vcp in enumerate(vcps):
+            vcp_map[vcp] = (host, port+vix)
+            vcp_args.extend(('-chardev',
+                             f'socket,id={vcp},host={host},port={port+vix},'
+                             f'{mux},server=on,wait=on'))
+            if vcp == self.DEFAULT_SERIAL_PORT:
+                vcp_args.extend(('-serial', 'chardev:serial0'))
+        return vcp_args, vcp_map
+
     def _build_qemu_command(self, args: Namespace,
                             opts: Optional[list[str]] = None) \
             -> EasyDict[str, Any]:
@@ -1322,7 +1382,6 @@ class QEMUExecuter:
         if 'icount' in args:
             if args.icount is not None:
                 qemu_args.extend(('-icount', f'shift={args.icount}'))
-        mux = f'mux={"on" if args.muxserial else "off"}'
         try:
             start_delay = float(getattr(args, 'start_delay') or
                                 self.DEFAULT_START_DELAY)
@@ -1331,24 +1390,12 @@ class QEMUExecuter:
                 from exc
         start_delay *= args.timeout_factor
         trigger = getattr(args, 'trigger', '')
-        device = args.device
-        devdesc = device.split(':')
-        try:
-            port = int(devdesc[1])
-            if not 0 < port < 65536:
-                raise ValueError('Invalid serial TCP port')
-            tcpdev = (devdesc[0], port)
-            qemu_args.extend(('-display', 'none'))
-            qemu_args.extend(('-chardev',
-                              f'socket,id=serial0,host={devdesc[0]},'
-                              f'port={port},{mux},server=on,wait=on'))
-            qemu_args.extend(('-serial', 'chardev:serial0'))
-        except TypeError as exc:
-            raise ValueError('Invalid TCP serial device') from exc
+        vcp_args, vcp_map = self._build_qemu_vcp_args(args)
+        qemu_args.extend(vcp_args)
         qemu_args.extend(args.global_opts or [])
         if opts:
             qemu_args.extend((str(o) for o in opts))
-        return EasyDict(command=qemu_args, connection=tcpdev,
+        return EasyDict(command=qemu_args, vcp_map=vcp_map,
                         tmpfiles=temp_files, start_delay=start_delay,
                         trigger=trigger)
 
@@ -1568,8 +1615,10 @@ def main():
         qvm.add_argument('-q', '--qemu',
                          help=f'path to qemu application '
                               f'(default: {rel_qemu_path})')
+        qvm.add_argument('-P', '--vcp', action='append',
+                         help='serial port devices (default: use serial0)')
         qvm.add_argument('-p', '--device',
-                         help=f'serial port device name '
+                         help=f'serial port device name / template name '
                               f'(default to {DEFAULT_DEVICE})')
         qvm.add_argument('-t', '--trace', type=FileType('rt', encoding='utf-8'),
                          help='trace event definition file')
@@ -1660,6 +1709,7 @@ def main():
 
         log = configure_loggers(args.verbose, 'pyot',
                                 LogColor('blue'), 'pyot.vcp',
+                                name_width=16,
                                 ms=args.log_time, debug=args.debug,
                                 info=args.info, warning=args.warn)[0]
 
@@ -1737,7 +1787,7 @@ def main():
             if debug:
                 print(format_exc(chain=False), file=stderr)
             argparser.error(str(exc))
-        ret = qexc.run(args.debug, args.zero)
+        ret = qexc.run(debug, args.zero)
         if args.summary:
             rfmt = ResultFormatter()
             rfmt.load(args.result)
