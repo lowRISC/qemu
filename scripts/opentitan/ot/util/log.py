@@ -11,7 +11,7 @@ from sys import stderr
 from typing import NamedTuple, Union
 
 import logging
-
+from logging.handlers import MemoryHandler
 
 try:
     getLevelNamesMapping = logging.getLevelNamesMapping
@@ -138,9 +138,15 @@ def configure_loggers(level: int, *lognames: list[Union[str | int | Color]],
             if isinstance(lnames, str):
                 lnames = [lnames]
             loglevels[lvl] = tuple(lnames)
+    quiet = kwargs.pop('quiet', False)
     formatter = ColorLogFormatter(**kwargs)
-    logh = logging.StreamHandler(stderr)
-    logh.setFormatter(formatter)
+    shandler = logging.StreamHandler(stderr)
+    shandler.setFormatter(formatter)
+    if quiet:
+        logh = MemoryHandler(100000, target=shandler, flushOnClose=False)
+        shandler.setLevel(loglevel)
+    else:
+        logh = shandler
     loggers: list[logging.Logger] = []
     logdefs: list[tuple[list[str], logging.Logger]] = []
     color = None
