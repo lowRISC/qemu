@@ -37,7 +37,6 @@ instanciated this way from the command line:
 
 ````
 -chardev socket,id=spidev,host=localhost,port=8004,server=on,wait=off
--global ot-spi_device.chardev=spidev
 ````
 
 Note that `opentitantool` and association library do support this protocol when the `qemu` backend

@@ -92,6 +92,8 @@ static void ot_dj_soc_otp_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_dj_soc_tap_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
+static void ot_dj_soc_spi_device_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent);
 static void ot_dj_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent);
 
@@ -1195,6 +1197,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_SPI_DEVICE] = {
         .type = TYPE_OT_SPI_DEVICE,
+        .cfg = &ot_dj_soc_spi_device_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30310000u }
         ),
@@ -1465,6 +1468,20 @@ static void ot_dj_soc_tap_ctrl_configure(
     Chardev *chr;
 
     chr = ibex_get_chardev_by_id("taprbb");
+    if (chr) {
+        qdev_prop_set_chr(dev, "chardev", chr);
+    }
+}
+
+static void ot_dj_soc_spi_device_configure(
+    DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
+{
+    (void)parent;
+    (void)def;
+
+    Chardev *chr;
+
+    chr = ibex_get_chardev_by_id("spidev");
     if (chr) {
         qdev_prop_set_chr(dev, "chardev", chr);
     }
