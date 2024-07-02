@@ -57,6 +57,9 @@ Commands:
       --qemu-spidev-port <QEMU_SPIDEV_PORT>              [default: 8004]
 ````
 
+IT is also possible to use [`spidevflash.py`](spidevflash.md) tool to upload a binary using the same
+protocol.
+
 ### SPI device CharDev protocol
 
 SPI clock is not emulated, but each byte exchanged over the communication channel represent 8-bit

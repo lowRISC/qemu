@@ -44,6 +44,7 @@ directory to help with these tasks.
 * `ot-tidy.sh` is a simple shell wrapper to run clang-tidy (C linter) on OpenTitan files
 * `present.py` implements the Present 128-bit scrambler/descrambler used in OTP image files for
   HW digest verification.
+* [spidevice.py](spidevice.md) is a tiny script to upload a binary using the SPI device.
 * `treillis/` directory contains the test application to test the [GPIO](gpio.md) device.
 * [`uartmux.py`](uartmux.md) is a tiny stream wrapper to help dealing with multiple QEMU output
   streams, typically multiple virtual UARTs.
