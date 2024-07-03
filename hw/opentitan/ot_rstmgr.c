@@ -44,6 +44,7 @@
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
 #include "sysemu/hw_accel.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 
 
@@ -154,6 +155,7 @@ struct OtRstMgrState {
     uint32_t *regs;
 
     char *ot_id;
+    uint32_t fatal_reset;
     bool por; /* Power-On Reset property */
 };
 
@@ -381,6 +383,14 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
              * hardware."
              */
             ibex_irq_set(&s->sw_reset, (int)true);
+            if (s->fatal_reset) {
+                s->fatal_reset--;
+                if (!s->fatal_reset) {
+                    error_report("fatal reset triggered");
+                    qemu_system_shutdown_request_with_code(
+                        SHUTDOWN_CAUSE_GUEST_SHUTDOWN, 1);
+                }
+            }
         }
         break;
     case R_RESET_INFO:
@@ -469,6 +479,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 
 static Property ot_rstmgr_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtRstMgrState, ot_id),
+    DEFINE_PROP_UINT32("fatal_reset", OtRstMgrState, fatal_reset, 0),
     /* this property is only used to store initial reset reason state */
     DEFINE_PROP_BOOL("por", OtRstMgrState, por, true),
     DEFINE_PROP_END_OF_LIST(),

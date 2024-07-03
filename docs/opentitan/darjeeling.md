@@ -135,7 +135,8 @@ See [`tools.md`](tools.md)
   is set to 10 MHz. This option is very useful/mandatory to run many OpenTitan tests that rely on
   time or CPU cycle to validate features. Using `-icount` option slows down execution speed though,
   so it is not recommended to use it when the main goal is to develop SW to run on the virtual
-  machine.
+  machine. An alternative is to use `-icount shift=auto`, which offers fatest emulation execution,
+  while preserving an accurate ratio between the vCPU clock and the virtual devices.
 
 * `no_epmp_cfg=true` can be appended to the machine option switch, _i.e._
   `-M ot-darjeeeling,no_epmp_cfg=true` to disable the initial ePMP configuration, which can be very
@@ -161,6 +162,10 @@ See [`tools.md`](tools.md)
 
 * `-cpu lowrisc-ibex,x-zbr=false` can be used to force disable the Zbr experimental-and-deprecated
   RISC-V bitmap extension for CRC32 extension.
+
+* `-global ot-rstmgr.fatal_reset=N`, where `N` is an unsigned integer. Force QEMU VM to exit the
+  N^th^ time the reset manager received a reset request, rather than rebooting the whole machine as
+  the default behavior.
 
 ### AES
 
