@@ -164,11 +164,15 @@ class OtpPartition:
                     if itdef.get('ismubi'):
                         emit('%-46s (decoded) %s',
                              name, str(OtpMap.MUBI8_BOOLEANS.get(ival, ival)))
-                    elif itsize == 4 and ival in OtpMap.HARDENED_BOOLEANS:
+                        continue
+                    if itsize == 4 and ival in OtpMap.HARDENED_BOOLEANS:
                         emit('%-46s (decoded) %s',
                              name, str(OtpMap.HARDENED_BOOLEANS[ival]))
-                else:
-                    emit('%-46s %x', name, ival)
+                        continue
+                emit('%-46s %x', name, ival)
+        if self._digest_bytes is not None:
+            emit('%-46s %s', f'{pname}:DIGEST',
+                 hexlify(self._digest_bytes).decode())
 
 
 class OtpLifecycleExtension(OtpPartitionDecoder):
