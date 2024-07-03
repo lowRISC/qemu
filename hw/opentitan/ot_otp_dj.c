@@ -1032,6 +1032,8 @@ ot_otp_dj_lci_change_state_line(OtOTPDjState *s, OtOTPLCIState state, int line);
 #define LCI_CHANGE_STATE(_s_, _st_) \
     ot_otp_dj_lci_change_state_line(_s_, _st_, __LINE__)
 
+#define OT_OTP_PART_DATA_OFFSET(_pix_) \
+    ((unsigned)(OtOTPPartDescs[(_pix_)].offset))
 #define OT_OTP_PART_DATA_BYTE_SIZE(_pix_) \
     ((unsigned)(OtOTPPartDescs[(_pix_)].size - \
                 sizeof(uint32_t) * NUM_DIGEST_WORDS))
@@ -1543,6 +1545,10 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
     if (digest != pctrl->buffer.digest) {
         trace_ot_otp_mismatch_digest(PART_NAME(ix), ix, digest,
                                      pctrl->buffer.digest);
+
+        TRACE_OTP("%s: compute digest %016llx from %s\n", __func__, digest,
+                  ot_otp_hexdump(pctrl->buffer.data, part_size));
+
         pctrl->failed = true;
         /* this is a fatal error */
         ot_otp_dj_set_error(s, ix, OTP_CHECK_FAIL_ERROR);
@@ -1573,6 +1579,20 @@ static void ot_otp_dj_initialize_partitions(OtOTPDjState *s)
 static bool ot_otp_dj_is_backend_writable(OtOTPDjState *s)
 {
     return (s->blk != NULL) && blk_is_writable(s->blk);
+}
+
+static inline int ot_otp_dj_write_backend(OtOTPDjState *s, void *buffer,
+                                          unsigned offset, size_t size)
+{
+    /*
+     * the blk_pwrite API is awful, isolate it so that linter exceptions are
+     * are not repeated over and over
+     */
+    // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange)
+    return blk_pwrite(s->blk, (int64_t)(intptr_t)offset, (int64_t)size, buffer,
+                      /* a bitfield of enum is not an enum item */
+                      (BdrvRequestFlags)0);
+    // NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange)
 }
 
 static void ot_otp_dj_dai_init(OtOTPDjState *s)
@@ -1734,9 +1754,10 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
     }
 
     unsigned waddr = address >> 2u;
-
+    unsigned size;
     if (is_wide || is_digest) {
         waddr &= ~0b1u;
+        size = sizeof(uint64_t);
 
         uint32_t dst_lo = s->otp->data[waddr];
         uint32_t dst_hi = s->otp->data[waddr + 1u];
@@ -1747,29 +1768,38 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
         if ((dst_lo & ~lo) || (dst_hi & ~hi)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n",
                           __func__);
-            ot_otp_dj_dai_set_error(s, OTP_MACRO_WRITE_BLANK_ERROR);
-            return;
+            ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
         }
 
         s->otp->data[waddr] = lo;
         s->otp->data[waddr + 1u] = hi;
     } else {
+        size = sizeof(uint32_t);
+
         uint32_t dst = s->otp->data[waddr];
         uint32_t data = s->regs[R_DIRECT_ACCESS_WDATA_0];
 
         if (dst & ~data) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n",
                           __func__);
-            ot_otp_dj_dai_set_error(s, OTP_MACRO_WRITE_BLANK_ERROR);
-            return;
+            ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
         }
 
         s->otp->data[waddr] = data;
     }
 
-    /* fake slow access to OTP cell */
+    uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
+    if (ot_otp_dj_write_backend(s, &s->otp->data[waddr],
+                                (unsigned)(offset + waddr * sizeof(uint32_t)),
+                                size)) {
+        error_report("%s: cannot update OTP backend", __func__);
+        ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
+        return;
+    }
+
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
+    /* fake slow access to OTP cell */
     timer_mod(s->dai->delay,
               qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
 }
@@ -1839,7 +1869,14 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_READ);
 
-    const uint8_t *data = (const uint8_t *)pctrl->buffer.data;
+    const uint8_t *data;
+
+    if (OtOTPPartDescs[partition].buffered) {
+        data = ((const uint8_t *)s->otp->data) +
+               OT_OTP_PART_DATA_OFFSET(partition);
+    } else {
+        data = (const uint8_t *)pctrl->buffer.data;
+    }
     unsigned part_size = OT_OTP_PART_DATA_BYTE_SIZE(partition);
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG);
@@ -1847,6 +1884,9 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
     pctrl->buffer.next_digest =
         ot_otp_dj_compute_partition_digest(s, data, part_size);
     s->dai->partition = partition;
+
+    TRACE_OTP("%s: next digest %016llx from %s\n", __func__,
+              pctrl->buffer.next_digest, ot_otp_hexdump(data, part_size));
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_WAIT);
 
@@ -1865,29 +1905,31 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
 
     OtOTPPartController *pctrl = &s->partctrls[s->dai->partition];
     unsigned address = OtOTPPartDescs[s->dai->partition].digest_offset;
-    address >>= 3u;
-    uint64_t *dst = &((uint64_t *)s->otp->data)[address];
+    unsigned dwaddr = address / sizeof(uint64_t);
+    uint64_t *dst = &((uint64_t *)s->otp->data)[dwaddr];
     uint64_t data = pctrl->buffer.next_digest;
     pctrl->buffer.next_digest = 0;
-    OtOTPError error;
+
     if (*dst & ~data) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n", __func__);
-        error = OTP_MACRO_WRITE_BLANK_ERROR;
+        ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
     } else {
         *dst |= data;
-        error = OTP_NO_ERROR;
     }
 
-    if (error == OTP_NO_ERROR) {
-        /* fake slow access to OTP cell */
-        DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
-
-        timer_mod(s->dai->delay,
-                  qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
-    } else {
-        /* TODO: no idea on how to report the error since partition is undef */
-        ot_otp_dj_dai_set_error(s, error);
+    uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
+    if (ot_otp_dj_write_backend(s, dst, (unsigned)(offset + address),
+                                sizeof(uint64_t))) {
+        error_report("%s: cannot update OTP backend", __func__);
+        ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
+        return;
     }
+
+    DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
+
+    /* fake slow access to OTP cell */
+    timer_mod(s->dai->delay,
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
 }
 
 static void ot_otp_dj_dai_complete(void *opaque)
@@ -3029,11 +3071,9 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
         const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
         unsigned lc_data_off = lcdesc->offset / sizeof(uint32_t);
         uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
-        // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange)
-        if (blk_pwrite(s->blk, (int64_t)(intptr_t)(offset + lcdesc->offset),
-                       lcdesc->size, &s->otp->data[lc_data_off],
-                       (BdrvRequestFlags)0)) {
-            // NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange)
+        if (ot_otp_dj_write_backend(s, &s->otp->data[lc_data_off],
+                                    (unsigned)(offset + lcdesc->offset),
+                                    lcdesc->size)) {
             error_report("%s: cannot update OTP backend", __func__);
             if (lci->error == OTP_NO_ERROR) {
                 lci->error = OTP_MACRO_ERROR;

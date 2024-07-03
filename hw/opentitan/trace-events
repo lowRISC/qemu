@@ -307,7 +307,7 @@ ot_otp_lci_change_state(int line, const char *old, int nold, const char *new, in
 ot_otp_lci_write(unsigned pos, uint16_t cval, uint16_t nval) "@ %u 0x%04x -> 0x%04x"
 ot_otp_load_backend(unsigned ver, const char *mode) "loading OTP image v%u in %s mode"
 ot_otp_load_token(const char *token, unsigned tkx, uint64_t hi, uint64_t lo, const char *valid) "%s (%u) 0x%016" PRIx64 "%016" PRIx64 ": %svalid"
-ot_otp_mismatch_digest(const char* part, unsigned pix, uint64_t sdig, uint64_t ldig) "Mismatch digest on %s (#%u), stored 0x%" PRIx64 " found 0x%" PRIx64
+ot_otp_mismatch_digest(const char* part, unsigned pix, uint64_t sdig, uint64_t ldig) "Mismatch digest on %s (#%u), computed 0x%" PRIx64 " stored 0x%" PRIx64
 ot_otp_pwr_otp_req(const char *where) "%s"
 ot_otp_reset(void) ""
 ot_otp_set_error(unsigned pix, const char* err, unsigned eix) "#%u: %s (%u)"
