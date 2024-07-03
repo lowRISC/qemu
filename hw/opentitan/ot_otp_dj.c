@@ -112,6 +112,7 @@ REG32(STATUS, 0x10u)
     FIELD(STATUS, BUS_INTEG_ERROR, 28u, 1u)
     FIELD(STATUS, DAI_IDLE, 29u, 1u)
     FIELD(STATUS, CHECK_PENDING, 30u, 1u)
+    FIELD(STATUS, RESET_ALLOWED, 31u, 1u)
 REG32(ERR_CODE_0, 0x14u)
 REG32(ERR_CODE_1, 0x18u)
 REG32(ERR_CODE_2, 0x1cu)
@@ -213,127 +214,139 @@ REG32(SECRET2_DIGEST_1, 0x170u)
 REG32(SECRET3_DIGEST_0, 0x174u)
 REG32(SECRET3_DIGEST_1, 0x178u)
 /* Software Config Window registers (at offset SW_CFG_WINDOW = +0x4000) */
-REG32(SCRATCH, 0u)
+REG32(VENDOR_TEST_SCRATCH, 0u)
 REG32(VENDOR_TEST_DIGEST, 56u)
-REG32(CREATOR_SW_CFG_AST_CFG, 64u)
-REG32(CREATOR_SW_CFG_AST_INIT_EN, 188u)
-REG32(CREATOR_SW_CFG_OVERRIDES, 192u)
-REG32(CREATOR_SW_CFG_ROM_EXT_SKU, 224u)
-REG32(CREATOR_SW_CFG_SIGVERIFY_RSA_MOD_EXP_IBEX_EN, 228u)
-REG32(CREATOR_SW_CFG_SIGVERIFY_RSA_KEY_EN, 232u)
-REG32(CREATOR_SW_CFG_SIGVERIFY_SPX_EN, 240u)
-REG32(CREATOR_SW_CFG_SIGVERIFY_SPX_KEY_EN, 244u)
-REG32(CREATOR_SW_CFG_FLASH_DATA_DEFAULT_CFG, 252u)
-REG32(CREATOR_SW_CFG_FLASH_INFO_BOOT_DATA_CFG, 256u)
-REG32(CREATOR_SW_CFG_FLASH_HW_INFO_CFG_OVERRIDE, 260u)
-REG32(CREATOR_SW_CFG_RNG_EN, 264u)
-REG32(CREATOR_SW_CFG_JITTER_EN, 268u)
-REG32(CREATOR_SW_CFG_RET_RAM_RESET_MASK, 272u)
-REG32(CREATOR_SW_CFG_MANUF_STATE, 276u)
-REG32(CREATOR_SW_CFG_ROM_EXEC_EN, 280u)
-REG32(CREATOR_SW_CFG_CPUCTRL, 284u)
-REG32(CREATOR_SW_CFG_MIN_SEC_VER_ROM_EXT, 288u)
-REG32(CREATOR_SW_CFG_MIN_SEC_VER_BL0, 292u)
-REG32(CREATOR_SW_CFG_DEFAULT_BOOT_DATA_IN_PROD_EN, 296u)
-REG32(CREATOR_SW_CFG_RMA_SPIN_EN, 300u)
-REG32(CREATOR_SW_CFG_RMA_SPIN_CYCLES, 304u)
-REG32(CREATOR_SW_CFG_RNG_REPCNT_THRESHOLDS, 308u)
-REG32(CREATOR_SW_CFG_RNG_REPCNTS_THRESHOLDS, 312u)
-REG32(CREATOR_SW_CFG_RNG_ADAPTP_HI_THRESHOLDS, 316u)
-REG32(CREATOR_SW_CFG_RNG_ADAPTP_LO_THRESHOLDS, 320u)
-REG32(CREATOR_SW_CFG_RNG_BUCKET_THRESHOLDS, 324u)
-REG32(CREATOR_SW_CFG_RNG_MARKOV_HI_THRESHOLDS, 328u)
-REG32(CREATOR_SW_CFG_RNG_MARKOV_LO_THRESHOLDS, 332u)
-REG32(CREATOR_SW_CFG_RNG_EXTHT_HI_THRESHOLDS, 336u)
-REG32(CREATOR_SW_CFG_RNG_EXTHT_LO_THRESHOLDS, 340u)
-REG32(CREATOR_SW_CFG_RNG_ALERT_THRESHOLD, 344u)
-REG32(CREATOR_SW_CFG_RNG_HEALTH_CONFIG_DIGEST, 348u)
-REG32(CREATOR_SW_CFG_SRAM_KEY_RENEW_EN, 352u)
+REG32(CREATOR_SW_CFG_DIO_ATTR, 64u)
+REG32(CREATOR_SW_CFG_AST_CFG, 140u)
+REG32(CREATOR_SW_CFG_AST_SPARES, 160u)
+REG32(CREATOR_SW_CFG_AST_AVGSFUSECTL, 176u)
+REG32(CREATOR_SW_CFG_AST_AVGSHDRCFG, 180u)
+REG32(CREATOR_SW_CFG_AST_RINGOSC_TRIM_CTL, 184u)
+REG32(CREATOR_SW_CFG_AST_RINGOSC_FREQ_COUNT_CTL, 188u)
+REG32(CREATOR_SW_CFG_AST_RINGOSC_FREQ_TH_SLOW, 192u)
+REG32(CREATOR_SW_CFG_AST_RINGOSC_FREQ_TH_FAST, 196u)
+REG32(CREATOR_SW_CFG_AST_INIT_EN, 200u)
+REG32(CREATOR_SW_CFG_OVERRIDES, 204u)
+REG32(CREATOR_SW_CFG_ROM_EXT_SKU, 236u)
+REG32(CREATOR_SW_CFG_SIGVERIFY_RSA_MOD_EXP_IBEX_EN, 240u)
+REG32(CREATOR_SW_CFG_SIGVERIFY_RSA_KEY_EN, 244u)
+REG32(CREATOR_SW_CFG_SIGVERIFY_SPX_EN, 252u)
+REG32(CREATOR_SW_CFG_SIGVERIFY_SPX_KEY_EN, 256u)
+REG32(CREATOR_SW_CFG_FLASH_DATA_DEFAULT_CFG, 264u)
+REG32(CREATOR_SW_CFG_FLASH_INFO_BOOT_DATA_CFG, 268u)
+REG32(CREATOR_SW_CFG_FLASH_HW_INFO_CFG_OVERRIDE, 272u)
+REG32(CREATOR_SW_CFG_RNG_EN, 276u)
+REG32(CREATOR_SW_CFG_JITTER_EN, 280u)
+REG32(CREATOR_SW_CFG_RET_RAM_RESET_MASK, 284u)
+REG32(CREATOR_SW_CFG_MANUF_STATE, 288u)
+REG32(CREATOR_SW_CFG_ROM_EXEC_EN, 292u)
+REG32(CREATOR_SW_CFG_CPUCTRL, 296u)
+REG32(CREATOR_SW_CFG_MIN_SEC_VER_ROM_EXT, 300u)
+REG32(CREATOR_SW_CFG_MIN_SEC_VER_BL0, 304u)
+REG32(CREATOR_SW_CFG_DEFAULT_BOOT_DATA_IN_PROD_EN, 308u)
+REG32(CREATOR_SW_CFG_RMA_SPIN_EN, 312u)
+REG32(CREATOR_SW_CFG_RMA_SPIN_CYCLES, 316u)
+REG32(CREATOR_SW_CFG_RNG_REPCNT_THRESHOLDS, 320u)
+REG32(CREATOR_SW_CFG_RNG_REPCNTS_THRESHOLDS, 324u)
+REG32(CREATOR_SW_CFG_RNG_ADAPTP_HI_THRESHOLDS, 328u)
+REG32(CREATOR_SW_CFG_RNG_ADAPTP_LO_THRESHOLDS, 332u)
+REG32(CREATOR_SW_CFG_RNG_BUCKET_THRESHOLDS, 336u)
+REG32(CREATOR_SW_CFG_RNG_MARKOV_HI_THRESHOLDS, 340u)
+REG32(CREATOR_SW_CFG_RNG_MARKOV_LO_THRESHOLDS, 344u)
+REG32(CREATOR_SW_CFG_RNG_EXTHT_HI_THRESHOLDS, 348u)
+REG32(CREATOR_SW_CFG_RNG_EXTHT_LO_THRESHOLDS, 352u)
+REG32(CREATOR_SW_CFG_RNG_ALERT_THRESHOLD, 356u)
+REG32(CREATOR_SW_CFG_RNG_HEALTH_CONFIG_DIGEST, 360u)
+REG32(CREATOR_SW_CFG_SRAM_KEY_RENEW_EN, 364u)
 REG32(CREATOR_SW_CFG_DIGEST, 376u)
 REG32(OWNER_SW_CFG_ROM_ERROR_REPORTING, 384u)
 REG32(OWNER_SW_CFG_ROM_BOOTSTRAP_DIS, 388u)
 REG32(OWNER_SW_CFG_ROM_ALERT_CLASS_EN, 392u)
 REG32(OWNER_SW_CFG_ROM_ALERT_ESCALATION, 396u)
 REG32(OWNER_SW_CFG_ROM_ALERT_CLASSIFICATION, 400u)
-REG32(OWNER_SW_CFG_ROM_LOCAL_ALERT_CLASSIFICATION, 796u)
-REG32(OWNER_SW_CFG_ROM_ALERT_ACCUM_THRESH, 860u)
-REG32(OWNER_SW_CFG_ROM_ALERT_TIMEOUT_CYCLES, 876u)
-REG32(OWNER_SW_CFG_ROM_ALERT_PHASE_CYCLES, 892u)
-REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_PROD, 956u)
-REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_PROD_END, 960u)
-REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_DEV, 964u)
-REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_RMA, 968u)
-REG32(OWNER_SW_CFG_ROM_WATCHDOG_BITE_THRESHOLD_CYCLES, 972u)
-REG32(OWNER_SW_CFG_ROM_KEYMGR_ROM_EXT_MEAS_EN, 976u)
-REG32(OWNER_SW_CFG_MANUF_STATE, 980u)
-REG32(OWNER_SW_CFG_ROM_RSTMGR_INFO_EN, 984u)
+REG32(OWNER_SW_CFG_ROM_LOCAL_ALERT_CLASSIFICATION, 800u)
+REG32(OWNER_SW_CFG_ROM_ALERT_ACCUM_THRESH, 864u)
+REG32(OWNER_SW_CFG_ROM_ALERT_TIMEOUT_CYCLES, 880u)
+REG32(OWNER_SW_CFG_ROM_ALERT_PHASE_CYCLES, 896u)
+REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_PROD, 960u)
+REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_PROD_END, 964u)
+REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_DEV, 968u)
+REG32(OWNER_SW_CFG_ROM_ALERT_DIGEST_RMA, 972u)
+REG32(OWNER_SW_CFG_ROM_WATCHDOG_BITE_THRESHOLD_CYCLES, 976u)
+REG32(OWNER_SW_CFG_ROM_KEYMGR_ROM_EXT_MEAS_EN, 980u)
+REG32(OWNER_SW_CFG_MANUF_STATE, 984u)
+REG32(OWNER_SW_CFG_ROM_RSTMGR_INFO_EN, 988u)
 REG32(OWNER_SW_CFG_DIGEST, 1008u)
 REG32(OWNERSHIP_SLOT_STATE_ROT_OWNER_AUTH, 1016u)
 REG32(OWNERSHIP_SLOT_STATE_PLAT_INTEG_AUTH, 1032u)
 REG32(OWNERSHIP_SLOT_STATE_PLAT_OWNER_AUTH, 1048u)
 REG32(ROT_CREATOR_AUTH_NON_RAW_MFW_CODESIGN_KEY, 1064u)
-REG32(ROT_CREATOR_AUTH_OWNERSHIP_STATE, 1224u)
-REG32(ROT_CREATOR_AUTH_ROM2_PATCH_SIGVERIFY_KEY, 1228u)
-REG32(ROT_CREATOR_AUTH_KEYMANIFEST_KEY, 1388u)
-REG32(ROT_CREATOR_AUTH_UNLOCK4XFER_KEY, 1548u)
-REG32(ROT_CREATOR_AUTH_IDENTITY_CERT, 1708u)
+REG32(ROT_CREATOR_AUTH_ROM2_PATCH_SIGVERIFY_KEY, 1240u)
+REG32(ROT_CREATOR_AUTH_KEYMANIFEST_KEY, 1416u)
+REG32(ROT_CREATOR_AUTH_IDENTITY_CERT, 1592u)
+REG32(ROT_CREATOR_AUTH_IDENTITY_CERT_CMAC, 2360u)
 REG32(ROT_CREATOR_AUTH_DIGEST, 2480u)
 REG32(ROT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY, 2488u)
-REG32(ROT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY, 2648u)
+REG32(ROT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY, 2552u)
 REG32(ROT_OWNER_AUTH_SLOT0_DIGEST, 2808u)
 REG32(ROT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY, 2816u)
-REG32(ROT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY, 2976u)
+REG32(ROT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY, 2880u)
 REG32(ROT_OWNER_AUTH_SLOT1_DIGEST, 3136u)
 REG32(PLAT_INTEG_AUTH_SLOT0_KEYMANIFEST_KEY, 3144u)
-REG32(PLAT_INTEG_AUTH_SLOT0_UNLOCK4XFER_KEY, 3304u)
+REG32(PLAT_INTEG_AUTH_SLOT0_UNLOCK4XFER_KEY, 3208u)
 REG32(PLAT_INTEG_AUTH_SLOT0_DIGEST, 3464u)
 REG32(PLAT_INTEG_AUTH_SLOT1_KEYMANIFEST_KEY, 3472u)
-REG32(PLAT_INTEG_AUTH_SLOT1_UNLOCK4XFER_KEY, 3632u)
+REG32(PLAT_INTEG_AUTH_SLOT1_UNLOCK4XFER_KEY, 3536u)
 REG32(PLAT_INTEG_AUTH_SLOT1_DIGEST, 3792u)
 REG32(PLAT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY, 3800u)
-REG32(PLAT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY, 3960u)
+REG32(PLAT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY, 3864u)
 REG32(PLAT_OWNER_AUTH_SLOT0_DIGEST, 4120u)
 REG32(PLAT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY, 4128u)
-REG32(PLAT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY, 4288u)
+REG32(PLAT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY, 4192u)
 REG32(PLAT_OWNER_AUTH_SLOT1_DIGEST, 4448u)
 REG32(PLAT_OWNER_AUTH_SLOT2_KEYMANIFEST_KEY, 4456u)
-REG32(PLAT_OWNER_AUTH_SLOT2_UNLOCK4XFER_KEY, 4616u)
+REG32(PLAT_OWNER_AUTH_SLOT2_UNLOCK4XFER_KEY, 4520u)
 REG32(PLAT_OWNER_AUTH_SLOT2_DIGEST, 4776u)
 REG32(PLAT_OWNER_AUTH_SLOT3_KEYMANIFEST_KEY, 4784u)
-REG32(PLAT_OWNER_AUTH_SLOT3_UNLOCK4XFER_KEY, 4944u)
+REG32(PLAT_OWNER_AUTH_SLOT3_UNLOCK4XFER_KEY, 4848u)
 REG32(PLAT_OWNER_AUTH_SLOT3_DIGEST, 5104u)
 REG32(EXT_NVM_ANTIREPLAY_FRESHNESS_CNT, 5112u)
 REG32(ROM_PATCH_DATA, 6136u)
 REG32(ROM_PATCH_DIGEST, 15912u)
-REG32(DEVICE_ID, 15920u)
-REG32(MANUF_STATE, 15952u)
+REG32(HW_CFG0_DEVICE_ID, 15920u)
+REG32(HW_CFG0_MANUF_STATE, 15952u)
 REG32(HW_CFG0_DIGEST, 15984u)
-REG32(SOC_DBG_STATE, 15992u)
-REG32(EN_SRAM_IFETCH, 15996u)
+REG32(HW_CFG1_SOC_DBG_STATE, 15992u)
+REG32(HW_CFG1_EN_SRAM_IFETCH, 15996u)
 REG32(HW_CFG1_DIGEST, 16000u)
-REG32(TEST_UNLOCK_TOKEN, 16008u)
-REG32(TEST_EXIT_TOKEN, 16024u)
+REG32(SECRET0_TEST_UNLOCK_TOKEN, 16008u)
+REG32(SECRET0_TEST_EXIT_TOKEN, 16024u)
 REG32(SECRET0_DIGEST, 16040u)
-REG32(FLASH_ADDR_KEY_SEED, 16048u)
-REG32(FLASH_DATA_KEY_SEED, 16080u)
-REG32(SRAM_DATA_KEY_SEED, 16112u)
+REG32(SECRET1_FLASH_ADDR_KEY_SEED, 16048u)
+REG32(SECRET1_FLASH_DATA_KEY_SEED, 16080u)
+REG32(SECRET1_SRAM_DATA_KEY_SEED, 16112u)
 REG32(SECRET1_DIGEST, 16128u)
-REG32(RMA_TOKEN, 16136u)
-REG32(CREATOR_ROOT_KEY_SHARE0, 16152u)
-REG32(CREATOR_ROOT_KEY_SHARE1, 16184u)
-REG32(CREATOR_SEED, 16216u)
+REG32(SECRET2_RMA_TOKEN, 16136u)
+REG32(SECRET2_CREATOR_ROOT_KEY_SHARE0, 16152u)
+REG32(SECRET2_CREATOR_ROOT_KEY_SHARE1, 16184u)
+REG32(SECRET2_CREATOR_SEED, 16216u)
 REG32(SECRET2_DIGEST, 16248u)
-REG32(OWNER_SEED, 16256u)
+REG32(SECRET3_OWNER_SEED, 16256u)
 REG32(SECRET3_DIGEST, 16288u)
 REG32(LC_TRANSITION_CNT, 16296u)
 REG32(LC_STATE, 16344u)
 /* clang-format on */
 
-#define VENDOR_TEST_SIZE                                     64u
-#define SCRATCH_SIZE                                         56u
-#define VENDOR_TEST_DIGEST_SIZE                              8u
-#define CREATOR_SW_CFG_SIZE                                  320u
-#define CREATOR_SW_CFG_AST_CFG_SIZE                          124u
+#define VENDOR_TEST_SCRATCH_SIZE                             56u
+#define CREATOR_SW_CFG_DIO_ATTR_SIZE                         76u
+#define CREATOR_SW_CFG_AST_CFG_SIZE                          20u
+#define CREATOR_SW_CFG_AST_SPARES_SIZE                       14u
+#define CREATOR_SW_CFG_AST_AVGSFUSECTL_SIZE                  4u
+#define CREATOR_SW_CFG_AST_AVGSHDRCFG_SIZE                   3u
+#define CREATOR_SW_CFG_AST_RINGOSC_TRIM_CTL_SIZE             1u
+#define CREATOR_SW_CFG_AST_RINGOSC_FREQ_COUNT_CTL_SIZE       2u
+#define CREATOR_SW_CFG_AST_RINGOSC_FREQ_TH_SLOW_SIZE         2u
+#define CREATOR_SW_CFG_AST_RINGOSC_FREQ_TH_FAST_SIZE         2u
 #define CREATOR_SW_CFG_AST_INIT_EN_SIZE                      4u
 #define CREATOR_SW_CFG_OVERRIDES_SIZE                        32u
 #define CREATOR_SW_CFG_ROM_EXT_SKU_SIZE                      4u
@@ -365,104 +378,60 @@ REG32(LC_STATE, 16344u)
 #define CREATOR_SW_CFG_RNG_EXTHT_HI_THRESHOLDS_SIZE          4u
 #define CREATOR_SW_CFG_RNG_EXTHT_LO_THRESHOLDS_SIZE          4u
 #define CREATOR_SW_CFG_RNG_ALERT_THRESHOLD_SIZE              4u
-#define CREATOR_SW_CFG_RNG_HEALTH_CONFIG_DIGEST_SIZE         4u
 #define CREATOR_SW_CFG_SRAM_KEY_RENEW_EN_SIZE                4u
-#define CREATOR_SW_CFG_DIGEST_SIZE                           8u
-#define OWNER_SW_CFG_SIZE                                    632u
 #define OWNER_SW_CFG_ROM_ERROR_REPORTING_SIZE                4u
 #define OWNER_SW_CFG_ROM_BOOTSTRAP_DIS_SIZE                  4u
 #define OWNER_SW_CFG_ROM_ALERT_CLASS_EN_SIZE                 4u
 #define OWNER_SW_CFG_ROM_ALERT_ESCALATION_SIZE               4u
-#define OWNER_SW_CFG_ROM_ALERT_CLASSIFICATION_SIZE           396u
+#define OWNER_SW_CFG_ROM_ALERT_CLASSIFICATION_SIZE           400u
 #define OWNER_SW_CFG_ROM_LOCAL_ALERT_CLASSIFICATION_SIZE     64u
 #define OWNER_SW_CFG_ROM_ALERT_ACCUM_THRESH_SIZE             16u
 #define OWNER_SW_CFG_ROM_ALERT_TIMEOUT_CYCLES_SIZE           16u
 #define OWNER_SW_CFG_ROM_ALERT_PHASE_CYCLES_SIZE             64u
-#define OWNER_SW_CFG_ROM_ALERT_DIGEST_PROD_SIZE              4u
-#define OWNER_SW_CFG_ROM_ALERT_DIGEST_PROD_END_SIZE          4u
-#define OWNER_SW_CFG_ROM_ALERT_DIGEST_DEV_SIZE               4u
-#define OWNER_SW_CFG_ROM_ALERT_DIGEST_RMA_SIZE               4u
 #define OWNER_SW_CFG_ROM_WATCHDOG_BITE_THRESHOLD_CYCLES_SIZE 4u
 #define OWNER_SW_CFG_ROM_KEYMGR_ROM_EXT_MEAS_EN_SIZE         4u
 #define OWNER_SW_CFG_MANUF_STATE_SIZE                        4u
 #define OWNER_SW_CFG_ROM_RSTMGR_INFO_EN_SIZE                 4u
-#define OWNER_SW_CFG_DIGEST_SIZE                             8u
-#define OWNERSHIP_SLOT_STATE_SIZE                            48u
 #define OWNERSHIP_SLOT_STATE_ROT_OWNER_AUTH_SIZE             16u
 #define OWNERSHIP_SLOT_STATE_PLAT_INTEG_AUTH_SIZE            16u
 #define OWNERSHIP_SLOT_STATE_PLAT_OWNER_AUTH_SIZE            16u
-#define ROT_CREATOR_AUTH_SIZE                                1424u
-#define ROT_CREATOR_AUTH_NON_RAW_MFW_CODESIGN_KEY_SIZE       160u
-#define ROT_CREATOR_AUTH_OWNERSHIP_STATE_SIZE                4u
-#define ROT_CREATOR_AUTH_ROM2_PATCH_SIGVERIFY_KEY_SIZE       160u
-#define ROT_CREATOR_AUTH_KEYMANIFEST_KEY_SIZE                160u
-#define ROT_CREATOR_AUTH_UNLOCK4XFER_KEY_SIZE                160u
+#define ROT_CREATOR_AUTH_NON_RAW_MFW_CODESIGN_KEY_SIZE       176u
+#define ROT_CREATOR_AUTH_ROM2_PATCH_SIGVERIFY_KEY_SIZE       176u
+#define ROT_CREATOR_AUTH_KEYMANIFEST_KEY_SIZE                176u
 #define ROT_CREATOR_AUTH_IDENTITY_CERT_SIZE                  768u
-#define ROT_CREATOR_AUTH_DIGEST_SIZE                         8u
-#define ROT_OWNER_AUTH_SLOT0_SIZE                            328u
-#define ROT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY_SIZE            160u
-#define ROT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY_SIZE            160u
-#define ROT_OWNER_AUTH_SLOT0_DIGEST_SIZE                     8u
-#define ROT_OWNER_AUTH_SLOT1_SIZE                            328u
-#define ROT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY_SIZE            160u
-#define ROT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY_SIZE            160u
-#define ROT_OWNER_AUTH_SLOT1_DIGEST_SIZE                     8u
-#define PLAT_INTEG_AUTH_SLOT0_SIZE                           328u
-#define PLAT_INTEG_AUTH_SLOT0_KEYMANIFEST_KEY_SIZE           160u
-#define PLAT_INTEG_AUTH_SLOT0_UNLOCK4XFER_KEY_SIZE           160u
-#define PLAT_INTEG_AUTH_SLOT0_DIGEST_SIZE                    8u
-#define PLAT_INTEG_AUTH_SLOT1_SIZE                           328u
-#define PLAT_INTEG_AUTH_SLOT1_KEYMANIFEST_KEY_SIZE           160u
-#define PLAT_INTEG_AUTH_SLOT1_UNLOCK4XFER_KEY_SIZE           160u
-#define PLAT_INTEG_AUTH_SLOT1_DIGEST_SIZE                    8u
-#define PLAT_OWNER_AUTH_SLOT0_SIZE                           328u
-#define PLAT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT0_DIGEST_SIZE                    8u
-#define PLAT_OWNER_AUTH_SLOT1_SIZE                           328u
-#define PLAT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT1_DIGEST_SIZE                    8u
-#define PLAT_OWNER_AUTH_SLOT2_SIZE                           328u
-#define PLAT_OWNER_AUTH_SLOT2_KEYMANIFEST_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT2_UNLOCK4XFER_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT2_DIGEST_SIZE                    8u
-#define PLAT_OWNER_AUTH_SLOT3_SIZE                           328u
-#define PLAT_OWNER_AUTH_SLOT3_KEYMANIFEST_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT3_UNLOCK4XFER_KEY_SIZE           160u
-#define PLAT_OWNER_AUTH_SLOT3_DIGEST_SIZE                    8u
-#define EXT_NVM_SIZE                                         1024u
+#define ROT_CREATOR_AUTH_IDENTITY_CERT_CMAC_SIZE             16u
+#define ROT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY_SIZE            64u
+#define ROT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY_SIZE            64u
+#define ROT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY_SIZE            64u
+#define ROT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY_SIZE            64u
+#define PLAT_INTEG_AUTH_SLOT0_KEYMANIFEST_KEY_SIZE           64u
+#define PLAT_INTEG_AUTH_SLOT0_UNLOCK4XFER_KEY_SIZE           64u
+#define PLAT_INTEG_AUTH_SLOT1_KEYMANIFEST_KEY_SIZE           64u
+#define PLAT_INTEG_AUTH_SLOT1_UNLOCK4XFER_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT2_KEYMANIFEST_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT2_UNLOCK4XFER_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT3_KEYMANIFEST_KEY_SIZE           64u
+#define PLAT_OWNER_AUTH_SLOT3_UNLOCK4XFER_KEY_SIZE           64u
 #define EXT_NVM_ANTIREPLAY_FRESHNESS_CNT_SIZE                1024u
-#define ROM_PATCH_SIZE                                       9784u
 #define ROM_PATCH_DATA_SIZE                                  9192u
-#define ROM_PATCH_DIGEST_SIZE                                8u
-#define HW_CFG0_SIZE                                         72u
-#define DEVICE_ID_SIZE                                       32u
-#define MANUF_STATE_SIZE                                     32u
-#define HW_CFG0_DIGEST_SIZE                                  8u
-#define HW_CFG1_SIZE                                         16u
-#define SOC_DBG_STATE_SIZE                                   4u
-#define EN_SRAM_IFETCH_SIZE                                  1u
-#define HW_CFG1_DIGEST_SIZE                                  8u
-#define SECRET0_SIZE                                         40u
-#define TEST_UNLOCK_TOKEN_SIZE                               16u
-#define TEST_EXIT_TOKEN_SIZE                                 16u
-#define SECRET0_DIGEST_SIZE                                  8u
-#define SECRET1_SIZE                                         88u
-#define FLASH_ADDR_KEY_SEED_SIZE                             32u
-#define FLASH_DATA_KEY_SEED_SIZE                             32u
-#define SRAM_DATA_KEY_SEED_SIZE                              16u
-#define SECRET1_DIGEST_SIZE                                  8u
-#define SECRET2_SIZE                                         120u
-#define RMA_TOKEN_SIZE                                       16u
-#define CREATOR_ROOT_KEY_SHARE0_SIZE                         32u
-#define CREATOR_ROOT_KEY_SHARE1_SIZE                         32u
-#define CREATOR_SEED_SIZE                                    32u
-#define SECRET2_DIGEST_SIZE                                  8u
-#define SECRET3_SIZE                                         40u
-#define OWNER_SEED_SIZE                                      32u
-#define SECRET3_DIGEST_SIZE                                  8u
-#define LIFE_CYCLE_SIZE                                      88u
+#define HW_CFG0_DEVICE_ID_SIZE                               32u
+#define HW_CFG0_MANUF_STATE_SIZE                             32u
+#define HW_CFG1_SOC_DBG_STATE_SIZE                           4u
+#define HW_CFG1_EN_SRAM_IFETCH_SIZE                          1u
+#define SECRET0_TEST_UNLOCK_TOKEN_SIZE                       16u
+#define SECRET0_TEST_EXIT_TOKEN_SIZE                         16u
+#define SECRET1_FLASH_ADDR_KEY_SEED_SIZE                     32u
+#define SECRET1_FLASH_DATA_KEY_SEED_SIZE                     32u
+#define SECRET1_SRAM_DATA_KEY_SEED_SIZE                      16u
+#define SECRET2_RMA_TOKEN_SIZE                               16u
+#define SECRET2_CREATOR_ROOT_KEY_SHARE0_SIZE                 32u
+#define SECRET2_CREATOR_ROOT_KEY_SHARE1_SIZE                 32u
+#define SECRET2_CREATOR_SEED_SIZE                            32u
+#define SECRET3_OWNER_SEED_SIZE                              32u
 #define LC_TRANSITION_CNT_SIZE                               48u
 #define LC_STATE_SIZE                                        40u
 
@@ -564,51 +533,6 @@ REG32(CSR7, 0x1cu)
 #define OTP_ENTROPY_NONCE_WORDS (OTP_ENTROPY_NONCE_BITS / 32u)
 #define OTP_ENTROPY_BUF_COUNT \
     (OTP_ENTROPY_PRESENT_WORDS + OTP_ENTROPY_NONCE_WORDS)
-
-#define OTP_PART_VENDOR_TEST_OFFSET           0u
-#define OTP_PART_VENDOR_TEST_SIZE             64u
-#define OTP_PART_CREATOR_SW_CFG_OFFSET        64u
-#define OTP_PART_CREATOR_SW_CFG_SIZE          320u
-#define OTP_PART_OWNER_SW_CFG_OFFSET          384u
-#define OTP_PART_OWNER_SW_CFG_SIZE            632u
-#define OTP_PART_OWNERSHIP_SLOT_STATE_OFFSET  1016u
-#define OTP_PART_OWNERSHIP_SLOT_STATE_SIZE    48u
-#define OTP_PART_ROT_CREATOR_AUTH_OFFSET      1064u
-#define OTP_PART_ROT_CREATOR_AUTH_SIZE        1424u
-#define OTP_PART_ROT_OWNER_AUTH_SLOT0_OFFSET  2488u
-#define OTP_PART_ROT_OWNER_AUTH_SLOT0_SIZE    328u
-#define OTP_PART_ROT_OWNER_AUTH_SLOT1_OFFSET  2816u
-#define OTP_PART_ROT_OWNER_AUTH_SLOT1_SIZE    328u
-#define OTP_PART_PLAT_INTEG_AUTH_SLOT0_OFFSET 3144u
-#define OTP_PART_PLAT_INTEG_AUTH_SLOT0_SIZE   328u
-#define OTP_PART_PLAT_INTEG_AUTH_SLOT1_OFFSET 3472u
-#define OTP_PART_PLAT_INTEG_AUTH_SLOT1_SIZE   328u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT0_OFFSET 3800u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT0_SIZE   328u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT1_OFFSET 4128u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT1_SIZE   328u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT2_OFFSET 4456u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT2_SIZE   328u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT3_OFFSET 4784u
-#define OTP_PART_PLAT_OWNER_AUTH_SLOT3_SIZE   328u
-#define OTP_PART_EXT_NVM_OFFSET               5112u
-#define OTP_PART_EXT_NVM_SIZE                 1024u
-#define OTP_PART_ROM_PATCH_OFFSET             6136u
-#define OTP_PART_ROM_PATCH_SIZE               9784u
-#define OTP_PART_HW_CFG0_OFFSET               15920u
-#define OTP_PART_HW_CFG0_SIZE                 72u
-#define OTP_PART_HW_CFG1_OFFSET               15992u
-#define OTP_PART_HW_CFG1_SIZE                 16u
-#define OTP_PART_SECRET0_OFFSET               16008u
-#define OTP_PART_SECRET0_SIZE                 40u
-#define OTP_PART_SECRET1_OFFSET               16048u
-#define OTP_PART_SECRET1_SIZE                 88u
-#define OTP_PART_SECRET2_OFFSET               16136u
-#define OTP_PART_SECRET2_SIZE                 120u
-#define OTP_PART_SECRET3_OFFSET               16256u
-#define OTP_PART_SECRET3_SIZE                 40u
-#define OTP_PART_LIFE_CYCLE_OFFSET            16296u
-#define OTP_PART_LIFE_CYCLE_SIZE              88u
 
 typedef enum {
     OTP_PART_VENDOR_TEST,
@@ -732,6 +656,8 @@ typedef struct {
 } OtOTPPartDesc;
 
 #define OT_OTP_DJ_PARTS
+
+#define OTP_PART_LIFE_CYCLE_SIZE 88u
 
 /* NOLINTNEXTLINE */
 #include "ot_otp_dj_parts.c"
@@ -1197,9 +1123,13 @@ static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 {
     /* This is it NUM_ERROR_ENTRIES */
     g_assert(part < NUM_ERROR_ENTRIES);
-    s->regs[R_ERR_CODE_0 + part] = ((uint32_t)err) & 0x7u;
 
-    trace_ot_otp_set_error(part, ERR_CODE_NAME(err), err);
+    uint32_t errval = ((uint32_t)err) & 0x7;
+    if (errval || errval != s->regs[R_ERR_CODE_0 + part]) {
+        trace_ot_otp_set_error(part, ERR_CODE_NAME(err), err);
+    }
+    s->regs[R_ERR_CODE_0 + part] = errval;
+
 
     switch (err) {
     case OTP_MACRO_ERROR:
@@ -1245,6 +1175,7 @@ static uint32_t ot_otp_dj_get_status(const OtOTPDjState *s)
 
     status = FIELD_DP32(s->regs[R_STATUS], STATUS, DAI_IDLE,
                         !ot_otp_dj_dai_is_busy(s));
+    status = FIELD_DP32(status, STATUS, RESET_ALLOWED, 1u);
 
     return status;
 }
@@ -1993,7 +1924,7 @@ static void ot_otp_dj_lci_init(OtOTPDjState *s)
     LCI_CHANGE_STATE(s, OTP_LCI_IDLE);
 }
 
-static uint64_t ot_otp_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_otp_dj_reg_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtOTPDjState *s = OT_OTP_DJ(opaque);
     (void)size;
@@ -2265,13 +2196,13 @@ static uint64_t ot_otp_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
 }
 
-static void ot_otp_dj_regs_write(void *opaque, hwaddr addr, uint64_t value,
-                                 unsigned size)
+static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
+                                unsigned size)
 {
     OtOTPDjState *s = OT_OTP_DJ(opaque);
     (void)size;
@@ -2281,7 +2212,7 @@ static void ot_otp_dj_regs_write(void *opaque, hwaddr addr, uint64_t value,
 
     uint32_t pc = ibex_get_current_pc();
 
-    trace_ot_otp_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_write((uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_DIRECT_ACCESS_CMD:
@@ -2482,14 +2413,26 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
     case R_##_reg_: \
         return stringify(_reg_)
 #define CASE_RANGE(_reg_) \
-    case R_##_reg_...(R_##_reg_ + ((_reg_##_SIZE) / 4u) - 1u): \
+    case R_##_reg_...(R_##_reg_ + (((_reg_##_SIZE) + 3u) / 4u) - 1u): \
+        return stringify(_reg_)
+#define CASE_DIGEST(_reg_) \
+    case R_##_reg_...(R_##_reg_ + 1u): \
         return stringify(_reg_)
 
     switch (swreg) {
-        CASE_RANGE(SCRATCH);
-        CASE_RANGE(VENDOR_TEST_DIGEST);
+        CASE_RANGE(VENDOR_TEST_SCRATCH);
+        CASE_DIGEST(VENDOR_TEST_DIGEST);
+        CASE_RANGE(CREATOR_SW_CFG_DIO_ATTR);
         CASE_RANGE(CREATOR_SW_CFG_AST_CFG);
+        CASE_RANGE(CREATOR_SW_CFG_AST_SPARES);
+        CASE_SCALAR(CREATOR_SW_CFG_AST_AVGSFUSECTL);
+        CASE_SCALAR(CREATOR_SW_CFG_AST_AVGSHDRCFG);
+        CASE_SCALAR(CREATOR_SW_CFG_AST_RINGOSC_TRIM_CTL);
+        CASE_SCALAR(CREATOR_SW_CFG_AST_RINGOSC_FREQ_COUNT_CTL);
+        CASE_SCALAR(CREATOR_SW_CFG_AST_RINGOSC_FREQ_TH_SLOW);
+        CASE_SCALAR(CREATOR_SW_CFG_AST_RINGOSC_FREQ_TH_FAST);
         CASE_SCALAR(CREATOR_SW_CFG_AST_INIT_EN);
+        CASE_RANGE(CREATOR_SW_CFG_OVERRIDES);
         CASE_SCALAR(CREATOR_SW_CFG_ROM_EXT_SKU);
         CASE_SCALAR(CREATOR_SW_CFG_SIGVERIFY_RSA_MOD_EXP_IBEX_EN);
         CASE_RANGE(CREATOR_SW_CFG_SIGVERIFY_RSA_KEY_EN);
@@ -2521,7 +2464,7 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
         CASE_SCALAR(CREATOR_SW_CFG_RNG_ALERT_THRESHOLD);
         CASE_SCALAR(CREATOR_SW_CFG_RNG_HEALTH_CONFIG_DIGEST);
         CASE_SCALAR(CREATOR_SW_CFG_SRAM_KEY_RENEW_EN);
-        CASE_RANGE(CREATOR_SW_CFG_DIGEST);
+        CASE_DIGEST(CREATOR_SW_CFG_DIGEST);
         CASE_SCALAR(OWNER_SW_CFG_ROM_ERROR_REPORTING);
         CASE_SCALAR(OWNER_SW_CFG_ROM_BOOTSTRAP_DIS);
         CASE_SCALAR(OWNER_SW_CFG_ROM_ALERT_CLASS_EN);
@@ -2539,64 +2482,63 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
         CASE_SCALAR(OWNER_SW_CFG_ROM_KEYMGR_ROM_EXT_MEAS_EN);
         CASE_SCALAR(OWNER_SW_CFG_MANUF_STATE);
         CASE_SCALAR(OWNER_SW_CFG_ROM_RSTMGR_INFO_EN);
-        CASE_RANGE(OWNER_SW_CFG_DIGEST);
+        CASE_DIGEST(OWNER_SW_CFG_DIGEST);
         CASE_RANGE(OWNERSHIP_SLOT_STATE_ROT_OWNER_AUTH);
         CASE_RANGE(OWNERSHIP_SLOT_STATE_PLAT_INTEG_AUTH);
         CASE_RANGE(OWNERSHIP_SLOT_STATE_PLAT_OWNER_AUTH);
         CASE_RANGE(ROT_CREATOR_AUTH_NON_RAW_MFW_CODESIGN_KEY);
-        CASE_RANGE(ROT_CREATOR_AUTH_OWNERSHIP_STATE);
         CASE_RANGE(ROT_CREATOR_AUTH_ROM2_PATCH_SIGVERIFY_KEY);
         CASE_RANGE(ROT_CREATOR_AUTH_KEYMANIFEST_KEY);
-        CASE_RANGE(ROT_CREATOR_AUTH_UNLOCK4XFER_KEY);
         CASE_RANGE(ROT_CREATOR_AUTH_IDENTITY_CERT);
-        CASE_RANGE(ROT_CREATOR_AUTH_DIGEST);
+        CASE_RANGE(ROT_CREATOR_AUTH_IDENTITY_CERT_CMAC);
+        CASE_DIGEST(ROT_CREATOR_AUTH_DIGEST);
         CASE_RANGE(ROT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY);
         CASE_RANGE(ROT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY);
-        CASE_RANGE(ROT_OWNER_AUTH_SLOT0_DIGEST);
+        CASE_DIGEST(ROT_OWNER_AUTH_SLOT0_DIGEST);
         CASE_RANGE(ROT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY);
         CASE_RANGE(ROT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY);
-        CASE_RANGE(ROT_OWNER_AUTH_SLOT1_DIGEST);
+        CASE_DIGEST(ROT_OWNER_AUTH_SLOT1_DIGEST);
         CASE_RANGE(PLAT_INTEG_AUTH_SLOT0_KEYMANIFEST_KEY);
         CASE_RANGE(PLAT_INTEG_AUTH_SLOT0_UNLOCK4XFER_KEY);
-        CASE_RANGE(PLAT_INTEG_AUTH_SLOT0_DIGEST);
+        CASE_DIGEST(PLAT_INTEG_AUTH_SLOT0_DIGEST);
         CASE_RANGE(PLAT_INTEG_AUTH_SLOT1_KEYMANIFEST_KEY);
         CASE_RANGE(PLAT_INTEG_AUTH_SLOT1_UNLOCK4XFER_KEY);
-        CASE_RANGE(PLAT_INTEG_AUTH_SLOT1_DIGEST);
+        CASE_DIGEST(PLAT_INTEG_AUTH_SLOT1_DIGEST);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT0_KEYMANIFEST_KEY);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT0_UNLOCK4XFER_KEY);
-        CASE_RANGE(PLAT_OWNER_AUTH_SLOT0_DIGEST);
+        CASE_DIGEST(PLAT_OWNER_AUTH_SLOT0_DIGEST);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT1_KEYMANIFEST_KEY);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT1_UNLOCK4XFER_KEY);
-        CASE_RANGE(PLAT_OWNER_AUTH_SLOT1_DIGEST);
+        CASE_DIGEST(PLAT_OWNER_AUTH_SLOT1_DIGEST);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT2_KEYMANIFEST_KEY);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT2_UNLOCK4XFER_KEY);
-        CASE_RANGE(PLAT_OWNER_AUTH_SLOT2_DIGEST);
+        CASE_DIGEST(PLAT_OWNER_AUTH_SLOT2_DIGEST);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT3_KEYMANIFEST_KEY);
         CASE_RANGE(PLAT_OWNER_AUTH_SLOT3_UNLOCK4XFER_KEY);
-        CASE_RANGE(PLAT_OWNER_AUTH_SLOT3_DIGEST);
+        CASE_DIGEST(PLAT_OWNER_AUTH_SLOT3_DIGEST);
         CASE_RANGE(EXT_NVM_ANTIREPLAY_FRESHNESS_CNT);
         CASE_RANGE(ROM_PATCH_DATA);
-        CASE_RANGE(ROM_PATCH_DIGEST);
-        CASE_RANGE(DEVICE_ID);
-        CASE_RANGE(MANUF_STATE);
-        CASE_RANGE(HW_CFG0_DIGEST);
-        CASE_SCALAR(SOC_DBG_STATE);
-        CASE_SCALAR(EN_SRAM_IFETCH);
-        CASE_RANGE(HW_CFG1_DIGEST);
-        CASE_RANGE(TEST_UNLOCK_TOKEN);
-        CASE_RANGE(TEST_EXIT_TOKEN);
-        CASE_RANGE(SECRET0_DIGEST);
-        CASE_RANGE(FLASH_ADDR_KEY_SEED);
-        CASE_RANGE(FLASH_DATA_KEY_SEED);
-        CASE_RANGE(SRAM_DATA_KEY_SEED);
-        CASE_RANGE(SECRET1_DIGEST);
-        CASE_RANGE(RMA_TOKEN);
-        CASE_RANGE(CREATOR_ROOT_KEY_SHARE0);
-        CASE_RANGE(CREATOR_ROOT_KEY_SHARE1);
-        CASE_RANGE(CREATOR_SEED);
-        CASE_RANGE(SECRET2_DIGEST);
-        CASE_RANGE(OWNER_SEED);
-        CASE_RANGE(SECRET3_DIGEST);
+        CASE_DIGEST(ROM_PATCH_DIGEST);
+        CASE_RANGE(HW_CFG0_DEVICE_ID);
+        CASE_RANGE(HW_CFG0_MANUF_STATE);
+        CASE_DIGEST(HW_CFG0_DIGEST);
+        CASE_SCALAR(HW_CFG1_SOC_DBG_STATE);
+        CASE_SCALAR(HW_CFG1_EN_SRAM_IFETCH);
+        CASE_DIGEST(HW_CFG1_DIGEST);
+        CASE_RANGE(SECRET0_TEST_UNLOCK_TOKEN);
+        CASE_RANGE(SECRET0_TEST_EXIT_TOKEN);
+        CASE_DIGEST(SECRET0_DIGEST);
+        CASE_RANGE(SECRET1_FLASH_ADDR_KEY_SEED);
+        CASE_RANGE(SECRET1_FLASH_DATA_KEY_SEED);
+        CASE_RANGE(SECRET1_SRAM_DATA_KEY_SEED);
+        CASE_DIGEST(SECRET1_DIGEST);
+        CASE_RANGE(SECRET2_RMA_TOKEN);
+        CASE_RANGE(SECRET2_CREATOR_ROOT_KEY_SHARE0);
+        CASE_RANGE(SECRET2_CREATOR_ROOT_KEY_SHARE1);
+        CASE_RANGE(SECRET2_CREATOR_SEED);
+        CASE_DIGEST(SECRET2_DIGEST);
+        CASE_RANGE(SECRET3_OWNER_SEED);
+        CASE_DIGEST(SECRET3_DIGEST);
         CASE_RANGE(LC_TRANSITION_CNT);
         CASE_RANGE(LC_STATE);
     default:
@@ -2650,15 +2592,15 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     uint64_t pc;
 
     pc = ibex_get_current_pc();
-    trace_ot_otp_io_read_out((uint32_t)addr, ot_otp_dj_swcfg_reg_name(reg),
-                             val32, pc);
+    trace_ot_otp_io_swcfg_read_out((uint32_t)addr,
+                                   ot_otp_dj_swcfg_reg_name(reg), val32, pc);
 
     *data = (uint64_t)val32;
 
     return MEMTX_OK;
 }
 
-static uint64_t ot_otp_dj_csrs_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_otp_dj_csr_read(void *opaque, hwaddr addr, unsigned size)
 {
     (void)opaque;
     (void)size;
@@ -2685,13 +2627,13 @@ static uint64_t ot_otp_dj_csrs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_read_out((uint32_t)addr, CSR_NAME(reg), val32, pc);
+    trace_ot_otp_io_csr_read_out((uint32_t)addr, CSR_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
 }
 
-static void ot_otp_dj_csrs_write(void *opaque, hwaddr addr, uint64_t value,
-                                 unsigned size)
+static void ot_otp_dj_csr_write(void *opaque, hwaddr addr, uint64_t value,
+                                unsigned size)
 {
     (void)opaque;
     (void)size;
@@ -2700,7 +2642,7 @@ static void ot_otp_dj_csrs_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_write((uint32_t)addr, CSR_NAME(reg), val32, pc);
+    trace_ot_otp_io_csr_write((uint32_t)addr, CSR_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_CSR0:
@@ -2758,13 +2700,13 @@ static void ot_otp_dj_load_hw_cfg(OtOTPDjState *s)
     OtOTPStorage *otp = s->otp;
     OtOTPHWCfg *hw_cfg = s->hw_cfg;
 
-    memcpy(hw_cfg->device_id, &otp->data[R_DEVICE_ID],
+    memcpy(hw_cfg->device_id, &otp->data[R_HW_CFG0_DEVICE_ID],
            sizeof(*hw_cfg->device_id));
-    memcpy(hw_cfg->manuf_state, &otp->data[R_MANUF_STATE],
+    memcpy(hw_cfg->manuf_state, &otp->data[R_HW_CFG0_MANUF_STATE],
            sizeof(*hw_cfg->manuf_state));
 
-    hw_cfg->soc_dbg_state = otp->data[R_SOC_DBG_STATE];
-    hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_EN_SRAM_IFETCH];
+    hw_cfg->soc_dbg_state = otp->data[R_HW_CFG1_SOC_DBG_STATE];
+    hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH];
 }
 
 static void ot_otp_dj_load_tokens(OtOTPDjState *s)
@@ -2783,15 +2725,15 @@ static void ot_otp_dj_load_tokens(OtOTPDjState *s)
         switch (tkx) {
         case OTP_TOKEN_TEST_UNLOCK:
             partition = OTP_PART_SECRET0;
-            reg = R_TEST_UNLOCK_TOKEN;
+            reg = R_SECRET0_TEST_UNLOCK_TOKEN;
             break;
         case OTP_TOKEN_TEST_EXIT:
             partition = OTP_PART_SECRET0;
-            reg = R_TEST_EXIT_TOKEN;
+            reg = R_SECRET0_TEST_EXIT_TOKEN;
             break;
         case OTP_TOKEN_RMA:
             partition = OTP_PART_SECRET2;
-            reg = R_RMA_TOKEN;
+            reg = R_SECRET2_RMA_TOKEN;
             break;
         default:
             g_assert_not_reached();
@@ -2914,8 +2856,9 @@ static void ot_otp_dj_generate_otp_sram_key(OtOTPDjState *s, OtOTPKey *key)
     bool valid = pctrl->locked && !pctrl->failed;
     g_assert(ot_otp_dj_is_buffered(OTP_PART_SECRET1));
     const uint32_t *sram_data_key_seed =
-        &pctrl->buffer.data[R_SRAM_DATA_KEY_SEED -
-                            OTP_PART_SECRET1_OFFSET / sizeof(uint32_t)];
+        &pctrl->buffer
+             .data[R_SECRET1_SRAM_DATA_KEY_SEED -
+                   OtOTPPartDescs[OTP_PART_SECRET1].offset / sizeof(uint32_t)];
     uint32_t tmpkey[SRAM_KEY_WORDS];
     for (unsigned rix = 0; rix < SRAM_KEY_WIDTH / 64u; rix++) {
         uint64_t data = RND_CNST_DIGEST_IV;
@@ -3332,9 +3275,9 @@ static Property ot_otp_dj_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps ot_otp_dj_regs_ops = {
-    .read = &ot_otp_dj_regs_read,
-    .write = &ot_otp_dj_regs_write,
+static const MemoryRegionOps ot_otp_dj_reg_ops = {
+    .read = &ot_otp_dj_reg_read,
+    .write = &ot_otp_dj_reg_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
@@ -3347,9 +3290,9 @@ static const MemoryRegionOps ot_otp_dj_swcfg_ops = {
     .impl.max_access_size = 4,
 };
 
-static const MemoryRegionOps ot_otp_dj_csrs_ops = {
-    .read = &ot_otp_dj_csrs_read,
-    .write = &ot_otp_dj_csrs_write,
+static const MemoryRegionOps ot_otp_dj_csr_ops = {
+    .read = &ot_otp_dj_csr_read,
+    .write = &ot_otp_dj_csr_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
@@ -3448,7 +3391,7 @@ static void ot_otp_dj_init(Object *obj)
                        SW_CFG_WINDOW + SW_CFG_WINDOW_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.ctrl);
 
-    memory_region_init_io(&s->mmio.sub.regs, obj, &ot_otp_dj_regs_ops, s,
+    memory_region_init_io(&s->mmio.sub.regs, obj, &ot_otp_dj_reg_ops, s,
                           TYPE_OT_OTP "-regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, 0u, &s->mmio.sub.regs);
 
@@ -3458,7 +3401,7 @@ static void ot_otp_dj_init(Object *obj)
     memory_region_add_subregion(&s->mmio.ctrl, SW_CFG_WINDOW,
                                 &s->mmio.sub.swcfg);
 
-    memory_region_init_io(&s->prim.csrs, obj, &ot_otp_dj_csrs_ops, s,
+    memory_region_init_io(&s->prim.csrs, obj, &ot_otp_dj_csr_ops, s,
                           TYPE_OT_OTP "-prim", CSRS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->prim.csrs);
 
@@ -3515,6 +3458,9 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
+
+    g_assert(OTP_PART_LIFE_CYCLE_SIZE ==
+             OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size);
 
     dc->reset = &ot_otp_dj_reset;
     dc->realize = &ot_otp_dj_realize;

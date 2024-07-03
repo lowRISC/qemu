@@ -708,7 +708,7 @@ static void ot_otp_eg_direct_digest(OtOTPEgState *s)
     qemu_log_mask(LOG_UNIMP, "%s: OTP change is not supported\n", __func__);
 }
 
-static uint64_t ot_otp_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtOTPEgState *s = OT_OTP_EG(opaque);
     (void)size;
@@ -826,13 +826,13 @@ static uint64_t ot_otp_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
 }
 
-static void ot_otp_eg_regs_write(void *opaque, hwaddr addr, uint64_t value,
-                                 unsigned size)
+static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
+                                unsigned size)
 {
     OtOTPEgState *s = OT_OTP_EG(opaque);
     (void)size;
@@ -841,7 +841,7 @@ static void ot_otp_eg_regs_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_write((uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_INTR_STATE:
@@ -1039,8 +1039,8 @@ static uint64_t ot_otp_eg_swcfg_read(void *opaque, hwaddr addr, unsigned size)
     uint64_t pc;
 
     pc = ibex_get_current_pc();
-    trace_ot_otp_io_read_out((uint32_t)addr, ot_otp_eg_swcfg_reg_name(reg),
-                             val32, pc);
+    trace_ot_otp_io_swcfg_read_out((uint32_t)addr,
+                                   ot_otp_eg_swcfg_reg_name(reg), val32, pc);
 
     return (uint64_t)val32;
 }
@@ -1060,7 +1060,7 @@ static void ot_otp_eg_swcfg_write(void *opaque, hwaddr addr, uint64_t value,
                   addr, ot_otp_eg_swcfg_reg_name(reg));
 }
 
-static uint64_t ot_otp_eg_csrs_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_otp_eg_csr_read(void *opaque, hwaddr addr, unsigned size)
 {
     (void)opaque;
     (void)size;
@@ -1087,13 +1087,13 @@ static uint64_t ot_otp_eg_csrs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_read_out((uint32_t)addr, CSR_NAME(reg), val32, pc);
+    trace_ot_otp_io_csr_read_out((uint32_t)addr, CSR_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
 }
 
-static void ot_otp_eg_csrs_write(void *opaque, hwaddr addr, uint64_t value,
-                                 unsigned size)
+static void ot_otp_eg_csr_write(void *opaque, hwaddr addr, uint64_t value,
+                                unsigned size)
 {
     (void)opaque;
     (void)size;
@@ -1102,7 +1102,7 @@ static void ot_otp_eg_csrs_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_write((uint32_t)addr, CSR_NAME(reg), val32, pc);
+    trace_ot_otp_io_csr_write((uint32_t)addr, CSR_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_CSR0:
@@ -1219,9 +1219,9 @@ static Property ot_otp_eg_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps ot_otp_eg_regs_ops = {
-    .read = &ot_otp_eg_regs_read,
-    .write = &ot_otp_eg_regs_write,
+static const MemoryRegionOps ot_otp_eg_reg_ops = {
+    .read = &ot_otp_eg_reg_read,
+    .write = &ot_otp_eg_reg_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
@@ -1235,9 +1235,9 @@ static const MemoryRegionOps ot_otp_eg_swcfg_ops = {
     .impl.max_access_size = 4,
 };
 
-static const MemoryRegionOps ot_otp_eg_csrs_ops = {
-    .read = &ot_otp_eg_csrs_read,
-    .write = &ot_otp_eg_csrs_write,
+static const MemoryRegionOps ot_otp_eg_csr_ops = {
+    .read = &ot_otp_eg_csr_read,
+    .write = &ot_otp_eg_csr_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
@@ -1375,7 +1375,7 @@ static void ot_otp_eg_init(Object *obj)
     memory_region_init(&s->mmio.ctrl, obj, TYPE_OT_OTP ".ctrl", 0x2000u);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.ctrl);
 
-    memory_region_init_io(&s->mmio.sub.regs, obj, &ot_otp_eg_regs_ops, s,
+    memory_region_init_io(&s->mmio.sub.regs, obj, &ot_otp_eg_reg_ops, s,
                           TYPE_OT_OTP ".regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, 0u, &s->mmio.sub.regs);
 
@@ -1385,7 +1385,7 @@ static void ot_otp_eg_init(Object *obj)
     memory_region_add_subregion(&s->mmio.ctrl, SW_CFG_WINDOW,
                                 &s->mmio.sub.swcfg);
 
-    memory_region_init_io(&s->prim.csrs, obj, &ot_otp_eg_csrs_ops, s,
+    memory_region_init_io(&s->prim.csrs, obj, &ot_otp_eg_csr_ops, s,
                           TYPE_OT_OTP ".prim", CSRS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->prim.csrs);
 
