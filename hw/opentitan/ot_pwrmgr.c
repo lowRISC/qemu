@@ -239,16 +239,16 @@ struct OtPwrMgrState {
     IbexIRQ cpu_enable;
     IbexIRQ pwr_lc_req;
     IbexIRQ pwr_otp_req;
+    IbexIRQ reset_req;
 
     OtPwrMgrFastState f_state;
     OtPwrMgrSlowState s_state;
     OtPwrMgrEvents fsm_events;
 
     uint32_t *regs;
-    OtPwrMgrResetReq reset_req;
+    OtPwrMgrResetReq reset_request;
 
     char *ot_id;
-    OtRstMgrState *rstmgr;
     uint8_t num_rom;
     uint8_t version;
     bool main; /* main power manager (for machines w/ multiple PwrMgr) */
@@ -500,16 +500,16 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
         }
         s->regs[R_RESET_STATUS] |= rstbit;
 
-        g_assert(s->reset_req.domain == OT_PWRMGR_NO_DOMAIN);
+        g_assert(s->reset_request.domain == OT_PWRMGR_NO_DOMAIN);
 
-        s->reset_req.domain = OT_PWRMGR_SLOW_DOMAIN;
+        s->reset_request.domain = OT_PWRMGR_SLOW_DOMAIN;
 
         int req = PWRMGR_RESET_DISPATCH[s->version][src];
         if (req < 0) {
             /* not yet implemented */
             g_assert_not_reached();
         }
-        s->reset_req.req = req;
+        s->reset_request.req = req;
 
         trace_ot_pwrmgr_reset_req(s->ot_id, "scheduling reset", src);
 
@@ -538,10 +538,10 @@ static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
 
         s->regs[R_RESET_STATUS] |= rstbit;
 
-        g_assert(s->reset_req.domain == OT_PWRMGR_NO_DOMAIN);
+        g_assert(s->reset_request.domain == OT_PWRMGR_NO_DOMAIN);
 
-        s->reset_req.req = OT_RSTMGR_RESET_SW;
-        s->reset_req.domain = OT_PWRMGR_FAST_DOMAIN;
+        s->reset_request.req = OT_RSTMGR_RESET_SW;
+        s->reset_request.domain = OT_PWRMGR_FAST_DOMAIN;
 
         trace_ot_pwrmgr_reset_req(s->ot_id, "scheduling SW reset", 0);
 
@@ -643,9 +643,10 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         /* fallthrough */
     case OT_PWR_FAST_ST_RESET_PREP:
         PWR_CHANGE_FAST_STATE(s, RESET_WAIT);
-        ot_rstmgr_reset_req(s->rstmgr, (bool)s->reset_req.domain,
-                            s->reset_req.req);
-        s->reset_req.domain = OT_PWRMGR_NO_DOMAIN;
+        ibex_irq_set(&s->reset_req,
+                     OT_RSTMGR_RESET_REQUEST(s->reset_request.domain,
+                                             s->reset_request.req));
+        s->reset_request.domain = OT_PWRMGR_NO_DOMAIN;
         break;
     /* NOLINTNEXTLINE */
     case OT_PWR_FAST_ST_RESET_WAIT:
@@ -880,8 +881,6 @@ static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_UINT8("version", OtPwrMgrState, version, UINT8_MAX),
     DEFINE_PROP_BOOL("fetch-ctrl", OtPwrMgrState, fetch_ctrl, false),
     DEFINE_PROP_BOOL("main", OtPwrMgrState, main, true),
-    DEFINE_PROP_LINK("rstmgr", OtPwrMgrState, rstmgr, TYPE_OT_RSTMGR,
-                     OtRstMgrState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -917,8 +916,6 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
-    assert(s->rstmgr);
-
     timer_del(s->cdc_sync);
     memset(s->regs, 0, REGS_SIZE);
 
@@ -938,6 +935,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     ibex_irq_set(&s->pwr_otp_req, 0);
     ibex_irq_set(&s->pwr_lc_req, 0);
     ibex_irq_set(&s->alert, 0);
+    ibex_irq_set(&s->reset_req, 0);
 }
 
 static void ot_pwrmgr_reset_exit(Object *obj)
@@ -991,6 +989,7 @@ static void ot_pwrmgr_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->pwr_otp_req, OT_PWRMGR_OTP_REQ);
     ibex_qdev_init_irq(obj, &s->cpu_enable, OT_PWRMGR_CPU_EN);
     ibex_qdev_init_irq(obj, &s->strap, OT_PWRMGR_STRAP);
+    ibex_qdev_init_irq(obj, &s->reset_req, OT_PWRMGR_RST_REQ);
 
     s->cdc_sync = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_pwrmgr_cdc_sync, s);
 

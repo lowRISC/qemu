@@ -201,19 +201,6 @@ static const char *OT_RST_MGR_REQUEST_NAMES[] = {
         "?"
 
 /* -------------------------------------------------------------------------- */
-/* Public API */
-/* -------------------------------------------------------------------------- */
-
-void ot_rstmgr_reset_req(OtRstMgrState *s, bool fastclk, OtRstMgrResetReq req)
-{
-    s->regs[R_RESET_INFO] = 1u << req;
-
-    trace_ot_rstmgr_reset_req(REQ_NAME(req), req, fastclk);
-
-    qemu_bh_schedule(s->bus_reset_bh);
-}
-
-/* -------------------------------------------------------------------------- */
 /* Private implementation */
 /* -------------------------------------------------------------------------- */
 
@@ -301,6 +288,30 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
     }
 
     g_free(desc.path);
+}
+
+static void ot_rstmgr_reset_req(void *opaque, int irq, int level)
+{
+    OtRstMgrState *s = opaque;
+
+    if (!level) {
+        /* reset line released */
+        return;
+    }
+
+    g_assert(irq == 0);
+
+    bool fastclk = ((unsigned)level >> 8u) & 1u;
+
+    level &= 0xff;
+    g_assert(level < OT_RSTMGR_RESET_COUNT);
+
+    OtRstMgrResetReq req = (OtRstMgrResetReq)level;
+    s->regs[R_RESET_INFO] = 1u << req;
+
+    trace_ot_rstmgr_reset_req(REQ_NAME(req), req, fastclk);
+
+    qemu_bh_schedule(s->bus_reset_bh);
 }
 
 static uint64_t ot_rstmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -549,6 +560,9 @@ static void ot_rstmgr_init(Object *obj)
 
     ibex_qdev_init_irq(obj, &s->sw_reset, OT_RSTMGR_SW_RST);
     ibex_qdev_init_irqs(obj, s->alerts, OT_DEVICE_ALERT, PARAM_NUM_ALERTS);
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_rstmgr_reset_req,
+                            OT_RSTMGR_RST_REQ, 1);
 
     s->bus_reset_bh = qemu_bh_new(&ot_rstmgr_reset_bus, s);
 }

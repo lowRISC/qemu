@@ -49,12 +49,10 @@ typedef enum {
     OT_RSTMGR_RESET_COUNT,
 } OtRstMgrResetReq;
 
-/*
- * Request a system reset
- *
- * @fastclk true for fast clock domain, @c false for aon/slow clock
- * @req type of reset request
- */
-void ot_rstmgr_reset_req(OtRstMgrState *s, bool fastclk, OtRstMgrResetReq req);
+#define OT_RSTMGR_RESET_REQUEST(_fast_, _req_) \
+    ((int)((1u << 31u) | (((int)(bool)_fast_) << 8u) | _req_))
+
+/* input lines */
+#define OT_RSTMGR_RST_REQ TYPE_OT_RSTMGR "-reset-req"
 
 #endif /* HW_OPENTITAN_OT_RSTMGR_H */
