@@ -1230,10 +1230,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_SIGNAL(OT_PWRMGR_CPU_EN, 0, IBEX_WRAPPER,
                              OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_PWRMGR_CPU_EN),
             OT_DJ_SOC_SIGNAL(OT_PWRMGR_STRAP, 0, GPIO,
-                             OT_GPIO_STRAP_EN, 0)
-        ),
-        .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("rstmgr", RSTMGR)
+                             OT_GPIO_STRAP_EN, 0),
+            OT_DJ_SOC_SIGNAL(OT_PWRMGR_RST_REQ, 0, RSTMGR,
+                             OT_RSTMGR_RST_REQ, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("num-rom", 2u),
