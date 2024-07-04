@@ -1029,8 +1029,7 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
     uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
     uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
     bool flag0 =
-        ot_csrng_check_multibitboot(s, FIELD_EX32(command, OT_CSNRG_CMD, FLAG0),
-                                    ALERT_STATUS_BIT(FLAG0));
+        FIELD_EX32(command, OT_CSNRG_CMD, FLAG0) == OT_MULTIBITBOOL4_TRUE;
 
     uint32_t num;
     const uint32_t *buffer =
@@ -1124,8 +1123,7 @@ static OtCSRNDCmdResult ot_csrng_handle_reseed(OtCSRNGState *s, unsigned slot)
 
     uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
     bool flag0 =
-        ot_csrng_check_multibitboot(s, FIELD_EX32(command, OT_CSNRG_CMD, FLAG0),
-                                    ALERT_STATUS_BIT(FLAG0));
+        FIELD_EX32(command, OT_CSNRG_CMD, FLAG0) == OT_MULTIBITBOOL4_TRUE;
 
     xtrace_ot_csrng_info("reseed", flag0);
 
