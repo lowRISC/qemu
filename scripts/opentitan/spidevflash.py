@@ -54,8 +54,8 @@ class SpiDeviceFlasher:
         self._spidev.wait_idle()
         for pos in range(0, len(data), page_size):
             page = data[pos:pos+page_size]
-            log.info('Program page @ 0x%06x %d/%d, %d bytes',
-                     pos + offset, pos//page_size, page_count, len(page))
+            log.debug('Program page @ 0x%06x %d/%d, %d bytes',
+                      pos + offset, pos//page_size, page_count, len(page))
             self._spidev.enable_write()
             self._spidev.page_program(pos + offset, page)
             sleep(0.003)
