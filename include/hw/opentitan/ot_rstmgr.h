@@ -33,8 +33,6 @@
 #define TYPE_OT_RSTMGR "ot-rstmgr"
 OBJECT_DECLARE_SIMPLE_TYPE(OtRstMgrState, OT_RSTMGR)
 
-#define OT_RSTMGR_SW_RST TYPE_OT_RSTMGR "-sw-rst"
-
 typedef enum {
     OT_RSTMGR_RESET_POR,
     OT_RSTMGR_RESET_LOW_POWER,
@@ -51,6 +49,10 @@ typedef enum {
 
 #define OT_RSTMGR_RESET_REQUEST(_fast_, _req_) \
     ((int)((1u << 31u) | (((int)(bool)_fast_) << 8u) | _req_))
+
+/* output lines */
+#define OT_RSTMGR_SOC_RST TYPE_OT_RSTMGR "-soc-reset"
+#define OT_RSTMGR_SW_RST  TYPE_OT_RSTMGR "-sw-reset"
 
 /* input lines */
 #define OT_RSTMGR_RST_REQ TYPE_OT_RSTMGR "-reset-req"

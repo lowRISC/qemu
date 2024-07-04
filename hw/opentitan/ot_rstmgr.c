@@ -43,7 +43,6 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/hw_accel.h"
 #include "sysemu/runstate.h"
 #include "trace.h"
 
@@ -147,6 +146,7 @@ struct OtRstMgrState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
+    IbexIRQ soc_reset;
     IbexIRQ sw_reset;
     IbexIRQ alerts[PARAM_NUM_ALERTS];
     QEMUBH *bus_reset_bh;
@@ -228,12 +228,7 @@ static void ot_rstmgr_reset_bus(void *opaque)
     }
     qemu_notify_event();
 
-    cpu_synchronize_state(s->cpu);
-    /* Reset all OpenTitan devices connected to RSTMGR parent bus */
-    bus_cold_reset(s->parent_obj.parent_obj.parent_bus);
-    cpu_synchronize_post_reset(s->cpu);
-
-    /* TODO: manage reset tree (depending on power domains, etc.) */
+    ibex_irq_raise(&s->soc_reset);
 }
 
 static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
@@ -393,7 +388,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
              * "Upon completion of reset, this bit is automatically cleared by
              * hardware."
              */
-            ibex_irq_set(&s->sw_reset, (int)true);
+            ibex_irq_raise(&s->sw_reset);
             if (s->fatal_reset) {
                 s->fatal_reset--;
                 if (!s->fatal_reset) {
@@ -544,7 +539,8 @@ static void ot_rstmgr_reset(DeviceState *dev)
         s->regs[R_SW_RST_CTRL_N_0 + ix] = 0x1u;
     }
 
-    ibex_irq_set(&s->sw_reset, 0);
+    ibex_irq_lower(&s->soc_reset);
+    ibex_irq_lower(&s->sw_reset);
     ot_rstmgr_update_alerts(s);
 }
 
@@ -558,6 +554,7 @@ static void ot_rstmgr_init(Object *obj)
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
 
+    ibex_qdev_init_irq(obj, &s->soc_reset, OT_RSTMGR_SOC_RST);
     ibex_qdev_init_irq(obj, &s->sw_reset, OT_RSTMGR_SW_RST);
     ibex_qdev_init_irqs(obj, s->alerts, OT_DEVICE_ALERT, PARAM_NUM_ALERTS);
 
