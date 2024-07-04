@@ -68,6 +68,7 @@
 #include "hw/riscv/ot_earlgrey.h"
 #include "hw/ssi/ssi.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/hw_accel.h"
 #include "sysemu/sysemu.h"
 
 /* ------------------------------------------------------------------------ */
@@ -201,6 +202,8 @@ static const uint32_t ot_eg_pmp_addrs[] = {
 };
 
 #define OT_EG_MSECCFG IBEX_MSECCFG(1, 1, 0)
+
+#define OT_EG_SOC_RST_REQ TYPE_RISCV_OT_EG_SOC "-reset"
 
 #define OT_EG_SOC_GPIO(_irq_, _target_, _num_) \
     IBEX_GPIO(_irq_, OT_EG_SOC_DEV_##_target_, _num_)
@@ -1148,6 +1151,20 @@ static void ot_eg_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
 /* SoC */
 /* ------------------------------------------------------------------------ */
 
+static void ot_eg_soc_hw_reset(void *opaque, int irq, int level)
+{
+    OtEGSoCState *s = opaque;
+
+    g_assert(irq == 0);
+
+    if (level) {
+        CPUState *cs = CPU(s->devices[OT_EG_SOC_DEV_HART]);
+        cpu_synchronize_state(cs);
+        bus_cold_reset(sysbus_get_default());
+        cpu_synchronize_post_reset(cs);
+    }
+}
+
 static void ot_eg_soc_reset_hold(Object *obj)
 {
     OtEGSoCClass *c = RISCV_OT_EG_SOC_GET_CLASS(obj);
@@ -1208,6 +1225,11 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
     ibex_map_devices(s->devices, mrs, ot_eg_soc_devices,
                      ARRAY_SIZE(ot_eg_soc_devices));
 
+    qdev_connect_gpio_out_named(DEVICE(s->devices[OT_EG_SOC_DEV_RSTMGR]),
+                                OT_RSTMGR_SOC_RST, 0,
+                                qdev_get_gpio_in_named(DEVICE(s),
+                                                       OT_EG_SOC_RST_REQ, 0));
+
     /* load kernel if provided */
     ibex_load_kernel(NULL);
 }
@@ -1218,6 +1240,9 @@ static void ot_eg_soc_init(Object *obj)
 
     s->devices = ibex_create_devices(ot_eg_soc_devices,
                                      ARRAY_SIZE(ot_eg_soc_devices), DEVICE(s));
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_eg_soc_hw_reset, OT_EG_SOC_RST_REQ,
+                            1);
 }
 
 static void ot_eg_soc_class_init(ObjectClass *oc, void *data)

@@ -77,6 +77,7 @@
 #include "hw/riscv/ot_darjeeling.h"
 #include "hw/ssi/ssi.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/hw_accel.h"
 #include "sysemu/reset.h"
 #include "sysemu/sysemu.h"
 
@@ -340,6 +341,8 @@ static const uint32_t ot_dj_pmp_addrs[] = {
 };
 
 #define OT_DJ_MSECCFG IBEX_MSECCFG(1, 1, 0)
+
+#define OT_DJ_SOC_RST_REQ TYPE_RISCV_OT_DJ_SOC "-reset"
 
 #define OT_DJ_SOC_GPIO(_irq_, _target_, _num_) \
     IBEX_GPIO(_irq_, OT_DJ_SOC_DEV_##_target_, _num_)
@@ -1498,6 +1501,20 @@ static void ot_dj_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
 /* SoC */
 /* ------------------------------------------------------------------------ */
 
+static void ot_dj_soc_hw_reset(void *opaque, int irq, int level)
+{
+    OtDjSoCState *s = opaque;
+
+    g_assert(irq == 0);
+
+    if (level) {
+        CPUState *cs = CPU(s->devices[OT_DJ_SOC_DEV_HART]);
+        cpu_synchronize_state(cs);
+        bus_cold_reset(sysbus_get_default());
+        cpu_synchronize_post_reset(cs);
+    }
+}
+
 static void ot_dj_soc_reset_hold(Object *obj)
 {
     OtDjSoCClass *c = RISCV_OT_DJ_SOC_GET_CLASS(obj);
@@ -1641,6 +1658,11 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
     object_property_add_child(OBJECT(dev), "ctn-dma", oas);
     ot_address_space_set(OT_ADDRESS_SPACE(oas), ctn_dma_as);
 
+    qdev_connect_gpio_out_named(DEVICE(s->devices[OT_DJ_SOC_DEV_RSTMGR]),
+                                OT_RSTMGR_SOC_RST, 0,
+                                qdev_get_gpio_in_named(DEVICE(s),
+                                                       OT_DJ_SOC_RST_REQ, 0));
+
     /* load kernel if provided */
     ibex_load_kernel(cpu);
 }
@@ -1651,6 +1673,9 @@ static void ot_dj_soc_init(Object *obj)
 
     s->devices = ibex_create_devices(ot_dj_soc_devices,
                                      ARRAY_SIZE(ot_dj_soc_devices), DEVICE(s));
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_dj_soc_hw_reset, OT_DJ_SOC_RST_REQ,
+                            1);
 }
 
 static void ot_dj_soc_class_init(ObjectClass *oc, void *data)
