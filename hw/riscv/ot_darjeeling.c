@@ -1663,6 +1663,8 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
                                 qdev_get_gpio_in_named(DEVICE(s),
                                                        OT_DJ_SOC_RST_REQ, 0));
 
+    ot_common_check_rom_configuration();
+
     /* load kernel if provided */
     ibex_load_kernel(cpu);
 }

@@ -39,6 +39,7 @@
 #include "hw/opentitan/ot_aon_timer.h"
 #include "hw/opentitan/ot_ast_eg.h"
 #include "hw/opentitan/ot_clkmgr.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_entropy_src.h"
@@ -1229,6 +1230,8 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
                                 OT_RSTMGR_SOC_RST, 0,
                                 qdev_get_gpio_in_named(DEVICE(s),
                                                        OT_EG_SOC_RST_REQ, 0));
+
+    ot_common_check_rom_configuration();
 
     /* load kernel if provided */
     ibex_load_kernel(NULL);
