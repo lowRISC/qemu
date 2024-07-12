@@ -26,26 +26,42 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/queue.h"
 #include "qom/object.h"
 #include "hw/opentitan/ot_common.h"
 
+typedef struct OtCommonObjectNode {
+    Object *obj;
+    QSIMPLEQ_ENTRY(OtCommonObjectNode) node;
+} OtCommonObjectNode;
+
+typedef QSIMPLEQ_HEAD(OtCommonObjectList,
+                      OtCommonObjectNode) OtCommonObjectList;
+
 typedef struct {
-    const char *type; /* which type of device should be matched */
-    DeviceState *device; /* matched device if any */
-} OtCommonNodeEntry;
+    const char *type; /* which type of object should be matched */
+    unsigned count; /* how many object should be matched */
+    OtCommonObjectList list; /* list of matched objects */
+} OtCommonObjectNodes;
 
 static int ot_common_node_child_walker(Object *child, void *opaque)
 {
-    OtCommonNodeEntry *entry = opaque;
-    if (!object_dynamic_cast(child, entry->type)) {
+    OtCommonObjectNodes *nodes = opaque;
+    if (!object_dynamic_cast(child, nodes->type)) {
         /* continue walking the children hierarchy */
         return 0;
     }
 
-    entry->device = DEVICE(child);
+    OtCommonObjectNode *node = g_new0(OtCommonObjectNode, 1u);
+    node->obj = child;
+    object_ref(child);
 
-    /* stop walking the hierarchy immediately */
-    return 1;
+    QSIMPLEQ_INSERT_TAIL(&nodes->list, node, node);
+
+    nodes->count--;
+
+    /* stop walking the hierarchy immediately if max count has been reached */
+    return nodes->count ? 0 : 1;
 }
 
 CPUState *ot_common_get_local_cpu(DeviceState *s)
@@ -64,15 +80,21 @@ CPUState *ot_common_get_local_cpu(DeviceState *s)
         return NULL;
     }
 
-    OtCommonNodeEntry entry = {
+    OtCommonObjectNodes nodes = {
         .type = TYPE_CPU,
-        .device = NULL,
+        .count = 1u,
     };
+    QSIMPLEQ_INIT(&nodes.list);
 
     /* find one of the closest CPU (should be only one with OT platforms) */
     if (object_child_foreach_recursive(OBJECT(parent),
-                                       &ot_common_node_child_walker, &entry)) {
-        return CPU(entry.device);
+                                       &ot_common_node_child_walker, &nodes)) {
+        g_assert(!QSIMPLEQ_EMPTY(&nodes.list));
+        OtCommonObjectNode *node = QSIMPLEQ_FIRST(&nodes.list);
+        object_unref(node->obj);
+        CPUState *cpu = CPU(node->obj);
+        g_free(node);
+        return cpu;
     }
 
     return NULL;
