@@ -264,6 +264,14 @@ static inline uint32_t ot_shadow_reg_read(OtShadowReg *sreg)
 CPUState *ot_common_get_local_cpu(DeviceState *s);
 
 /**
+ * Verify that command-line ROM image definitions are compatible with the
+ * current machine; emit warning message if they are not.
+ *
+ * @return the count of ROM controllers with no assigned ROM image
+ */
+unsigned ot_common_check_rom_configuration(void);
+
+/**
  * Get the local address space for a device, if any.
  * The local address space if the address space the OT CPU uses to access this
  * device on its local bus.

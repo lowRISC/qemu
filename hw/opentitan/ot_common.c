@@ -26,9 +26,12 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qemu/queue.h"
 #include "qom/object.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_rom_ctrl.h"
+#include "hw/opentitan/ot_rom_ctrl_img.h"
 
 typedef struct OtCommonObjectNode {
     Object *obj;
@@ -98,6 +101,93 @@ CPUState *ot_common_get_local_cpu(DeviceState *s)
     }
 
     return NULL;
+}
+
+unsigned ot_common_check_rom_configuration(void)
+{
+    /* find all ROM defined images */
+    OtCommonObjectNodes img_nodes = {
+        .type = TYPE_OT_ROM_IMG,
+    };
+    QSIMPLEQ_INIT(&img_nodes.list);
+
+    object_child_foreach_recursive(object_get_objects_root(),
+                                   &ot_common_node_child_walker, &img_nodes);
+
+    /* find all ROM controllers */
+    OtCommonObjectNodes ctrl_nodes = {
+        .type = TYPE_OT_ROM_CTRL,
+    };
+    QSIMPLEQ_INIT(&ctrl_nodes.list);
+
+    object_child_foreach_recursive(object_get_root(),
+                                   &ot_common_node_child_walker, &ctrl_nodes);
+
+    /* NOLINTBEGIN(clang-analyzer-unix.Malloc) */
+
+    /*
+     * For each declared ROM image, check if there is a ROM controller that
+     * can make use of it
+     */
+    OtCommonObjectNode *img_node, *img_next;
+    QSIMPLEQ_FOREACH_SAFE(img_node, &img_nodes.list, node, img_next) {
+        const char *comp = object_get_canonical_path_component(img_node->obj);
+        OtCommonObjectNode *ctrl_node, *ctrl_next;
+        QSIMPLEQ_FOREACH_SAFE(ctrl_node, &ctrl_nodes.list, node, ctrl_next) {
+            Error *errp;
+            char *ot_id =
+                object_property_get_str(ctrl_node->obj, "ot_id", &errp);
+            bool remove_img = !ot_id;
+            bool remove_ctrl = false;
+            if (ot_id) {
+                if (!strcmp(ot_id, comp)) {
+                    /* ROM image matches current ROM controller image */
+                    remove_img = true;
+                    remove_ctrl = true;
+                }
+            }
+            g_free(ot_id);
+            if (remove_img) {
+                object_unref(img_node->obj);
+                QSIMPLEQ_REMOVE(&img_nodes.list, img_node, OtCommonObjectNode,
+                                node);
+                g_free(img_node);
+            }
+            if (remove_ctrl) {
+                object_unref(ctrl_node->obj);
+                QSIMPLEQ_REMOVE(&ctrl_nodes.list, ctrl_node, OtCommonObjectNode,
+                                node);
+                g_free(ctrl_node);
+            }
+        }
+    }
+
+    /*
+     * Any ROM image that have not been "consumed" by a ROM controller is an
+     * unexpected declaration (likely an error in CLI options)
+     */
+    QSIMPLEQ_FOREACH_SAFE(img_node, &img_nodes.list, node, img_next) {
+        const char *comp = object_get_canonical_path_component(img_node->obj);
+        warn_report("Unused ROM image: %s", comp);
+        object_unref(img_node->obj);
+        g_free(img_node);
+    }
+
+    /*
+     * Cleanup and count remaining ROM controllers for which no image has been
+     * declared
+     */
+    OtCommonObjectNode *ctrl_node, *ctrl_next;
+    unsigned count = 0;
+    QSIMPLEQ_FOREACH_SAFE(ctrl_node, &ctrl_nodes.list, node, ctrl_next) {
+        object_unref(ctrl_node->obj);
+        g_free(ctrl_node);
+        count++;
+    }
+
+    /* NOLINTEND(clang-analyzer-unix.Malloc) */
+
+    return count;
 }
 
 AddressSpace *ot_common_get_local_address_space(DeviceState *s)
