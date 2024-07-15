@@ -81,8 +81,7 @@ REG32(SCR_KEY_ROTATED, 0x1cu)
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define INIT_TIMER_CHUNK_NS    100000 /* 100 us */
-#define INIT_TIMER_CHUNK_SIZE  4096u /* 4 KB */
-#define INIT_TIMER_CHUNK_WORDS ((INIT_TIMER_CHUNK_SIZE) / sizeof(uint32_t))
+#define INIT_TIMER_CHUNK_WORDS (4096u / sizeof(uint32_t)) /* 4 KB */
 
 /* clang-format off */
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
@@ -129,6 +128,7 @@ struct OtSramCtrlState {
     char *ot_id;
     OtOTPState *otp_ctrl; /* optional */
     uint32_t size; /* in bytes */
+    uint32_t init_chunk_words; /* init chunk size in words */
     bool ifetch; /* only used when no otp_ctrl is defined */
     bool noinit; /* discard initialization emulation feature */
 };
@@ -186,14 +186,15 @@ static bool ot_sram_ctrl_mem_is_fully_initialized(const OtSramCtrlState *s)
     return true;
 }
 
-static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count)
+static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count,
+                                    bool expedite)
 {
     unsigned end = s->init_slot_pos + count;
 
     g_assert(end <= s->wsize);
 
     trace_ot_sram_ctrl_initialize(s->ot_id, s->init_slot_pos * sizeof(uint32_t),
-                                  end * sizeof(uint32_t));
+                                  end * sizeof(uint32_t), count, expedite);
 
     uint32_t *mem = memory_region_get_ram_ptr(&s->mem->sram);
     mem += s->init_slot_pos;
@@ -323,9 +324,9 @@ static void ot_sram_ctrl_start_initialization(OtSramCtrlState *s)
 
     s->init_slot_pos = 0;
 
-    unsigned count = MIN(s->wsize, INIT_TIMER_CHUNK_WORDS);
+    unsigned count = MIN(s->wsize, s->init_chunk_words);
 
-    ot_sram_ctrl_initialize(s, count);
+    ot_sram_ctrl_initialize(s, count, false);
 }
 
 static uint64_t ot_sram_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -464,11 +465,9 @@ static void ot_sram_ctrl_init_chunk_fn(void *opaque)
     OtSramCtrlState *s = opaque;
 
     unsigned count = s->wsize - s->init_slot_pos;
-    count = MIN(count, INIT_TIMER_CHUNK_WORDS);
+    count = MIN(count, s->init_chunk_words);
 
-    trace_ot_sram_ctrl_timed_init(s->ot_id);
-
-    (void)ot_sram_ctrl_initialize(s, count);
+    (void)ot_sram_ctrl_initialize(s, count, false);
 }
 
 static MemTxResult ot_sram_ctrl_mem_init_read_with_attrs(
@@ -479,7 +478,6 @@ static MemTxResult ot_sram_ctrl_mem_init_read_with_attrs(
     (void)attrs;
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_sram_ctrl_mem_io_readi(s->ot_id, (uint32_t)addr, size, pc);
 
     unsigned cell = addr >> 2u;
     unsigned addr_offset = (addr & 3u);
@@ -497,7 +495,7 @@ static MemTxResult ot_sram_ctrl_mem_init_read_with_attrs(
         timer_del(s->init_timer);
         unsigned count = s->wsize - s->init_slot_pos;
         /* this function also take care of scheduling memory region swap */
-        bool done = ot_sram_ctrl_initialize(s, count);
+        bool done = ot_sram_ctrl_initialize(s, count, true);
         g_assert(done);
     }
 
@@ -559,7 +557,7 @@ static MemTxResult ot_sram_ctrl_mem_init_write_with_attrs(
         timer_del(s->init_timer);
         unsigned count = s->wsize - s->init_slot_pos;
         /* this function also take care of scheduling memory region swap */
-        bool done = ot_sram_ctrl_initialize(s, count);
+        bool done = ot_sram_ctrl_initialize(s, count, true);
         g_assert(done);
     }
 
@@ -612,6 +610,7 @@ static Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_LINK("otp_ctrl", OtSramCtrlState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_UINT32("size", OtSramCtrlState, size, 0u),
+    DEFINE_PROP_UINT32("wci_size", OtSramCtrlState, init_chunk_words, 0u),
     DEFINE_PROP_BOOL("ifetch", OtSramCtrlState, ifetch, false),
     DEFINE_PROP_BOOL("noinit", OtSramCtrlState, noinit, false),
     DEFINE_PROP_END_OF_LIST(),
@@ -675,6 +674,13 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 
     s->wsize = DIV_ROUND_UP(s->size, sizeof(uint32_t));
     unsigned size = s->wsize * sizeof(uint32_t);
+
+    if (!s->init_chunk_words) {
+        /* somewhat arbitrary */
+        s->init_chunk_words = MAX(s->wsize / 16u, INIT_TIMER_CHUNK_WORDS);
+    } else {
+        g_assert(s->init_chunk_words < s->wsize);
+    }
 
     char *mr_name;
 
