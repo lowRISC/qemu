@@ -154,7 +154,8 @@ class LogMessageClassifier:
         """
         if self._qemux and line.startswith(self._qemux):
             # discard QEMU internal messages that cannot be disable from the VM
-            return logging.NOTSET
+            if line.find("QEMU waiting") > 0:
+                return logging.NOTSET
         for lvl, pattern in self._regexes.items():
             if pattern.search(line):
                 return lvl
