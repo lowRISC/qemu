@@ -275,9 +275,9 @@ class QEMUWrapper:
             # perform stdout/stderr read out.
             log_q = deque()
             Thread(target=self._qemu_logger, name='qemu_out_logger',
-                   args=(proc, log_q, True)).start()
+                   args=(proc, log_q, True), daemon=True).start()
             Thread(target=self._qemu_logger, name='qemu_err_logger',
-                   args=(proc, log_q, False)).start()
+                   args=(proc, log_q, False), daemon=True).start()
             poller = spoll()
             connect_map = vcp_map.copy()
             timeout = now() + tdef.start_delay
@@ -847,7 +847,7 @@ class QEMUContextWorker:
     def run(self):
         """Start the worker.
         """
-        self._thread = Thread(target=self._run)
+        self._thread = Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> int:
@@ -885,8 +885,8 @@ class QEMUContextWorker:
         proc = Popen(self._cmd,  bufsize=1, stdout=PIPE, stderr=PIPE,
                      shell=True, env=self._env, encoding='utf-8',
                      errors='ignore', text=True)
-        Thread(target=self._logger, args=(proc, True)).start()
-        Thread(target=self._logger, args=(proc, False)).start()
+        Thread(target=self._logger, args=(proc, True), daemon=True).start()
+        Thread(target=self._logger, args=(proc, False), daemon=True).start()
         qemu_exec = f'{basename(self._cmd[0])}: '
         classifier = LogMessageClassifier(qemux=qemu_exec)
         while self._resume:
@@ -920,12 +920,17 @@ class QEMUContextWorker:
                 self._ret = proc.returncode
         # retrieve the remaining log messages
         stdlog = self._log.info if self._ret else self._log.debug
-        for sfp, logger in zip(proc.communicate(timeout=0.1),
-                               (stdlog, self._log.error)):
-            for line in sfp.split('\n'):
-                line = line.strip()
-                if line:
-                    logger(line)
+        try:
+            for sfp, logger in zip(proc.communicate(timeout=0.1),
+                                   (stdlog, self._log.error)):
+                for line in sfp.split('\n'):
+                    line = line.strip()
+                    if line:
+                        logger(line)
+        except TimeoutExpired:
+            proc.kill()
+            if self._ret is None:
+                self._ret = proc.returncode
 
     def _logger(self, proc: Popen, err: bool):
         # worker thread, blocking on VM stdout/stderr
