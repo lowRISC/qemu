@@ -6,8 +6,11 @@ controller virtual device.
 ## Usage
 
 ````text
-usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o C] [-r RAW] [-k {auto,otp,fuz}] [-e BITS]
-                  [-c INT] [-i INT] [-w] [-n] [-s] [-D] [-L | -P | -R] [-v] [-d]
+usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o C] [-r RAW]
+                  [-k {auto,otp,fuz}] [-e BITS] [-c INT] [-i INT] [-w] [-n]
+                  [-s] [-E] [-D] [-U] [--clear-bit CLEAR_BIT]
+                  [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT] [-L | -P | -R]
+                  [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -35,14 +38,21 @@ Parameters:
 
 Commands:
   -s, --show            show the OTP content
+  -E, --ecc-recover     attempt to recover errors with ECC
   -D, --digest          check the OTP HW partition digest
+  -U, --update          force-update QEMU OTP raw file after ECC recovery
+  --clear-bit CLEAR_BIT
+                        clear a bit at specified location
+  --set-bit SET_BIT     set a bit at specified location
+  --toggle-bit TOGGLE_BIT
+                        toggle a bit at specified location
   -L, --generate-lc     generate lc_ctrl C arrays
   -P, --generate-parts  generate partition descriptor C arrays
   -R, --generate-regs   generate partition register C definitions
 
 Extras:
   -v, --verbose         increase verbosity
-  -d, --debug           enable debug mode````
+  -d, --debug           enable debug mode
 ````
 
 This script can be used for several purposes:
@@ -83,6 +93,8 @@ Fuse RAW images only use the v1 type.
   `-i` options switches, or when using a QEMU OTP RAW v2 file that stores these constants.
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
+
+* `-E` use ECC data to fix recoverable errors
 
 * `-e` specify how many bits are used in the VMEM file to store ECC information. Note that ECC
   information is not stored in the QEMU RAW file for now.
@@ -129,16 +141,44 @@ Fuse RAW images only use the v1 type.
 
 * `-s` decodes some of the content of the OTP fuse values. This option requires the `-j` option.
 
+* `-U` when a RAW file is loaded, update its contents after bit modification changes or ECC
+  recovery. This option is mutually exclusive with VMEM
+
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
 * `-w` tell the script not to truncate the values of the large fields, _i.e._ the fields than
   contain long sequence of bytes. If repeated, the empty long fields are also printed in full, as
   a sequence of empty bytes.
 
+* `--clear-bit` clears the specified bit in the OTP data. This flag may be repeated. This option is
+  only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
+  a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
+
+* `--set-bit` sets the specified bit in the OTP data. This flag may be repeated. This option is
+   only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
+   a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
+
+* `--toggle-bit` toggles the specified bit in the OTP data. This flag may be repeated. This option
+  is only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
+  a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
+
 #### Note
 
 Earlgrey OTP virtual device has not been updated to support Present scrambler, so neither `-C` nor
 `-I` option should be used to generate an Earlgrey-compatible RAW image.
+
+### Bit position specifier [#bit-syntax]
+
+`--clear-bit` and `--set-bit` options expect the location of the bit to alter. The syntax to specify
+a bit is defined as `<offset>/<bit>` where `offset` is the byte offset in the OTP data stream and
+`bit` is the bit within the specified location.
+
+The address is rounded down to the granule size, _e.g._ if OTP fuses are organized as 16-bit slots,
+address 2N and 2N+1 are considered the same.
+
+If the bit is larger than the data slot, it indicates the location with the ECC part, _e.g._ if OTP
+fuses are organized as 16-bit slots wtih 6-bit ECC, bit 0 to 15 indicates a bit into the data slot,
+while bit 16 to 21 indicates an ECC bit.
 
 ### Examples
 

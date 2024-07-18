@@ -66,8 +66,19 @@ def main():
         commands = argparser.add_argument_group(title='Commands')
         commands.add_argument('-s', '--show', action='store_true',
                               help='show the OTP content')
+        commands.add_argument('-E', '--ecc-recover', action='store_true',
+                              help='attempt to recover errors with ECC')
         commands.add_argument('-D', '--digest', action='store_true',
                               help='check the OTP HW partition digest')
+        commands.add_argument('-U', '--update', action='store_true',
+                              help='update RAW file after ECC recovery or bit '
+                                   'changes')
+        commands.add_argument('--clear-bit', action='append', default=[],
+                              help='clear a bit at specified location')
+        commands.add_argument('--set-bit', action='append',  default=[],
+                              help='set a bit at specified location')
+        commands.add_argument('--toggle-bit', action='append',  default=[],
+                              help='toggle a bit at specified location')
         generate = commands.add_mutually_exclusive_group()
         generate.add_argument('-L', '--generate-lc', action='store_true',
                               help='generate lc_ctrl C arrays')
@@ -88,11 +99,31 @@ def main():
         otp = OtpImage(args.ecc)
 
         if not (args.vmem or args.raw):
-            if args.show or args.digest:
+            if any((args.show, args.digest, args.ecc_recover, args.clear_bit,
+                    args.set_bit, args.toggle_bit)):
                 argparser.error('At least one raw or vmem file is required')
 
         if not args.vmem and args.kind:
             argparser.error('VMEM kind only applies for VMEM input files')
+
+        if args.update:
+            if not args.raw:
+                argparser.error('No RAW file specified for update')
+            if args.vmem:
+                argparser.error('RAW update mutuallly exclusive with VMEM')
+
+        bit_actions = ('clear', 'set', 'toggle')
+        alter_bits: list[list[tuple[int, int]]] = []
+        for slot, bitact in enumerate(bit_actions):
+            bitdefs = getattr(args, f'{bitact}_bit')
+            alter_bits.append([])
+            for bitdef in bitdefs:
+                try:
+                    offset, bit = (HexInt.parse(x) for x in bitdef.split('/'))
+                except ValueError as exc:
+                    argparser.error(f"Invalid bit specifier '{bitdef}', should "
+                                    f"be <offset>/<bit_num> format: {exc}")
+                alter_bits[slot].append((offset, bit))
 
         otpmap: Optional[OtpMap] = None
         lcext: Optional[OtpLifecycleExtension] = None
@@ -131,12 +162,19 @@ def main():
 
         if args.vmem:
             otp.load_vmem(args.vmem, args.kind)
+            if otpmap:
+                otp.dispatch(otpmap)
+            otp.verify_ecc(args.ecc_recover)
+
         if args.raw:
             # if no VMEM is provided, select the RAW file as an input file
             # otherwise it is selected as an output file
             if not args.vmem:
                 with open(args.raw, 'rb') as rfp:
                     otp.load_raw(rfp)
+                if otpmap:
+                    otp.dispatch(otpmap)
+                otp.verify_ecc(args.ecc_recover)
 
         if otp.loaded:
             if not otp.is_opentitan:
@@ -153,8 +191,6 @@ def main():
                 otp.set_digest_iv(args.iv)
             if args.constant:
                 otp.set_digest_constant(args.constant)
-            if otpmap:
-                otp.dispatch(otpmap)
             if lcext:
                 otp.load_lifecycle(lcext)
             if args.show:
@@ -170,7 +206,12 @@ def main():
                     argparser.error(f'Present scrambler constants are required '
                                     f'to verify the partition digest{msg}')
                 otp.verify(True)
-            if args.raw and args.vmem:
+            if args.raw and (args.vmem or args.update):
+                for pos, bitact in enumerate(bit_actions):
+                    if alter_bits[pos]:
+                        getattr(otp, f'{bitact}_bits')(alter_bits[pos])
+                if not args.update and any(alter_bits):
+                    otp.verify_ecc(False)
                 # when both RAW and VMEM are selected, QEMU RAW image file
                 # should be generated
                 with open(args.raw, 'wb') as rfp:

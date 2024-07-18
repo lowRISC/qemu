@@ -11,7 +11,7 @@ from io import BytesIO
 from logging import getLogger
 from re import match as re_match, sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
-from typing import Any, BinaryIO, Optional, TextIO
+from typing import Any, BinaryIO, Optional, Sequence, TextIO, Union
 
 from .map import OtpMap
 from .partition import OtpPartition, OtpLifecycleExtension
@@ -46,12 +46,18 @@ class OtpImage:
 
     DEFAULT_ECC_BITS = 6
 
+    SYNDROME_HAMMING_22_16 = (
+        (0x01ad5b, 0x02366d, 0x04c78e, 0x0807f0, 0x10f800, 0x3fffff),
+        (0x23, 0x25, 0x26, 0x27, 0x29, 0x2a, 0x2b, 0x2c,
+         0x2d, 0x2e, 0x2f, 0x31, 0x32, 0x33, 0x34, 0x35)
+    )
+
     def __init__(self, ecc_bits: Optional[int] = None):
         self._log = getLogger('otptool.img')
         self._header: dict[str, Any] = {}
         self._magic = b''
-        self._data = b''
-        self._ecc = b''
+        self._data = bytearray()
+        self._ecc = bytearray()
         if ecc_bits is None:
             ecc_bits = self.DEFAULT_ECC_BITS
         self._ecc_bits = ecc_bits
@@ -60,6 +66,7 @@ class OtpImage:
         self._digest_iv: Optional[int] = None
         self._digest_constant: Optional[int] = None
         self._partitions: list[OtpPartition] = []
+        self._part_offsets: list[int] = []
 
     @property
     def version(self) -> int:
@@ -92,8 +99,12 @@ class OtpImage:
         """Load OTP image from a QEMU 'RAW' image stream."""
         header = self._load_header(rfp)
         self._header = header
-        self._data = rfp.read(header['dlength'])
-        self._ecc = rfp.read(header['elength'])
+        self._data = bytearray(rfp.read(header['dlength']))
+        self._ecc = bytearray(rfp.read(header['elength']))
+        self._ecc_bits = header['eccbits']
+        self._ecc_bytes = header['dlength']
+        self._ecc_granule = header['eccgran']
+        self._ecc_bytes = (self._ecc_bits + 7) // 8
         if header['version'] > 1:
             self._digest_iv = header['digiv']
             self._digest_constant = header['digfc']
@@ -161,8 +172,8 @@ class OtpImage:
             dlen = len(data)
             granule_sizes.add(dlen)
             last_addr = addr+dlen  # ECC is not accounted for in address
-        self._data = b''.join(data_buf)
-        self._ecc = b''.join(ecc_buf)
+        self._data = bytearray(b''.join(data_buf))
+        self._ecc = bytearray(b''.join(ecc_buf))
         if granule_sizes:
             if len(granule_sizes) != 1:
                 raise ValueError('Variable data size')
@@ -213,9 +224,12 @@ class OtpImage:
         """Dispatch RAW image data into the partitions."""
         bfp = BytesIO(self._data)
         for part in cfg.enumerate_partitions():
-            self._log.debug('%s %d', part.name, bfp.tell())
+            pos = bfp.tell()
+            self._log.debug('%s %d', part.name, pos)
             part.load(bfp)
             self._partitions.append(part)
+            self._part_offsets.append(pos)
+        self._part_offsets.append(bfp.tell())
         # all data bytes should have been dispatched into the partitions
         assert bfp.tell() == len(self._data), 'Unexpected remaining data bytes'
         if self._header:
@@ -257,6 +271,158 @@ class OtpImage:
                 print(f' * present constant {self._digest_constant:032x}')
         for part in self._partitions:
             part.decode(decode, wide, ofp)
+
+    def clear_bits(self, bitdefs: Sequence[tuple[int, int]]) -> None:
+        """Clear one or more bits.
+
+           :param bitdefs: a sequence of bits to clear, where each bit is
+                           specified as a 2-uple (offset, bit position)
+                           If bit position is larger than data width for the
+                           specified offset, it indicates an ECC bit to change
+        """
+        self._change_bits(bitdefs, False)
+
+    def set_bits(self, bitdefs: Sequence[tuple[int, int]]) -> None:
+        """Set one or more bits.
+
+           :param bitdefs: a sequence of bits to set, where each bit is
+                           specified as a 2-uple (offset, bit position)
+                           If bit position is larger than data width for the
+                           specified offset, it indicates an ECC bit to change
+        """
+        self._change_bits(bitdefs, True)
+
+    def toggle_bits(self, bitdefs: Sequence[tuple[int, int]]) -> None:
+        """Toggle one or more bits.
+
+           :param bitdefs: a sequence of bits to toggle, where each bit is
+                           specified as a 2-uple (offset, bit position)
+                           If bit position is larger than data width for the
+                           specified offset, it indicates an ECC bit to change
+        """
+        self._change_bits(bitdefs, None)
+
+    @staticmethod
+    def bit_parity(data: int) -> int:
+        """Compute the bit parity of an integer, i.e. reduce the vector to a
+           single bit.
+        """
+        data ^= data >> 16  # useless for 16 bits data
+        data ^= data >> 8
+        data ^= data >> 4
+        data ^= data >> 2
+        data ^= data >> 1
+        return data & 1
+
+    def verify_ecc(self, recover: bool) -> tuple[int, int]:
+        """Verify data with ECC.
+
+           :return: 2-uple of count of uncorrectable and corrected errors.
+        """
+        granule = self._ecc_granule
+        bitgran = granule * 8
+        ecclen = (self._ecc_bits + 7) // 8
+        bitcount = bitgran + self._ecc_bits
+        self._log.info('ECC check (%d, %d)', bitcount, bitgran)
+        if len(self._ecc) * granule != len(self._data):
+            self._log.critical('Incoherent ECC size w/ granule %d',
+                               granule)
+        try:
+            ecc_fn = getattr(self, f'_decode_ecc_{bitcount}_{bitgran}')
+        except AttributeError as exc:
+            raise NotImplementedError('ECC function for {self._ecc.bits}'
+                                      'not supported') from exc
+        err_cnt = fatal_cnt = 0
+        updated_parts: set[OtpPartition] = set()
+        for off in range(0, len(self._data), granule):
+            chunk = int.from_bytes(self._data[off:off+granule], 'little')
+            eccoff = off//granule
+            if ecclen == 1:
+                ecc = self._ecc[eccoff]
+            else:
+                ecc = int.from_bytes(self._ecc[eccoff:eccoff+ecclen], 'little')
+            if not chunk and not ecc:
+                continue
+            partition = self._get_partition_at_offset(off)
+            err, fchunk = ecc_fn(chunk, ecc)
+            self._log.debug("ECC check @ %u data:%04x ecc:%02x",
+                            off, chunk, ecc)
+            if err > 0:
+                partinfo = f' in {partition.name}' if partition else ''
+                if getattr(partition, 'integrity', False):
+                    self._log.warning('Ignoring ECC error%s @ '
+                                      '0x%04x', partinfo, off)
+                    continue
+                if chunk == fchunk:
+                    # error is in ECC bits
+                    self._log.warning('ECC single bit corruption @ 0x%04x%s, '
+                                      'ignored: data:%04x ecc:%02x', off,
+                                      partinfo, chunk, ecc)
+                else:
+                    self._log.warning('ECC recover%s error @ 0x%04x%s: '
+                                      'data:%04x->%04x ecc:%02x',
+                                      'ed' if recover else 'able',
+                                      off, partinfo, chunk, fchunk, ecc)
+                if recover:
+                    self._data[off:off+granule] = fchunk.to_bytes(granule,
+                                                                  'little')
+                    updated_parts.add(partition)
+                err_cnt += 1
+            elif err < 0:
+                self._log.critical('Unrecoverable ECC error @ 0x%04x%s: '
+                                   'data:%04x, ecc:%02x', off, partinfo, chunk,
+                                   ecc)
+                fatal_cnt += 1
+        for part in updated_parts:
+            bounds = self._get_partition_bounds(part)
+            if not bounds:
+                self._log.warning('Unknown partiton bounds for %s, '
+                                  'cannot updated recovered data', part.name)
+                continue
+            bfp = BytesIO(self._data[bounds[0]:bounds[1]])
+            self._log.info('Updating partition %s with recover data', part.name)
+            part.load(bfp)
+        return fatal_cnt, err_cnt
+
+    def _compute_ecc_22_16(self, data: int) -> int:
+
+        data |= self.bit_parity(data & 0x00ad5b) << 16
+        data |= self.bit_parity(data & 0x00366d) << 17
+        data |= self.bit_parity(data & 0x00c78e) << 18
+        data |= self.bit_parity(data & 0x0007f0) << 19
+        data |= self.bit_parity(data & 0x00f800) << 20
+        data |= self.bit_parity(data & 0x1fffff) << 21
+
+        return (data & 0x3f0000) >> 16
+
+    def _decode_ecc_22_16(self, data: int, ecc: int) -> tuple[int, int]:
+        """Check and fix 16-bit data with 6 bits ECC.
+
+           :param data: a 16-bit integer
+           :return: 2-uple error, data, where err is
+                    0 if no error has been spotted
+                    1 if a single bit error has been detected and recovered
+                    -1 if a double bit error has been detected and not fixed
+        """
+        assert (data >> 16) == 0
+
+        idata = data | (ecc << 16)
+
+        synd_mask, synd_code = self.SYNDROME_HAMMING_22_16
+
+        syndrome = sum(1 << b for b, m in enumerate(synd_mask)
+                       if self.bit_parity(idata & m))
+
+        err = (syndrome >> 5) & 1
+        if not err:
+            err = -int(syndrome & 0x1f != 0)
+        if not err:
+            return 0, data
+
+        odata = sum(1 << b for b, s in enumerate(synd_code)
+                    if (syndrome == s) ^ ((idata >> b) & 1))
+
+        return err, odata
 
     def _load_header(self, bfp: BinaryIO) -> dict[str, Any]:
         hfmt = self.HEADER_FORMAT
@@ -318,3 +484,75 @@ class OtpImage:
         tail = bfp.tell() % padsize
         if tail:
             bfp.write(bytes(padsize-tail))
+
+    def _change_bits(self, bits: Sequence[tuple[int, int]],
+                     level: Optional[bool]) -> None:
+        granule = self._ecc_granule
+        bitgran = granule * 8
+        bitcount = bitgran + self._ecc_bits
+        ecclen = (self._ecc_bits + 7) // 8
+        for off, bit in bits:
+            off -= off % granule
+            if off > len(self._data):
+                raise ValueError(f'Invalid bit offset: 0x{off:x}')
+            if bit >= bitcount:
+                raise ValueError(f'Invalid bit position: {bit}')
+            if bit >= bitgran:  # ECC bit
+                eccoff = off//granule
+                if ecclen == 1:
+                    ecc = self._ecc[eccoff]
+                else:
+                    ecc = int.from_bytes(self._ecc[eccoff:eccoff+ecclen],
+                                         'little')
+                bitval = 1 << (bit - bitgran)
+                old = ecc
+                if level is None:
+                    ecc ^= bitval
+                elif level:
+                    ecc |= bitval
+                else:
+                    ecc &= ~bitval
+                self._log.info('Changed ECC bit %d @ 0x%x: 0x%x -> 0x%x',
+                               bit-bitgran, off, old, ecc)
+                if ecclen == 1:
+                    self._ecc[eccoff] = ecc
+                else:
+                    self._ecc[eccoff] = ecc.to_bytes(ecclen, 'little')
+                    ecc = int.from_bytes(self._ecc[eccoff:eccoff+ecclen],
+                                         'little')
+            else:  # Data bit
+                chunk = int.from_bytes(self._data[off:off+granule], 'little')
+                bitval = 1 << bit
+                old = chunk
+                if level is None:
+                    chunk ^= bitval
+                elif level:
+                    chunk |= bitval
+                else:
+                    chunk &= ~bitval
+                self._log.info('Changed data bit %d @ 0x%x: 0x%x -> 0x%x',
+                               bit, off, old, chunk)
+                self._data[off:off+granule] = chunk.to_bytes(granule, 'little')
+
+    def _get_partition_bounds(self, partref: Union[str|OtpPartition]) \
+            -> Optional[tuple[int, int]]:
+        if isinstance(partref, str):
+            name = partref
+        elif isinstance(partref, OtpPartition):
+            name = partref.name
+        else:
+            raise TypeError('Unsupported partition definition')
+        for pos, (part, start) in enumerate(zip(self._partitions,
+                                                self._part_offsets)):
+            if part.name == name:
+                return (start, self._part_offsets[pos+1])
+        return None
+
+    def _get_partition_at_offset(self, off: int) -> Optional[OtpPartition]:
+        for pos, (part, start) in enumerate(zip(self._partitions,
+                                                self._part_offsets)):
+            if off >= start:
+                end = self._part_offsets[pos+1]
+                if off < end:
+                    return part
+        return None

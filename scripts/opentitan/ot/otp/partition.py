@@ -32,7 +32,9 @@ class OtpPartitionDecoder:
 class OtpPartition:
     """Partition abstract base class.
 
-       :param params: initial partition attributes.
+       :param params: initial partition attributes. Those parameters are added
+                      to the instance dictionary, which means that most of the
+                      partition attributes are explicitly listed in __init__
     """
     # pylint: disable=no-member
 
