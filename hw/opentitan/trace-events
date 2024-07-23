@@ -373,8 +373,8 @@ ot_soc_proxy_update_irq(const char * id, unsigned n, int prev, int next) "%s: #%
 
 # ot_spi_device.c
 
-ot_spi_device_buf_read_out(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%02x, sz=%u, val=0x%x, pc=0x%x"
-ot_spi_device_buf_write_in(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%02x, sz=%u,  val=0x%x, pc=0x%x"
+ot_spi_device_buf_read_out(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%03x, sz=%u, val=0x%08x, pc=0x%x"
+ot_spi_device_buf_write_in(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%03x, sz=%u,  val=0x%08x, pc=0x%x"
 ot_spi_device_bus_change_state(int line, const char *state, int stateval) "@%d: %s [%d]"
 ot_spi_device_chr_cs_assert(unsigned count, bool release, char rx, char tx, const char *st) "0x%x bytes, /cs: %u, rx: %csb, tx: %csb, mode:%s"
 ot_spi_device_chr_error(const char *err) "%s"
@@ -384,7 +384,7 @@ ot_spi_device_flash_cross_buffer(const char *msg, uint32_t addr) "%s 0x%08x"
 ot_spi_device_flash_disabled_slot(uint8_t cmd, unsigned slot) "cmd 0x%02x matching disabled slot %u"
 ot_spi_device_flash_exec(const char *cmd) "%s"
 ot_spi_device_flash_ignored_command(const char* msg, uint8_t cmd) "%s cmd 0x%02x"
-ot_spi_device_flash_new_command(const char* type, uint8_t cmd, unsigned slot) "%s cmd 0x%02x slot %u"
+ot_spi_device_flash_new_command(const char* type, uint8_t cmd, unsigned slot) "%s CMD 0x%02X slot %u"
 ot_spi_device_flash_overflow(const char *msg) "%s"
 ot_spi_device_flash_pace(const char *msg, bool pending) "%s: %u"
 ot_spi_device_flash_payload(unsigned fpos, unsigned idx, unsigned len) "pos:%u idx:%u len:%u"

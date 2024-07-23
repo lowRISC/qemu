@@ -1123,7 +1123,7 @@ static void ot_spi_device_flash_decode_command(OtSPIDeviceState *s, uint8_t cmd)
                 f->slot = ix;
                 f->cmd_info = SHARED_FIELD_DP32(s->spi_regs[R_CMD_INFO_0 + ix],
                                                 CMD_INFO_OPCODE, cmd);
-                trace_ot_spi_device_flash_new_command("hw", cmd, f->slot);
+                trace_ot_spi_device_flash_new_command("HW", cmd, f->slot);
                 break;
             }
         }
@@ -1141,7 +1141,7 @@ static void ot_spi_device_flash_decode_command(OtSPIDeviceState *s, uint8_t cmd)
                     f->slot = ix;
                     f->cmd_info = val32;
                     trace_ot_spi_device_flash_new_command(
-                        f->type == SPI_FLASH_CMD_SW ? "sw" : "hw_cfg", cmd,
+                        f->type == SPI_FLASH_CMD_SW ? "SW" : "HW_CFG", cmd,
                         f->slot);
                     break;
                 }
@@ -1524,6 +1524,7 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
         f->len = 1u;
         FLASH_CHANGE_STATE(f, UP_DUMMY);
     } else if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
+        qemu_log("%s INPUT PAYLOAD as %08x\n", __func__, f->cmd_info);
         ot_spi_device_flash_init_payload(s);
     } else {
         s->spi_regs[R_UPLOAD_STATUS2] = 0;
@@ -1781,9 +1782,11 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
 
-    uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_io_spi_read_out((uint32_t)addr, SPI_REG_NAME(reg),
-                                        val32, pc);
+    if (reg != R_INTR_STATE || val32 != 0) {
+        uint32_t pc = ibex_get_current_pc();
+        trace_ot_spi_device_io_spi_read_out((uint32_t)addr, SPI_REG_NAME(reg),
+                                            val32, pc);
+    }
 
     return (uint64_t)val32;
 };
@@ -2101,7 +2104,6 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
         } else {
             val32 = s->sram[addr >> 2u];
         }
-
     } else {
         if (last < SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
             qemu_log_mask(LOG_GUEST_ERROR,
@@ -2126,6 +2128,12 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
             val32 = 0;
         }
     }
+
+    // TODO: check which buffers can only be accessed as 32-bit locations
+
+    unsigned addr_offset = (addr & 3u);
+    g_assert((addr_offset + size) <= 4u);
+    val32 >>= addr_offset << 3u;
 
     uint32_t pc = ibex_get_current_pc();
     trace_ot_spi_device_buf_read_out((uint32_t)addr, size, val32, pc);
@@ -2573,7 +2581,7 @@ static const MemoryRegionOps ot_spi_device_buf_ops = {
     .read_with_attrs = &ot_spi_device_buf_read_with_attrs,
     .write_with_attrs = &ot_spi_device_buf_write_with_attrs,
     .endianness = DEVICE_NATIVE_ENDIAN,
-    .impl.min_access_size = 4u,
+    .impl.min_access_size = 1u,
     .impl.max_access_size = 4u,
 };
 
