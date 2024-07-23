@@ -65,6 +65,7 @@ class SpiDevice:
         'SECTOR_ERASE': 0x20,
         'RESET1': 0x66,
         'RESET2': 0x99,
+        'CHECK_ANSWER': 0xca,
     }
     """Supported *25 SPI data flash device commands."""
 
@@ -284,6 +285,14 @@ class SpiDevice:
             self._mode |= 1 << 2
         else:
             self._mode &= ~(1 << 2)
+
+    def check_answer(self) -> None:
+        """Check is the remote peer has data to read.
+           This is a proprietary (i.e. non *25 series standard) command.
+
+           Caller should call wait_idle() till busy bit is released.
+        """
+        self.transmit(self.COMMANDS['CHECK_ANSWER'])
 
     @property
     def is_4b_addr(self) -> bool:
