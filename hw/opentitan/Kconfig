@@ -88,6 +88,9 @@ config OT_OTBN
     select OT_BIGNUMBER
 
 config OT_OTP
+    select OT_OTP_BE_IF
+
+config OT_OTP_BE_IF
     bool
 
 config OT_OTP_DJ
@@ -97,6 +100,10 @@ config OT_OTP_DJ
 
 config OT_OTP_EG
     select OT_OTP
+    bool
+
+config OT_OTP_OT_BE
+    select OT_OTP_BE_IF
     bool
 
 config OT_PINMUX_DJ

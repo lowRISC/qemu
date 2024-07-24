@@ -58,6 +58,7 @@
 #include "hw/opentitan/ot_mbx.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_dj.h"
+#include "hw/opentitan/ot_otp_ot_be.h"
 #include "hw/opentitan/ot_pinmux_dj.h"
 #include "hw/opentitan/ot_plic_ext.h"
 #include "hw/opentitan/ot_pwrmgr.h"
@@ -142,6 +143,7 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_MBX_PCIE1,
     OT_DJ_SOC_DEV_OTBN,
     OT_DJ_SOC_DEV_OTP_CTRL,
+    OT_DJ_SOC_DEV_OTP_BACKEND,
     OT_DJ_SOC_DEV_PINMUX,
     OT_DJ_SOC_DEV_PLIC,
     OT_DJ_SOC_DEV_PLIC_EXT,
@@ -1093,8 +1095,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .type = TYPE_OT_OTP_DJ,
         .cfg = &ot_dj_soc_otp_ctrl_configure,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x30130000u },
-            { .base = 0x30138000u }
+            { .base = 0x30130000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 69),
@@ -1107,10 +1108,20 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_RSP(OT_PWRMGR_OTP, PWRMGR)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("edn", EDN0)
+            OT_DJ_SOC_DEVLINK("edn", EDN0),
+            OT_DJ_SOC_DEVLINK("backend", OTP_BACKEND)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 1u)
+        ),
+    },
+    [OT_DJ_SOC_DEV_OTP_BACKEND] = {
+        .type = TYPE_OT_OTP_OT_BE,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x30138000u }
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("parent", OTP_CTRL)
         ),
     },
     [OT_DJ_SOC_DEV_LC_CTRL] = {

@@ -304,8 +304,6 @@ ot_otp_ecc_unrecoverable_error(uint32_t d_i) "0x%04x"
 ot_otp_initial_lifecycle(uint32_t lc_state, unsigned tcount) "lifecyle 0x%x, transition count %u"
 ot_otp_initialize(void) ""
 ot_otp_integrity_report(const char* part, unsigned pix, const char *msg) "partition %s (#%u) %s"
-ot_otp_io_csr_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_otp_io_csr_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_otp_io_reg_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_otp_io_reg_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_otp_io_swcfg_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
@@ -321,6 +319,11 @@ ot_otp_pwr_otp_req(const char *where) "%s"
 ot_otp_reset(void) ""
 ot_otp_set_error(const char *part, unsigned pix, const char* err, unsigned eix) "%s (#%u): %s (%u)"
 ot_otp_skip_digest(const char* part, unsigned pix) "skipping empty digest on %s (#%u)"
+
+# ot_otp_ot_be.c
+
+ot_otp_ot_be_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_otp_ot_be_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
 
 # ot_pinmux.c
 

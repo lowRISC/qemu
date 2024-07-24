@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
+#include "hw/opentitan/ot_otp_be_if.h"
 #include "hw/opentitan/ot_otp_dj.h"
 #include "hw/opentitan/ot_present.h"
 #include "hw/opentitan/ot_prng.h"
@@ -441,55 +442,6 @@ REG32(LC_STATE, 16344u)
      ALERT_FATAL_BUS_INTEG_ERROR_MASK | ALERT_FATAL_PRIM_OTP_ALERT_MASK | \
      ALERT_RECOV_PRIM_OTP_ALERT_MASK)
 
-/* clang-format off */
-REG32(CSR0, 0x0u)
-    FIELD(CSR0, FIELD0, 0u, 1u)
-    FIELD(CSR0, FIELD1, 1u, 1u)
-    FIELD(CSR0, FIELD2, 2u, 1u)
-    FIELD(CSR0, FIELD3, 4u, 10u)
-    FIELD(CSR0, FIELD4, 16u, 11u)
-REG32(CSR1, 0x4u)
-    FIELD(CSR1, FIELD0, 0u, 7u)
-    FIELD(CSR1, FIELD1, 7u, 1u)
-    FIELD(CSR1, FIELD2, 8u, 7u)
-    FIELD(CSR1, FIELD3, 15u, 1u)
-    FIELD(CSR1, FIELD4, 16u, 16u)
-REG32(CSR2, 0x8u)
-    FIELD(CSR2, FIELD0, 0u, 1u)
-REG32(CSR3, 0xcu)
-    FIELD(CSR3, FIELD0, 0u, 3u)
-    FIELD(CSR3, FIELD1, 4u, 10u)
-    FIELD(CSR3, FIELD2, 16u, 1u)
-    FIELD(CSR3, FIELD3, 17u, 1u)
-    FIELD(CSR3, FIELD4, 18u, 1u)
-    FIELD(CSR3, FIELD5, 19u, 1u)
-    FIELD(CSR3, FIELD6, 20u, 1u)
-    FIELD(CSR3, FIELD7, 21u, 1u)
-    FIELD(CSR3, FIELD8, 22u, 1u)
-REG32(CSR4, 0x10u)
-    FIELD(CSR4, FIELD0, 0u, 10u)
-    FIELD(CSR4, FIELD1, 12u, 1u)
-    FIELD(CSR4, FIELD2, 13u, 1u)
-    FIELD(CSR4, FIELD3, 14u, 1u)
-REG32(CSR5, 0x14u)
-    FIELD(CSR5, FIELD0, 0u, 6u)
-    FIELD(CSR5, FIELD1, 6u, 2u)
-    FIELD(CSR5, FIELD2, 8u, 1u)
-    FIELD(CSR5, FIELD3, 9u, 3u)
-    FIELD(CSR5, FIELD4, 12u, 1u)
-    FIELD(CSR5, FIELD5, 13u, 1u)
-    FIELD(CSR5, FIELD6, 16u, 16u)
-REG32(CSR6, 0x18u)
-    FIELD(CSR6, FIELD0, 0u, 10u)
-    FIELD(CSR6, FIELD1, 11u, 1u)
-    FIELD(CSR6, FIELD2, 12u, 1u)
-    FIELD(CSR6, FIELD3, 16u, 16u)
-REG32(CSR7, 0x1cu)
-    FIELD(CSR7, FIELD0, 0u, 6u)
-    FIELD(CSR7, FIELD1, 8u, 3u)
-    FIELD(CSR7, FIELD2, 14u, 1u)
-    FIELD(CSR7, FIELD3, 15u, 1u)
-/* clang-format on */
 
 #define SW_CFG_WINDOW      0x4000u
 #define SW_CFG_WINDOW_SIZE (NUM_SW_CFG_WINDOW_WORDS * sizeof(uint32_t))
@@ -501,12 +453,6 @@ REG32(CSR7, 0x1cu)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
-
-#define R_LAST_CSR (R_CSR7)
-#define CSRS_COUNT (R_LAST_CSR + 1u)
-#define CSRS_SIZE  (CSRS_COUNT * sizeof(uint32_t))
-#define CSR_NAME(_reg_) \
-    ((((_reg_) <= CSRS_COUNT) && CSR_NAMES[_reg_]) ? CSR_NAMES[_reg_] : "?")
 
 /* the following delays are arbitrary for now */
 #define DAI_READ_DELAY_NS   100000u /* 100us */
@@ -720,7 +666,6 @@ typedef struct {
     unsigned ecc_size; /* ecc buffer size in bytes */
     unsigned ecc_bit_count; /* count of ECC bit for each data granule */
     unsigned ecc_granule; /* size of a granule in bytes */
-    bool ecc_disabled;
     uint64_t digest_iv; /* Present digest IV */
     uint8_t digest_constant[16u]; /* Present digest finalization constant */
 } OtOTPStorage;
@@ -752,9 +697,6 @@ struct OtOTPDjState {
             MemoryRegion swcfg;
         } sub;
     } mmio;
-    struct {
-        MemoryRegion csrs;
-    } prim;
     QEMUBH *pwr_otp_bh;
     IbexIRQ irqs[NUM_IRQS];
     IbexIRQ alerts[NUM_ALERTS];
@@ -773,7 +715,8 @@ struct OtOTPDjState {
     OtOTPHWCfg *hw_cfg;
     OtOTPTokens *tokens;
 
-    BlockBackend *blk; /* OTP backend */
+    BlockBackend *blk; /* OTP host backend */
+    OtOtpBeIf *backend;
     OtEDNState *edn;
     uint8_t edn_ep;
 };
@@ -902,50 +845,24 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
-/* clang-format off */
-#define CSR_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
-static const char CSR_NAMES[CSRS_COUNT][6u] = {
-    CSR_NAME_ENTRY(CSR0),
-    CSR_NAME_ENTRY(CSR1),
-    CSR_NAME_ENTRY(CSR2),
-    CSR_NAME_ENTRY(CSR3),
-    CSR_NAME_ENTRY(CSR4),
-    CSR_NAME_ENTRY(CSR5),
-    CSR_NAME_ENTRY(CSR6),
-    CSR_NAME_ENTRY(CSR7),
-};
-#undef CSR_NAME_ENTRY
-
 #define OTP_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
 
 static const char *DAI_STATE_NAMES[] = {
-    OTP_NAME_ENTRY(OTP_DAI_RESET),
-    OTP_NAME_ENTRY(OTP_DAI_INIT_OTP),
-    OTP_NAME_ENTRY(OTP_DAI_INIT_PART),
-    OTP_NAME_ENTRY(OTP_DAI_IDLE),
-    OTP_NAME_ENTRY(OTP_DAI_ERROR),
-    OTP_NAME_ENTRY(OTP_DAI_READ),
-    OTP_NAME_ENTRY(OTP_DAI_READ_WAIT),
-    OTP_NAME_ENTRY(OTP_DAI_DESCR),
-    OTP_NAME_ENTRY(OTP_DAI_DESCR_WAIT),
-    OTP_NAME_ENTRY(OTP_DAI_WRITE),
-    OTP_NAME_ENTRY(OTP_DAI_WRITE_WAIT),
-    OTP_NAME_ENTRY(OTP_DAI_SCR),
-    OTP_NAME_ENTRY(OTP_DAI_SCR_WAIT),
-    OTP_NAME_ENTRY(OTP_DAI_DIG_CLR),
-    OTP_NAME_ENTRY(OTP_DAI_DIG_READ),
-    OTP_NAME_ENTRY(OTP_DAI_DIG_READ_WAIT),
-    OTP_NAME_ENTRY(OTP_DAI_DIG),
-    OTP_NAME_ENTRY(OTP_DAI_DIG_PAD),
-    OTP_NAME_ENTRY(OTP_DAI_DIG_FIN),
-    OTP_NAME_ENTRY(OTP_DAI_DIG_WAIT),
+    OTP_NAME_ENTRY(OTP_DAI_RESET),      OTP_NAME_ENTRY(OTP_DAI_INIT_OTP),
+    OTP_NAME_ENTRY(OTP_DAI_INIT_PART),  OTP_NAME_ENTRY(OTP_DAI_IDLE),
+    OTP_NAME_ENTRY(OTP_DAI_ERROR),      OTP_NAME_ENTRY(OTP_DAI_READ),
+    OTP_NAME_ENTRY(OTP_DAI_READ_WAIT),  OTP_NAME_ENTRY(OTP_DAI_DESCR),
+    OTP_NAME_ENTRY(OTP_DAI_DESCR_WAIT), OTP_NAME_ENTRY(OTP_DAI_WRITE),
+    OTP_NAME_ENTRY(OTP_DAI_WRITE_WAIT), OTP_NAME_ENTRY(OTP_DAI_SCR),
+    OTP_NAME_ENTRY(OTP_DAI_SCR_WAIT),   OTP_NAME_ENTRY(OTP_DAI_DIG_CLR),
+    OTP_NAME_ENTRY(OTP_DAI_DIG_READ),   OTP_NAME_ENTRY(OTP_DAI_DIG_READ_WAIT),
+    OTP_NAME_ENTRY(OTP_DAI_DIG),        OTP_NAME_ENTRY(OTP_DAI_DIG_PAD),
+    OTP_NAME_ENTRY(OTP_DAI_DIG_FIN),    OTP_NAME_ENTRY(OTP_DAI_DIG_WAIT),
 };
 
 static const char *LCI_STATE_NAMES[] = {
-    OTP_NAME_ENTRY(OTP_LCI_RESET),
-    OTP_NAME_ENTRY(OTP_LCI_IDLE),
-    OTP_NAME_ENTRY(OTP_LCI_WRITE),
-    OTP_NAME_ENTRY(OTP_LCI_WRITE_WAIT),
+    OTP_NAME_ENTRY(OTP_LCI_RESET), OTP_NAME_ENTRY(OTP_LCI_IDLE),
+    OTP_NAME_ENTRY(OTP_LCI_WRITE), OTP_NAME_ENTRY(OTP_LCI_WRITE_WAIT),
     OTP_NAME_ENTRY(OTP_LCI_ERROR),
 };
 
@@ -1126,7 +1043,10 @@ static bool ot_otp_dj_is_buffered(int partition)
 
 static bool ot_otp_dj_is_ecc_enabled(const OtOTPDjState *s)
 {
-    return s->otp->ecc_granule == sizeof(uint16_t) && !s->otp->ecc_disabled;
+    OtOtpBeIfClass *bec = OT_OTP_BE_IF_GET_CLASS(s->backend);
+
+    return s->otp->ecc_granule == sizeof(uint16_t) &&
+           bec->is_ecc_enabled(s->backend);
 }
 
 static bool ot_otp_dj_has_digest(unsigned partition)
@@ -2986,72 +2906,6 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     return MEMTX_OK;
 }
 
-static uint64_t ot_otp_dj_csr_read(void *opaque, hwaddr addr, unsigned size)
-{
-    (void)opaque;
-    (void)size;
-    uint32_t val32;
-
-    hwaddr reg = R32_OFF(addr);
-    switch (reg) {
-    case R_CSR0:
-    case R_CSR1:
-    case R_CSR2:
-    case R_CSR3:
-    case R_CSR4:
-    case R_CSR5:
-    case R_CSR6:
-    case R_CSR7:
-        /* TODO: not yet implemented */
-        val32 = 0;
-        break;
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
-        val32 = 0;
-        break;
-    }
-
-    uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_csr_read_out((uint32_t)addr, CSR_NAME(reg), val32, pc);
-
-    return (uint64_t)val32;
-}
-
-static void ot_otp_dj_csr_write(void *opaque, hwaddr addr, uint64_t value,
-                                unsigned size)
-{
-    (void)opaque;
-    (void)size;
-    uint32_t val32 = (uint32_t)value;
-
-    hwaddr reg = R32_OFF(addr);
-
-    uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_csr_write((uint32_t)addr, CSR_NAME(reg), val32, pc);
-
-    switch (reg) {
-    case R_CSR0:
-    case R_CSR1:
-    case R_CSR2:
-    case R_CSR3:
-    case R_CSR4:
-    case R_CSR5:
-    case R_CSR6:
-        /* TODO: not yet implemented */
-        break;
-    case R_CSR7:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, CSR_NAME(reg));
-        break;
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
-        break;
-    }
-}
-
 static void ot_otp_dj_decode_lc_partition(OtOTPDjState *s)
 {
     OtOTPStorage *otp = s->otp;
@@ -3698,6 +3552,8 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
 
 static Property ot_otp_dj_properties[] = {
     DEFINE_PROP_DRIVE("drive", OtOTPDjState, blk),
+    DEFINE_PROP_LINK("backend", OtOTPDjState, backend, TYPE_OT_OTP_BE_IF,
+                     OtOtpBeIf *),
     DEFINE_PROP_LINK("edn", OtOTPDjState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtOTPDjState, edn_ep, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
@@ -3713,14 +3569,6 @@ static const MemoryRegionOps ot_otp_dj_reg_ops = {
 
 static const MemoryRegionOps ot_otp_dj_swcfg_ops = {
     .read_with_attrs = &ot_otp_dj_swcfg_read_with_attrs,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-    .impl.min_access_size = 4,
-    .impl.max_access_size = 4,
-};
-
-static const MemoryRegionOps ot_otp_dj_csr_ops = {
-    .read = &ot_otp_dj_csr_read,
-    .write = &ot_otp_dj_csr_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
@@ -3790,8 +3638,6 @@ static void ot_otp_dj_reset(DeviceState *dev)
     DAI_CHANGE_STATE(s, OTP_DAI_RESET);
     LCI_CHANGE_STATE(s, OTP_LCI_RESET);
 
-    s->otp->ecc_disabled = false;
-
     qemu_bh_schedule(s->keygen->entropy_bh);
 }
 
@@ -3799,9 +3645,6 @@ static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
 {
     (void)errp;
     OtOTPDjState *s = OT_OTP_DJ(dev);
-
-    g_assert(s->edn);
-    g_assert(s->edn_ep != UINT8_MAX);
 
     ot_otp_dj_load(s, &error_fatal);
 }
@@ -3830,10 +3673,6 @@ static void ot_otp_dj_init(Object *obj)
                           TYPE_OT_OTP "-swcfg", SW_CFG_WINDOW_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, SW_CFG_WINDOW,
                                 &s->mmio.sub.swcfg);
-
-    memory_region_init_io(&s->prim.csrs, obj, &ot_otp_dj_csr_ops, s,
-                          TYPE_OT_OTP "-prim", CSRS_SIZE);
-    sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->prim.csrs);
 
     ibex_qdev_init_irq(obj, &s->pwc_otp_rsp, OT_PWRMGR_OTP_RSP);
 

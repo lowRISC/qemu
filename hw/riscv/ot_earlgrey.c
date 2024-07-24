@@ -51,6 +51,7 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_eg.h"
+#include "hw/opentitan/ot_otp_ot_be.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_plic_ext.h"
 #include "hw/opentitan/ot_pwrmgr.h"
@@ -121,6 +122,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_LC_CTRL,
     OT_EG_SOC_DEV_OTBN,
     OT_EG_SOC_DEV_OTP_CTRL,
+    OT_EG_SOC_DEV_OTP_BACKEND,
     OT_EG_SOC_DEV_PATTGEN,
     OT_EG_SOC_DEV_PINMUX,
     OT_EG_SOC_DEV_PLIC,
@@ -536,18 +538,27 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_OT_OTP_EG,
         .cfg = &ot_eg_soc_otp_ctrl_configure,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x40130000u },
-            { .base = 0x40132000u }
+            { .base = 0x40130000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 125),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 126)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0),
+            OT_EG_SOC_DEVLINK("backend", OTP_BACKEND)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 1u)
+        ),
+    },
+    [OT_EG_SOC_DEV_OTP_BACKEND] = {
+        .type = TYPE_OT_OTP_OT_BE,
+        .memmap = MEMMAPENTRIES(
+            { .base = 0x40132000u }
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("parent", OTP_CTRL)
         ),
     },
     [OT_EG_SOC_DEV_LC_CTRL] = {
