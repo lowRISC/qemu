@@ -270,7 +270,8 @@ class OtpImage:
                 print(f' * present iv       {self._digest_iv:016x}')
                 print(f' * present constant {self._digest_constant:032x}')
         for part in self._partitions:
-            part.decode(decode, wide, ofp)
+            base = self._get_partition_bounds(part)[0]
+            part.decode(base, decode, wide, ofp)
 
     def clear_bits(self, bitdefs: Sequence[tuple[int, int]]) -> None:
         """Clear one or more bits.

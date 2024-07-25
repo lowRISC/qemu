@@ -129,7 +129,7 @@ class OtpPartition:
         """Assign a custom value decoder."""
         self._decoder = decoder
 
-    def decode(self, decode: bool = True, wide: int = 0,
+    def decode(self, base: Optional[int], decode: bool = True, wide: int = 0,
                ofp: Optional[TextIO] = None) -> None:
         """Decode the content of the partition."""
         buf = BytesIO(self._data)
@@ -139,9 +139,11 @@ class OtpPartition:
         else:
             emit = self._log.info
         pname = self.name
+        offset = 0
         for itname, itdef in self.items.items():
             itsize = itdef['size']
             itvalue = buf.read(itsize)
+            soff = f'[{f"{base+offset:d}":>5s}]' if base is not None else ''
             if itname.startswith(f'{pname}_'):
                 name = f'{pname}:{itname[len(pname)+1:]}'
             else:
@@ -152,28 +154,30 @@ class OtpPartition:
                 if decode and self._decoder:
                     dval = self._decoder.decode(itname, sval)
                     if dval is not None:
-                        emit('%-46s (decoded) %s', name, dval)
+                        emit('%-48s %s (decoded) %s', name, soff, dval)
                         continue
                 if not sum(itvalue) and wide < 2:
-                    emit('%-46s [%d] 0...', name, itsize)
+                    emit('%-48s %s {%d} 0...', name, soff, itsize)
                 else:
                     if not wide and itsize > self.MAX_DATA_WIDTH:
                         sval = f'{sval[:self.MAX_DATA_WIDTH*2]}...'
-                    emit('%-46s [%d] %s', name, itsize, sval)
+                    emit('%-48s %s {%d} %s', name, soff, itsize, sval)
             else:
                 ival = int.from_bytes(itvalue, 'little')
                 if decode:
                     if itdef.get('ismubi'):
-                        emit('%-46s (decoded) %s',
-                             name, str(OtpMap.MUBI8_BOOLEANS.get(ival, ival)))
+                        emit('%-48s %s (decoded) %s',
+                             name, soff,
+                             str(OtpMap.MUBI8_BOOLEANS.get(ival, ival)))
                         continue
                     if itsize == 4 and ival in OtpMap.HARDENED_BOOLEANS:
-                        emit('%-46s (decoded) %s',
-                             name, str(OtpMap.HARDENED_BOOLEANS[ival]))
+                        emit('%-48s %s (decoded) %s',
+                             name, soff, str(OtpMap.HARDENED_BOOLEANS[ival]))
                         continue
-                emit('%-46s %x', name, ival)
+                emit('%-48s %s %x', name, soff, ival)
+            offset += itsize
         if self._digest_bytes is not None:
-            emit('%-46s %s', f'{pname}:DIGEST',
+            emit('%-48s %s %s', f'{pname}:DIGEST', soff,
                  hexlify(self._digest_bytes).decode())
 
 
