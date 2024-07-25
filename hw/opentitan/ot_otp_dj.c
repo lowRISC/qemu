@@ -720,6 +720,7 @@ typedef struct {
     unsigned ecc_size; /* ecc buffer size in bytes */
     unsigned ecc_bit_count; /* count of ECC bit for each data granule */
     unsigned ecc_granule; /* size of a granule in bytes */
+    bool ecc_disabled;
     uint64_t digest_iv; /* Present digest IV */
     uint8_t digest_constant[16u]; /* Present digest finalization constant */
 } OtOTPStorage;
@@ -754,7 +755,7 @@ struct OtOTPDjState {
     struct {
         MemoryRegion csrs;
     } prim;
-    QEMUBH *pwc_otp_bh;
+    QEMUBH *pwr_otp_bh;
     IbexIRQ irqs[NUM_IRQS];
     IbexIRQ alerts[NUM_ALERTS];
     IbexIRQ pwc_otp_rsp;
@@ -1020,6 +1021,8 @@ static const char *ERR_CODE_NAMES[] = {
          ERR_CODE_NAMES[(_err_)] : \
          "?")
 
+static void ot_otp_dj_dai_set_error(OtOTPDjState *s, OtOTPError err);
+
 static void
 ot_otp_dj_dai_change_state_line(OtOTPDjState *s, OtOTPDAIState state, int line);
 
@@ -1121,6 +1124,17 @@ static bool ot_otp_dj_is_buffered(int partition)
     return false;
 }
 
+static bool ot_otp_dj_is_ecc_enabled(const OtOTPDjState *s)
+{
+    return s->otp->ecc_granule == sizeof(uint16_t) && !s->otp->ecc_disabled;
+}
+
+static bool ot_otp_dj_has_digest(unsigned partition)
+{
+    return OtOTPPartDescs[partition].hw_digest ||
+           OtOTPPartDescs[partition].sw_digest;
+}
+
 static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 {
     /* This is it NUM_ERROR_ENTRIES */
@@ -1128,10 +1142,9 @@ static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 
     uint32_t errval = ((uint32_t)err) & 0x7;
     if (errval || errval != s->regs[R_ERR_CODE_0 + part]) {
-        trace_ot_otp_set_error(part, ERR_CODE_NAME(err), err);
+        trace_ot_otp_set_error(PART_NAME(part), part, ERR_CODE_NAME(err), err);
     }
     s->regs[R_ERR_CODE_0 + part] = errval;
-
 
     switch (err) {
     case OTP_MACRO_ERROR:
@@ -1182,7 +1195,7 @@ static uint32_t ot_otp_dj_get_status(const OtOTPDjState *s)
     return status;
 }
 
-static int ot_otp_dj_swcfg_get_part(hwaddr addr)
+static int ot_otp_dj_get_part_from_address(hwaddr addr)
 {
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
         const OtOTPPartDesc *part = &OtOTPPartDescs[ix];
@@ -1227,6 +1240,179 @@ static uint16_t ot_otp_dj_get_part_digest_offset(int part)
     }
 }
 
+static uint8_t ot_otp_dj_compute_ecc_u16(uint16_t data)
+{
+    uint32_t data_o = (uint32_t)data;
+
+    data_o |= __builtin_parity(data_o & 0x00ad5bu) << 16u;
+    data_o |= __builtin_parity(data_o & 0x00366du) << 17u;
+    data_o |= __builtin_parity(data_o & 0x00c78eu) << 18u;
+    data_o |= __builtin_parity(data_o & 0x0007f0u) << 19u;
+    data_o |= __builtin_parity(data_o & 0x00f800u) << 20u;
+    data_o |= __builtin_parity(data_o & 0x1fffffu) << 21u;
+
+    return (uint8_t)(data_o >> 16u);
+}
+
+static uint16_t ot_otp_dj_compute_ecc_u32(uint32_t data)
+{
+    uint16_t data_lo = (uint16_t)(data & UINT16_MAX);
+    uint16_t data_hi = (uint16_t)(data >> 16u);
+
+    uint16_t ecc_lo = (uint16_t)ot_otp_dj_compute_ecc_u16(data_lo);
+    uint16_t ecc_hi = (uint16_t)ot_otp_dj_compute_ecc_u16(data_hi);
+
+    return (ecc_hi << 8u) | ecc_lo;
+}
+
+static uint32_t ot_otp_dj_compute_ecc_u64(uint64_t data)
+{
+    uint32_t data_lo = (uint32_t)(data & UINT32_MAX);
+    uint32_t data_hi = (uint32_t)(data >> 32u);
+
+    uint32_t ecc_lo = (uint32_t)ot_otp_dj_compute_ecc_u32(data_lo);
+    uint32_t ecc_hi = (uint32_t)ot_otp_dj_compute_ecc_u32(data_hi);
+
+    return (ecc_hi << 16u) | ecc_lo;
+}
+
+static uint32_t ot_otp_dj_verify_ecc_22_16_u16(uint32_t data_i, unsigned *err_o)
+{
+    unsigned syndrome = 0u;
+
+    syndrome |= __builtin_parity(data_i & 0x01ad5bu) << 0u;
+    syndrome |= __builtin_parity(data_i & 0x02366du) << 1u;
+    syndrome |= __builtin_parity(data_i & 0x04c78eu) << 2u;
+    syndrome |= __builtin_parity(data_i & 0x0807f0u) << 3u;
+    syndrome |= __builtin_parity(data_i & 0x10f800u) << 4u;
+    syndrome |= __builtin_parity(data_i & 0x3fffffu) << 5u;
+
+    unsigned err = (syndrome >> 5u) & 1u;
+    if (!err && (syndrome & 0x1fu)) {
+        err = 2u;
+    }
+
+    *err_o = err;
+
+    if (!err) {
+        return data_i & UINT16_MAX;
+    }
+
+    uint32_t data_o = 0;
+
+#define OTP_ECC_RECOVER(_sy_, _di_, _ix_) \
+    ((unsigned)((syndrome == (_sy_)) ^ (bool)((_di_) & (1u << (_ix_)))) \
+     << (_ix_))
+
+    data_o |= OTP_ECC_RECOVER(0x23u, data_i, 0u);
+    data_o |= OTP_ECC_RECOVER(0x25u, data_i, 1u);
+    data_o |= OTP_ECC_RECOVER(0x26u, data_i, 2u);
+    data_o |= OTP_ECC_RECOVER(0x27u, data_i, 3u);
+    data_o |= OTP_ECC_RECOVER(0x29u, data_i, 4u);
+    data_o |= OTP_ECC_RECOVER(0x2au, data_i, 5u);
+    data_o |= OTP_ECC_RECOVER(0x2bu, data_i, 6u);
+    data_o |= OTP_ECC_RECOVER(0x2cu, data_i, 7u);
+    data_o |= OTP_ECC_RECOVER(0x2du, data_i, 8u);
+    data_o |= OTP_ECC_RECOVER(0x2eu, data_i, 9u);
+    data_o |= OTP_ECC_RECOVER(0x2fu, data_i, 10u);
+    data_o |= OTP_ECC_RECOVER(0x31u, data_i, 11u);
+    data_o |= OTP_ECC_RECOVER(0x32u, data_i, 12u);
+    data_o |= OTP_ECC_RECOVER(0x33u, data_i, 13u);
+    data_o |= OTP_ECC_RECOVER(0x34u, data_i, 14u);
+    data_o |= OTP_ECC_RECOVER(0x35u, data_i, 15u);
+
+#undef OTP_ECC_RECOVER
+
+    if (err > 1u) {
+        trace_ot_otp_ecc_unrecoverable_error(data_i & UINT16_MAX);
+    } else {
+        if ((data_i & UINT16_MAX) != data_o) {
+            trace_ot_otp_ecc_recovered_error(data_i & UINT16_MAX, data_o);
+        } else {
+            /* ECC bit is corrupted */
+            trace_ot_otp_ecc_parity_error(data_i & UINT16_MAX, data_i >> 16u);
+        }
+    }
+
+    return data_o;
+}
+
+static uint32_t ot_otp_dj_verify_ecc(uint32_t data, uint32_t ecc, unsigned *err)
+{
+    uint32_t data_lo_i, data_lo_o, data_hi_i, data_hi_o;
+    unsigned err_lo, err_hi;
+
+    data_lo_i = (data & 0xffffu) | ((ecc & 0xffu) << 16u);
+    data_lo_o = ot_otp_dj_verify_ecc_22_16_u16(data_lo_i, &err_lo);
+
+    data_hi_i = (data >> 16u) | (((ecc >> 8u) & 0xffu) << 16u);
+    data_hi_o = ot_otp_dj_verify_ecc_22_16_u16(data_hi_i, &err_hi);
+
+    *err |= err_lo | err_hi;
+
+    return (data_hi_o << 16u) | data_lo_o;
+}
+
+static uint64_t ot_otd_dj_verify_digest(OtOTPDjState *s, unsigned partition,
+                                        uint64_t digest, uint32_t ecc)
+{
+    uint32_t dig_lo = (uint32_t)(digest & UINT32_MAX);
+    uint32_t dig_hi = (uint32_t)(digest >> 32u);
+
+    unsigned err = 0;
+    if (ot_otp_dj_is_ecc_enabled(s)) {
+        dig_lo = ot_otp_dj_verify_ecc(dig_lo, ecc & 0xffffu, &err);
+        dig_hi = ot_otp_dj_verify_ecc(dig_hi, ecc >> 16u, &err);
+    }
+
+    digest = (((uint64_t)dig_hi) << 32u) | ((uint64_t)dig_lo);
+
+    if (err) {
+        OtOTPError otp_err =
+            (err > 1) ? OTP_MACRO_ECC_UNCORR_ERROR : OTP_MACRO_ECC_CORR_ERROR;
+        // Note: need to check if any caller could override the error/state
+        // in this case
+        ot_otp_dj_set_error(s, partition, otp_err);
+    }
+
+    return digest;
+}
+
+static int ot_otp_dj_apply_ecc(OtOTPDjState *s, unsigned partition)
+{
+    g_assert(ot_otp_dj_is_ecc_enabled(s));
+
+    unsigned start = OtOTPPartDescs[partition].offset >> 2u;
+    unsigned end =
+        (ot_otp_dj_is_buffered((int)partition) &&
+         ot_otp_dj_has_digest(partition)) ?
+            (unsigned)(OtOTPPartDescs[partition].digest_offset >> 2u) :
+            start + (unsigned)(OtOTPPartDescs[partition].size >> 2u);
+
+    g_assert(start < end && (end / sizeof(uint32_t)) < s->otp->data_size);
+    for (unsigned ix = start; ix < end; ix++) {
+        unsigned err = 0;
+        uint32_t *word = &s->otp->data[ix];
+        uint16_t ecc = ((const uint16_t *)s->otp->ecc)[ix];
+        *word = ot_otp_dj_verify_ecc(*word, (uint32_t)ecc, &err);
+        if (err) {
+            OtOTPError otp_err = (err > 1) ? OTP_MACRO_ECC_UNCORR_ERROR :
+                                             OTP_MACRO_ECC_CORR_ERROR;
+            // Note: need to check if any caller could override the error/state
+            // in this case
+            ot_otp_dj_set_error(s, partition, otp_err);
+            if (err > 1) {
+                trace_ot_otp_ecc_init_error(PART_NAME(partition), partition,
+                                            ix << 2u, *word, ecc);
+                s->partctrls[partition].failed = true;
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
 static uint64_t ot_otp_dj_get_part_digest(OtOTPDjState *s, int part)
 {
     g_assert(!ot_otp_dj_is_buffered(part));
@@ -1237,9 +1423,16 @@ static uint64_t ot_otp_dj_get_part_digest(OtOTPDjState *s, int part)
         return 0u;
     }
 
-    const uint8_t *base = (const uint8_t *)s->otp->data;
+    const uint8_t *data = (const uint8_t *)s->otp->data;
+    uint64_t digest = ldq_le_p(data + offset);
 
-    uint64_t digest = ldq_le_p(base + offset);
+    if (part != OTP_PART_VENDOR_TEST && ot_otp_dj_is_ecc_enabled(s)) {
+        unsigned waddr = offset >> 2u;
+        unsigned ewaddr = waddr >> 1u;
+        g_assert(ewaddr < s->otp->ecc_size);
+        uint32_t ecc = s->otp->ecc[ewaddr];
+        digest = ot_otd_dj_verify_digest(s, (unsigned)part, digest, ecc);
+    }
 
     return digest;
 }
@@ -1485,18 +1678,26 @@ static uint64_t ot_otp_dj_compute_partition_digest(
     return state;
 }
 
-static uint64_t ot_otp_dj_load_partition_digest(OtOTPDjState *s, unsigned pos)
+static uint64_t
+ot_otp_dj_load_partition_digest(OtOTPDjState *s, unsigned partition)
 {
-    if ((pos + sizeof(uint64_t)) > s->otp->data_size) {
+    unsigned digoff = (unsigned)OtOTPPartDescs[partition].digest_offset;
+
+    if ((digoff + sizeof(uint64_t)) > s->otp->data_size) {
         error_setg(&error_fatal, "Partition located outside storage?\n");
         /* linter doest not know the above call never returns */
         return 0u;
     }
 
-    const uint8_t *base = (const uint8_t *)s->otp->data;
-    base += pos;
+    const uint8_t *data = (const uint8_t *)s->otp->data;
+    uint64_t digest = ldq_le_p(data + digoff);
 
-    uint64_t digest = ldq_le_p(base);
+    if (ot_otp_dj_is_ecc_enabled(s)) {
+        unsigned ewaddr = (digoff >> 3u);
+        g_assert(ewaddr < s->otp->ecc_size);
+        uint32_t ecc = s->otp->ecc[ewaddr];
+        digest = ot_otd_dj_verify_digest(s, partition, digest, ecc);
+    }
 
     return digest;
 }
@@ -1508,9 +1709,7 @@ static void ot_otp_dj_bufferize_partition(OtOTPDjState *s, unsigned ix)
     g_assert(pctrl->buffer.data != NULL);
 
     if (OtOTPPartDescs[ix].hw_digest) {
-        unsigned digest_offset = (unsigned)OtOTPPartDescs[ix].digest_offset;
-        pctrl->buffer.digest =
-            ot_otp_dj_load_partition_digest(s, digest_offset);
+        pctrl->buffer.digest = ot_otp_dj_load_partition_digest(s, ix);
     } else {
         pctrl->buffer.digest = 0;
     }
@@ -1562,6 +1761,12 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
 static void ot_otp_dj_initialize_partitions(OtOTPDjState *s)
 {
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
+        if (ot_otp_dj_is_ecc_enabled(s) && ix != OTP_PART_VENDOR_TEST) {
+            if (ot_otp_dj_apply_ecc(s, ix)) {
+                continue;
+            }
+        }
+
         if (OtOTPPartDescs[ix].sw_digest) {
             uint64_t digest = ot_otp_dj_get_part_digest(s, (int)ix);
             s->partctrls[ix].locked = digest != 0;
@@ -1581,7 +1786,7 @@ static bool ot_otp_dj_is_backend_writable(OtOTPDjState *s)
     return (s->blk != NULL) && blk_is_writable(s->blk);
 }
 
-static inline int ot_otp_dj_write_backend(OtOTPDjState *s, void *buffer,
+static inline int ot_otp_dj_write_backend(OtOTPDjState *s, const void *buffer,
                                           unsigned offset, size_t size)
 {
     /*
@@ -1635,7 +1840,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
 
     unsigned address = s->regs[R_DIRECT_ACCESS_ADDRESS];
 
-    int partition = ot_otp_dj_swcfg_get_part(address);
+    int partition = ot_otp_dj_get_part_from_address(address);
 
     if (partition < 0) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
@@ -1656,22 +1861,60 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
     bool is_readable = ot_otp_dj_is_readable(s, partition);
     bool is_wide = ot_otp_dj_is_wide_granule(partition, address);
 
-    unsigned waddr = address >> 2u;
-
     /* "in all partitions, the digest itself is ALWAYS readable." */
     if (!is_digest && !is_readable) {
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
+    unsigned waddr = address >> 2u;
+    bool do_ecc =
+        (partition != OTP_PART_VENDOR_TEST) && ot_otp_dj_is_ecc_enabled(s);
+
     DAI_CHANGE_STATE(s, OTP_DAI_READ_WAIT);
+
+    uint32_t data_lo, data_hi;
+    unsigned err = 0;
+
     if (is_wide || is_digest) {
         waddr &= ~0b1u;
-        s->regs[R_DIRECT_ACCESS_RDATA_0] = s->otp->data[waddr];
-        s->regs[R_DIRECT_ACCESS_RDATA_1] = s->otp->data[waddr + 1u];
+        data_lo = s->otp->data[waddr];
+        data_hi = s->otp->data[waddr + 1u];
+
+        if (do_ecc) {
+            unsigned ewaddr = waddr >> 1u;
+            g_assert(ewaddr < s->otp->ecc_size);
+            uint32_t ecc = s->otp->ecc[ewaddr];
+            if (ot_otp_dj_is_ecc_enabled(s)) {
+                data_lo = ot_otp_dj_verify_ecc(data_lo, ecc & 0xffffu, &err);
+                data_hi = ot_otp_dj_verify_ecc(data_hi, ecc >> 16u, &err);
+            }
+        }
     } else {
-        s->regs[R_DIRECT_ACCESS_RDATA_0] = s->otp->data[waddr];
-        s->regs[R_DIRECT_ACCESS_RDATA_1] = 0;
+        data_lo = s->otp->data[waddr];
+        data_hi = 0u;
+
+        if (do_ecc) {
+            unsigned ewaddr = waddr >> 1u;
+            g_assert(ewaddr < s->otp->ecc_size);
+            uint32_t ecc = s->otp->ecc[ewaddr];
+            if (waddr & 1u) {
+                ecc >>= 16u;
+            }
+            if (ot_otp_dj_is_ecc_enabled(s)) {
+                data_lo = ot_otp_dj_verify_ecc(data_lo, ecc & 0xffffu, &err);
+            }
+        }
+    }
+
+    s->regs[R_DIRECT_ACCESS_RDATA_0] = data_lo;
+    s->regs[R_DIRECT_ACCESS_RDATA_1] = data_hi;
+
+    if (err) {
+        OtOTPError otp_err =
+            (err > 1) ? OTP_MACRO_ECC_UNCORR_ERROR : OTP_MACRO_ECC_CORR_ERROR;
+        ot_otp_dj_dai_set_error(s, otp_err);
+        return;
     }
 
     if (!ot_otp_dj_is_buffered(partition)) {
@@ -1681,6 +1924,115 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
     } else {
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
     }
+}
+
+static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
+{
+    unsigned waddr = (address / sizeof(uint32_t)) & ~1u;
+    uint32_t *dst = &s->otp->data[waddr];
+
+    uint32_t dst_lo = dst[0u];
+    uint32_t dst_hi = dst[1u];
+
+    uint32_t lo = s->regs[R_DIRECT_ACCESS_WDATA_0];
+    uint32_t hi = s->regs[R_DIRECT_ACCESS_WDATA_1];
+
+    if ((dst_lo & ~lo) || (dst_hi & ~hi)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n", __func__);
+        ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
+    }
+
+    dst[0u] |= lo;
+    dst[1u] |= hi;
+
+    uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
+    if (ot_otp_dj_write_backend(s, dst,
+                                (unsigned)(offset + waddr * sizeof(uint32_t)),
+                                sizeof(uint64_t))) {
+        error_report("%s: cannot update OTP backend", __func__);
+        ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
+        return -1;
+    }
+
+    if (ot_otp_dj_is_ecc_enabled(s)) {
+        unsigned ewaddr = waddr >> 1u;
+        g_assert(ewaddr < s->otp->ecc_size);
+        uint32_t *edst = &s->otp->ecc[ewaddr];
+
+        uint32_t ecc_lo = (uint32_t)ot_otp_dj_compute_ecc_u32(lo);
+        uint32_t ecc_hi = (uint32_t)ot_otp_dj_compute_ecc_u32(hi);
+        uint32_t ecc = (ecc_hi << 16u) | ecc_lo;
+
+        if (*edst & ~ecc) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP ECC bits\n",
+                          __func__);
+            ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
+        }
+        *edst |= ecc;
+
+        offset = (uintptr_t)s->otp->ecc - (uintptr_t)s->otp->storage;
+        if (ot_otp_dj_write_backend(s, edst, (unsigned)(offset + (waddr << 1u)),
+                                    sizeof(uint32_t))) {
+            error_report("%s: cannot update OTP backend", __func__);
+            ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
+            return -1;
+        }
+
+        trace_ot_otp_dai_new_dword_ecc(PART_NAME(s->dai->partition),
+                                       s->dai->partition, *dst, *edst);
+    }
+
+    return 0;
+}
+
+static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
+{
+    unsigned waddr = address / sizeof(uint32_t);
+    uint32_t *dst = &s->otp->data[waddr];
+    uint32_t data = s->regs[R_DIRECT_ACCESS_WDATA_0];
+
+    if (*dst & ~data) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n", __func__);
+        ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
+    }
+
+    *dst |= data;
+
+    uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
+    if (ot_otp_dj_write_backend(s, dst,
+                                (unsigned)(offset + waddr * sizeof(uint32_t)),
+                                sizeof(uint32_t))) {
+        error_report("%s: cannot update OTP backend", __func__);
+        ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
+        return -1;
+    }
+
+    if (ot_otp_dj_is_ecc_enabled(s)) {
+        g_assert((waddr >> 1u) < s->otp->ecc_size);
+        uint16_t *edst = &((uint16_t *)s->otp->ecc)[waddr];
+        uint16_t ecc = ot_otp_dj_compute_ecc_u32(*dst);
+
+        if (*edst & ~ecc) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP ECC bits\n",
+                          __func__);
+            ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
+        }
+        *edst |= ecc;
+
+        offset = (uintptr_t)s->otp->ecc - (uintptr_t)s->otp->storage;
+        if (ot_otp_dj_write_backend(s, edst,
+                                    (unsigned)(offset + (address >> 1u)),
+                                    sizeof(uint16_t))) {
+            error_report("%s: cannot update OTP backend", __func__);
+            ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
+            return -1;
+        }
+
+        trace_ot_otp_dai_new_word_ecc(PART_NAME(s->dai->partition),
+                                      s->dai->partition, *dst, *edst);
+    }
+
+    return 0;
 }
 
 static void ot_otp_dj_dai_write(OtOTPDjState *s)
@@ -1704,7 +2056,7 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
 
     unsigned address = s->regs[R_DIRECT_ACCESS_ADDRESS];
 
-    int partition = ot_otp_dj_swcfg_get_part(address);
+    int partition = ot_otp_dj_get_part_from_address(address);
 
     if (partition < 0) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
@@ -1753,48 +2105,14 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
         }
     }
 
-    unsigned waddr = address >> 2u;
-    unsigned size;
     if (is_wide || is_digest) {
-        waddr &= ~0b1u;
-        size = sizeof(uint64_t);
-
-        uint32_t dst_lo = s->otp->data[waddr];
-        uint32_t dst_hi = s->otp->data[waddr + 1u];
-
-        uint32_t lo = s->regs[R_DIRECT_ACCESS_WDATA_0];
-        uint32_t hi = s->regs[R_DIRECT_ACCESS_WDATA_1];
-
-        if ((dst_lo & ~lo) || (dst_hi & ~hi)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n",
-                          __func__);
-            ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
+        if (ot_otp_dj_dai_write_u64(s, address)) {
+            return;
         }
-
-        s->otp->data[waddr] = lo;
-        s->otp->data[waddr + 1u] = hi;
     } else {
-        size = sizeof(uint32_t);
-
-        uint32_t dst = s->otp->data[waddr];
-        uint32_t data = s->regs[R_DIRECT_ACCESS_WDATA_0];
-
-        if (dst & ~data) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n",
-                          __func__);
-            ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
+        if (ot_otp_dj_dai_write_u32(s, address)) {
+            return;
         }
-
-        s->otp->data[waddr] = data;
-    }
-
-    uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
-    if (ot_otp_dj_write_backend(s, &s->otp->data[waddr],
-                                (unsigned)(offset + waddr * sizeof(uint32_t)),
-                                size)) {
-        error_report("%s: cannot update OTP backend", __func__);
-        ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
-        return;
     }
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
@@ -1825,7 +2143,7 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 
     unsigned address = s->regs[R_DIRECT_ACCESS_ADDRESS];
 
-    int partition = ot_otp_dj_swcfg_get_part(address);
+    int partition = ot_otp_dj_get_part_from_address(address);
 
     if (partition < 0) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
@@ -1911,19 +2229,45 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
     pctrl->buffer.next_digest = 0;
 
     if (*dst & ~data) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP data bits\n",
+                      __func__);
         ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
-    } else {
-        *dst |= data;
     }
+    *dst |= data;
 
-    uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
+    uintptr_t offset;
+    offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
     if (ot_otp_dj_write_backend(s, dst, (unsigned)(offset + address),
                                 sizeof(uint64_t))) {
         error_report("%s: cannot update OTP backend", __func__);
         ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
         return;
     }
+
+    uint32_t ecc = ot_otp_dj_compute_ecc_u64(data);
+
+    // dwaddr is 64-bit based, convert it to 32-bit base for ECC
+    unsigned ewaddr = (dwaddr << 1u) / s->otp->ecc_granule;
+    g_assert(ewaddr < s->otp->ecc_size);
+    uint32_t *edst = &s->otp->ecc[ewaddr];
+
+    if (*edst & ~ecc) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP ECC bits\n",
+                      __func__);
+        ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
+    }
+    *edst |= ecc;
+
+    offset = (uintptr_t)s->otp->ecc - (uintptr_t)s->otp->storage;
+    if (ot_otp_dj_write_backend(s, edst, (unsigned)(offset + (ewaddr << 2u)),
+                                sizeof(uint32_t))) {
+        error_report("%s: cannot update OTP backend", __func__);
+        ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
+        return;
+    }
+
+    trace_ot_otp_dai_new_digest_ecc(PART_NAME(s->dai->partition),
+                                    s->dai->partition, *dst, *edst);
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
@@ -2601,7 +2945,7 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     g_assert(addr + size <= SW_CFG_WINDOW_SIZE);
 
     hwaddr reg = R32_OFF(addr);
-    int partition = ot_otp_dj_swcfg_get_part(addr);
+    int partition = ot_otp_dj_get_part_from_address(addr);
 
     if (partition < 0) {
         trace_ot_otp_access_error_on(partition, addr, "invalid");
@@ -3069,15 +3413,28 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
          * has failed, update the backend file
          */
         const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
-        unsigned lc_data_off = lcdesc->offset / sizeof(uint32_t);
+        unsigned lc_off = lcdesc->offset / sizeof(uint32_t);
         uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
-        if (ot_otp_dj_write_backend(s, &s->otp->data[lc_data_off],
+        if (ot_otp_dj_write_backend(s, &s->otp->data[lc_off],
                                     (unsigned)(offset + lcdesc->offset),
                                     lcdesc->size)) {
             error_report("%s: cannot update OTP backend", __func__);
             if (lci->error == OTP_NO_ERROR) {
                 lci->error = OTP_MACRO_ERROR;
                 LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
+            }
+        }
+        if (ot_otp_dj_is_ecc_enabled(s)) {
+            offset = (uintptr_t)s->otp->ecc - (uintptr_t)s->otp->storage;
+            if (ot_otp_dj_write_backend(s, &((uint16_t *)&s->otp->ecc)[lc_off],
+                                        (unsigned)(offset +
+                                                   (lcdesc->offset >> 1u)),
+                                        lcdesc->size >> 1u)) {
+                error_report("%s: cannot update OTP backend", __func__);
+                if (lci->error == OTP_NO_ERROR) {
+                    lci->error = OTP_MACRO_ERROR;
+                    LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
+                }
             }
         }
     }
@@ -3159,6 +3516,28 @@ static void ot_otp_dj_lci_write_word(void *opaque)
     }
 
     lc_dst[lci->hpos] = new_val;
+
+    if (ot_otp_dj_is_ecc_enabled(s)) {
+        uint8_t *lc_edst =
+            (uint8_t *)&s->otp->ecc[lcdesc->offset / (2u * sizeof(uint32_t))];
+        uint8_t cur_ecc = lc_edst[lci->hpos];
+        uint8_t new_ecc = ot_otp_dj_compute_ecc_u16(new_val);
+
+        trace_ot_otp_lci_write_ecc(lci->hpos, cur_ecc, new_ecc);
+
+        if (cur_ecc & ~new_ecc) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Cannot clear OTP ECC @ %u: 0x%02x / 0x%02x\n",
+                          __func__, lci->hpos, cur_ecc, new_ecc);
+            if (lci->error == OTP_NO_ERROR) {
+                lci->error = OTP_MACRO_WRITE_BLANK_ERROR;
+            }
+            new_ecc |= cur_ecc;
+        }
+
+        lc_edst[lci->hpos] = new_ecc;
+    }
+
     lci->hpos += 1;
 
     timer_mod(lci->prog_delay,
@@ -3175,7 +3554,7 @@ static void ot_otp_dj_pwr_otp_req(void *opaque, int n, int level)
 
     if (level) {
         trace_ot_otp_pwr_otp_req("signaled");
-        qemu_bh_schedule(s->pwc_otp_bh);
+        qemu_bh_schedule(s->pwr_otp_bh);
     }
 }
 
@@ -3257,7 +3636,7 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
     memset(otp->storage, 0, otp_size);
 
     otp->data = (uint32_t *)(base + sizeof(struct otp_header));
-    otp->ecc = NULL;
+    otp->ecc = (uint32_t *)(base + sizeof(struct otp_header) + data_size);
     otp->ecc_bit_count = 0u;
     otp->ecc_granule = 0u;
     memset(&otp->digest_iv, 0, sizeof(otp->digest_iv));
@@ -3288,8 +3667,6 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
             return;
         }
 
-        trace_ot_otp_load_backend(otp_hdr->version, write ? "R/W" : "R/O");
-
         uintptr_t data_offset = otp_hdr->hlength + 8u; /* magic & length */
         uintptr_t ecc_offset = data_offset + otp_hdr->data_len;
 
@@ -3297,6 +3674,17 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
         otp->ecc = (uint32_t *)(base + ecc_offset);
         otp->ecc_bit_count = otp_hdr->eccbits;
         otp->ecc_granule = otp_hdr->eccgran;
+
+        if (s->otp->ecc_bit_count == 6u && ot_otp_dj_is_ecc_enabled(s)) {
+        } else {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: support for ECC %u/%u not implemented\n",
+                          __func__, s->otp->ecc_granule, s->otp->ecc_bit_count);
+        }
+
+        trace_ot_otp_load_backend(otp_hdr->version, write ? "R/W" : "R/O",
+                                  otp->ecc_bit_count, otp->ecc_granule);
+
         if (otp_hdr->version > 1u) {
             otp->digest_iv = ldq_le_p(otp_hdr->digest_iv);
             memcpy(otp->digest_constant, otp_hdr->digest_constant,
@@ -3402,6 +3790,8 @@ static void ot_otp_dj_reset(DeviceState *dev)
     DAI_CHANGE_STATE(s, OTP_DAI_RESET);
     LCI_CHANGE_STATE(s, OTP_LCI_RESET);
 
+    s->otp->ecc_disabled = false;
+
     qemu_bh_schedule(s->keygen->entropy_bh);
 }
 
@@ -3486,7 +3876,7 @@ static void ot_otp_dj_init(Object *obj)
     s->lci->prog_delay =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_lci_write_word, s);
     s->lci->prog_bh = qemu_bh_new(&ot_otp_dj_lci_write_word, s);
-    s->pwc_otp_bh = qemu_bh_new(&ot_otp_dj_pwr_otp_bh, s);
+    s->pwr_otp_bh = qemu_bh_new(&ot_otp_dj_pwr_otp_bh, s);
     s->lc_broadcast.bh = qemu_bh_new(&ot_otp_dj_lc_broadcast_bh, s);
     s->keygen->entropy_bh = qemu_bh_new(&ot_otp_dj_request_entropy_bh, s);
 
