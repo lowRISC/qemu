@@ -716,7 +716,7 @@ struct OtOTPDjState {
     OtOTPTokens *tokens;
 
     BlockBackend *blk; /* OTP host backend */
-    OtOtpBeIf *backend;
+    OtOtpBeIf *otp_backend; /* may be NULL */
     OtEDNState *edn;
     uint8_t edn_ep;
 };
@@ -1041,12 +1041,24 @@ static bool ot_otp_dj_is_buffered(int partition)
     return false;
 }
 
+static bool ot_otp_dj_is_backend_ecc_enabled(const OtOTPDjState *s)
+{
+    if (!s->otp_backend) {
+        return true;
+    }
+
+    OtOtpBeIfClass *bec = OT_OTP_BE_IF_GET_CLASS(s->otp_backend);
+    if (!bec->is_ecc_enabled) {
+        return true;
+    }
+
+    return bec->is_ecc_enabled(s->otp_backend);
+}
+
 static bool ot_otp_dj_is_ecc_enabled(const OtOTPDjState *s)
 {
-    OtOtpBeIfClass *bec = OT_OTP_BE_IF_GET_CLASS(s->backend);
-
     return s->otp->ecc_granule == sizeof(uint16_t) &&
-           bec->is_ecc_enabled(s->backend);
+           ot_otp_dj_is_backend_ecc_enabled(s);
 }
 
 static bool ot_otp_dj_has_digest(unsigned partition)
@@ -3483,6 +3495,7 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
 
     OtOTPStorage *otp = s->otp;
 
+    /* always allocates the requested size even if blk is NULL */
     otp->storage = blk_blockalign(s->blk, otp_size);
     uintptr_t base = (uintptr_t)otp->storage;
     g_assert(!(base & (sizeof(uint64_t) - 1u)));
@@ -3501,6 +3514,7 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
         uint64_t perm = BLK_PERM_CONSISTENT_READ | (write ? BLK_PERM_WRITE : 0);
         if (blk_set_perm(s->blk, perm, perm, errp)) {
             warn_report("%s: OTP backend is R/O", __func__);
+            write = false;
         }
 
         int rc = blk_pread(s->blk, 0, (int64_t)otp_size, otp->storage, 0);
@@ -3529,11 +3543,10 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
         otp->ecc_bit_count = otp_hdr->eccbits;
         otp->ecc_granule = otp_hdr->eccgran;
 
-        if (s->otp->ecc_bit_count == 6u && ot_otp_dj_is_ecc_enabled(s)) {
-        } else {
+        if (otp->ecc_bit_count != 6u || !ot_otp_dj_is_ecc_enabled(s)) {
             qemu_log_mask(LOG_UNIMP,
                           "%s: support for ECC %u/%u not implemented\n",
-                          __func__, s->otp->ecc_granule, s->otp->ecc_bit_count);
+                          __func__, otp->ecc_granule, otp->ecc_bit_count);
         }
 
         trace_ot_otp_load_backend(otp_hdr->version, write ? "R/W" : "R/O",
@@ -3552,7 +3565,7 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
 
 static Property ot_otp_dj_properties[] = {
     DEFINE_PROP_DRIVE("drive", OtOTPDjState, blk),
-    DEFINE_PROP_LINK("backend", OtOTPDjState, backend, TYPE_OT_OTP_BE_IF,
+    DEFINE_PROP_LINK("backend", OtOTPDjState, otp_backend, TYPE_OT_OTP_BE_IF,
                      OtOtpBeIf *),
     DEFINE_PROP_LINK("edn", OtOTPDjState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtOTPDjState, edn_ep, UINT8_MAX),

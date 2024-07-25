@@ -388,7 +388,7 @@ struct OtOTPEgState {
     OtOTPEntropyCfg *entropy_cfg;
 
     BlockBackend *blk; /* OTP host backend */
-    OtOtpBeIf *backend;
+    OtOtpBeIf *otp_backend;
     OtEDNState *edn;
     uint8_t edn_ep;
 };
@@ -1082,7 +1082,7 @@ ot_otp_eg_ctrl_get_entropy_cfg(const OtOTPState *s)
 
 static Property ot_otp_eg_properties[] = {
     DEFINE_PROP_DRIVE("drive", OtOTPEgState, blk),
-    DEFINE_PROP_LINK("backend", OtOTPEgState, backend, TYPE_OT_OTP_BE_IF,
+    DEFINE_PROP_LINK("backend", OtOTPEgState, otp_backend, TYPE_OT_OTP_BE_IF,
                      OtOtpBeIf *),
     DEFINE_PROP_LINK("edn", OtOTPEgState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtOTPEgState, edn_ep, UINT8_MAX),
