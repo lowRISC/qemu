@@ -387,6 +387,7 @@ struct OtOTPEgState {
     OtOTPHWCfg *hw_cfg;
     OtOTPEntropyCfg *entropy_cfg;
 
+    char *ot_id;
     BlockBackend *blk; /* OTP host backend */
     OtOtpBeIf *otp_backend;
     OtEDNState *edn;
@@ -760,7 +761,8 @@ static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_reg_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                                 pc);
 
     return (uint64_t)val32;
 }
@@ -775,7 +777,8 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_reg_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                              pc);
 
     switch (reg) {
     case R_INTR_STATE:
@@ -962,18 +965,19 @@ static uint64_t ot_otp_eg_swcfg_read(void *opaque, hwaddr addr, unsigned size)
             ot_otp_eg_set_error(s, partition, OTP_NO_ERROR);
         } else {
             val32 = 0u;
-            trace_ot_otp_access_error_on(partition, addr, "not readable");
+            trace_ot_otp_access_error_on(s->ot_id, partition, addr,
+                                         "not readable");
             ot_otp_eg_set_error(s, partition, OTP_ACCESS_ERROR);
         }
     } else {
-        trace_ot_otp_access_error_on(partition, addr, "invalid");
+        trace_ot_otp_access_error_on(s->ot_id, partition, addr, "invalid");
         val32 = 0;
     }
 
     uint64_t pc;
 
     pc = ibex_get_current_pc();
-    trace_ot_otp_io_swcfg_read_out((uint32_t)addr,
+    trace_ot_otp_io_swcfg_read_out(s->ot_id, (uint32_t)addr,
                                    ot_otp_eg_swcfg_reg_name(reg), val32, pc);
 
     return (uint64_t)val32;
@@ -1012,7 +1016,7 @@ static void ot_otp_eg_decode_lc_partition(OtOTPEgState *s)
             break;
         }
     }
-    trace_ot_otp_initial_lifecycle(s->lc.state, s->lc.tcount);
+    trace_ot_otp_initial_lifecycle(s->ot_id, s->lc.state, s->lc.tcount);
 }
 
 static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
@@ -1081,6 +1085,7 @@ ot_otp_eg_ctrl_get_entropy_cfg(const OtOTPState *s)
 }
 
 static Property ot_otp_eg_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtOTPEgState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPEgState, blk),
     DEFINE_PROP_LINK("backend", OtOTPEgState, otp_backend, TYPE_OT_OTP_BE_IF,
                      OtOtpBeIf *),
@@ -1203,7 +1208,7 @@ static void ot_otp_eg_reset(DeviceState *dev)
 {
     OtOTPEgState *s = OT_OTP_EG(dev);
 
-    trace_ot_otp_reset();
+    trace_ot_otp_reset(s->ot_id);
 
     timer_del(s->dai_delay);
 
@@ -1226,6 +1231,10 @@ static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
 {
     OtOTPEgState *s = OT_OTP_EG(dev);
     (void)errp;
+
+    if (!s->ot_id) {
+        s->ot_id = g_strdup("otp");
+    }
 
     ot_otp_eg_load(s, &error_fatal);
 }

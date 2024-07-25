@@ -715,6 +715,7 @@ struct OtOTPDjState {
     OtOTPHWCfg *hw_cfg;
     OtOTPTokens *tokens;
 
+    char *ot_id;
     BlockBackend *blk; /* OTP host backend */
     OtOtpBeIf *otp_backend; /* may be NULL */
     OtEDNState *edn;
@@ -1074,7 +1075,8 @@ static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 
     uint32_t errval = ((uint32_t)err) & 0x7;
     if (errval || errval != s->regs[R_ERR_CODE_0 + part]) {
-        trace_ot_otp_set_error(PART_NAME(part), part, ERR_CODE_NAME(err), err);
+        trace_ot_otp_set_error(s->ot_id, PART_NAME(part), part,
+                               ERR_CODE_NAME(err), err);
     }
     s->regs[R_ERR_CODE_0 + part] = errval;
 
@@ -1127,13 +1129,14 @@ static uint32_t ot_otp_dj_get_status(const OtOTPDjState *s)
     return status;
 }
 
-static int ot_otp_dj_get_part_from_address(hwaddr addr)
+static int ot_otp_dj_get_part_from_address(const OtOTPDjState *s, hwaddr addr)
 {
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
         const OtOTPPartDesc *part = &OtOTPPartDescs[ix];
         if ((addr >= part->offset) &&
             ((addr + sizeof(uint32_t)) <= (part->offset + part->size))) {
-            trace_ot_otp_addr_to_part((uint32_t)addr, PART_NAME(ix), ix);
+            trace_ot_otp_addr_to_part(s->ot_id, (uint32_t)addr, PART_NAME(ix),
+                                      ix);
             return (OtOTPPartitionType)ix;
         }
     }
@@ -1208,7 +1211,8 @@ static uint32_t ot_otp_dj_compute_ecc_u64(uint64_t data)
     return (ecc_hi << 16u) | ecc_lo;
 }
 
-static uint32_t ot_otp_dj_verify_ecc_22_16_u16(uint32_t data_i, unsigned *err_o)
+static uint32_t ot_otp_dj_verify_ecc_22_16_u16(const OtOTPDjState *s,
+                                               uint32_t data_i, unsigned *err_o)
 {
     unsigned syndrome = 0u;
 
@@ -1256,29 +1260,32 @@ static uint32_t ot_otp_dj_verify_ecc_22_16_u16(uint32_t data_i, unsigned *err_o)
 #undef OTP_ECC_RECOVER
 
     if (err > 1u) {
-        trace_ot_otp_ecc_unrecoverable_error(data_i & UINT16_MAX);
+        trace_ot_otp_ecc_unrecoverable_error(s->ot_id, data_i & UINT16_MAX);
     } else {
         if ((data_i & UINT16_MAX) != data_o) {
-            trace_ot_otp_ecc_recovered_error(data_i & UINT16_MAX, data_o);
+            trace_ot_otp_ecc_recovered_error(s->ot_id, data_i & UINT16_MAX,
+                                             data_o);
         } else {
             /* ECC bit is corrupted */
-            trace_ot_otp_ecc_parity_error(data_i & UINT16_MAX, data_i >> 16u);
+            trace_ot_otp_ecc_parity_error(s->ot_id, data_i & UINT16_MAX,
+                                          data_i >> 16u);
         }
     }
 
     return data_o;
 }
 
-static uint32_t ot_otp_dj_verify_ecc(uint32_t data, uint32_t ecc, unsigned *err)
+static uint32_t ot_otp_dj_verify_ecc(const OtOTPDjState *s, uint32_t data,
+                                     uint32_t ecc, unsigned *err)
 {
     uint32_t data_lo_i, data_lo_o, data_hi_i, data_hi_o;
     unsigned err_lo, err_hi;
 
     data_lo_i = (data & 0xffffu) | ((ecc & 0xffu) << 16u);
-    data_lo_o = ot_otp_dj_verify_ecc_22_16_u16(data_lo_i, &err_lo);
+    data_lo_o = ot_otp_dj_verify_ecc_22_16_u16(s, data_lo_i, &err_lo);
 
     data_hi_i = (data >> 16u) | (((ecc >> 8u) & 0xffu) << 16u);
-    data_hi_o = ot_otp_dj_verify_ecc_22_16_u16(data_hi_i, &err_hi);
+    data_hi_o = ot_otp_dj_verify_ecc_22_16_u16(s, data_hi_i, &err_hi);
 
     *err |= err_lo | err_hi;
 
@@ -1293,8 +1300,8 @@ static uint64_t ot_otd_dj_verify_digest(OtOTPDjState *s, unsigned partition,
 
     unsigned err = 0;
     if (ot_otp_dj_is_ecc_enabled(s)) {
-        dig_lo = ot_otp_dj_verify_ecc(dig_lo, ecc & 0xffffu, &err);
-        dig_hi = ot_otp_dj_verify_ecc(dig_hi, ecc >> 16u, &err);
+        dig_lo = ot_otp_dj_verify_ecc(s, dig_lo, ecc & 0xffffu, &err);
+        dig_hi = ot_otp_dj_verify_ecc(s, dig_hi, ecc >> 16u, &err);
     }
 
     digest = (((uint64_t)dig_hi) << 32u) | ((uint64_t)dig_lo);
@@ -1326,7 +1333,7 @@ static int ot_otp_dj_apply_ecc(OtOTPDjState *s, unsigned partition)
         unsigned err = 0;
         uint32_t *word = &s->otp->data[ix];
         uint16_t ecc = ((const uint16_t *)s->otp->ecc)[ix];
-        *word = ot_otp_dj_verify_ecc(*word, (uint32_t)ecc, &err);
+        *word = ot_otp_dj_verify_ecc(s, *word, (uint32_t)ecc, &err);
         if (err) {
             OtOTPError otp_err = (err > 1) ? OTP_MACRO_ECC_UNCORR_ERROR :
                                              OTP_MACRO_ECC_CORR_ERROR;
@@ -1334,8 +1341,8 @@ static int ot_otp_dj_apply_ecc(OtOTPDjState *s, unsigned partition)
             // in this case
             ot_otp_dj_set_error(s, partition, otp_err);
             if (err > 1) {
-                trace_ot_otp_ecc_init_error(PART_NAME(partition), partition,
-                                            ix << 2u, *word, ecc);
+                trace_ot_otp_ecc_init_error(s->ot_id, PART_NAME(partition),
+                                            partition, ix << 2u, *word, ecc);
                 s->partctrls[partition].failed = true;
                 return -1;
             }
@@ -1479,7 +1486,7 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, int partition)
 static void
 ot_otp_dj_dai_change_state_line(OtOTPDjState *s, OtOTPDAIState state, int line)
 {
-    trace_ot_otp_dai_change_state(line, DAI_STATE_NAME(s->dai->state),
+    trace_ot_otp_dai_change_state(s->ot_id, line, DAI_STATE_NAME(s->dai->state),
                                   s->dai->state, DAI_STATE_NAME(state), state);
 
     s->dai->state = state;
@@ -1488,7 +1495,7 @@ ot_otp_dj_dai_change_state_line(OtOTPDjState *s, OtOTPDAIState state, int line)
 static void
 ot_otp_dj_lci_change_state_line(OtOTPDjState *s, OtOTPLCIState state, int line)
 {
-    trace_ot_otp_lci_change_state(line, LCI_STATE_NAME(s->lci->state),
+    trace_ot_otp_lci_change_state(s->ot_id, line, LCI_STATE_NAME(s->lci->state),
                                   s->lci->state, LCI_STATE_NAME(state), state);
 
     s->lci->state = state;
@@ -1530,7 +1537,7 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
         bcast->signal &= ~bit;
         bool level = (bool)(bcast->level & bit);
 
-        trace_ot_otp_lc_broadcast(sig, level);
+        trace_ot_otp_lc_broadcast(s->ot_id, sig, level);
 
         switch ((int)sig) {
         case OT_OTP_LC_DFT_EN:
@@ -1660,7 +1667,7 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
     OtOTPPartController *pctrl = &s->partctrls[ix];
 
     if (!OtOTPPartDescs[ix].hw_digest || pctrl->buffer.digest == 0) {
-        trace_ot_otp_skip_digest(PART_NAME(ix), ix);
+        trace_ot_otp_skip_digest(s->ot_id, PART_NAME(ix), ix);
         s->partctrls[ix].locked = false;
         return;
     }
@@ -1674,7 +1681,7 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
                                            part_size);
 
     if (digest != pctrl->buffer.digest) {
-        trace_ot_otp_mismatch_digest(PART_NAME(ix), ix, digest,
+        trace_ot_otp_mismatch_digest(s->ot_id, PART_NAME(ix), ix, digest,
                                      pctrl->buffer.digest);
 
         TRACE_OTP("%s: compute digest %016llx from %s\n", __func__, digest,
@@ -1685,7 +1692,7 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
         ot_otp_dj_set_error(s, ix, OTP_CHECK_FAIL_ERROR);
         /* TODO: revert buffered part to default */
     } else {
-        trace_ot_otp_integrity_report(PART_NAME(ix), ix, "digest OK");
+        trace_ot_otp_integrity_report(s->ot_id, PART_NAME(ix), ix, "digest OK");
         pctrl->failed = false;
     }
 }
@@ -1772,7 +1779,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
 
     unsigned address = s->regs[R_DIRECT_ACCESS_ADDRESS];
 
-    int partition = ot_otp_dj_get_part_from_address(address);
+    int partition = ot_otp_dj_get_part_from_address(s, address);
 
     if (partition < 0) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
@@ -1818,8 +1825,8 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
             g_assert(ewaddr < s->otp->ecc_size);
             uint32_t ecc = s->otp->ecc[ewaddr];
             if (ot_otp_dj_is_ecc_enabled(s)) {
-                data_lo = ot_otp_dj_verify_ecc(data_lo, ecc & 0xffffu, &err);
-                data_hi = ot_otp_dj_verify_ecc(data_hi, ecc >> 16u, &err);
+                data_lo = ot_otp_dj_verify_ecc(s, data_lo, ecc & 0xffffu, &err);
+                data_hi = ot_otp_dj_verify_ecc(s, data_hi, ecc >> 16u, &err);
             }
         }
     } else {
@@ -1834,7 +1841,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
                 ecc >>= 16u;
             }
             if (ot_otp_dj_is_ecc_enabled(s)) {
-                data_lo = ot_otp_dj_verify_ecc(data_lo, ecc & 0xffffu, &err);
+                data_lo = ot_otp_dj_verify_ecc(s, data_lo, ecc & 0xffffu, &err);
             }
         }
     }
@@ -1910,7 +1917,7 @@ static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
             return -1;
         }
 
-        trace_ot_otp_dai_new_dword_ecc(PART_NAME(s->dai->partition),
+        trace_ot_otp_dai_new_dword_ecc(s->ot_id, PART_NAME(s->dai->partition),
                                        s->dai->partition, *dst, *edst);
     }
 
@@ -1960,7 +1967,7 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
             return -1;
         }
 
-        trace_ot_otp_dai_new_word_ecc(PART_NAME(s->dai->partition),
+        trace_ot_otp_dai_new_word_ecc(s->ot_id, PART_NAME(s->dai->partition),
                                       s->dai->partition, *dst, *edst);
     }
 
@@ -1988,7 +1995,7 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
 
     unsigned address = s->regs[R_DIRECT_ACCESS_ADDRESS];
 
-    int partition = ot_otp_dj_get_part_from_address(address);
+    int partition = ot_otp_dj_get_part_from_address(s, address);
 
     if (partition < 0) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
@@ -2075,7 +2082,7 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 
     unsigned address = s->regs[R_DIRECT_ACCESS_ADDRESS];
 
-    int partition = ot_otp_dj_get_part_from_address(address);
+    int partition = ot_otp_dj_get_part_from_address(s, address);
 
     if (partition < 0) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
@@ -2198,7 +2205,7 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
         return;
     }
 
-    trace_ot_otp_dai_new_digest_ecc(PART_NAME(s->dai->partition),
+    trace_ot_otp_dai_new_digest_ecc(s->ot_id, PART_NAME(s->dai->partition),
                                     s->dai->partition, *dst, *edst);
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
@@ -2214,7 +2221,8 @@ static void ot_otp_dj_dai_complete(void *opaque)
 
     switch (s->dai->state) {
     case OTP_DAI_READ_WAIT:
-        trace_ot_otp_dai_read(PART_NAME(s->dai->partition), s->dai->partition,
+        trace_ot_otp_dai_read(s->ot_id, PART_NAME(s->dai->partition),
+                              s->dai->partition,
                               s->regs[R_DIRECT_ACCESS_RDATA_1],
                               s->regs[R_DIRECT_ACCESS_RDATA_1]);
         s->dai->partition = -1;
@@ -2514,7 +2522,8 @@ static uint64_t ot_otp_dj_reg_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otp_io_reg_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                                 pc);
 
     return (uint64_t)val32;
 }
@@ -2530,7 +2539,8 @@ static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
 
     uint32_t pc = ibex_get_current_pc();
 
-    trace_ot_otp_io_reg_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otp_io_reg_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                              pc);
 
     switch (reg) {
     case R_DIRECT_ACCESS_CMD:
@@ -2877,15 +2887,15 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     g_assert(addr + size <= SW_CFG_WINDOW_SIZE);
 
     hwaddr reg = R32_OFF(addr);
-    int partition = ot_otp_dj_get_part_from_address(addr);
+    int partition = ot_otp_dj_get_part_from_address(s, addr);
 
     if (partition < 0) {
-        trace_ot_otp_access_error_on(partition, addr, "invalid");
+        trace_ot_otp_access_error_on(s->ot_id, partition, addr, "invalid");
         val32 = 0;
     }
 
     if (ot_otp_dj_is_buffered(partition)) {
-        trace_ot_otp_access_error_on(partition, addr, "buffered");
+        trace_ot_otp_access_error_on(s->ot_id, partition, addr, "buffered");
         ot_otp_dj_set_error(s, (unsigned)partition, OTP_ACCESS_ERROR);
 
         /* real HW seems to stall the Tile Link bus in this case */
@@ -2896,7 +2906,7 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     bool is_readable = ot_otp_dj_is_readable(s, partition);
 
     if (!is_digest && !is_readable) {
-        trace_ot_otp_access_error_on(partition, addr, "not readable");
+        trace_ot_otp_access_error_on(s->ot_id, partition, addr, "not readable");
         ot_otp_dj_set_error(s, (unsigned)partition, OTP_ACCESS_ERROR);
 
         return MEMTX_DECODE_ERROR;
@@ -2910,7 +2920,7 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     uint64_t pc;
 
     pc = ibex_get_current_pc();
-    trace_ot_otp_io_swcfg_read_out((uint32_t)addr,
+    trace_ot_otp_io_swcfg_read_out(s->ot_id, (uint32_t)addr,
                                    ot_otp_dj_swcfg_reg_name(reg), val32, pc);
 
     *data = (uint64_t)val32;
@@ -2944,7 +2954,7 @@ static void ot_otp_dj_decode_lc_partition(OtOTPDjState *s)
         }
     }
 
-    trace_ot_otp_initial_lifecycle(lci->lc.state, lci->lc.tcount);
+    trace_ot_otp_initial_lifecycle(s->ot_id, lci->lc.state, lci->lc.tcount);
 }
 
 static void ot_otp_dj_load_hw_cfg(OtOTPDjState *s)
@@ -2998,7 +3008,8 @@ static void ot_otp_dj_load_tokens(OtOTPDjState *s)
             tokens->values[tkx] = value;
             tokens->valid_bm |= 1u << tkx;
         }
-        trace_ot_otp_load_token(OTP_TOKEN_NAME(tkx), tkx, value.hi, value.lo,
+        trace_ot_otp_load_token(s->ot_id, OTP_TOKEN_NAME(tkx), tkx, value.hi,
+                                value.lo,
                                 (s->tokens->valid_bm & (1u << tkx)) ? "" :
                                                                       "in");
     }
@@ -3079,7 +3090,8 @@ ot_otp_dj_keygen_push_entropy(void *opaque, uint32_t bits, bool fips)
 
     bool resched = !ot_fifo32_is_full(&s->keygen->entropy_buf);
 
-    trace_ot_otp_keygen_entropy(ot_fifo32_num_used(&s->keygen->entropy_buf),
+    trace_ot_otp_keygen_entropy(s->ot_id,
+                                ot_fifo32_num_used(&s->keygen->entropy_buf),
                                 resched);
 
     if (resched && !s->keygen->edn_sched) {
@@ -3363,7 +3375,7 @@ static void ot_otp_dj_lci_write_word(void *opaque)
     uint16_t cur_val = lc_dst[lci->hpos];
     uint16_t new_val = lci->data[lci->hpos];
 
-    trace_ot_otp_lci_write(lci->hpos, cur_val, new_val);
+    trace_ot_otp_lci_write(s->ot_id, lci->hpos, cur_val, new_val);
 
     if (cur_val & ~new_val) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -3389,7 +3401,7 @@ static void ot_otp_dj_lci_write_word(void *opaque)
         uint8_t cur_ecc = lc_edst[lci->hpos];
         uint8_t new_ecc = ot_otp_dj_compute_ecc_u16(new_val);
 
-        trace_ot_otp_lci_write_ecc(lci->hpos, cur_ecc, new_ecc);
+        trace_ot_otp_lci_write_ecc(s->ot_id, lci->hpos, cur_ecc, new_ecc);
 
         if (cur_ecc & ~new_ecc) {
             qemu_log_mask(LOG_GUEST_ERROR,
@@ -3419,7 +3431,7 @@ static void ot_otp_dj_pwr_otp_req(void *opaque, int n, int level)
     g_assert(n == 0);
 
     if (level) {
-        trace_ot_otp_pwr_otp_req("signaled");
+        trace_ot_otp_pwr_otp_req(s->ot_id, "signaled");
         qemu_bh_schedule(s->pwr_otp_bh);
     }
 }
@@ -3428,7 +3440,7 @@ static void ot_otp_dj_pwr_otp_bh(void *opaque)
 {
     OtOTPDjState *s = opaque;
 
-    trace_ot_otp_pwr_otp_req("initialize");
+    trace_ot_otp_pwr_otp_req(s->ot_id, "initialize");
 
     ot_otp_dj_initialize_partitions(s);
     ot_otp_dj_decode_lc_partition(s);
@@ -3438,7 +3450,7 @@ static void ot_otp_dj_pwr_otp_bh(void *opaque)
     ot_otp_dj_dai_init(s);
     ot_otp_dj_lci_init(s);
 
-    trace_ot_otp_pwr_otp_req("done");
+    trace_ot_otp_pwr_otp_req(s->ot_id, "done");
 
     ibex_irq_set(&s->pwc_otp_rsp, 1);
     ibex_irq_set(&s->pwc_otp_rsp, 0);
@@ -3549,8 +3561,9 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
                           __func__, otp->ecc_granule, otp->ecc_bit_count);
         }
 
-        trace_ot_otp_load_backend(otp_hdr->version, write ? "R/W" : "R/O",
-                                  otp->ecc_bit_count, otp->ecc_granule);
+        trace_ot_otp_load_backend(s->ot_id, otp_hdr->version,
+                                  write ? "R/W" : "R/O", otp->ecc_bit_count,
+                                  otp->ecc_granule);
 
         if (otp_hdr->version > 1u) {
             otp->digest_iv = ldq_le_p(otp_hdr->digest_iv);
@@ -3564,6 +3577,7 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
 }
 
 static Property ot_otp_dj_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtOTPDjState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPDjState, blk),
     DEFINE_PROP_LINK("backend", OtOTPDjState, otp_backend, TYPE_OT_OTP_BE_IF,
                      OtOtpBeIf *),
@@ -3591,7 +3605,7 @@ static void ot_otp_dj_reset(DeviceState *dev)
 {
     OtOTPDjState *s = OT_OTP_DJ(dev);
 
-    trace_ot_otp_reset();
+    trace_ot_otp_reset(s->ot_id);
 
     timer_del(s->dai->delay);
     timer_del(s->lci->prog_delay);
@@ -3658,6 +3672,10 @@ static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
 {
     (void)errp;
     OtOTPDjState *s = OT_OTP_DJ(dev);
+
+    if (!s->ot_id) {
+        s->ot_id = g_strdup("otp");
+    }
 
     ot_otp_dj_load(s, &error_fatal);
 }
