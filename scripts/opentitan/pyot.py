@@ -999,8 +999,10 @@ class QEMUContext:
                     rcmd = relpath(cmd)
                     if rcmd.startswith(pardir):
                         rcmd = cmd
-                    self._clog.debug('Execute "%s" in background for [%s] '
-                                     'context', rcmd, ctx_name)
+                    rcmd = ' '.join(p if not p.startswith(sep) else basename(p)
+                                    for p in rcmd.split(' '))
+                    self._clog.info('Execute "%s" in background for [%s] '
+                                    'context', rcmd, ctx_name)
                     worker = QEMUContextWorker(cmd, env, sync)
                     worker.run()
                     self._workers.append(worker)
@@ -1011,8 +1013,10 @@ class QEMUContext:
                     rcmd = relpath(cmd)
                     if rcmd.startswith(pardir):
                         rcmd = cmd
-                    self._clog.debug('Execute "%s" in sync for [%s] context',
-                                     rcmd, ctx_name)
+                    rcmd = ' '.join(p if not p.startswith(sep) else basename(p)
+                                    for p in rcmd.split(' '))
+                    self._clog.info('Execute "%s" in sync for [%s] context',
+                                    rcmd, ctx_name)
                     # pylint: disable=consider-using-with
                     proc = Popen(cmd, bufsize=1, stdout=PIPE, stderr=PIPE,
                                  shell=True, env=env, encoding='utf-8',
