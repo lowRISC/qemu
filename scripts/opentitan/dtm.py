@@ -12,7 +12,7 @@ from argparse import ArgumentParser, Namespace, FileType
 from io import BytesIO
 from os import linesep
 from os.path import dirname, normpath
-from socket import create_connection
+from socket import create_connection, socket, AF_UNIX, SOCK_STREAM
 from traceback import format_exc
 from typing import Optional
 import sys
@@ -53,18 +53,17 @@ def idcode(engine: JtagEngine, ir_length: int) -> None:
 def main():
     """Entry point."""
     debug = True
+    default_host = 'localhost'
+    default_port = JtagBitbangController.DEFAULT_PORT
     try:
         args: Optional[Namespace] = None
         argparser = ArgumentParser(
             description=sys.modules[__name__].__doc__.split('.')[0])
         qvm = argparser.add_argument_group(title='Virtual machine')
 
-        qvm.add_argument('-H', '--host', default='127.0.0.1',
-                         help='JTAG host (default: localhost)')
-        qvm.add_argument('-P', '--port', type=int,
-                         default=JtagBitbangController.DEFAULT_PORT,
-                         help=f'JTAG port, '
-                              f'default: {JtagBitbangController.DEFAULT_PORT}')
+        qvm.add_argument('-S', '--socket',
+                         help=f'unix:path/to/socket or tcp:host:port '
+                              f'(default tcp:{default_host}:{default_port})')
         qvm.add_argument('-t', '--terminate', action='store_true',
                          help='terminate QEMU when done')
         dmi = argparser.add_argument_group(title='DMI')
@@ -115,9 +114,20 @@ def main():
         configure_loggers(args.verbose, 'dtm.rvdm', -1, 'dtm', 'jtag')
 
         try:
-            sock = create_connection((args.host, args.port), timeout=0.5)
-        except OSError as exc:
-            raise RuntimeError(f'Cannot connect to {args.host}:{args.port}: '
+            if args.socket:
+                socket_type, socket_args = args.socket.split(":", 1)
+                if socket_type == "tcp":
+                    host, port = socket_args.split(":")
+                    sock = create_connection((host, int(port)), timeout=0.5)
+                elif socket_type == "unix":
+                    sock = socket(AF_UNIX, SOCK_STREAM)
+                    sock.connect(socket_args)
+                else:
+                    raise ValueError(f"Invalid socket type {socket_type}")
+            else:
+                sock = create_connection((default_host, default_port), timeout=0.5)
+        except Exception as exc:
+            raise RuntimeError(f'Cannot connect to {args.socket}: '
                                f'{exc}') from exc
         sock.settimeout(0.1)
         ctrl = JtagBitbangController(sock)

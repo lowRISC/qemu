@@ -6,9 +6,9 @@ Module to access the Ibex core.
 ## Usage
 
 ````text
-usage: dtm.py [-h] [-H HOST] [-P PORT] [-Q] [-t] [-l IR_LENGTH] [-b BASE] [-I]
-              [-c CSR] [-C CSR_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}]
-              [-s SIZE] [-f FILE] [-e ELF] [-F] [-v] [-d]
+usage: dtm.py [-h] [-S SOCKET] [-t] [-l IR_LENGTH] [-b BASE] [-I] [-c CSR]
+              [-C CSR_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}] [-s SIZE]
+              [-f FILE] [-e ELF] [-F] [-v] [-d]
 
 Debug Transport Module tiny demo
 
@@ -16,8 +16,8 @@ options:
   -h, --help            show this help message and exit
 
 Virtual machine:
-  -H HOST, --host HOST  JTAG host (default: localhost)
-  -P PORT, --port PORT  JTAG port, default: 3335
+  -S SOCKET, --socket SOCKET
+                        unix:path/to/socket or tcp:host:port (default tcp:localhost:3335)
   -t, --terminate       terminate QEMU when done
 
 DMI:
@@ -69,8 +69,6 @@ Extras:
   rate by bypassing SB status check. However it  may cause the transfer to fail in case System Bus
   becomes busy while data are transfered.
 
-* `-H` specify the address of the QEMU VM.
-
 * `-I` report the JTAG ID code and the DTM configuration.
 
 * `-l` specify the length of the TAP instruction register length.
@@ -82,8 +80,10 @@ Extras:
   operation, `--file` argument is mandatory. The content of the binary file is copied into the
   memory, starting at the `--address`. See also the `--elf` option for uploading applications.
 
-* `-P` specify the TCP port of the JTAG server in the QEMU VM, should follow the TCP setting of the
-  `-chardev socket,id=taprbb,...` option for invoking QEMU.
+* `-S` specify the socket info of the JTAG server in the QEMU VM. For TCP, this should follow the
+  setting of the `-chardev socket,id=taprbb,host=<host>,port=<num>,...` option for invoking QEMU.
+  For unix sockets, host/port are replaced with the unix socket path specified instead:
+  `-chardev socket,id=taprbb,path=<socket/path>`.
 
 * `-s` specify the number of bytes to read from or write to memory. Useful with the `--mem` option.
   See also the `--address` option. This option may be omitted for the `write` memory operation, in
