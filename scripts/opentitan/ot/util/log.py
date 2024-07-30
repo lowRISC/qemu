@@ -6,9 +6,9 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-from os import isatty
+from os import getenv, isatty
 from sys import stderr
-from typing import NamedTuple, Union
+from typing import NamedTuple, Optional, Sequence, Union
 
 import logging
 from logging.handlers import MemoryHandler
@@ -44,31 +44,78 @@ class ColorLogFormatter(logging.Formatter):
     """
 
     COLORS = {
-        'GREY': "\x1b[38;20m",
-        'GREEN': "\x1b[32;1m",
-        'YELLOW': "\x1b[33;1m",
-        'RED': "\x1b[31;1m",
-        'BLUE': "\x1b[34;1m",
-        'MAGENTA': "\x1b[35;1m",
-        'CYAN': "\x1b[36;1m",
-        'WHITE': "\x1b[37;1m",
+        'BLUE': 34,
+        'CYAN': 36,
+        'YELLOW': 33,
+        'GREEN': 32,
+        'MAGENTA': 35,
+        'RED': 31,
+        'GREY': 38,
+        'WHITE': 37,
+        'BLACK': 30,
     }
+
+    XCOLORS = (
+        202,
+        214,
+        228,
+        154,
+        48,
+        39,
+        111,
+        135,
+        165,
+        197,
+        208,
+        226,
+        82,
+        51,
+        105,
+        99,
+        171,
+        201,
+    )
+    """Extended ANSI colors for 256-color terminals."""
 
     RESET = "\x1b[0m"
     FMT_LEVEL = '%(levelname)8s'
 
+    # pylint: disable=no-self-argument
+    def _make_fg_color(code: int, ext: bool = False,
+                       bright: Optional[bool] = None) -> str:
+        """Create the ANSI escape sequence for a foregound color.
+
+           :param code: color code
+           :param ext: whether to use limited (16) or extended (256) color
+                       palette
+           :param bright: when set, use bright mode
+           :return: the ANSI escape sequence
+        """
+        if not ext:
+            if not 30 <= code <= 39:
+                raise ValueError(f'Invalid ANSI color: {code}')
+            bri = 1 if bright else 20
+            return f'\x1b[{code};{bri}m' if code != 38 else '\x1b[38;20m'
+        if not 0 <= code < 255:
+            raise ValueError(f'Invalid ANSI color: {code}')
+        return f'\x1b[38;5;{code}m'
+
+    # pylint: disable=no-staticmethod-decorator
+    make_fg_color = staticmethod(_make_fg_color)
+
     LOG_COLORS = {
-        logging.DEBUG: COLORS['GREY'],
-        logging.INFO: COLORS['WHITE'],
-        logging.WARNING: COLORS['YELLOW'],
-        logging.ERROR: COLORS['RED'],
-        logging.CRITICAL: COLORS['MAGENTA'],
+        logging.DEBUG: _make_fg_color(COLORS['GREY']),
+        logging.INFO: _make_fg_color(COLORS['WHITE'], bright=True),
+        logging.WARNING: _make_fg_color(COLORS['YELLOW'], bright=True),
+        logging.ERROR: _make_fg_color(COLORS['RED'], bright=True),
+        logging.CRITICAL: _make_fg_color(COLORS['MAGENTA'], bright=True),
     }
 
     def __init__(self, *args, **kwargs):
         kwargs = dict(kwargs)
         name_width = kwargs.pop('name_width', 10)
         self._use_ansi = kwargs.pop('ansi', isatty(stderr.fileno()))
+        self._use_xansi = self._use_ansi and getenv('TERM', '').find('256') >= 0
         use_func = kwargs.pop('funcname', False)
         use_ms = kwargs.pop('ms', False)
         use_time = kwargs.pop('time', use_ms)
@@ -109,15 +156,38 @@ class ColorLogFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, *self._formatter_args)
         return formatter.format(record)
 
-    def add_logger_colors(self, logname: str, color: str) -> None:
+    def add_logger_colors(self, logname: str, color: Union[int | str]) -> None:
         """Assign a color to the message of a specific logger."""
         if not self._use_ansi:
             return
-        start_color = self.COLORS.get(color.upper(), '')
-        if not start_color:
-            return
+        if isinstance(color, int):
+            if self._use_xansi:
+                code = self.XCOLORS[color % len(self.XCOLORS)]
+                start_color = self.make_fg_color(code, ext=True)
+            else:
+                code = list(self.COLORS.values())[color % len(self.COLORS)]
+                start_color = self.make_fg_color(code)
+        elif isinstance(color, str):
+            scolor = self.COLORS.get(color.upper(), '')
+            if not scolor:
+                return
+            start_color = self.make_fg_color(scolor)
+        else:
+            raise TypeError(f'Unknown logger color specifier: {color}')
         end_color = self.RESET
         self._logger_colors[logname] = (start_color, end_color)
+
+    @classmethod
+    def override_xcolors(cls, codes: Sequence[int]) -> None:
+        """Override default extended color palette.
+
+           :param codes: ANSI color codes
+        """
+        xcolors = list(codes)
+        if any(c for c in xcolors
+               if not (isinstance(c, int) and 0 <= c <= 255)):
+            raise ValueError('Invalid color code(s)')
+        cls.XCOLORS = xcolors
 
 
 def configure_loggers(level: int, *lognames: list[Union[str | int | Color]],

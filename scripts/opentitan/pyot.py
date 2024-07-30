@@ -492,8 +492,7 @@ class QEMUWrapper:
             vlog = vlog.parent
         if not clr_fmt:
             return
-        colors = ('blue', 'yellow', 'red', 'magenta', 'cyan', 'green')
-        for logname, color in zip(lognames, colors):
+        for color, logname in enumerate(sorted(lognames)):
             clr_fmt.add_logger_colors(f'{vcplogname}.{logname}', color)
 
     def _qemu_logger(self, proc: Popen, queue: deque, err: bool):
@@ -1844,6 +1843,11 @@ def main():
                     argparser.error('Invalid aliases definitions')
                 qfm.define(aliases)
             jdefaults = json.get('default', {})
+            xcolors = jdefaults.get('vcp-color', [])
+            if xcolors:
+                # config file -only option, not exposed to the argparser
+                del jdefaults['vcp-color']
+                ColorLogFormatter.override_xcolors(xcolors)
             jargs = []
             for arg, val in jdefaults.items():
                 is_bool = isinstance(val, bool)
