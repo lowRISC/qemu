@@ -8,34 +8,62 @@
 
 from io import BytesIO
 from logging import getLogger
-from typing import BinaryIO, Iterator, Optional
+from os.path import basename
+from re import compile as re_compile
+from typing import BinaryIO, Iterator, NamedTuple, Optional
 
 try:
+    _ELF_ERROR = None
     # note: pyelftools package is an OpenTitan toolchain requirement, see
     # python-requirements.txt file from OT top directory.
     from elftools.common.exceptions import ELFError
     from elftools.elf.constants import SH_FLAGS
     from elftools.elf.elffile import ELFFile
-    from elftools.elf.sections import Section
+    from elftools.elf.sections import Section, SymbolTableSection
     from elftools.elf.segments import Segment
-except ImportError:
-    ELFFile = None
+except ImportError as elf_exc:
+    _ELF_ERROR = str(elf_exc)
+
+try:
+    _RUST_ERROR = None
+    from rust_demangler import demangle as rust_demangle
+except ImportError as rust_exc:
+    _RUST_ERROR = rust_exc
+    def rust_demangle(sym):  # noqa: E301
+        """Fake demangler."""
+        return sym
+
+
+class ElfSymbolExtent(NamedTuple):
+    """ELF symbol extent."""
+
+    start: int  # start address
+    end: int  # end address
+    func: str  # function name
+    module: str  # ELF name
 
 
 class ElfBlob:
     """Load ELF application."""
 
-    LOADED = ELFFile is not None
+    ELF_ERROR = _ELF_ERROR
     """Report whether ELF tools have been loaded."""
 
+    RUST_ERROR = _RUST_ERROR
+    """Report whether Rust tools have been loaded."""
+
+    RUST_TRAIL_CRE = re_compile(r'::h[0-9a-f]{16}$')
+    """Regex to get rid of Rust trailing symbol string."""
+
     def __init__(self):
-        if not self.LOADED:
+        if self.ELF_ERROR:
             raise ImportError('pyelftools package not available')
         self._log = getLogger('elf')
         self._elf: Optional[ELFFile] = None
         self._payload_address: int = 0
         self._payload_size: int = 0
         self._payload: bytes = b''
+        self._name = ''
 
     def load(self, efp: BinaryIO) -> None:
         """Load the content of an ELF file.
@@ -48,6 +76,7 @@ class ElfBlob:
         # use a copy of the stream to release the file pointer.
         try:
             self._elf = ELFFile(BytesIO(efp.read()))
+            self._name = efp.name
         except ELFError as exc:
             raise ValueError(f'Invalid ELF file: {exc}') from exc
         if self._elf['e_machine'] != 'EM_RISCV':
@@ -107,6 +136,11 @@ class ElfBlob:
         return self._payload
 
     @property
+    def name(self) -> str:
+        """Return the filename of the loaded ELF."""
+        return basename(self._name)
+
+    @property
     def code_span(self) -> tuple[int, int]:
         """Report the extent of the executable portion of the ELF file.
 
@@ -139,6 +173,33 @@ class ElfBlob:
            :return: True is section is executable
         """
         return bool(section.header['sh_flags'] & SH_FLAGS.SHF_EXECINSTR)
+
+    def get_symbols(self) -> list[ElfSymbolExtent]:
+        """Retrieve symbols from ELF.
+
+           :return: a list of symbol extents
+        """
+        symbols = []
+        name = self.name
+        for sect in self._elf.iter_sections():
+            if not isinstance(sect, SymbolTableSection):
+                continue
+            for symb in sect.iter_symbols():
+                if not symb.name or symb.name.startswith('.L'):
+                    continue
+                if symb.entry.st_info.type != 'STT_FUNC':
+                    continue
+                func = symb.name
+                if func.startswith('_ZN'):
+                    func = rust_demangle(func)
+                    func = self.RUST_TRAIL_CRE.sub('', func)
+                symbols.append((symb.entry.st_value,
+                                symb.entry.st_value + symb.entry.st_size, func,
+                                name))
+        symbols.sort(key=lambda s: (s[0], s[1]))
+        for addr, end, func, _ in symbols:
+            self._log.debug('%s: %08x..%08x %s', name, addr, end, func)
+        return symbols
 
     def _loadable_segments(self) -> Iterator['Segment']:
         """Provide an iterator on segments that should be loaded into the final

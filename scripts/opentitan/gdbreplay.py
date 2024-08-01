@@ -685,7 +685,7 @@ def main():
 
         gdbr = QEMUGDBReplay()
         if args.elf:
-            if not ElfBlob.LOADED:
+            if ElfBlob.ELF_ERROR:
                 argparser.error('Please install PyElfTools package')
             for elf in args.elf:
                 gdbr.load_elf(elf)

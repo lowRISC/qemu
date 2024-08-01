@@ -197,7 +197,7 @@ def main():
                                      no_check=args.fast_mode)
                     dump_buffer(mfp, args.address)
             if args.elf:
-                if not ElfBlob.LOADED:
+                if ElfBlob.ELF_ERROR:
                     argparser.error('pyelftools module not available')
                 elf = ElfBlob()
                 elf.load(args.elf)

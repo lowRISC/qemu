@@ -392,7 +392,7 @@ class FlashGen:
 
     def _compare_bin_elf(self, bindesc: RuntimeDescriptor, elfpath: str) \
             -> Optional[bool]:
-        if not ElfBlob.LOADED:
+        if ElfBlob.ELF_ERROR:
             return None
         with open(elfpath, 'rb') as efp:
             elfdesc = self._load_elf_info(efp)
@@ -499,7 +499,7 @@ class FlashGen:
 
     def _load_elf_info(self, efp: BinaryIO) \
             -> Optional[RuntimeDescriptor]:
-        if not ElfBlob.LOADED:
+        if ElfBlob.ELF_ERROR:
             # ELF tools are not available
             self._log.warning('ELF file cannot be verified')
             return None
