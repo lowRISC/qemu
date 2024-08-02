@@ -290,7 +290,7 @@ ot_otbn_request_entropy(unsigned ep) "ep:%u"
 # ot_otp.c
 
 ot_otp_access_error_on(const char * id, int part, uint32_t addr, const char *msg) "%s: part #%d, addr 0x%04x: %s"
-ot_otp_addr_to_part(const char * id, uint32_t addr, const char *part, unsigned pix) "%s: addr 0x%08x partition %s (#%u)"
+ot_otp_addr_to_part(const char * id, uint32_t addr, const char *part, unsigned pix) "%s: addr %u partition %s (#%u)"
 ot_otp_dai_change_state(const char * id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
 ot_otp_dai_new_digest_ecc(const char * id, const char *part, unsigned pix, uint64_t digest, uint32_t eccc) "%s: partition %s (#%u) digest 0x%016" PRIx64 ", ecc 0x%08x"
 ot_otp_dai_new_dword_ecc(const char * id, const char *part, unsigned pix, uint64_t data, uint32_t eccc) "%s: partition %s (#%u) dword 0x%016" PRIx64 ", ecc 0x%08x"
