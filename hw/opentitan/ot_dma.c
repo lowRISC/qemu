@@ -275,7 +275,7 @@ struct OtDMAState {
 #define DMA_ERROR(_err_) (1u << (_err_))
 
 /* the following values are arbitrary end may be changed if needed */
-#define DMA_PACE_NS             10000u /* 10us to slow down DMA and handle aborts */
+#define DMA_PACE_NS             10000u /* 10us: slow down DMA, handle aborts */
 #define DMA_TRANSFER_BLOCK_SIZE 4096u /* size of a single DMA block */
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
