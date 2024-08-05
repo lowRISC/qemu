@@ -232,6 +232,17 @@ typedef struct {
     const struct ltc_hash_descriptor *desc;
 } OtDMASHA;
 
+typedef struct {
+    uint32_t memory_range_base;
+    uint32_t memory_range_limit;
+    uint8_t opcode;
+    bool handshake_en;
+    bool data_dir;
+    bool fifo_auto_inc_en;
+    bool membuf_auto_inc_en;
+    bool range_valid;
+} OtDMAControl;
+
 struct OtDMAState {
     SysBusDevice parent_obj;
 
@@ -245,6 +256,8 @@ struct OtDMAState {
     OtDMAOp op;
     OtDMASHA sha;
     uint32_t *regs;
+    OtDMAControl control; /* captured regs on initial IDLE-GO transition */
+    bool abort;
 
     char *ot_id;
     char *ot_as_name; /* private AS unique name */
@@ -270,7 +283,7 @@ struct OtDMAState {
     (R_CONTROL_OPCODE_MASK | R_CONTROL_HW_HANDSHAKE_EN_MASK | \
      R_CONTROL_MEM_BUF_AUTO_INC_EN_MASK | R_CONTROL_FIFO_AUTO_INC_EN_MASK | \
      R_CONTROL_DATA_DIR_MASK | R_CONTROL_INITIAL_TRANSFER_MASK | \
-     R_CONTROL_ABORT_MASK | R_CONTROL_GO_MASK)
+     R_CONTROL_GO_MASK)
 
 #define DMA_ERROR(_err_) (1u << (_err_))
 
@@ -448,11 +461,6 @@ static hwaddr ot_dma_get_dest_threshold_address(const OtDMAState *s)
            (((hwaddr)s->regs[R_DEST_ADDR_THRESHOLD_HI]) << 32u);
 }
 
-static bool ot_dma_is_range_validated(const OtDMAState *s)
-{
-    return (bool)(s->regs[R_RANGE_VALID] & R_RANGE_VALID_VALID_MASK);
-}
-
 static bool ot_dma_is_range_locked(const OtDMAState *s)
 {
     return s->regs[R_RANGE_REGWEN] != OT_MULTIBITBOOL4_TRUE;
@@ -491,8 +499,8 @@ static void ot_dma_set_error(OtDMAState *s, unsigned err)
 
 static void ot_dma_check_range(OtDMAState *s, bool d_or_s, bool cross_ot)
 {
-    uint32_t lstart = s->regs[R_ENABLED_MEMORY_RANGE_BASE];
-    uint32_t lend = s->regs[R_ENABLED_MEMORY_RANGE_LIMIT];
+    uint32_t lstart = s->control.memory_range_base;
+    uint32_t lend = s->control.memory_range_limit;
 
     if (lstart > lend) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s DMA invalid range\n",
@@ -617,6 +625,27 @@ static bool ot_dma_go(OtDMAState *s)
      * detected one.
      */
 
+    CHANGE_STATE(s, ADDR_SETUP);
+
+    bool init_tf = (bool)(s->regs[R_CONTROL] & R_CONTROL_INITIAL_TRANSFER_MASK);
+    if (init_tf) {
+        s->control.memory_range_base = s->regs[R_ENABLED_MEMORY_RANGE_BASE];
+        s->control.memory_range_limit = s->regs[R_ENABLED_MEMORY_RANGE_LIMIT];
+        s->control.opcode =
+            (uint8_t)FIELD_EX32(s->regs[R_CONTROL], CONTROL, OPCODE);
+        s->control.handshake_en =
+            (bool)(s->regs[R_CONTROL] & R_CONTROL_HW_HANDSHAKE_EN_MASK);
+        s->control.range_valid =
+            (bool)(s->regs[R_RANGE_VALID] & R_RANGE_VALID_VALID_MASK);
+        /* following fields are not used: handshake mode only */
+        s->control.data_dir =
+            (bool)(s->regs[R_CONTROL] & R_CONTROL_DATA_DIR_MASK);
+        s->control.fifo_auto_inc_en =
+            (bool)(s->regs[R_CONTROL] & R_CONTROL_FIFO_AUTO_INC_EN_MASK);
+        s->control.membuf_auto_inc_en =
+            (bool)(s->regs[R_CONTROL] & R_CONTROL_MEM_BUF_AUTO_INC_EN_MASK);
+    }
+
     switch (s->regs[R_TRANSFER_WIDTH]) {
     case TRANSACTION_WIDTH_BYTE:
     case TRANSACTION_WIDTH_HALF:
@@ -630,7 +659,7 @@ static bool ot_dma_go(OtDMAState *s)
     }
 
     /* DEVICE mode not yet supported */
-    if (FIELD_EX32(s->regs[R_CONTROL], CONTROL, HW_HANDSHAKE_EN)) {
+    if (s->control.handshake_en) {
         qemu_log_mask(LOG_UNIMP, "%s: %s: Handshake mode is not supported\n",
                       __func__, s->ot_id);
         ot_dma_set_xerror(s, ERR_BUS);
@@ -655,34 +684,32 @@ static bool ot_dma_go(OtDMAState *s)
         ot_dma_set_xerror(s, ERR_SIZE);
     }
 
-    bool init_tf = (bool)(s->regs[R_CONTROL] & R_CONTROL_INITIAL_TRANSFER_MASK);
-    unsigned sha_mode = FIELD_EX32(s->regs[R_CONTROL], CONTROL, OPCODE);
-    const struct ltc_hash_descriptor *desc;
-    switch (sha_mode) {
+    const struct ltc_hash_descriptor *hdesc;
+    switch (s->control.opcode) {
     case OPCODE_COPY:
         trace_ot_dma_operation("copy", init_tf);
-        desc = NULL;
+        hdesc = NULL;
         break;
     case OPCODE_COPY_SHA256:
         trace_ot_dma_operation("sha256", init_tf);
-        desc = &sha256_desc;
+        hdesc = &sha256_desc;
         break;
     case OPCODE_COPY_SHA384:
         trace_ot_dma_operation("sha384", init_tf);
-        desc = &sha384_desc;
+        hdesc = &sha384_desc;
         break;
     case OPCODE_COPY_SHA512:
         trace_ot_dma_operation("sha512", init_tf);
-        desc = &sha512_desc;
+        hdesc = &sha512_desc;
         break;
     default:
-        desc = NULL;
+        hdesc = NULL;
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid opcode %u\n", __func__,
-                      s->ot_id, sha_mode);
+                      s->ot_id, s->control.opcode);
         ot_dma_set_xerror(s, ERR_OPCODE);
     }
 
-    if (desc) {
+    if (hdesc) {
         if (s->regs[R_TRANSFER_WIDTH] != TRANSACTION_WIDTH_WORD) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: Invalid transaction width for hashing\n",
@@ -693,13 +720,13 @@ static bool ot_dma_go(OtDMAState *s)
 
     OtDMASHA *sha = &s->sha;
     if (init_tf) {
-        sha->desc = desc;
+        sha->desc = hdesc;
         s->regs[R_STATUS] &= ~R_STATUS_SHA2_DIGEST_VALID_MASK;
         if (sha->desc) {
             int res = sha->desc->init(&sha->state);
             g_assert(res == CRYPT_OK);
         }
-    } else if (sha->desc != desc) {
+    } else if (sha->desc != hdesc) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: SHA mode change w/o initial transfer\n", __func__);
     }
@@ -802,7 +829,7 @@ static bool ot_dma_go(OtDMAState *s)
         }
     }
 
-    if (!ot_dma_is_range_validated(s)) {
+    if (!s->control.range_valid) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Memory range not validated\n",
                       __func__, s->ot_id);
         ot_dma_set_xerror(s, ERR_RANGE_VALID);
@@ -885,6 +912,8 @@ static bool ot_dma_go(OtDMAState *s)
     s->regs[R_ERROR_CODE] = 0;
     s->regs[R_STATUS] |= R_STATUS_BUSY_MASK;
 
+    CHANGE_STATE(s, SEND_READ);
+
     timer_del(s->timer);
     uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
@@ -901,7 +930,7 @@ static void ot_dma_abort(OtDMAState *s)
 
     trace_ot_dma_abort(s->ot_id);
 
-    s->regs[R_CONTROL] |= R_CONTROL_ABORT_MASK;
+    s->abort = true;
 
     /* simulate a delayed response */
     timer_del(s->timer);
@@ -915,8 +944,8 @@ static void ot_dma_complete(OtDMAState *s)
 
     s->regs[R_STATUS] &= ~R_STATUS_BUSY_MASK;
 
-    if (s->regs[R_CONTROL] & R_CONTROL_ABORT_MASK) {
-        s->regs[R_CONTROL] &= ~R_CONTROL_ABORT_MASK;
+    if (s->abort) {
+        s->abort = false;
         s->regs[R_STATUS] |= R_STATUS_ABORTED_MASK;
         s->regs[R_INTR_STATE] |= INTR_DMA_ERROR_MASK;
 
@@ -924,7 +953,7 @@ static void ot_dma_complete(OtDMAState *s)
 
         CHANGE_STATE(s, IDLE);
     } else if (s->regs[R_CONTROL] & R_CONTROL_GO_MASK) {
-        if (!FIELD_EX32(s->regs[R_CONTROL], CONTROL, HW_HANDSHAKE_EN)) {
+        if (!s->control.handshake_en) {
             s->regs[R_CONTROL] &= ~R_CONTROL_GO_MASK;
         }
 
@@ -963,6 +992,8 @@ static void ot_dma_complete(OtDMAState *s)
 
         OtDMASHA *sha = &s->sha;
         if (sha->desc) {
+            CHANGE_STATE(s, SHA_FINALIZE);
+
             uint32_t md[64u / sizeof(uint32_t)];
             int res = sha->desc->done(&sha->state, (uint8_t *)md);
             g_assert(res == CRYPT_OK);
@@ -993,7 +1024,7 @@ static void ot_dma_transfer(void *opaque)
 {
     OtDMAState *s = opaque;
 
-    if (!(s->regs[R_CONTROL] & R_CONTROL_ABORT_MASK)) {
+    if (!s->abort) {
         OtDMAOp *op = &s->op;
 
         g_assert(op->mr != NULL);
@@ -1001,6 +1032,8 @@ static void ot_dma_transfer(void *opaque)
         smp_mb();
 
         hwaddr size = MIN(op->size, DMA_TRANSFER_BLOCK_SIZE);
+
+        CHANGE_STATE(s, SEND_WRITE);
 
         trace_ot_dma_transfer(s->ot_id, op->write ? "write" : "read",
                               AS_NAME(op->asix), op->addr, size);
@@ -1019,6 +1052,8 @@ static void ot_dma_transfer(void *opaque)
             op->buf += size;
 
             if (op->size) {
+                CHANGE_STATE(s, SEND_READ);
+
                 /* schedule next block if any */
                 uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                 timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
@@ -1076,7 +1111,7 @@ static uint64_t ot_dma_regs_read(void *opaque, hwaddr addr, unsigned size)
                                             OT_MULTIBITBOOL4_FALSE;
         break;
     case R_CONTROL:
-        val32 = s->regs[reg] & ~R_CONTROL_ABORT_MASK; /* W/O */
+        val32 = s->regs[reg];
         break;
     case R_INTR_TEST:
     case R_ALERT_TEST:
@@ -1214,18 +1249,20 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_CONTROL: {
-        val32 &= CONTROL_MASK;
-        uint32_t change = s->regs[reg] ^ val32;
         s->regs[reg] = val32 & ~R_CONTROL_ABORT_MASK;
-        if (change & val32 & R_CONTROL_ABORT_MASK) {
-            ot_dma_abort(s);
-        } else if (change & val32 & R_CONTROL_GO_MASK) {
-            if (s->state == SM_IDLE) {
-                ot_dma_go(s);
-            } else {
-                qemu_log_mask(LOG_GUEST_ERROR,
-                              "%s: %s: cannot start DMA from state %s\n",
-                              __func__, s->ot_id, STATE_NAME(s->state));
+        if (val32 & R_CONTROL_ABORT_MASK) {
+            if (!s->abort) {
+                ot_dma_abort(s);
+            }
+        } else {
+            if (val32 & R_CONTROL_GO_MASK) {
+                if (s->state == SM_IDLE) {
+                    ot_dma_go(s);
+                } else {
+                    qemu_log_mask(LOG_GUEST_ERROR,
+                                  "%s: %s: cannot start DMA from state %s\n",
+                                  __func__, s->ot_id, STATE_NAME(s->state));
+                }
             }
         }
     } break;
@@ -1318,6 +1355,7 @@ static void ot_dma_reset(DeviceState *dev)
     }
 
     memset(s->regs, 0, REGS_SIZE);
+    memset(&s->control, 0, sizeof(s->control));
     memset(&s->sha, 0, sizeof(s->sha));
 
     s->regs[R_ADDR_SPACE_ID] = (ASID_OT << 4u) | (ASID_OT << 0u);
