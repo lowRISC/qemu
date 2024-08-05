@@ -620,6 +620,12 @@ ot_dma_check_device(OtDMAState *s, bool d_or_s, OtDMAAddrSpace *asix,
 
 static bool ot_dma_go(OtDMAState *s)
 {
+    /* fake DMA bug, see https://github.com/lowRISC/opentitan/pull/23854 */
+    if (s->regs[R_STATUS] & R_STATUS_DONE_MASK) {
+        s->regs[R_INTR_STATE] |= INTR_DMA_DONE_MASK;
+        ot_dma_update_irqs(s);
+    }
+
     /*
      * error checking follows HW: errors are accumulated, not rejected on first
      * detected one.
