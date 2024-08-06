@@ -27,7 +27,7 @@
 #include "qom/object.h"
 #include "exec/hwaddr.h"
 #include "hw/qdev-core.h"
-
+#include "hw/sysbus.h"
 
 /* ------------------------------------------------------------------------ */
 /* PMP configuration */
@@ -416,6 +416,8 @@ typedef struct {
         .s = (_s_), \
     }
 
+void ibex_mmio_map_device(SysBusDevice *dev, MemoryRegion *mr, unsigned nr,
+                          hwaddr addr, int priority);
 DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
                                   DeviceState *parent);
 #define ibex_link_devices(_devs_, _defs_, _cnt_) \

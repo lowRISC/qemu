@@ -37,15 +37,14 @@
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
-#include "hw/sysbus.h"
 #include "monitor/monitor.h"
 #include "sysemu/runstate.h"
 
 static void rust_demangle_fn(const char *st_name, int st_info,
                              uint64_t st_value, uint64_t st_size);
 
-static void ibex_mmio_map_device(SysBusDevice *dev, MemoryRegion *mr,
-                                 unsigned nr, hwaddr addr, int priority)
+void ibex_mmio_map_device(SysBusDevice *dev, MemoryRegion *mr, unsigned nr,
+                          hwaddr addr, int priority)
 {
     g_assert(nr < dev->num_mmio);
     g_assert(dev->mmio[nr].addr == (hwaddr)-1);
