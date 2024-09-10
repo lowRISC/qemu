@@ -186,9 +186,51 @@ Only initiated by the application.
 +---------------+---------------+---------------+---------------+
 ```
 
-The current version for this documentation is v0.14.
+The current version for this documentation is v0.15.
 
 Note that semantic versionning does not apply for v0 series.
+
+#### Logmask
+
+Logmask can be used to change the qemu_log_mask bitmap at runtime, so log
+settings can be altered for specific runtime ranges, for a specific test for
+example
+
+##### Request
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
++---------------+---------------+---------------+---------------+
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'HL'              |               0               |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---+-----------+---------------+---------------+---------------+
+| Op|                         Log mask                          |
++---+-----------+---------------+---------------+---------------+
+```
+
+* `Op`: Log operation, among:
+  * `0`: change nothing, only read back the current log levels
+  * `1`: add new log channels from the log mask
+  * `2`: clear log channels from the log mask
+  * `3`: apply the log mask as is, overridding previous log channel settings
+
+##### Response
+```
++---------------+---------------+---------------+---------------+
+|       0       |       1       |       2       |       3       |
++---------------+---------------+---------------+---------------+
+|0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F|
++---------------+---------------+---------------+---------------+
+|             'hl'              |               4               |
++---------------+---------------+---------------+---------------+
+|                              UID                            |0|
++---+-----------+---------------+---------------+---------------+
+| 0 |                    Previous log mask                      |
++---+-----------+---------------+---------------+---------------+
+```
 
 #### Enumerate Devices [enumerate-devices]
 

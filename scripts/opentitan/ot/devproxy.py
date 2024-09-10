@@ -8,6 +8,7 @@
 
 from binascii import hexlify, unhexlify
 from collections import deque
+from enum import IntEnum
 from logging import getLogger
 from socket import create_connection, socket, SHUT_RDWR
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
@@ -1187,7 +1188,7 @@ class ProxyEngine:
     """Tool to access and remotely drive devices and memories.
     """
 
-    VERSION = (0, 14)
+    VERSION = (0, 15)
     """Protocol version."""
 
     TIMEOUT = 2.0
@@ -1220,6 +1221,39 @@ class ProxyEngine:
         'R': 'mr_hit',
     }
     """Notification dispatch map."""
+
+    LOG_CHANNELS = (
+        'tb_out_asm',
+        'tb_in_asm',
+        'tb_op',
+        'tb_op_opt',
+        'int',
+        'exec',
+        'pcall',
+        'tb_cpu',
+        'reset',
+        'unimp',
+        'guest_error',
+        'mmu',
+        'tb_nochain',
+        'page',
+        'trace',
+        'tb_op_ind',
+        'tb_fpu',
+        'plugin',
+        'strace',
+        'per_thread',
+        'tb_vpu',
+        'tb_op_plugin',
+    )
+    """Supported QEMU log channels."""
+
+    class LogOp(IntEnum):
+        """Log operations."""
+        READ = 0
+        ADD = 1
+        REMOVE = 2
+        SET = 3
 
     def __init__(self):
         self._log = getLogger('proxy.proxy')
@@ -1462,6 +1496,59 @@ class ProxyEngine:
         """
         self._request_handler = handler
         self._request_args = args
+
+    def change_log_mask(self, logop: 'ProxyEngine.LogOp', mask: int) -> int:
+        """Change the QEMU log mask.
+
+           :param op: the log modification operation
+           :param mask: the log mask to apply
+           :return: the previous log mask
+        """
+        if not 0 <= logop <= 3:
+            raise ValueError('Invalid log operation')
+        if not 0 <= mask < (1 << 30):
+            raise ValueError('Invalid log mask')
+        req = spack('<I', (logop << 30) | mask)
+        try:
+            resp = self.exchange('HL', req)
+        except ProxyCommandError as exc:
+            self._log.fatal('%s', exc)
+            raise
+        logfmt = '<I'
+        loglen = scalc(logfmt)
+        if len(resp) != loglen:
+            raise ValueError('Unexpected response length')
+        return sunpack(logfmt, resp)[0]
+
+    def add_log_sources(self, *sources) -> tuple[int, list[str]]:
+        """Add new log sources.
+
+           :param sources: should be one or more from LOG_CHANNELS
+           :return the previous sources
+        """
+        mask = self._convert_log_to_mask(*sources)
+        oldmask = self.change_log_mask(self.LogOp.ADD, mask)
+        return oldmask, self._convert_mask_to_log(oldmask)
+
+    def remove_log_sources(self, *sources) -> tuple[int, list[str]]:
+        """Remove new log sources.
+
+           :param sources: should be one or more from LOG_CHANNELS
+           :return the previous sources
+        """
+        mask = self._convert_log_to_mask(*sources)
+        oldmask = self.change_log_mask(self.LogOp.REMOVE, mask)
+        return oldmask, self._convert_mask_to_log(oldmask)
+
+    def set_log_sources(self, *sources) -> tuple[int, list[str]]:
+        """Set log sources.
+
+           :param sources: should be one or more from LOG_CHANNELS
+           :return the previous sources
+        """
+        mask = self._convert_log_to_mask(*sources)
+        oldmask = self.change_log_mask(self.LogOp.SET, mask)
+        return oldmask, self._convert_mask_to_log(oldmask)
 
     def exchange(self, command: str, payload: Optional[bytes] = None) -> bytes:
         """Execute a communication trip with the remote target.
@@ -1710,6 +1797,27 @@ class ProxyEngine:
         return proxymap
 
     @classmethod
+    def _convert_log_to_mask(cls, *srcs) -> int:
+        channels = {l: i for i, l in enumerate(cls.LOG_CHANNELS)}
+        try:
+            mask = sum(1 << channels[s.lower()] for s in srcs)
+        except KeyError as exc:
+            raise ValueError("Unknown log channel {exc}") from exc
+        return mask
+
+    @classmethod
+    def _convert_mask_to_log(cls, logmask: int) -> list[str]:
+        srcs = []
+        pos = 0
+        while logmask:
+            mask = 1 << pos
+            if logmask & mask:
+                srcs.append(cls.LOG_CHANNELS[pos])
+                logmask &= ~mask
+            pos += 1
+        return srcs
+
+    @classmethod
     def to_str(cls, data: Union[bytes, bytearray]) -> str:
         """Convert a byte sequence into an hexadecimal string.
 
@@ -1729,6 +1837,8 @@ class ProxyEngine:
 
 
 def _main():
+    # pylint: disable=unknown-option-value
+    # pylint: disable=possibly-used-before-assignment
     debug = False
     try:
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()

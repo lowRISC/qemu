@@ -183,7 +183,7 @@ enum OtDevProxyErr {
 };
 
 #define PROXY_VER_MAJ 0
-#define PROXY_VER_MIN 14u
+#define PROXY_VER_MIN 15u
 
 #define PROXY_IRQ_INTERCEPT_COUNT 32u
 #define PROXY_IRQ_INTERCEPT_NAME  "irq-intercept"
@@ -194,6 +194,11 @@ enum OtDevProxyErr {
 #define PROXY_UID(_u_)          ((_u_) & ~(1u << 31u))
 #define PROXY_MAKE_UID(_uid_, _req_) \
     (((_uid_) & ~(1u << 31u)) | (((uint32_t)(bool)(_req_)) << 31u))
+
+#define LOG_OP_SHIFT 30u
+#define LOG_MASK     ((1u << LOG_OP_SHIFT) - 1u)
+
+enum { LOG_MASK_READ, LOG_MASK_ADD, LOG_MASK_REMOVE, LOG_MASK_DIRECT };
 
 static void ot_dev_proxy_reg_mr(GArray *array, Object *obj);
 static void ot_dev_proxy_reg_mbx(GArray *array, Object *obj);
@@ -299,6 +304,35 @@ static void ot_dev_proxy_handshake(OtDevProxyState *s)
     uint32_t payload = (PROXY_VER_MIN << 0u) | (PROXY_VER_MAJ << 16u);
     ot_dev_proxy_reply_payload(s, PROXY_COMMAND('h', 's'), &payload,
                                sizeof(payload));
+}
+
+static void ot_dev_proxy_logmask(OtDevProxyState *s)
+{
+    if (s->rx_hdr.length != sizeof(uint32_t)) {
+        ot_dev_proxy_reply_error(s, PE_INVALID_COMMAND_LENGTH, NULL);
+        return;
+    }
+
+    uint32_t prevlogmask = ((uint32_t)qemu_loglevel) & LOG_MASK;
+    uint32_t logmask = s->rx_buffer[0] & LOG_MASK;
+    unsigned op = s->rx_buffer[0] >> 30u;
+    switch (op) {
+    case LOG_MASK_ADD:
+        qemu_loglevel = (int)(prevlogmask | logmask);
+        break;
+    case LOG_MASK_REMOVE:
+        qemu_loglevel = (int)(prevlogmask & ~logmask);
+        break;
+    case LOG_MASK_DIRECT:
+        qemu_loglevel = (int)logmask;
+        break;
+    case LOG_MASK_READ:
+    default:
+        break;
+    }
+
+    ot_dev_proxy_reply_payload(s, PROXY_COMMAND('h', 'l'), &prevlogmask,
+                               sizeof(prevlogmask));
 }
 
 static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
@@ -1445,6 +1479,9 @@ static void ot_dev_proxy_dispatch_request(OtDevProxyState *s)
     switch (s->rx_hdr.command) {
     case PROXY_COMMAND('H', 'S'):
         ot_dev_proxy_handshake(s);
+        break;
+    case PROXY_COMMAND('H', 'L'):
+        ot_dev_proxy_logmask(s);
         break;
     case PROXY_COMMAND('E', 'D'):
         ot_dev_proxy_enumerate_devices(s);
