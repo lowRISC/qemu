@@ -127,22 +127,6 @@ impl WSRAddr {
 }
 
 #[derive(Default)]
-struct CSRGeneric {
-    pub val: u32,
-}
-
-impl CSR for CSRGeneric {
-    fn read(&self) -> Result<u32, ExceptionCause> {
-        Ok(self.val)
-    }
-
-    fn write(&mut self, val: u32) -> Result<(), ExceptionCause> {
-        self.val = val;
-        Ok(())
-    }
-}
-
-#[derive(Default)]
 struct CSRFlagGroup {
     flags: SharedFlags,
     mode: Option<FlagMode>,
