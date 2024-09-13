@@ -27,6 +27,7 @@
 #ifndef HW_RISCV_DTM_H
 #define HW_RISCV_DTM_H
 
+#include "qom/object.h"
 #include "exec/hwaddr.h"
 #include "hw/riscv/debug.h"
 

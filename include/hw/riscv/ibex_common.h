@@ -23,7 +23,6 @@
 #ifndef HW_RISCV_IBEX_COMMON_H
 #define HW_RISCV_IBEX_COMMON_H
 
-#include "qemu/osdep.h"
 #include "qom/object.h"
 #include "exec/hwaddr.h"
 #include "hw/qdev-core.h"

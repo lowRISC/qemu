@@ -26,7 +26,6 @@
 #define HW_RISCV_IBEX_IRQ_H
 
 #include "qemu/osdep.h"
-#include "qom/object.h"
 #include "hw/irq.h"
 #include "hw/qdev-core.h"
 #include "hw/sysbus.h"
