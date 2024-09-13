@@ -467,8 +467,9 @@ ot_sram_ctrl_switch_mem(const char *id, const char *dest) "%s: to %s"
 # ot_timer.c
 
 ot_timer_io_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_timer_update_irq(const char *id, bool level) "%s: %d"
 ot_timer_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_timer_timer_mod(const char *id, int64_t now, int64_t next, bool anticipate) "%s: @ %" PRId64 ": %" PRId64 " ant: %u"
+ot_timer_update_irq(const char *id, bool level) "%s: %d"
 
 # ot_uart.c
 

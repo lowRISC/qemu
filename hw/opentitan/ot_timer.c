@@ -163,6 +163,8 @@ static void ot_timer_update_irqs(OtTimerState *s)
 
 static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
 {
+    timer_del(s->timer);
+
     int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
 
     if (reset_origin) {
@@ -171,7 +173,6 @@ static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
 
     uint32_t step = FIELD_EX32(s->regs[R_CFG0], CFG0, STEP);
     if (!ot_timer_is_active(s) || !step) {
-        timer_del(s->timer);
         return;
     }
 
@@ -181,11 +182,13 @@ static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
 
     if (mtime >= mtimecmp) {
         s->regs[R_INTR_STATE0] |= INTR_CMP0_MASK;
-        timer_del(s->timer);
     } else {
         int64_t delta = ot_timer_ticks_to_ns(s, mtimecmp - mtime);
         int64_t next = ot_timer_compute_next_timeout(s, now, delta);
-        timer_mod(s->timer, next);
+        if (next < INT64_MAX) {
+            trace_ot_timer_timer_mod(s->ot_id, now, next, false);
+            timer_mod(s->timer, next);
+        }
     }
 
     ot_timer_update_irqs(s);
@@ -300,6 +303,7 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
          */
         int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
         int64_t next = ot_timer_compute_next_timeout(s, now, 0);
+        trace_ot_timer_timer_mod(s->ot_id, now, next, true);
         timer_mod_anticipate(s->timer, next);
         break;
     }
@@ -369,6 +373,17 @@ static void ot_timer_reset(DeviceState *dev)
     ot_timer_update_alert(s);
 }
 
+static void ot_timer_realize(DeviceState *dev, Error **errp)
+{
+    (void)errp;
+
+    OtTimerState *s = OT_TIMER(dev);
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
+}
+
 static void ot_timer_init(Object *obj)
 {
     OtTimerState *s = OT_TIMER(obj);
@@ -390,6 +405,7 @@ static void ot_timer_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->reset = &ot_timer_reset;
+    dc->realize = &ot_timer_realize;
     device_class_set_props(dc, ot_timer_properties);
 }
 
