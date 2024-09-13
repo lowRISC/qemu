@@ -648,6 +648,9 @@ static bool ot_spi_host_update_event(OtSPIHostState *s)
     /* now update the IRQ signal (event could have been already signalled) */
     bool event_level = (bool)(s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE] &
                               INTR_SPI_EVENT_MASK);
+    if (event_level != (bool)ibex_irq_get_level(&s->irqs[IRQ_SPI_EVENT])) {
+        trace_ot_spi_host_update_irq(s->ot_id, "event", event_level);
+    }
     ibex_irq_set(&s->irqs[IRQ_SPI_EVENT], event_level);
 
     return event;
@@ -666,6 +669,9 @@ static bool ot_spi_host_update_error(OtSPIHostState *s)
 
     bool error = (bool)(s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE] &
                         INTR_ERROR_MASK);
+    if (error != (bool)ibex_irq_get_level(&s->irqs[IRQ_ERROR])) {
+        trace_ot_spi_host_update_irq(s->ot_id, "error", error);
+    }
     ibex_irq_set(&s->irqs[IRQ_ERROR], error);
 
     return error;
