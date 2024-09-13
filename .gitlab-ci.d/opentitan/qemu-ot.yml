@@ -1,9 +1,0 @@
-variables:
-  BAREMETAL_REF: "240703-1"
-  QEMU_BUILD_OPTS: ""
-
-include:
-  - local: '/.gitlab-ci.d/opentitan/build.yml'
-  - local: '/.gitlab-ci.d/opentitan/pylint-ot.yml'
-  - local: '/.gitlab-ci.d/opentitan/ot-smoke.yml'
-  - local: '/.gitlab-ci.d/opentitan/ot-bmtests.yml'

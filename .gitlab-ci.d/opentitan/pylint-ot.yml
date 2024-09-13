@@ -1,9 +1,0 @@
-pylint-ot:
-  tags:
-    - qemu_ot
-  stage: build
-  script:
-    # disable duplicate code as all front end are tested at once (false positive)
-    # disable fixme ("# TODO" comments)
-    - pylint --rcfile scripts/opentitan/.pylintrc -d 'duplicate-code' -d 'fixme'
-        scripts/jtag scripts/opentitan/ot scripts/opentitan/*.py
