@@ -48,7 +48,6 @@
 #include "hw/opentitan/ot_dm_tl.h"
 #include "hw/opentitan/ot_dma.h"
 #include "hw/opentitan/ot_edn.h"
-#include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_gpio_dj.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_i2c_dj.h"
