@@ -282,8 +282,8 @@ static void riscv_dtm_tap_dmi_capture(TapDataHandler *tdh)
             if (!dm) {
                 s->dmistat = RISCV_DEBUG_FAILED;
                 value = 0;
-                qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n", __func__,
-                              addr);
+                qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n",
+                              __func__, addr);
             } else {
                 value = dm->dc->read_value(dm->dev);
             }
