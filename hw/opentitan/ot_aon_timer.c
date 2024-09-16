@@ -96,8 +96,8 @@ static const char REG_NAMES[REGS_COUNT][20u] = {
 
 struct OtAonTimerState {
     SysBusDevice parent_obj;
-    QEMUTimer *wkup_timer;
-    QEMUTimer *wdog_timer;
+
+    MemoryRegion mmio;
 
     IbexIRQ irq_wkup;
     IbexIRQ irq_bark;
@@ -106,14 +106,17 @@ struct OtAonTimerState {
     IbexIRQ pwrmgr_bite;
     IbexIRQ alert;
 
-    MemoryRegion mmio;
+    QEMUTimer *wkup_timer;
+    QEMUTimer *wdog_timer;
 
     uint32_t regs[REGS_COUNT];
-    uint32_t pclk;
 
     int64_t wkup_origin_ns;
     int64_t wdog_origin_ns;
     bool wdog_bite;
+
+    char *ot_id;
+    uint32_t pclk;
 };
 
 static uint32_t
@@ -190,7 +193,7 @@ static void ot_aon_timer_update_irqs(OtAonTimerState *s)
     bool wkup = (bool)(s->regs[R_INTR_STATE] & INTR_WKUP_TIMER_EXPIRED_MASK);
     bool bark = (bool)(s->regs[R_INTR_STATE] & INTR_WDOG_TIMER_BARK_MASK);
 
-    trace_ot_aon_timer_irqs(wkup, bark, s->wdog_bite);
+    trace_ot_aon_timer_irqs(s->ot_id, wkup, bark, s->wdog_bite);
 
     ibex_irq_set(&s->irq_wkup, wkup);
     ibex_irq_set(&s->irq_bark, bark);
@@ -201,6 +204,8 @@ static void ot_aon_timer_update_irqs(OtAonTimerState *s)
 
 static void ot_aon_timer_rearm_wkup(OtAonTimerState *s, bool reset_origin)
 {
+    timer_del(s->wkup_timer);
+
     int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
 
     if (reset_origin) {
@@ -209,7 +214,6 @@ static void ot_aon_timer_rearm_wkup(OtAonTimerState *s, bool reset_origin)
 
     /* if not enabled, ignore threshold */
     if (!ot_aon_timer_is_wkup_enabled(s)) {
-        timer_del(s->wkup_timer);
         ot_aon_timer_update_irqs(s);
         return;
     }
@@ -219,14 +223,15 @@ static void ot_aon_timer_rearm_wkup(OtAonTimerState *s, bool reset_origin)
 
     if (count >= threshold) {
         s->regs[R_INTR_STATE] |= INTR_WKUP_TIMER_EXPIRED_MASK;
-        timer_del(s->wkup_timer);
     } else {
         uint32_t prescaler =
             FIELD_EX32(s->regs[R_WKUP_CTRL], WKUP_CTRL, PRESCALER);
         int64_t delta =
             ot_aon_timer_ticks_to_ns(s, prescaler, threshold - count);
         int64_t next = ot_aon_timer_compute_next_timeout(s, now, delta);
-        timer_mod(s->wkup_timer, next);
+        if (next < INT64_MAX) {
+            timer_mod(s->wkup_timer, next);
+        }
     }
 
     ot_aon_timer_update_irqs(s);
@@ -275,13 +280,15 @@ static void ot_aon_timer_rearm_wdog(OtAonTimerState *s, bool reset_origin)
         pending = true;
     }
 
-    if (!pending) {
-        timer_del(s->wdog_timer);
-    } else {
+    timer_del(s->wdog_timer);
+
+    if (pending) {
         int64_t delta = ot_aon_timer_ticks_to_ns(s, 0u, threshold - count);
         int64_t next = ot_aon_timer_compute_next_timeout(s, now, delta);
-        trace_ot_aon_timer_set_wdog(now, next);
-        timer_mod(s->wdog_timer, next);
+        if (next < INT64_MAX) {
+            trace_ot_aon_timer_set_wdog(s->ot_id, now, next);
+            timer_mod(s->wdog_timer, next);
+        }
     }
 
     ot_aon_timer_update_irqs(s);
@@ -340,7 +347,8 @@ static uint64_t ot_aon_timer_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_aon_timer_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_aon_timer_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                                pc);
 
     return (uint64_t)val32;
 }
@@ -355,7 +363,8 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_aon_timer_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_aon_timer_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                             pc);
 
     switch (reg) {
     case R_ALERT_TEST:
@@ -474,6 +483,7 @@ static const MemoryRegionOps ot_aon_timer_ops = {
 };
 
 static Property ot_aon_timer_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtAonTimerState, ot_id),
     DEFINE_PROP_UINT32("pclk", OtAonTimerState, pclk, 0u),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -493,6 +503,17 @@ static void ot_aon_timer_reset(DeviceState *dev)
 
     ot_aon_timer_update_irqs(s);
     ot_aon_timer_update_alert(s);
+}
+
+static void ot_aon_timer_realize(DeviceState *dev, Error **errp)
+{
+    (void)errp;
+
+    OtAonTimerState *s = OT_AON_TIMER(dev);
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
 }
 
 static void ot_aon_timer_init(Object *obj)
@@ -520,6 +541,7 @@ static void ot_aon_timer_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->reset = ot_aon_timer_reset;
+    dc->realize = ot_aon_timer_realize;
     device_class_set_props(dc, ot_aon_timer_properties);
 }
 

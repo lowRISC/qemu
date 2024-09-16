@@ -30,7 +30,6 @@
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
-#include "qemu/timer.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
@@ -51,8 +50,7 @@
 /* HMAC key length is 32 bytes (256 bits) */
 #define OT_HMAC_KEY_LENGTH 32u
 
-/* Delay FIFO ingestion and compute by 100ns */
-#define FIFO_TRIGGER_DELAY_NS 100u
+#define PARAM_NUM_IRQS 3u
 
 /* clang-format off */
 REG32(INTR_STATE, 0x00u)
@@ -174,40 +172,31 @@ struct OtHMACContext {
 typedef struct OtHMACContext OtHMACContext;
 
 struct OtHMACState {
-    /* <private> */
     SysBusDevice parent_obj;
 
-    /* <public> */
     MemoryRegion mmio;
     MemoryRegion regs_mmio;
     MemoryRegion fifo_mmio;
 
-    IbexIRQ irq_done;
-    IbexIRQ irq_fifo_empty;
-    IbexIRQ irq_hmac_err;
+    IbexIRQ irqs[PARAM_NUM_IRQS];
     IbexIRQ alert;
     IbexIRQ clkmgr;
 
     OtHMACRegisters *regs;
     OtHMACContext *ctx;
-
     Fifo8 input_fifo;
-    QEMUTimer *fifo_trigger_handle;
+
+    char *ot_id;
 };
 
 static void ot_hmac_update_irqs(OtHMACState *s)
 {
-    uint32_t irq_masked = s->regs->intr_state & s->regs->intr_enable;
-    bool level;
-
-    level = irq_masked & INTR_HMAC_DONE_MASK;
-    ibex_irq_set(&s->irq_done, level);
-
-    level = irq_masked & INTR_FIFO_EMPTY_MASK;
-    ibex_irq_set(&s->irq_fifo_empty, level);
-
-    level = irq_masked & INTR_HMAC_ERR_MASK;
-    ibex_irq_set(&s->irq_hmac_err, level);
+    uint32_t levels = s->regs->intr_state & s->regs->intr_enable;
+    trace_ot_hmac_irqs(s->ot_id, s->regs->intr_state, s->regs->intr_enable,
+                       levels);
+    for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
+        ibex_irq_set(&s->irqs[ix], (int)((levels >> ix) & 0x1u));
+    }
 }
 
 static void ot_hmac_update_alert(OtHMACState *s)
@@ -225,7 +214,7 @@ static void ot_hmac_report_error(OtHMACState *s, uint32_t error)
 
 static void ot_hmac_compute_digest(OtHMACState *s)
 {
-    trace_ot_hmac_debug("ot_hmac_compute_digest");
+    trace_ot_hmac_debug(s->ot_id, __func__);
 
     /* HMAC mode, perform outer hash */
     if (s->regs->cfg & R_CFG_HMAC_EN_MASK) {
@@ -235,7 +224,7 @@ static void ot_hmac_compute_digest(OtHMACState *s)
         memset(opad, 0, sizeof(opad));
         memcpy(opad, s->regs->key, sizeof(s->regs->key));
         for (unsigned i = 0; i < ARRAY_SIZE(opad); i++) {
-            opad[i] ^= 0x5c5c5c5c5c5c5c5cu;
+            opad[i] ^= 0x5c5c5c5c5c5c5c5cull;
         }
         sha256_init(&s->ctx->state);
         sha256_process(&s->ctx->state, (const uint8_t *)opad, sizeof(opad));
@@ -246,11 +235,9 @@ static void ot_hmac_compute_digest(OtHMACState *s)
     sha256_done(&s->ctx->state, (uint8_t *)s->regs->digest);
 }
 
-static void ot_hmac_fifo_trigger_update(void *opaque)
+static void ot_hmac_process_fifo(OtHMACState *s)
 {
-    OtHMACState *s = opaque;
-
-    trace_ot_hmac_debug("ot_hmac_fifo_trigger_update");
+    trace_ot_hmac_debug(s->ot_id, __func__);
 
     if (!fifo8_is_empty(&s->input_fifo)) {
         while (!fifo8_is_empty(&s->input_fifo)) {
@@ -362,7 +349,8 @@ static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_hmac_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_hmac_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                              pc);
 
     return (uint64_t)val32;
 }
@@ -377,7 +365,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_hmac_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_hmac_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_INTR_STATE:
@@ -461,11 +449,8 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             s->regs->cmd |= R_CMD_HASH_PROCESS_MASK;
 
             /* trigger delayed processing of FIFO */
-            timer_del(s->fifo_trigger_handle);
             ibex_irq_set(&s->clkmgr, true);
-            timer_mod(s->fifo_trigger_handle,
-                      qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
-                          FIFO_TRIGGER_DELAY_NS);
+            ot_hmac_process_fifo(s);
         }
         break;
     case R_WIPE_SECRET:
@@ -528,7 +513,8 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
     OtHMACState *s = OT_HMAC(opaque);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_hmac_fifo_write((uint32_t)addr, (uint32_t)value, size, pc);
+    trace_ot_hmac_fifo_write(s->ot_id, (uint32_t)addr, (uint32_t)value, size,
+                             pc);
 
     if (!s->regs->cmd) {
         ot_hmac_report_error(s, R_ERR_CODE_PUSH_MSG_WHEN_DISALLOWED);
@@ -552,23 +538,31 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
 
     for (unsigned i = 0; i < size; i++) {
         uint8_t b = value;
-        if (fifo8_is_full(&s->input_fifo)) {
-            /* FIFO full. Should stall but cannot be done in QEMU? */
-            ot_hmac_fifo_trigger_update(s);
-        }
+        g_assert(!fifo8_is_full(&s->input_fifo));
         fifo8_push(&s->input_fifo, b);
         value >>= 8u;
     }
 
     s->regs->msg_length += (uint64_t)size * 8u;
 
-    /* trigger delayed processing of FIFO */
-    timer_del(s->fifo_trigger_handle);
-    timer_mod(s->fifo_trigger_handle,
-              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + FIFO_TRIGGER_DELAY_NS);
+    /*
+     * Note: real HW may stall the bus till some room is available in the input
+     * FIFO. In QEMU, we do not want to stall the I/O thread to emulate this
+     * feature. The workaround is to let the FIFO fill up with an arbitrary
+     * length, always smaller than the FIFO capacity, here half the size of the
+     * FIFO then process the whole FIFO content in one step. This let the FIFO
+     * depth register to update on each call as the real HW. However the FIFO
+     * can never be full, which is not supposed to occur on the real HW anyway
+     * since the HMAC is reportedly faster than the Ibex capability to fill in
+     * the FIFO. Could be different with DMA access though.
+     */
+    if (fifo8_num_used(&s->input_fifo) >= OT_HMAC_FIFO_LENGTH / 2u) {
+        ot_hmac_process_fifo(s);
+    }
 }
 
 static Property ot_hmac_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtHMACState, ot_id),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -599,9 +593,9 @@ static void ot_hmac_init(Object *obj)
     s->regs = g_new0(OtHMACRegisters, 1u);
     s->ctx = g_new(OtHMACContext, 1u);
 
-    ibex_sysbus_init_irq(obj, &s->irq_done);
-    ibex_sysbus_init_irq(obj, &s->irq_fifo_empty);
-    ibex_sysbus_init_irq(obj, &s->irq_hmac_err);
+    for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
+        ibex_sysbus_init_irq(obj, &s->irqs[ix]);
+    }
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
     ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
 
@@ -616,19 +610,25 @@ static void ot_hmac_init(Object *obj)
                           TYPE_OT_HMAC ".fifo", OT_HMAC_FIFO_SIZE);
     memory_region_add_subregion(&s->mmio, OT_HMAC_FIFO_BASE, &s->fifo_mmio);
 
-    /* setup FIFO Interrupt Timer */
-    s->fifo_trigger_handle =
-        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_hmac_fifo_trigger_update, s);
-
     /* FIFO sizes as per OT Spec */
     fifo8_create(&s->input_fifo, OT_HMAC_FIFO_LENGTH);
+}
+
+static void ot_hmac_realize(DeviceState *dev, Error **errp)
+{
+    (void)errp;
+
+    OtHMACState *s = OT_HMAC(dev);
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
 }
 
 static void ot_hmac_reset(DeviceState *dev)
 {
     OtHMACState *s = OT_HMAC(dev);
 
-    timer_del(s->fifo_trigger_handle);
     ibex_irq_set(&s->clkmgr, false);
 
     memset(s->ctx, 0, sizeof(*(s->ctx)));
@@ -646,6 +646,7 @@ static void ot_hmac_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->reset = &ot_hmac_reset;
+    dc->realize = &ot_hmac_realize;
     device_class_set_props(dc, ot_hmac_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

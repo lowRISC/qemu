@@ -33,10 +33,10 @@ ot_alert_skip_active(const char *id, char cls, const char *stname) "%s: class %c
 
 # ot_aon_timer.c
 
-ot_aon_timer_irqs(bool wakeup, bool bark, bool bite) "wkup:%u bark:%u bite:%u"
-ot_aon_timer_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_aon_timer_set_wdog(int64_t now, int64_t next) "now %" PRId64 ", next %" PRId64
-ot_aon_timer_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_aon_timer_irqs(const char *id, bool wakeup, bool bark, bool bite) "%s: wkup:%u bark:%u bite:%u"
+ot_aon_timer_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_aon_timer_set_wdog(const char *id, int64_t now, int64_t next) "%s: now %" PRId64 ", next %" PRId64
+ot_aon_timer_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
 
 # ot_ast.c
 
@@ -200,10 +200,11 @@ ot_gpio_update_out_line(const char *id, unsigned ix, int level) "%s: [%u]: %d"
 
 # ot_hmac.c
 
-ot_hmac_debug(const char *msg) "%s"
-ot_hmac_fifo_write(uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "addr=0x%02x, val=0x%x (%u), pc=0x%x"
-ot_hmac_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_hmac_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_hmac_debug(const char *id, const char *msg) "%s: %s"
+ot_hmac_fifo_write(const char *id, uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "%s: addr=0x%02x, val=0x%x (%u), pc=0x%x"
+ot_hmac_io_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_hmac_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_hmac_irqs(const char *id, uint32_t active, uint32_t mask, uint32_t eff) "%s: act:0x%01x msk:0x%01x eff:0x%01x"
 
 # ot_i2c_dj.c
 
