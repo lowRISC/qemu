@@ -8,9 +8,9 @@ controller virtual device.
 ````text
 usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o C] [-r RAW]
                   [-k {auto,otp,fuz}] [-e BITS] [-c INT] [-i INT] [-w] [-n]
-                  [-s] [-E] [-D] [-U] [--clear-bit CLEAR_BIT]
-                  [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT] [-L | -P | -R]
-                  [-v] [-d]
+                  [-s] [-E] [-D] [-U] [--empty PARTITION]
+                  [--clear-bit CLEAR_BIT] [--set-bit SET_BIT]
+                  [--toggle-bit TOGGLE_BIT] [-L | -P | -R] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -40,7 +40,9 @@ Commands:
   -s, --show            show the OTP content
   -E, --ecc-recover     attempt to recover errors with ECC
   -D, --digest          check the OTP HW partition digest
-  -U, --update          force-update QEMU OTP raw file after ECC recovery
+  -U, --update          update RAW file after ECC recovery or bit changes
+  --empty PARTITION     reset the content of a whole partition, including its
+                        digest if any
   --clear-bit CLEAR_BIT
                         clear a bit at specified location
   --set-bit SET_BIT     set a bit at specified location
@@ -149,6 +151,10 @@ Fuse RAW images only use the v1 type.
 * `-w` tell the script not to truncate the values of the large fields, _i.e._ the fields than
   contain long sequence of bytes. If repeated, the empty long fields are also printed in full, as
   a sequence of empty bytes.
+
+* `--empty` reset a whole parition, including its digest if any and ECC bits. This option is only
+  intended for test purposes. This flag may be repeated. Partition(s) can be specified either by
+  their index or their name.
 
 * `--clear-bit` clears the specified bit in the OTP data. This flag may be repeated. This option is
   only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such

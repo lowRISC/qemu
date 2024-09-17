@@ -73,6 +73,10 @@ def main():
         commands.add_argument('-U', '--update', action='store_true',
                               help='update RAW file after ECC recovery or bit '
                                    'changes')
+        commands.add_argument('--empty', metavar='PARTITION', action='append',
+                              default=[],
+                              help='reset the content of a whole partition, '
+                                   'including its digest if any')
         commands.add_argument('--clear-bit', action='append', default=[],
                               help='clear a bit at specified location')
         commands.add_argument('--set-bit', action='append',  default=[],
@@ -136,6 +140,8 @@ def main():
                 argparser.error('Cannot decode OTP values without an OTP map')
             if args.digest:
                 argparser.error('Cannot verify OTP digests without an OTP map')
+            if args.empty:
+                argparser.error('Cannot empty OTP partition without an OTP map')
         else:
             otpmap = OtpMap()
             otpmap.load(args.otp_map)
@@ -187,6 +193,9 @@ def main():
                 if args.show:
                     argparser.error('Showing content of non-OpenTitan image is '
                                     'not supported')
+            if args.empty:
+                for part in args.empty:
+                    otp.empty_partition(part)
             if args.iv:
                 otp.set_digest_iv(args.iv)
             if args.constant:

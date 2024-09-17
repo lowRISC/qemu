@@ -59,6 +59,13 @@ class OtpPartition:
         return (self.has_digest and self._digest_bytes and
                 self._digest_bytes != bytes(self.DIGEST_SIZE))
 
+    @property
+    def is_empty(self) -> bool:
+        """Report if the partition is empty."""
+        if self._digest_bytes and sum(self._digest_bytes):
+            return False
+        return sum(self._data) == 0
+
     def __repr__(self) -> str:
         return repr(self.__dict__)
 
@@ -71,6 +78,15 @@ class OtpPartition:
             data, digest = data[:-self.DIGEST_SIZE], data[-self.DIGEST_SIZE:]
             self._digest_bytes = digest
         self._data = data
+
+    def save(self, bfp: BinaryIO) -> None:
+        """Save the content of the partition to a binary stream."""
+        pos = bfp.tell()
+        bfp.write(self._data)
+        bfp.write(self._digest_bytes)
+        size = bfp.tell() - pos
+        if size != self.size:
+            raise RuntimeError(f"Failed to save partition {self.name} content")
 
     def verify(self, digest_iv: int, digest_constant: int) -> Optional[bool]:
         """Verify if the digest matches the content of the partition, if any.
@@ -178,6 +194,12 @@ class OtpPartition:
         if self._digest_bytes is not None:
             emit('%-48s %s %s', f'{pname}:DIGEST', soff,
                  hexlify(self._digest_bytes).decode())
+
+    def empty(self) -> None:
+        """Empty the partition, including its digest if any."""
+        self._data = bytes(len(self._data))
+        if self.has_digest:
+            self._digest_bytes = bytes(self.DIGEST_SIZE)
 
 
 class OtpLifecycleExtension(OtpLifecycle, OtpPartitionDecoder):

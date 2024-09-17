@@ -303,6 +303,42 @@ class OtpImage:
         """
         self._change_bits(bitdefs, None)
 
+    def empty_partition(self, partition: Union[int, str]) -> None:
+        """Empty the whole content of a partition, including its digest if any,
+           and its ECC bits if any.
+
+           :param partition: the partition to empty, either specified as an
+                             index or as the partition name
+        """
+        part = None
+        partix = None
+        if isinstance(partition, int):
+            try:
+                part = self._partitions[partition]
+                partix = partition
+            except IndexError:
+                pass
+        elif isinstance(partition, str):
+            partname = partition.lower()
+            try:
+                partix, part = {(i, p) for i, p in enumerate(self._partitions)
+                                if p.__class__.__name__[:-4].lower() ==
+                                partname}.pop()
+            except KeyError:
+                pass
+        if not part:
+            raise ValueError(f"Unknown partition '{partition}'")
+        part.empty()
+        if not part.is_empty:
+            raise RuntimeError(f"Unable to empty partition '{partition}'")
+        content = BytesIO()
+        part.save(content)
+        data = content.getvalue()
+        length = len(data)
+        offset = self._part_offsets[partix]
+        self._data[offset:offset+length] = data
+        self._ecc[offset // 2:(offset+length)//2] = bytes(length//2)
+
     @staticmethod
     def bit_parity(data: int) -> int:
         """Compute the bit parity of an integer, i.e. reduce the vector to a
