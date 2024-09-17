@@ -53,6 +53,8 @@ def main():
         params.add_argument('-e', '--ecc', type=int,
                             default=OtpImage.DEFAULT_ECC_BITS,
                             metavar='BITS', help='ECC bit count')
+        params.add_argument('-C', '--config', type=FileType('rt'),
+                            help='read Present constants from QEMU config file')
         params.add_argument('-c', '--constant', type=HexInt.parse,
                             metavar='INT',
                             help='finalization constant for Present scrambler')
@@ -196,6 +198,8 @@ def main():
             if args.empty:
                 for part in args.empty:
                     otp.empty_partition(part)
+            if args.config:
+                otp.load_config(args.config)
             if args.iv:
                 otp.set_digest_iv(args.iv)
             if args.constant:

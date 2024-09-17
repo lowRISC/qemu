@@ -7,8 +7,8 @@ controller virtual device.
 
 ````text
 usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o C] [-r RAW]
-                  [-k {auto,otp,fuz}] [-e BITS] [-c INT] [-i INT] [-w] [-n]
-                  [-s] [-E] [-D] [-U] [--empty PARTITION]
+                  [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG] [-c INT] [-i INT]
+                  [-w] [-n] [-s] [-E] [-D] [-U] [--empty PARTITION]
                   [--clear-bit CLEAR_BIT] [--set-bit SET_BIT]
                   [--toggle-bit TOGGLE_BIT] [-L | -P | -R] [-v] [-d]
 
@@ -30,6 +30,8 @@ Parameters:
   -k {auto,otp,fuz}, --kind {auto,otp,fuz}
                         kind of content in VMEM input file, default: auto
   -e BITS, --ecc BITS   ECC bit count
+  -C CONFIG, --config CONFIG
+                        read Present constants from QEMU config file
   -c INT, --constant INT
                         finalization constant for Present scrambler
   -i INT, --iv INT      initialization vector for Present scrambler
@@ -87,12 +89,18 @@ Fuse RAW images only use the v1 type.
   `-D` to verify partition digests, and stored in the optional QEMU OTP RAW image file for use by
   the virtual OTP controller when used along with the `-r` option.
 
-* `-c` specify the register file, which is only useful to decode OTP content (see `-s` option).
-  This option is required when `-D` Present digest checking is used.
+* `-C` specify a QEMU [configuration file](otcfg.md) from which to read the Present constants that
+  are required for digest computation. It is a convenience switch to replace both `-i` and options.
+  See [`cfggen.py`](cfggen.md) tool to generate such a file.
+
+* `-c` specify the initialization constant for the Present scrambler used for partition digests.
+  This option is required when `-D` Present digest checking is used. See also `-i` option switch.
+  Override option `-C` if any.
 
 * `-D` performs a partition digest checks for all partitions with a defined digest. The Present
   constant should be defined to perform digest verification. They can be specified with the `-c` and
-  `-i` options switches, or when using a QEMU OTP RAW v2 file that stores these constants.
+  `-i` options switches, or when using a QEMU OTP RAW v2 file that stores these constants, or when
+  a QEMU configuration file is specified with the `-C` option.
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
@@ -100,6 +108,12 @@ Fuse RAW images only use the v1 type.
 
 * `-e` specify how many bits are used in the VMEM file to store ECC information. Note that ECC
   information is not stored in the QEMU RAW file for now.
+
+* `-i` specify the initialization vector for the Present scrambler used for partition digests.
+  This value is "usually" found within the `hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv` OT file,
+  from the last entry of `RndCnstDigestIV` array, _i.e._ item 0. It is used along with option
+  `-D` to verify partition digests, and stored in the optional output OTP image file for use by
+  the virtual OTP controller when used along with the `-o` option. Override option `-C` if any.
 
 * `-j` specify the path to the HJSON OTP controller map file, usually stored in OT
   `hw/ip/otp_ctrl/data/otp_ctrl_mmap.hjson`. This file is required with many options when the OTP
@@ -116,12 +130,6 @@ Fuse RAW images only use the v1 type.
 * `-l` specify the life cycle system verilog file that defines the encoding of the life cycle
   states. This option is not required to generate a RAW image file, but required when the `-L`
   option switch is used.
-
-* `-i` specify the initialization vector for the Present scrambler used for partition digests.
-  This value is "usually" found within the `hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv` OT file,
-  from the last entry of `RndCnstDigestIV` array, _i.e._ item 0. It is used along with option
-  `-D` to verify partition digests, and stored in the optional output OTP image file for use by
-  the virtual OTP controller when used along with the `-o` option.
 
 * `-m` specify the input VMEM file that contains the OTP fuse content. See also the `-k` option.
 
@@ -170,8 +178,8 @@ Fuse RAW images only use the v1 type.
 
 #### Note
 
-Earlgrey OTP virtual device has not been updated to support Present scrambler, so neither `-C` nor
-`-I` option should be used to generate an Earlgrey-compatible RAW image.
+Earlgrey OTP virtual device has not been updated to support Present scrambler, so neither `-c` nor
+`-i` option should be used to generate an Earlgrey-compatible RAW image.
 
 ### Bit position specifier [#bit-syntax]
 
@@ -204,6 +212,12 @@ Generate a QEMU RAW v2 image for the virtual OTP controller, here with an RMA OT
 ````sh
 scripts/opentitan/otptool.py -m img_rma.24.vmem -r otp.raw \
     -i 0x0123456789abcdef -c 0x00112233445566778899aabbccddeeff
+````
+
+Generate a QEMU RAW v2 image for the virtual OTP controller, here with an RMA OTP configuration,
+load Present constants from a QEMU configuration file.
+````sh
+scripts/opentitan/otptool.py -m img_rma.24.vmem -r otp.raw -i ot.cfg
 ````
 
 Decode the content of an OTP VMEM file:

@@ -32,11 +32,13 @@ class HexInt(int):
         return f'0x{self:x}'
 
     @staticmethod
-    def parse(val: Optional[str]) -> Optional[int]:
+    def parse(val: Optional[str], base: Optional[int] = None) -> Optional[int]:
         """Simple helper to support hexadecimal integer in argument parser."""
         if val is None:
             return None
-        return int(val, val.startswith('0x') and 16 or 10)
+        if base is not None:
+            return HexInt(int(val, base))
+        return HexInt(int(val, val.startswith('0x') and 16 or 10))
 
 
 class EasyDict(dict):

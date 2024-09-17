@@ -7,6 +7,7 @@
 """
 
 from binascii import unhexlify
+from configparser import ConfigParser, NoOptionError
 from io import BytesIO
 from logging import getLogger
 from re import match as re_match, sub as re_sub
@@ -51,6 +52,9 @@ class OtpImage:
         (0x23, 0x25, 0x26, 0x27, 0x29, 0x2a, 0x2b, 0x2c,
          0x2d, 0x2e, 0x2f, 0x31, 0x32, 0x33, 0x34, 0x35)
     )
+
+    DEFAULT_OTP_DEVICE = 'ot-otp-dj'
+    """Default OTP device name in configuration file."""
 
     def __init__(self, ecc_bits: Optional[int] = None):
         self._log = getLogger('otp.img')
@@ -201,6 +205,50 @@ class OtpImage:
         for part in self._partitions:
             if part.name == 'LIFE_CYCLE':
                 part.set_decoder(lcext)
+
+    def load_config(self, cfp: TextIO, section: Optional[str] = None) -> None:
+        """Load Present constant from a QEMU configuration file.
+
+           :param cfp: the configuration stream
+           :param section: the section name where to find the constants,
+                           default to DEFAULT_OTP_DEVICE.
+        """
+        cfg = ConfigParser()
+        cfg.read_file(cfp)
+        if not section:
+            section = self.DEFAULT_OTP_DEVICE
+        sectnames = set()
+        for sectname in cfg.sections():
+            if not sectname.startswith('ot_device '):
+                continue
+            try:
+                devname = sectname.strip().split('"')[1]
+            except IndexError:
+                continue
+            if devname != section and not devname.startswith(f'{section}.'):
+                continue
+            sectnames.add(sectname)
+            self._log.info('Found OTP candidate section %s', devname)
+        if not sectnames:
+            raise ValueError(f"Cannot find OTP device section '{section}'")
+        # accept multiple sections with Present constants definitions as long
+        # as they do match
+        constants = set()
+        ivs = set()
+        for sectname in sectnames:
+            try:
+                constants.add(cfg.get(sectname, 'digest_const')
+                              .strip('"').lower())
+                ivs.add(cfg.get(sectname, 'digest_iv')
+                        .strip('"').lower())
+            except NoOptionError:
+                pass
+        if not constants or not ivs:
+            raise ValueError('Incomplete configuration file')
+        if len(constants) > 1 or len(ivs) > 1:
+            raise ValueError(f"Too many OTP device sections '{section}'")
+        self._digest_constant = HexInt.parse(constants.pop(), 16)
+        self._digest_iv = HexInt.parse(ivs.pop(), 16)
 
     # pylint: disable=invalid-name
     def set_digest_iv(self, iv: int) -> None:
