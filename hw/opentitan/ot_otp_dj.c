@@ -1800,21 +1800,22 @@ static uint64_t ot_otp_dj_compute_partition_digest(
 {
     OtPresentState *ps = ot_present_new();
 
+    g_assert((size & (sizeof(uint64_t) - 1u)) == 0);
+
     uint8_t buf[sizeof(uint64_t) * 2u];
     uint64_t state = s->digest_iv;
     uint64_t out;
     for (unsigned off = 0; off < size; off += sizeof(buf)) {
-        const uint8_t *chunk;
-        if (off + sizeof(buf) > size) {
-            memcpy(buf, base + off, sizeof(uint64_t));
+        memcpy(buf, base + off, sizeof(uint64_t));
+        if (off + sizeof(uint64_t) != size) {
             memcpy(&buf[sizeof(uint64_t)], base + off + sizeof(uint64_t),
                    sizeof(uint64_t));
-            chunk = buf;
         } else {
-            chunk = base + off;
+            /* special case, duplicate last block if block number is odd */
+            memcpy(&buf[sizeof(uint64_t)], base + off, sizeof(uint64_t));
         }
 
-        ot_present_init(ps, chunk);
+        ot_present_init(ps, buf);
         ot_present_encrypt(ps, state, &out);
         state ^= out;
     }
@@ -1895,8 +1896,8 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
         trace_ot_otp_mismatch_digest(s->ot_id, PART_NAME(ix), ix, digest,
                                      pctrl->buffer.digest);
 
-        TRACE_OTP("compute digest %016llx from %s\n", digest,
-                  ot_otp_hexdump(pctrl->buffer.data, part_size));
+        TRACE_OTP("compute digest of %s: %016llx from %s\n", PART_NAME(ix),
+                  digest, ot_otp_hexdump(pctrl->buffer.data, part_size));
 
         pctrl->failed = true;
         /* this is a fatal error */
