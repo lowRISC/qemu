@@ -508,6 +508,7 @@ static QemuOptsList qemu_ot_device_opts = {
     .implied_opt_name = "ot_id",
     .head = QTAILQ_HEAD_INITIALIZER(qemu_ot_device_opts.head),
     .desc = {
+         { /* end of list */ }
     },
 };
 
