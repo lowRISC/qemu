@@ -288,8 +288,9 @@ class QEMUWrapper:
             vcplogname = 'pyot.vcp'
             while connect_map:
                 if now() > timeout:
-                    raise TimeoutError(f'Cannot connect to QEMU VCPs '
-                                       f'{", ".join(connect_map)}')
+                    minfo = ', '.join(f'{d} @ {r[0]}:{r[1]}'
+                                      for d, r in connect_map.items())
+                    raise TimeoutError(f'Cannot connect to QEMU VCPs: {minfo}')
                 connected = []
                 for vcpid, (host, port) in connect_map.items():
                     try:
@@ -1778,7 +1779,7 @@ def main():
         exe.add_argument('-F', '--filter', metavar='TEST', action='append',
                          help='run tests with matching filter, prefix with "!" '
                               'to exclude matching tests')
-        exe.add_argument('-k', '--timeout', metavar='SECONDS', type=int,
+        exe.add_argument('-k', '--timeout', metavar='SECONDS', type=float,
                          help=f'exit after the specified seconds '
                               f'(default: {DEFAULT_TIMEOUT} secs)')
         exe.add_argument('-z', '--list', action='store_true',
@@ -1797,6 +1798,8 @@ def main():
                            help='increase verbosity of QEMU virtual comm ports')
         extra.add_argument('-d', action='store_true',
                            help='enable debug mode')
+        extra.add_argument('--quiet', action='store_true',
+                           help='quiet logging: only be verbose on errors')
         extra.add_argument('--log-time', action='store_true',
                            help='show local time in log messages')
         extra.add_argument('--debug', action='append', metavar='LOGGER',
@@ -1826,8 +1829,9 @@ def main():
         log = configure_loggers(args.verbose, 'pyot',
                                 args.vcp_verbose or 0,
                                 'pyot.vcp', name_width=16,
-                                ms=args.log_time, debug=args.debug,
-                                info=args.info, warning=args.warn)[0]
+                                ms=args.log_time, quiet=args.quiet,
+                                debug=args.debug, info=args.info,
+                                warning=args.warn)[0]
 
         qfm = QEMUFileManager(args.keep_tmp)
         qfm.set_qemu_src_dir(qemu_dir)

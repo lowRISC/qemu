@@ -10,8 +10,8 @@ usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT] [-N LOG]
                [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c JSON] [-e]
                [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF]
                [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z] [-R]
-               [-T FACTOR] [-Z] [-v] [-V] [-d] [--log-time] [--debug LOGGER]
-               [--info LOGGER] [--warn LOGGER]
+               [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
+               [--debug LOGGER] [--info LOGGER] [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -82,6 +82,7 @@ Extras:
   -v, --verbose         increase verbosity
   -V, --vcp-verbose     increase verbosity of QEMU virtual comm ports
   -d                    enable debug mode
+  --quiet               quiet logging: only be verbose on errors
   --log-time            show local time in log messages
   --debug LOGGER        assign debug level to logger(s)
   --info LOGGER         assign info level to logger(s)
@@ -182,6 +183,7 @@ This tool may be used in two ways, which can be combined:
 * `-V` / `--vcp-verbose` can be repeated to increase verbosity of the QEMU virtual comm ports
 * `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
+* `--quiet` only emit verbose log traces if an error is detected
 * `--log-time` show local time before each logged message
 * `--debug` enable the debug level for the selected logger, may be repeated
 * `--info` enable the info level for the selected logger, may be repeated
