@@ -955,8 +955,7 @@ static void ot_lc_ctrl_handle_otp_ack(void *opaque, bool ack)
         break;
     case ST_TRANS_PROG:
         if (ack) {
-            trace_ot_lc_ctrl_info(s->ot_id,
-                                  "Succesful transition programmation");
+            trace_ot_lc_ctrl_info(s->ot_id, "Succesful transition update");
             s->regs[R_STATUS] |= R_STATUS_TRANSITION_SUCCESSFUL_MASK;
         } else {
             trace_ot_lc_ctrl_info(s->ot_id, "Failed to program transition");
@@ -1216,7 +1215,9 @@ static void ot_lc_ctrl_initialize(OtLcCtrlState *s)
     }
 
     if (!ot_lc_ctrl_is_known_state(enc_state)) {
-        trace_ot_lc_ctrl_error(s->ot_id, "LC unknown state");
+        if (enc_state != UINT32_MAX) {
+            trace_ot_lc_ctrl_error(s->ot_id, "LC unknown state");
+        }
         s->state_invalid_error_bm |= 1u << 1u;
     } else {
         s->lc_state = ot_lc_ctrl_convert_code_to_state(enc_state);
