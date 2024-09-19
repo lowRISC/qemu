@@ -1047,97 +1047,91 @@ static const char *ERR_CODE_NAMES[] = {
 #define B(_n_) ((LC_STATE_B) | (_n_))
 
 /* clang-format off */
-
-/*
- * note: this array follows RTL definitions, which means everything is inverted
- * end should be read the other way around, i.e. first element is the last
- * one for each state
- */
 static const uint8_t
 LC_STATES_TPL[LC_STATE_VALID_COUNT][LC_STATE_SLOT_COUNT] = {
     [LC_STATE_RAW] = {
-        ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO,
-        ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO
+        ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,
+        ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,
     },
     [LC_STATE_TESTUNLOCKED0] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), A(7), A(6), A(5), A(4), A(3), A(2), A(1), B(0)
+        B(0),  A(1),  A(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTLOCKED0] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), A(7), A(6), A(5), A(4), A(3), A(2), B(1), B(0)
+        B(0),  B(1),  A(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTUNLOCKED1] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), A(7), A(6), A(5), A(4), A(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTLOCKED1] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), A(7), A(6), A(5), A(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTUNLOCKED2] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), A(7), A(6), A(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTLOCKED2] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), A(7), A(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTUNLOCKED3] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), A(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTLOCKED3] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), A(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTUNLOCKED4] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        A(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTLOCKED4] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),A(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTUNLOCKED5] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),A(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTLOCKED5] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),A(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTUNLOCKED6] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),A(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTLOCKED6] = {
-        A(19),A(18),A(17),A(16),A(15),A(14),B(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), A(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_TESTUNLOCKED7] = {
-        A(19),A(18),A(17),A(16),A(15),B(14),B(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), A(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_DEV] = {
-        A(19),A(18),A(17),A(16),B(15),B(14),B(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), B(15), A(16), A(17), A(18), A(19),
     },
     [LC_STATE_PROD] = {
-        A(19),A(18),A(17),B(16),A(15),B(14),B(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), A(15), B(16), A(17), A(18), A(19),
     },
     [LC_STATE_PRODEND] = {
-        A(19),A(18),B(17),A(16),A(15),B(14),B(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), A(15), A(16), B(17), A(18), A(19),
     },
     [LC_STATE_RMA] = {
-        B(19),B(18),A(17),B(16),B(15),B(14),B(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), B(15), B(16), A(17), B(18), B(19),
     },
     [LC_STATE_SCRAP] = {
-        B(19),B(18),B(17),B(16),B(15),B(14),B(13),B(12),B(11),B(10),
-        B(9), B(8), B(7), B(6), B(5), B(4), B(3), B(2), B(1), B(0)
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), B(15), B(16), B(17), B(18), B(19),
     },
 };
 /* clang-format on */
@@ -1878,9 +1872,9 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
 {
     OtOTPPartController *pctrl = &s->partctrls[ix];
 
-    if (!OtOTPPartDescs[ix].hw_digest || pctrl->buffer.digest == 0) {
+    if (pctrl->buffer.digest == 0) {
         trace_ot_otp_skip_digest(s->ot_id, PART_NAME(ix), ix);
-        s->partctrls[ix].locked = false;
+        pctrl->locked = false;
         return;
     }
 
@@ -1912,7 +1906,7 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
 static void ot_otp_dj_initialize_partitions(OtOTPDjState *s)
 {
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-        if (ot_otp_dj_is_ecc_enabled(s) && ix != OTP_PART_VENDOR_TEST) {
+        if (ot_otp_dj_is_ecc_enabled(s) && OtOTPPartDescs[ix].integrity) {
             if (ot_otp_dj_apply_ecc(s, ix)) {
                 continue;
             }
@@ -1926,7 +1920,9 @@ static void ot_otp_dj_initialize_partitions(OtOTPDjState *s)
 
         if (OtOTPPartDescs[ix].buffered) {
             ot_otp_dj_bufferize_partition(s, ix);
-            ot_otp_dj_check_partition_integrity(s, ix);
+            if (OtOTPPartDescs[ix].hw_digest) {
+                ot_otp_dj_check_partition_integrity(s, ix);
+            }
             continue;
         }
     }
@@ -3197,7 +3193,8 @@ static void ot_otp_dj_decode_lc_partition(OtOTPDjState *s)
         }
     }
 
-    trace_ot_otp_initial_lifecycle(s->ot_id, lci->lc.state, lci->lc.tcount);
+    trace_ot_otp_initial_lifecycle(s->ot_id, lci->lc.tcount, lci->lc.state,
+                                   LC_STATE_BITS(lci->lc.state));
 }
 
 static void ot_otp_dj_load_hw_cfg(OtOTPDjState *s)
@@ -3284,6 +3281,11 @@ static void ot_otp_dj_get_lc_info(
                             OT_MULTIBITBOOL_LC4_TRUE :
                             OT_MULTIBITBOOL_LC4_FALSE;
     }
+    trace_ot_otp_lc_info(ds->ot_id, LC_STATE_BITS(lci->lc.state),
+                         lci->lc.tcount,
+                         !ds->partctrls[OTP_PART_SECRET0].failed,
+                         !ds->partctrls[OTP_PART_SECRET2].failed,
+                         !ds->partctrls[OTP_PART_LIFE_CYCLE].failed);
     if (tokens) {
         *tokens = ds->tokens;
     }
@@ -3631,16 +3633,15 @@ static void ot_otp_dj_lci_write_word(void *opaque)
          *  a life cycle state with ECC correctable errors in some words can
          * still be scrapped."
          */
-        new_val |= cur_val;
     }
 
-    lc_dst[lci->hpos] = new_val;
+    lc_dst[lci->hpos] |= new_val;
 
     if (ot_otp_dj_is_ecc_enabled(s)) {
         uint8_t *lc_edst =
             (uint8_t *)&s->otp->ecc[lcdesc->offset / (2u * sizeof(uint32_t))];
         uint8_t cur_ecc = lc_edst[lci->hpos];
-        uint8_t new_ecc = ot_otp_dj_compute_ecc_u16(new_val);
+        uint8_t new_ecc = ot_otp_dj_compute_ecc_u16(lc_dst[lci->hpos]);
 
         trace_ot_otp_lci_write_ecc(s->ot_id, lci->hpos, cur_ecc, new_ecc);
 
@@ -3651,10 +3652,9 @@ static void ot_otp_dj_lci_write_word(void *opaque)
             if (lci->error == OTP_NO_ERROR) {
                 lci->error = OTP_MACRO_WRITE_BLANK_ERROR;
             }
-            new_ecc |= cur_ecc;
         }
 
-        lc_edst[lci->hpos] = new_ecc;
+        lc_edst[lci->hpos] |= new_ecc;
     }
 
     lci->hpos += 1;
@@ -3876,15 +3876,13 @@ static void ot_otp_dj_configure_lc_states(OtOTPDjState *s, Error **errp)
         uint16_t *lcval = &s->lc_states[lcix][0];
         const uint8_t *tpl = LC_STATES_TPL[lcix];
         for (unsigned pos = 0; pos < LC_STATE_SLOT_COUNT; pos++) {
-            // @todo redefine macros to avoid runtime computation
-            unsigned rpos = LC_STATE_SLOT_COUNT - 1u - pos;
-            unsigned slot = LC_STATE_SLOT(tpl[rpos]);
+            unsigned slot = LC_STATE_SLOT(tpl[pos]);
             g_assert(slot < LC_STATE_SLOT_COUNT);
-            if (LC_STATE_A_SLOT(tpl[rpos])) {
+            if (LC_STATE_A_SLOT(tpl[pos])) {
                 lcval[pos] = first[slot];
-            } else if (LC_STATE_B_SLOT(tpl[rpos])) {
+            } else if (LC_STATE_B_SLOT(tpl[pos])) {
                 lcval[pos] = last[slot];
-            } else if (LC_STATE_ZERO_SLOT(tpl[rpos])) {
+            } else if (LC_STATE_ZERO_SLOT(tpl[pos])) {
                 lcval[pos] = 0u;
             } else {
                 g_assert_not_reached();
@@ -3951,7 +3949,7 @@ static void ot_otp_dj_configure_lc_transitions(OtOTPDjState *s, Error **errp)
     memset(s->lc_transitions[tix++], 0, sizeof(OtOTPTransitionValue));
     for (; tix < LC_TRANSITION_COUNT; tix++) {
         uint16_t *lcval = s->lc_transitions[tix];
-        memcpy(&lcval[0u], &last[0], tix * sizeof(uint16_t));
+        memcpy(&lcval[0], &last[0], tix * sizeof(uint16_t));
         memcpy(&lcval[tix], &first[tix],
                sizeof(OtOTPTransitionValue) - tix * sizeof(uint16_t));
     }
@@ -3994,6 +3992,8 @@ static void ot_otp_dj_load(OtOTPDjState *s, Error **errp)
         uint8_t digest_iv[8u];
         uint8_t digest_constant[16u];
     };
+
+    static_assert(sizeof(struct otp_header) == 48u, "Invalid header size");
 
     /* data following header should always be 64-bit aligned */
     static_assert((sizeof(struct otp_header) % sizeof(uint64_t)) == 0,

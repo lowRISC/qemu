@@ -407,9 +407,16 @@ static const OtOTPTokens OT_OTP_EG_TOKENS;
 #include "ot_otp_eg_lcvalues.c"
 
 #define LC_TRANSITION_COUNT_MAX 24u
+#define LC_STATE_BIT_WIDTH      5u
 #define LC_ENCODE_STATE(_x_) \
-    (((_x_) << 0u) | ((_x_) << 5u) | ((_x_) << 10u) | ((_x_) << 15u) | \
-     ((_x_) << 20u) | ((_x_) << 25u))
+    (((_x_) << (LC_STATE_BIT_WIDTH * 0)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 1u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 2u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 3u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 4u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 5u)))
+#define LC_STATE_BITS(_elc_) ((_elc_) & ((1u << LC_STATE_BIT_WIDTH) - 1u))
+
 
 static void ot_otp_eg_update_irqs(OtOTPEgState *s)
 {
@@ -1016,7 +1023,8 @@ static void ot_otp_eg_decode_lc_partition(OtOTPEgState *s)
             break;
         }
     }
-    trace_ot_otp_initial_lifecycle(s->ot_id, s->lc.state, s->lc.tcount);
+    trace_ot_otp_initial_lifecycle(s->ot_id, s->lc.tcount, s->lc.state,
+                                   LC_STATE_BITS(s->lc.state));
 }
 
 static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
