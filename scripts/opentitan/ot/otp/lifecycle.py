@@ -10,11 +10,11 @@ from binascii import unhexlify
 from io import StringIO
 from logging import getLogger
 from os.path import basename
-from re import finditer, match
+from re import finditer, match, sub
 from textwrap import fill
 from typing import TextIO
 
-from ot.util.misc import camel_to_snake_case
+from ot.util.misc import camel_to_snake_case, group
 
 
 class OtpLifecycle:
@@ -31,6 +31,7 @@ class OtpLifecycle:
 
     def __init__(self):
         self._log = getLogger('otp.lc')
+        self._sequences: dict[str, list[str]] = {}
         self._tables: dict[str, dict[str, str]] = {}
         self._tokens: dict[str, str] = {}
 
@@ -55,6 +56,7 @@ class OtpLifecycle:
                 name = abmo.group(1)
                 sval = abmo.group(2)
                 val = int(sval[1:], 2 if sval.startswith('b') else 16)
+                val = ((val >> 8) & 0xff) | ((val & 0xff) << 8)
                 if name in codes:
                     self._log.error('Redefinition of %s', name)
                     continue
@@ -65,7 +67,7 @@ class OtpLifecycle:
                 kind = smo.group(1).lower()
                 name = smo.group(2)
                 seq = smo.group(3)
-                items = [x.strip() for x in seq.split(',')]
+                items = [x.strip() for x in reversed(seq.split(','))]
                 inv = [it for it in items if it not in codes]
                 if inv:
                     self._log.error('Unknown state seq: %s', ', '.join(inv))
@@ -73,6 +75,7 @@ class OtpLifecycle:
                     sequences[kind] = {}
                 sequences[kind][name] = items
                 continue
+        self._sequences = sequences
         svp.seek(0)
         for tmo in finditer(r"\s+parameter\s+lc_token_t\s+(\w+)\s+="
                             r"\s+\{\s+128'h([0-9A-F]+)\s+\};",
@@ -89,13 +92,21 @@ class OtpLifecycle:
                 seq = ''.join((f'{x:04x}'for x in map(codes.get, seq)))
                 self._tables[mkind][seq] = conv(ref)
 
-    def save(self, cfp: TextIO):
+    def save(self, cfp: TextIO, data_mode: bool) -> None:
         """Save OTP life cycle definitions as a C file.
 
            :param cfp: output text stream
+           :param data_mode: whether to output data or template
         """
         print(f'/* Section auto-generated with {basename(__file__)} '
               f'script */', file=cfp)
+        if data_mode:
+            self._save_data(cfp)
+        else:
+            self._save_template(cfp)
+        print('/* End of auto-generated section */', file=cfp)
+
+    def _save_data(self, cfp: TextIO) -> None:
         for kind, table in self._tables.items():
             enum_io = StringIO()
             array_io = StringIO()
@@ -125,7 +136,22 @@ class OtpLifecycle:
                 # likely to be moved to a header file
                 print(f'enum {kind.lower()} {{\n{enum_str}}};\n', file=cfp)
             print(f'{array_io.getvalue()}', file=cfp)
-        print('/* End of auto-generated section */', file=cfp)
+
+    def _save_template(self, cfp: TextIO) -> None:
+        print('/* clang-format off */', file=cfp)
+        states = self._sequences.get('st') or {}
+        print('static const uint8_t', file=cfp)
+        print('LC_STATES_TPL[LC_STATE_VALID_COUNT][LC_STATE_SLOT_COUNT] = {',
+              file=cfp)
+        for stname, stwords in states.items():
+            print(f'    [LC_STATE_{stname.upper()}] = {{', file=cfp)
+            for wgrp in group(stwords, len(stwords)//2):
+                items = (sub(r'(\d+)', r'(\1)', wg) for wg in wgrp)
+                stws = ' '.join(f'{w:<6s}' for w in (f'{i},' for i in items))
+                print(f'        {stws.rstrip()}', file=cfp)
+            print('    },', file=cfp)
+        print('};', file=cfp)
+        print('/* clang-format on */', file=cfp)
 
     def get_configuration(self, name: str) -> dict[str, str]:
         """Provide a dictionary of configurable elements for QEMU."""

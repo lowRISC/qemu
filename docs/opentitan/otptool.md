@@ -10,7 +10,8 @@ usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o C] [-r RAW]
                   [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG] [-c INT] [-i INT]
                   [-w] [-n] [-s] [-E] [-D] [-U] [--empty PARTITION]
                   [--clear-bit CLEAR_BIT] [--set-bit SET_BIT]
-                  [--toggle-bit TOGGLE_BIT] [-L | -P | -R] [-v] [-d]
+                  [--toggle-bit TOGGLE_BIT] [-G {LCVAL,LCTPL,PARTS,REGS}] [-v]
+                  [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -23,7 +24,7 @@ Files:
   -m VMEM, --vmem VMEM  input VMEM file
   -l SV, --lifecycle SV
                         input lifecycle system verilog file
-  -o C, --output C      output C file
+  -o C, --output C      output filename for C file generation
   -r RAW, --raw RAW     QEMU OTP raw image file
 
 Parameters:
@@ -50,9 +51,8 @@ Commands:
   --set-bit SET_BIT     set a bit at specified location
   --toggle-bit TOGGLE_BIT
                         toggle a bit at specified location
-  -L, --generate-lc     generate lc_ctrl C arrays
-  -P, --generate-parts  generate partition descriptor C arrays
-  -R, --generate-regs   generate partition register C definitions
+  -G {LCVAL,LCTPL,PARTS,REGS}, --generate {LCVAL,LCTPL,PARTS,REGS}
+                        generate C code, see doc for options
 
 Extras:
   -v, --verbose         increase verbosity
@@ -124,8 +124,9 @@ Fuse RAW images only use the v1 type.
   the kind of the input VMEM file from its content when this option is not specified or set to
   `auto`. It is fails to detect the file kind or if the kind needs to be enforced, use this option.
 
-* `-L` generate a file describing the LifeCycle contants as C arrays. Mutually exclusive with the
-  `-P` and `-R` option switches. See `-o` to specify an output file.
+* `-G` can be used to generate C code for QEMU, from OTP and LifeCycle known definitions. See the
+  [Generation](#generation) section for details. See option `-o` to specify the path to the file to
+  generate
 
 * `-l` specify the life cycle system verilog file that defines the encoding of the life cycle
   states. This option is not required to generate a RAW image file, but required when the `-L`
@@ -136,14 +137,8 @@ Fuse RAW images only use the v1 type.
 * `-n` tell the script not to attempt to decode the content of encoded fields, such as the hardened
   booleans values. When used, the raw value of each field is printed out.
 
-* `-o` specify the path to the output C file to generate, see `-L`, `-P` and `-R` option switches.
-  Defaults to the standard output.
-
-* `-P` generate a file describing the OTP partition properties as C arrays. Mutually exclusive with
-  the `-L` and `-R` option switches. See `-o` to specify an output file.
-
-* `-R` generate a file describing the OTP partition registers as C defintion. Mutually exclusive
-  with the `-L` and `-P` option switches. See `-o` to specify an output file.
+* `-o` specify the path to the output C file to generate, see `-G` option. If not specified, the
+  generated file is emitted on the standard output.
 
 * `-r` specify the path to the QEMU OTP RAW image file. When used with the `-m` option switch, a
   new QEMU OTP image file is generated. Otherwise, the QEMU OTP RAW image file should exist and is
@@ -193,6 +188,22 @@ address 2N and 2N+1 are considered the same.
 If the bit is larger than the data slot, it indicates the location with the ECC part, _e.g._ if OTP
 fuses are organized as 16-bit slots wtih 6-bit ECC, bit 0 to 15 indicates a bit into the data slot,
 while bit 16 to 21 indicates an ECC bit.
+
+### Generation [#generation]
+
+The generation feature may be used to generate part of the OTP and LifeCycle QEMU implementation,
+based on known definitions from the OpenTitan constants. This option accepts on of the following
+argument:
+
+* `LCVAL` generates a file describing the LifeCycle constants as C arrays. Requires `-l` option.
+* `LCTPL` generates a file describing the LifeCycle State encoding as a C array. . Requires `-l`
+  option.
+* `PARTS` generates a file describing the OTP partition properties as C arrays. Requires `-j`
+  option.
+* `REGS` generates a file describing the OTP partition registers as C definitions. Requires `-j`
+  option.
+
+ See `-o` to specify an output file for the generated file.
 
 ### Examples
 
@@ -248,10 +259,10 @@ scripts/opentitan/otptool.py -r otp.raw -j otp_ctrl_mmap.hjson -D \
 
 Generate a C source file with LifeCycle constant definitions:
 ````sh
-scripts/opentitan/otptool.py -L -l lc_ctrl_state_pkg.sv -o lc_state.c
+scripts/opentitan/otptool.py -G LCVAL -l lc_ctrl_state_pkg.sv -o lc_state.c
 ````
 
 Generates a C source file with OTP partition properties:
 ````sh
-scripts/opentitan/otptool.py -j otp_ctrl_mmap.hjson -P -o otp_part.c
+scripts/opentitan/otptool.py -j otp_ctrl_mmap.hjson -G PARTS -o otp_part.c
 ````

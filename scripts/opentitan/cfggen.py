@@ -13,7 +13,7 @@ from configparser import ConfigParser
 from logging import getLogger
 from os.path import isdir, isfile, join as joinpath, normpath
 from re import match, search
-from sys import exit as sysexit, modules, stderr
+from sys import exit as sysexit, modules, stderr, stdout
 from traceback import format_exc
 from typing import Optional
 
@@ -107,7 +107,7 @@ class OtConfiguration:
             with open(outpath, 'wt') as ofp:
                 cfg.write(ofp)
         else:
-            cfg.write(stderr)
+            cfg.write(stdout)
 
     @classmethod
     def add_pair(cls, data: dict[str, str], kname: str, value: str) -> None:

@@ -28,6 +28,7 @@ if version_info[:2] < (3, 7):
 def main():
     """Main routine"""
     debug = True
+    genfmts = 'LCVAL LCTPL PARTS REGS'.split()
     try:
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
@@ -41,7 +42,7 @@ def main():
                            metavar='SV',
                            help='input lifecycle system verilog file')
         files.add_argument('-o', '--output', metavar='C', type=FileType('wt'),
-                           help='output C file')
+                           help='output filename for C file generation')
         files.add_argument('-r', '--raw',
                            help='QEMU OTP raw image file')
         params = argparser.add_argument_group(title='Parameters')
@@ -85,13 +86,8 @@ def main():
                               help='set a bit at specified location')
         commands.add_argument('--toggle-bit', action='append',  default=[],
                               help='toggle a bit at specified location')
-        generate = commands.add_mutually_exclusive_group()
-        generate.add_argument('-L', '--generate-lc', action='store_true',
-                              help='generate lc_ctrl C arrays')
-        generate.add_argument('-P', '--generate-parts', action='store_true',
-                              help='generate partition descriptor C arrays')
-        generate.add_argument('-R', '--generate-regs', action='store_true',
-                              help='generate partition register C definitions')
+        commands.add_argument('-G', '--generate', choices=genfmts,
+                              help='generate C code, see doc for options')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -136,7 +132,7 @@ def main():
         partdesc: Optional[OTPPartitionDesc] = None
 
         if not args.otp_map:
-            if args.generate_parts or args.generate_regs:
+            if args.generate in ('PARTS', 'REGS'):
                 argparser.error('Generator requires an OTP map')
             if args.show:
                 argparser.error('Cannot decode OTP values without an OTP map')
@@ -151,22 +147,26 @@ def main():
         if args.lifecycle:
             lcext = OtpLifecycleExtension()
             lcext.load(args.lifecycle)
+        elif args.generate in ('LCVAL', 'LCTPL'):
+            argparser.error('Cannot generate LC array w/o a lifecycle file')
 
         output = stdout if not args.output else args.output
 
-        if args.generate_parts:
+        if not args.generate:
+            pass
+        elif args.generate == 'PARTS':
             partdesc = OTPPartitionDesc(otpmap)
             partdesc.save(basename(args.otp_map.name), basename(argv[0]),
                           output)
-
-        if args.generate_regs:
+        elif args.generate == 'REGS':
             regdef = OTPRegisterDef(otpmap)
             regdef.save(basename(args.otp_map.name), basename(argv[0]), output)
-
-        if args.generate_lc:
-            if not lcext:
-                argparser.error('Cannot generate LC array w/o a lifecycle file')
-            lcext.save(output)
+        elif args.generate == 'LCVAL':
+            lcext.save(output, True)
+        elif args.generate == 'LCTPL':
+            lcext.save(output, False)
+        else:
+            argparser.error(f'Unsupported generation: {args.generate}')
 
         if args.vmem:
             otp.load_vmem(args.vmem, args.kind)
@@ -186,8 +186,7 @@ def main():
 
         if otp.loaded:
             if not otp.is_opentitan:
-                ot_opts = ('iv', 'constant', 'digest', 'generate_parts',
-                           'generate_regs', 'generate_lc', 'otp_map',
+                ot_opts = ('iv', 'constant', 'digest', 'generate', 'otp_map',
                            'lifecycle')
                 if any(getattr(args, a) for a in ot_opts):
                     argparser.error('Selected option only applies to OpenTitan '
