@@ -155,7 +155,7 @@ class OtConfiguration:
                     nameargs.append(f'rom{rom}')
                 romname = '.'.join(nameargs)
                 romdata = {}
-                for kname, val in data.items():
+                for kname, val in sorted(data.items()):
                     self.add_pair(romdata, kname, val)
                 cfg[f'ot_device "{romname}"'] = romdata
 
@@ -172,6 +172,7 @@ class OtConfiguration:
         self.add_pair(otpdata, 'lc_trscnt_last', self._lc_transitions[-1])
         for kname, val in self._otp.items():
             self.add_pair(otpdata, kname, val)
+        otpdata = dict(sorted(otpdata.items()))
         cfg[f'ot_device "{otpname}"'] = otpdata
 
     def _generate_life_cycle(self, cfg: ConfigParser,
