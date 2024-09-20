@@ -31,7 +31,7 @@ class OtpLifecycle:
 
     def __init__(self):
         self._log = getLogger('otp.lc')
-        self._sequences: dict[str, list[str]] = {}
+        self._sequences: dict[str, dict[str, list[str]]] = {}
         self._tables: dict[str, dict[str, str]] = {}
         self._tokens: dict[str, str] = {}
 
@@ -41,10 +41,12 @@ class OtpLifecycle:
            :param svp: System Verilog stream with OTP definitions.
         """
         ab_re = (r"\s*parameter\s+logic\s+\[\d+:\d+\]\s+"
-                 r"([ABCD]\d+|ZRO)\s+=\s+\d+'(b(?:[01]+)|h(?:[0-9a-fA-F]+));")
-        tbl_re = r"\s*Lc(St|Cnt)(\w+)\s+=\s+\{([^\}]+)\}\s*,?"
+                 r"([ABCDEFGH]\d+|ZRO)\s+=\s+"
+                 r"\d+'(b(?:[01]+)|h(?:[0-9a-fA-F]+));")
+        tbl_re = (r"\s*(LcSt|LcCnt|OwnershipSt|SocDbgSt)(\w+)\s+="
+                  r"\s+\{([^\}]+)\}\s*,?")
         codes: dict[str, int] = {}
-        sequences: dict[str, list[str]] = {}
+        sequences: dict[str, dict[str, list[str]]] = {}
         svp = StringIO(svp.read())
         for line in svp:
             cmt = line.find('//')
@@ -85,8 +87,10 @@ class OtpLifecycle:
                 raise ValueError(f'Multiple definitions of token {token}')
             self._tokens[token] = value.lower()
         for kind, seqs in sequences.items():
-            mkind, conv = {'st': ('LC_STATE', str),
-                           'cnt': ('LC_TRANSITION_CNT', int)}[kind]
+            mkind, conv = {'lcst': ('LC_STATE', str),
+                           'lccnt': ('LC_TRANSITION_CNT', int),
+                           'ownershipst': ('OWNERSHIP', str),
+                           'socdbgst': ('SOCDBG', str)}[kind]
             self._tables[mkind] = {}
             for ref, seq in seqs.items():
                 seq = ''.join((f'{x:04x}'for x in map(codes.get, seq)))
@@ -155,7 +159,7 @@ class OtpLifecycle:
 
     def get_configuration(self, name: str) -> dict[str, str]:
         """Provide a dictionary of configurable elements for QEMU."""
-        return self._tables.get(name, {})
+        return dict(self._tables.get(name, {}))
 
     def get_tokens(self, hashed: bool, zero: bool) -> dict[str, str]:
         """Return a dictionary of parsed tokens."""

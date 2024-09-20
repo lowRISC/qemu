@@ -22,6 +22,9 @@ try:
     from hjson import load as hjload
 except ImportError as hjson_exc:
     _HJSON_ERROR = str(hjson_exc)
+    def hjload(*_, **__):  # noqa: E301
+        """dummy func if HJSON module is not available"""
+        return {}
 
 from ot.util.log import configure_loggers
 from ot.util.misc import camel_to_snake_case
@@ -40,12 +43,15 @@ class OtConfiguration:
         self._log = getLogger('cfggen.cfg')
         self._lc_states: tuple[str, str] = ('', '')
         self._lc_transitions: tuple[str, str] = ('', '')
+        self._socdbg: tuple[str, str] = ('', '')
+        self._ownership: tuple[str, str] = ('', '')
         self._roms: dict[Optional[int], dict[str, str]] = {}
         self._otp: dict[str, str] = {}
         self._lc: dict[str, str] = {}
 
     def load_top_config(self, toppath: str) -> None:
         """Load data from HJSON top configuration file."""
+        assert not _HJSON_ERROR
         with open(toppath, 'rt') as tfp:
             cfg = hjload(tfp)
         for module in cfg.get('module') or []:
@@ -80,10 +86,27 @@ class OtConfiguration:
             del trans[raw]
         otrans = list(trans)
         self._lc_transitions = otrans[0], otrans[-1]
-        self._log.info('Transitions first : %d, last %d',
+        self._log.info('Transitions first: %d, last %d',
                        int(trans[self._lc_transitions[0]]),
                        int(trans[self._lc_transitions[1]]))
         self._lc.update(lcext.get_tokens(False, False))
+        socdbg = lcext.get_configuration('SOCDBG')
+        if socdbg:
+            for raw in {s for s in socdbg if int(s, 16) == 0}:
+                del socdbg[raw]
+        osoc = list(socdbg)
+        self._socdbg = osoc[0], osoc[-1]
+        self._log.info("Socdbg first: '%s', last '%s'",
+                       socdbg[self._socdbg[0]], socdbg[self._socdbg[1]])
+        ownership = lcext.get_configuration('OWNERSHIP')
+        if ownership:
+            for raw in {s for s in ownership if int(s, 16) == 0}:
+                del ownership[raw]
+        osoc = list(ownership)
+        self._ownership = osoc[0], osoc[-1]
+        self._log.info("Socdbg first: '%s', last '%s'",
+                       ownership[self._ownership[0]],
+                       ownership[self._ownership[1]])
 
     def load_otp_constants(self, otppath: str) -> None:
         """Load OTP data from RTL file."""
@@ -93,14 +116,14 @@ class OtConfiguration:
         self._otp.update(otpconst.get_digest_pair('cnsty_digest', 'digest'))
         self._otp.update(otpconst.get_digest_pair('sram_data_key', 'sram'))
 
-    def save(self, socid: Optional[str] = None, count: Optional[int] = 1,
-             outpath: Optional[str] = None) \
+    def save(self, socid: Optional[str], count: Optional[int],
+             outpath: Optional[str]) \
             -> None:
         """Save QEMU configuration file using a INI-like file format,
            compatible with the `-readconfig` option of QEMU.
         """
         cfg = ConfigParser()
-        self._generate_roms(cfg, socid, count)
+        self._generate_roms(cfg, socid, count or 1)
         self._generate_otp(cfg, socid)
         self._generate_life_cycle(cfg, socid)
         if outpath:
@@ -112,17 +135,18 @@ class OtConfiguration:
     @classmethod
     def add_pair(cls, data: dict[str, str], kname: str, value: str) -> None:
         """Helper to create key, value pair entries."""
-        data[f'  {kname}'] = f'"{value}"'
+        if value:
+            data[f'  {kname}'] = f'"{value}"'
 
     def _load_top_values(self, module: dict, odict: dict, multi: bool,
-                         *regexes: list[OtParamRegex]) -> None:
+                         *regexes: tuple[OtParamRegex, ...]) -> None:
         modname = module.get('name')
         if not modname:
             return
         for params in module.get('param_list', []):
             if not isinstance(params, dict):
                 continue
-            for regex in regexes:        # TODO: camelcase to lower snake case
+            for regex in regexes:
                 pmo = match(regex, params['name'])
                 if not pmo:
                     continue
@@ -167,9 +191,13 @@ class OtConfiguration:
         otpname = '.'.join(nameargs)
         otpdata = {}
         self.add_pair(otpdata, 'lc_state_first', self._lc_states[0])
-        self.add_pair(otpdata, 'lc_state_last', self._lc_states[-1])
+        self.add_pair(otpdata, 'lc_state_last', self._lc_states[1])
         self.add_pair(otpdata, 'lc_trscnt_first', self._lc_transitions[0])
-        self.add_pair(otpdata, 'lc_trscnt_last', self._lc_transitions[-1])
+        self.add_pair(otpdata, 'lc_trscnt_last', self._lc_transitions[1])
+        self.add_pair(otpdata, 'ownership_first', self._ownership[0])
+        self.add_pair(otpdata, 'ownership_last', self._ownership[1])
+        self.add_pair(otpdata, 'socdbg_first', self._socdbg[0])
+        self.add_pair(otpdata, 'socdbg_last', self._socdbg[1])
         for kname, val in self._otp.items():
             self.add_pair(otpdata, kname, val)
         otpdata = dict(sorted(otpdata.items()))
@@ -224,7 +252,7 @@ def main():
         configure_loggers(args.verbose, 'cfggen', 'otp')
 
         if _HJSON_ERROR:
-            argparser.error('Missing HSJON module: {_HJSON_ERROR}')
+            argparser.error('Missing HJSON module: {_HJSON_ERROR}')
 
         topdir = args.opentitan[0]
         if not isdir(topdir):
