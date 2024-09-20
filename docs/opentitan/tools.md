@@ -2,18 +2,12 @@
 
 All the OpenTitan tools and associated files are stored in the `scripts/opentitan` directory.
 
-## Execution wrappers
+## Execution wrapper
 
 Launching a QEMU VM with the right option switches may rapidly become complex due to the number
-of options and the available features. Several helper tools are provided in the `scripts/opentitan`
-directory to help with these tasks.
+of options and the available features.
 
 * [`pyot.py`](pyot.md) can be used to run unit tests and OpenTitan tests
-* `otboot.sh` is a wrapper script to build image files and execute a ROM/ROM_EXT/BL0 execution
-  session.
-* `otrun.sh` is a wrapper script to build image files and execute an OpenTitan test.
-* `ottests.sh` is a wrapper script to execute many OpenTitan tests and report a list of successes
-   and failures.
 
 ## Companion file management
 
