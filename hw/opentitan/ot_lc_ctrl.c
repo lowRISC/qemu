@@ -44,7 +44,6 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "ot_lc_defs.h"
 #include "tomcrypt.h"
 #include "trace.h"
 #include "trace/trace-hw_opentitan.h"
@@ -185,13 +184,65 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
+#define NUM_LC_STATE            (LC_STATE_VALID_COUNT)
+#define NUM_LC_TRANSITION_COUNT 25u
+#define NUM_OWNERSHIP           8u
+#define NUM_SOCDBG              3u
+
+#define LC_TRANSITION_COUNT_WORDS 24u
+#define LC_STATE_WORDS            20u
+#define OWNERSHIP_WORDS           8u
+#define SOCDBG_WORDS              2u
+
+#define LC_TRANSITION_COUNT_BYTES \
+    ((LC_TRANSITION_COUNT_WORDS) / sizeof(uint16_t))
+#define LC_STATE_BYTES ((LC_STATE_WORDS) / sizeof(uint16_t))
+#define OWNERSHIP_SIZE ((OWNERSHIP_WORDS) / sizeof(uint16_t))
+#define SOCDBG_SIZE    ((SOCDBG_WORDS) / sizeof(uint16_t))
+
+#define LC_STATE_BIT_WIDTH 5u
 #define LC_ENCODE_STATE(_x_) \
-    (((_x_) << 0u) | ((_x_) << 5u) | ((_x_) << 10u) | ((_x_) << 15u) | \
-     ((_x_) << 20u) | ((_x_) << 25u))
+    (((_x_) << (LC_STATE_BIT_WIDTH * 0)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 1u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 2u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 3u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 4u)) | \
+     ((_x_) << (LC_STATE_BIT_WIDTH * 5u)))
+#define LC_STATE_BITS(_elc_) ((_elc_) & ((1u << LC_STATE_BIT_WIDTH) - 1u))
 
 #define LC_ID_STATE_BLANK        0
 #define LC_ID_STATE_PERSONALIZED 0x55555555u
 #define LC_ID_STATE_INVALID      0xaaaaaaaau
+
+/* Share lifecycle state definitions */
+typedef enum {
+    LC_STATE_RAW,
+    LC_STATE_TESTUNLOCKED0,
+    LC_STATE_TESTLOCKED0,
+    LC_STATE_TESTUNLOCKED1,
+    LC_STATE_TESTLOCKED1,
+    LC_STATE_TESTUNLOCKED2,
+    LC_STATE_TESTLOCKED2,
+    LC_STATE_TESTUNLOCKED3,
+    LC_STATE_TESTLOCKED3,
+    LC_STATE_TESTUNLOCKED4,
+    LC_STATE_TESTLOCKED4,
+    LC_STATE_TESTUNLOCKED5,
+    LC_STATE_TESTLOCKED5,
+    LC_STATE_TESTUNLOCKED6,
+    LC_STATE_TESTLOCKED6,
+    LC_STATE_TESTUNLOCKED7,
+    LC_STATE_DEV,
+    LC_STATE_PROD,
+    LC_STATE_PRODEND,
+    LC_STATE_RMA,
+    LC_STATE_SCRAP,
+    LC_STATE_VALID_COUNT,
+    LC_STATE_POST_TRANSITION = LC_STATE_VALID_COUNT,
+    LC_STATE_ESCALATE,
+    LC_STATE_INVALID,
+    LC_STATE_TOTAL_COUNT
+} OtLcState;
 
 typedef enum {
     LC_ENC_STATE_RAW = LC_ENCODE_STATE(LC_STATE_RAW),
@@ -219,6 +270,11 @@ typedef enum {
     LC_ENC_STATE_ESCALATE = LC_ENCODE_STATE(LC_STATE_ESCALATE),
     LC_ENC_STATE_INVALID = LC_ENCODE_STATE(LC_STATE_INVALID),
 } OtLcEncodedState;
+
+typedef uint16_t OtLcCtrlStateValue[LC_STATE_WORDS];
+typedef uint16_t OtLcCtrlTransitionCountValue[LC_TRANSITION_COUNT_WORDS];
+typedef uint16_t OtLcCtrlOwnershipValue[OWNERSHIP_WORDS];
+typedef uint16_t OtLcCtrlSocDbgValue[SOCDBG_WORDS];
 
 typedef enum {
     LC_IF_NONE,
@@ -271,6 +327,47 @@ typedef enum {
     LC_DIV_PROD,
 } OtLcCtrlKeyMgrDiv;
 
+/* Ownership states */
+typedef enum {
+    OWNERSHIP_ST_RAW,
+    OWNERSHIP_ST_LOCKED0,
+    OWNERSHIP_ST_RELEASED0,
+    OWNERSHIP_ST_LOCKED1,
+    OWNERSHIP_ST_RELEASED1,
+    OWNERSHIP_ST_LOCKED2,
+    OWNERSHIP_ST_RELEASED2,
+    OWNERSHIP_ST_LOCKED_3,
+    OWNERSHIP_ST_SCRAPPED,
+    OWNERSHIP_ST_COUNT,
+} OtLcCtrlOwnershipState;
+
+/* SocDbg states */
+typedef enum {
+    SOCDBG_ST_RAW,
+    SOCDBG_ST_PRE_PROD,
+    SOCDBG_ST_PROD,
+    SOCDBG_ST_COUNT,
+} OtLcCtrlDbgState;
+
+typedef enum {
+    LC_CTRL_TRANS_LC_STATE,
+    LC_CTRL_TRANS_LC_TCOUNT,
+    LC_CTRL_TRANS_OWNERSHIP,
+    LC_CTRL_TRANS_SOCDBG,
+    LC_CTRL_TRANS_COUNT
+} OtLcCtrlTransition;
+
+enum OtLcCtrlTState {
+    LC_CTRL_TSTATE_FIRST, /* initial value */
+    LC_CTRL_TSTATE_LAST, /* terminal value */
+    LC_CTRL_TSTATE_COUNT,
+};
+
+typedef struct {
+    /* string of hexadecimal encoded bytes */
+    char *state[LC_CTRL_TSTATE_COUNT];
+} OtLcCtrlTransitionConfig;
+
 struct OtLcCtrlState {
     SysBusDevice parent_obj;
 
@@ -285,13 +382,17 @@ struct OtLcCtrlState {
     uint32_t *regs; /* slots in xregs are not used in regs */
     uint32_t xregs[EXCLUSIVE_SLOTS_COUNT][EXCLUSIVE_REGS_COUNT];
     OtLcState lc_state;
-    OtLcCtrlKeyMgrDiv km_div;
     uint32_t lc_tcount;
+    OtLcCtrlKeyMgrDiv km_div;
     OtOTPTokenValue hash_token;
     OtLcCtrlIf owner;
     OtLcCtrlFsmState state;
     OtLcCtrlFsmKmacState kmac_state;
-    OtOTPTokenValue hashed_tokens[LC_TK_COUNT];
+    OtLcCtrlStateValue *lc_states;
+    OtLcCtrlTransitionCountValue *lc_transitions;
+    OtLcCtrlOwnershipValue *ownerships;
+    OtLcCtrlSocDbgValue *socdbgs;
+    OtOTPTokenValue *hashed_tokens;
     uint32_t hashed_token_bm;
     struct {
         uint32_t value;
@@ -307,12 +408,19 @@ struct OtLcCtrlState {
     OtOTPState *otp_ctrl;
     OtKMACState *kmac;
     char *raw_unlock_token_xstr;
+    OtLcCtrlTransitionConfig trans_cfg[LC_CTRL_TRANS_COUNT];
     uint16_t silicon_creator_id;
     uint16_t product_id;
     uint8_t revision_id;
     uint8_t kmac_app;
     bool volatile_raw_unlock;
 };
+
+typedef struct {
+    unsigned word_count; /* sequence size (count of 16-bit words) */
+    unsigned step_count; /* how many different steps/stages, incl. raw/blank */
+    const char *name; /* helper name */
+} OtLcCtrlTransitionDesc;
 
 static_assert(sizeof(OtOTPTokenValue) == LC_TOKEN_WIDTH,
               "Unexpected LC TOLEN WIDTH");
@@ -402,6 +510,35 @@ static const char *LC_BROADCAST_NAMES[] = {
     LC_NAME_ENTRY(OT_LC_ISO_PART_SW_WR_EN),
     LC_NAME_ENTRY(OT_LC_SEED_HW_RD_EN),
 };
+
+static const char *TSTATE_NAMES[LC_CTRL_TSTATE_COUNT] = {
+    [LC_CTRL_TSTATE_FIRST] = "first",
+    [LC_CTRL_TSTATE_LAST] = "last",
+};
+
+static const OtLcCtrlTransitionDesc TRANSITION_DESC[LC_CTRL_TRANS_COUNT] = {
+    [LC_CTRL_TRANS_LC_STATE] = {
+        .word_count = LC_STATE_WORDS,
+        .step_count = NUM_LC_STATE,
+        .name = "lc_state",
+    },
+    [LC_CTRL_TRANS_LC_TCOUNT] = {
+        .word_count = LC_TRANSITION_COUNT_WORDS,
+        .step_count = NUM_LC_TRANSITION_COUNT,
+        .name = "lc_tcount",
+    },
+    [LC_CTRL_TRANS_OWNERSHIP] = {
+        .word_count = OWNERSHIP_WORDS,
+        .step_count = NUM_OWNERSHIP,
+        .name = "ownership",
+    },
+    [LC_CTRL_TRANS_SOCDBG] = {
+        .word_count = SOCDBG_WORDS,
+        .step_count = NUM_SOCDBG,
+        .name = "socdbg",
+    },
+};
+
 /* clang-format on */
 
 #undef LC_NAME_ENTRY
@@ -430,6 +567,116 @@ static const char *LC_BROADCAST_NAMES[] = {
     (((unsigned)(_bit_)) < ARRAY_SIZE(LC_BROADCAST_NAMES) ? \
          LC_BROADCAST_NAMES[(_bit_)] : \
          "?")
+
+#define TSTATE_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(TSTATE_NAMES) ? TSTATE_NAMES[(_st_)] : "?")
+
+#define LC_STATE_A (1u << 6u)
+#define LC_STATE_B (1u << 7u)
+
+#define ZRO 0
+#undef A
+#undef B
+#define A(_n_) ((LC_STATE_A) | (_n_))
+#define B(_n_) ((LC_STATE_B) | (_n_))
+
+/* clang-format off */
+static const uint8_t
+LC_STATES_TPL[NUM_LC_STATE][LC_STATE_WORDS] = {
+    [LC_STATE_RAW] = {
+        ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,
+        ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,
+    },
+    [LC_STATE_TESTUNLOCKED0] = {
+        B(0),  A(1),  A(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTLOCKED0] = {
+        B(0),  B(1),  A(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTUNLOCKED1] = {
+        B(0),  B(1),  B(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTLOCKED1] = {
+        B(0),  B(1),  B(2),  B(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTUNLOCKED2] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  A(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTLOCKED2] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  A(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTUNLOCKED3] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  A(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTLOCKED3] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  A(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTUNLOCKED4] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  A(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTLOCKED4] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTUNLOCKED5] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTLOCKED5] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTUNLOCKED6] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTLOCKED6] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), A(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_TESTUNLOCKED7] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), A(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_DEV] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), B(15), A(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_PROD] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), A(15), B(16), A(17), A(18), A(19),
+    },
+    [LC_STATE_PRODEND] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), A(15), A(16), B(17), A(18), A(19),
+    },
+    [LC_STATE_RMA] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), B(15), B(16), A(17), B(18), B(19),
+    },
+    [LC_STATE_SCRAP] = {
+        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
+        B(10), B(11), B(12), B(13), B(14), B(15), B(16), B(17), B(18), B(19),
+    },
+};
+/* clang-format on */
+
+#define LC_STATE_A_WORD(_x_)    ((bool)((_x_) & LC_STATE_A))
+#define LC_STATE_B_WORD(_x_)    ((bool)((_x_) & LC_STATE_B))
+#define LC_STATE_ZERO_WORD(_x_) ((_x_) == 0u)
+#define LC_STATE_WORD(_x_)      ((_x_) & ~(LC_STATE_A | LC_STATE_B))
+#undef ZRO
+#undef A
+#undef B
 
 #ifdef OT_LC_CTRL_DEBUG
 #define TRACE_LC_CTRL(msg, ...) \
@@ -874,12 +1121,13 @@ static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
 {
     OtOTPStateClass *oc =
         OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
-    uint32_t enc_state;
+    OtLcCtrlStateValue lc_state;
+    OtLcCtrlTransitionCountValue lc_tcount;
     uint8_t lc_valid;
     uint8_t secret_valid;
     const OtOTPTokens *tokens = NULL;
-    oc->get_lc_info(s->otp_ctrl, &enc_state, &s->lc_tcount, &lc_valid,
-                    &secret_valid, &tokens);
+    oc->get_lc_info(s->otp_ctrl, lc_tcount, lc_state, &lc_valid, &secret_valid,
+                    &tokens);
 
     switch (secret_valid) {
     case OT_MULTIBITBOOL_LC4_FALSE:
@@ -895,6 +1143,27 @@ static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
         s->regs[R_LC_ID_STATE] = LC_ID_STATE_INVALID;
         break;
     }
+
+    uint32_t enc_lcstate = LC_ENCODE_STATE(LC_STATE_INVALID);
+    s->lc_tcount = NUM_LC_TRANSITION_COUNT;
+
+    for (unsigned ix = 0; ix < NUM_LC_TRANSITION_COUNT; ix++) {
+        if (!memcmp(lc_tcount, s->lc_transitions[ix],
+                    sizeof(OtLcCtrlTransitionCountValue))) {
+            s->lc_tcount = ix;
+            break;
+        }
+    }
+
+    for (unsigned ix = 0; ix < LC_STATE_VALID_COUNT; ix++) {
+        if (!memcmp(lc_state, s->lc_states[ix], sizeof(OtLcCtrlStateValue))) {
+            enc_lcstate = LC_ENCODE_STATE(ix);
+            break;
+        }
+    }
+
+    trace_ot_lc_ctrl_initial_lifecycle(s->ot_id, s->lc_tcount, enc_lcstate,
+                                       LC_STATE_BITS(enc_lcstate));
 
     g_assert(tokens);
 
@@ -917,7 +1186,7 @@ static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
                                         s->hashed_tokens[ltix].lo);
     }
 
-    return lc_valid == OT_MULTIBITBOOL_LC4_TRUE ? enc_state : UINT32_MAX;
+    return lc_valid == OT_MULTIBITBOOL_LC4_TRUE ? enc_lcstate : UINT32_MAX;
 }
 
 static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
@@ -969,7 +1238,8 @@ static void ot_lc_ctrl_handle_otp_ack(void *opaque, bool ack)
     }
 }
 
-static void ot_lc_ctrl_program_otp(OtLcCtrlState *s, OtLcState lc_state)
+static void ot_lc_ctrl_program_otp(OtLcCtrlState *s, unsigned lc_tcount,
+                                   OtLcState lc_state)
 {
     OtOTPStateClass *oc =
         OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
@@ -983,9 +1253,12 @@ static void ot_lc_ctrl_program_otp(OtLcCtrlState *s, OtLcState lc_state)
         return;
     }
 
-    uint32_t enc_state = LC_ENCODE_STATE(lc_state);
+    unsigned stix = MIN((unsigned)lc_state, NUM_LC_STATE);
+    unsigned tcix = MIN(lc_tcount, NUM_LC_TRANSITION_COUNT);
+    const uint16_t *transition_val = s->lc_transitions[tcix];
+    const uint16_t *state_val = s->lc_states[stix];
 
-    if (!oc->program_req(s->otp_ctrl, enc_state, s->lc_tcount,
+    if (!oc->program_req(s->otp_ctrl, transition_val, state_val,
                          &ot_lc_ctrl_handle_otp_ack, s)) {
         trace_ot_lc_ctrl_error(s->ot_id, "OTP program request rejected");
         s->regs[R_STATUS] |= R_STATUS_STATE_ERROR_MASK;
@@ -1088,7 +1361,7 @@ static void ot_lc_ctrl_start_transition(OtLcCtrlState *s)
 
     LC_FSM_CHANGE_STATE(s, ST_CNT_PROG);
 
-    ot_lc_ctrl_program_otp(s, s->lc_state);
+    ot_lc_ctrl_program_otp(s, s->lc_tcount, s->lc_state);
 }
 
 static void ot_lc_ctrl_resume_transition(OtLcCtrlState *s)
@@ -1133,7 +1406,7 @@ static void ot_lc_ctrl_resume_transition(OtLcCtrlState *s)
 
         LC_FSM_CHANGE_STATE(s, ST_TRANS_PROG);
 
-        ot_lc_ctrl_program_otp(s, target_state);
+        ot_lc_ctrl_program_otp(s, s->lc_tcount, target_state);
     }
 }
 
@@ -1617,11 +1890,153 @@ static void ot_lc_ctrl_dmi_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     ot_lc_ctrl_regs_write(s, addr, (uint32_t)val64, LC_IF_DMI);
 }
 
+static void ot_lc_ctrl_load_transitions(OtLcCtrlState *s,
+                                        OtLcCtrlTransition trans,
+                                        uint16_t **first, uint16_t **last)
+{
+    g_assert(trans >= 0 && trans < LC_CTRL_TRANS_COUNT);
+
+    const OtLcCtrlTransitionDesc *tdesc = &TRANSITION_DESC[trans];
+    size_t len;
+
+    Error *err = NULL;
+    uint16_t *state[LC_CTRL_TSTATE_COUNT] = { NULL, NULL };
+
+    for (unsigned ix = 0; ix < LC_CTRL_TSTATE_COUNT; ix++) {
+        state[ix] = g_new0(uint16_t, tdesc->word_count);
+
+        if (!s->trans_cfg[trans].state[ix]) {
+            trace_ot_lc_ctrl_transition_missing(s->ot_id, tdesc->name,
+                                                TSTATE_NAME(ix));
+            /* non-fatal, state has been cleared out */
+            continue;
+        }
+
+        len = strlen(s->trans_cfg[trans].state[ix]);
+        /* each byte is encoding with two ASCII nibbles */
+        if (len != tdesc->word_count * sizeof(uint16_t) * 2u) {
+            qemu_log("%s %s %s %zu %zu\n", __func__, tdesc->name,
+                     TSTATE_NAME(ix), len,
+                     tdesc->word_count * sizeof(uint16_t));
+            error_setg(&err, "%s: %s invalid %s %s length\n", __func__,
+                       s->ot_id, tdesc->name, TSTATE_NAME(ix));
+            break;
+        }
+
+        if (ot_common_parse_hexa_str((uint8_t *)state[ix],
+                                     s->trans_cfg[trans].state[ix],
+                                     tdesc->word_count * sizeof(uint16_t),
+                                     false, true)) {
+            error_setg(&err, "%s: %s unable to parse %s %s\n", __func__,
+                       s->ot_id, tdesc->name, TSTATE_NAME(ix));
+            break;
+        }
+    }
+
+    if (!err) {
+        /*
+         * if the configuration is missing, it is not a fatal error. Use an
+         * blank sequence, so that emulation works as if the config was not
+         * valid
+         */
+        g_assert(state[LC_CTRL_TSTATE_FIRST] && state[LC_CTRL_TSTATE_LAST]);
+        *first = state[LC_CTRL_TSTATE_FIRST];
+        *last = state[LC_CTRL_TSTATE_LAST];
+        return;
+    }
+
+    for (unsigned ix = 0; ix < LC_CTRL_TSTATE_COUNT; ix++) {
+        g_free(state[ix]);
+    }
+
+    /* equivalent to error_fatal usage */
+    error_report_err(err);
+    exit(1);
+}
+
+static void ot_lc_ctrl_configure_lc_states(OtLcCtrlState *s)
+{
+    uint16_t *first;
+    uint16_t *last;
+
+    ot_lc_ctrl_load_transitions(s, LC_CTRL_TRANS_LC_STATE, &first, &last);
+
+    for (unsigned lcix = 0; lcix < NUM_LC_STATE; lcix++) {
+        uint16_t *lcval = &s->lc_states[lcix][0];
+        const uint8_t *tpl = LC_STATES_TPL[lcix];
+        for (unsigned pos = 0; pos < LC_STATE_WORDS; pos++) {
+            unsigned slot = LC_STATE_WORD(tpl[pos]);
+            g_assert(slot < LC_STATE_WORDS);
+            if (LC_STATE_A_WORD(tpl[pos])) {
+                lcval[pos] = first[slot];
+            } else if (LC_STATE_B_WORD(tpl[pos])) {
+                lcval[pos] = last[slot];
+            } else if (LC_STATE_ZERO_WORD(tpl[pos])) {
+                lcval[pos] = 0u;
+            } else {
+                g_assert_not_reached();
+            }
+        }
+    }
+
+    g_free(last);
+    g_free(first);
+}
+
+static void ot_lc_ctrl_configure_transitions(
+    OtLcCtrlState *s, OtLcCtrlTransition trans, uint16_t *table)
+{
+    const OtLcCtrlTransitionDesc *tdesc = &TRANSITION_DESC[trans];
+
+    uint16_t *first;
+    uint16_t *last;
+    ot_lc_ctrl_load_transitions(s, trans, &first, &last);
+
+    uint16_t *lcval = table;
+    memset(lcval, 0, tdesc->word_count * sizeof(uint16_t)); /* RAW stage */
+    lcval += tdesc->word_count;
+    for (unsigned tix = 1; tix < tdesc->step_count;
+         tix++, lcval += tdesc->word_count) {
+        memcpy(&lcval[0], &last[0], tix * sizeof(uint16_t));
+        memcpy(&lcval[tix], &first[tix],
+               (tdesc->step_count - tix) * sizeof(uint16_t));
+    }
+
+    g_free(last);
+    g_free(first);
+}
+
 static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtLcCtrlState, ot_id),
     DEFINE_PROP_LINK("otp_ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_LINK("kmac", OtLcCtrlState, kmac, TYPE_OT_KMAC, OtKMACState *),
+    DEFINE_PROP_STRING("raw_unlock_token", OtLcCtrlState,
+                       raw_unlock_token_xstr),
+    DEFINE_PROP_STRING("lc_state_first", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_LC_STATE]
+                           .state[LC_CTRL_TSTATE_FIRST]),
+    DEFINE_PROP_STRING("lc_state_last", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_LC_STATE]
+                           .state[LC_CTRL_TSTATE_LAST]),
+    DEFINE_PROP_STRING("lc_trscnt_first", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_LC_TCOUNT]
+                           .state[LC_CTRL_TSTATE_FIRST]),
+    DEFINE_PROP_STRING("lc_trscnt_last", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_LC_TCOUNT]
+                           .state[LC_CTRL_TSTATE_LAST]),
+    DEFINE_PROP_STRING("ownership_first", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_OWNERSHIP]
+                           .state[LC_CTRL_TSTATE_FIRST]),
+    DEFINE_PROP_STRING("ownership_last", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_OWNERSHIP]
+                           .state[LC_CTRL_TSTATE_LAST]),
+    DEFINE_PROP_STRING("socdbg_first", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_SOCDBG]
+                           .state[LC_CTRL_TSTATE_FIRST]),
+    DEFINE_PROP_STRING("socdbg_last", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_SOCDBG]
+                           .state[LC_CTRL_TSTATE_LAST]),
     DEFINE_PROP_UINT16("silicon_creator_id", OtLcCtrlState, silicon_creator_id,
                        0),
     DEFINE_PROP_UINT16("product_id", OtLcCtrlState, product_id, 0),
@@ -1629,8 +2044,6 @@ static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_BOOL("volatile_raw_unlock", OtLcCtrlState, volatile_raw_unlock,
                      true),
     DEFINE_PROP_UINT8("kmac-app", OtLcCtrlState, kmac_app, UINT8_MAX),
-    DEFINE_PROP_STRING("raw_unlock_token", OtLcCtrlState,
-                       raw_unlock_token_xstr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1734,6 +2147,13 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
             g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
 
+    ot_lc_ctrl_configure_lc_states(s);
+    ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_LC_TCOUNT,
+                                     (uint16_t *)s->lc_transitions);
+    ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_OWNERSHIP,
+                                     (uint16_t *)s->ownerships);
+    ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_SOCDBG,
+                                     (uint16_t *)s->socdbgs);
     ot_lc_ctrl_compute_predefined_tokens(s, &error_fatal);
 }
 
@@ -1750,6 +2170,12 @@ static void ot_lc_ctrl_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->dmi_mmio);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
+    s->lc_states = g_new0(OtLcCtrlStateValue, NUM_LC_STATE);
+    s->lc_transitions =
+        g_new0(OtLcCtrlTransitionCountValue, NUM_LC_TRANSITION_COUNT);
+    s->ownerships = g_new0(OtLcCtrlOwnershipValue, NUM_OWNERSHIP);
+    s->socdbgs = g_new0(OtLcCtrlSocDbgValue, NUM_SOCDBG);
+    s->hashed_tokens = g_new0(OtOTPTokenValue, LC_TK_COUNT);
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);

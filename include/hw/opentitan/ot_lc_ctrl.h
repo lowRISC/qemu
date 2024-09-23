@@ -41,7 +41,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(OtLcCtrlState, OT_LC_CTRL)
 /* Life cycle broadcast signals */
 typedef enum {
     OT_LC_RAW_TEST_RMA, /* SoC debug control */
-    OT_LC_DFT_EN, /* pervasive, useless for current QEMU devices */
+    OT_LC_DFT_EN, /* device for test */
     OT_LC_NVM_DEBUG_EN, /* for embed. flash, not used in DJ */
     OT_LC_HW_DEBUG_EN, /* unfortunately highly pervasive */
     OT_LC_CPU_EN, /* ibex core */

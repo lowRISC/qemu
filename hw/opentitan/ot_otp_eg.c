@@ -46,6 +46,7 @@
 #include "trace.h"
 
 #define NUM_ALERTS 5u
+#define NUM_IRQS   2u
 
 /* clang-format off */
 /* Core registers */
@@ -369,11 +370,7 @@ struct OtOTPEgState {
             MemoryRegion swcfg;
         } sub;
     } mmio;
-    struct {
-        uint32_t state;
-        unsigned tcount;
-    } lc;
-    IbexIRQ irqs[2u];
+    IbexIRQ irqs[NUM_IRQS];
     IbexIRQ alerts[NUM_ALERTS];
 
     QEMUTimer *dai_delay; /**< Simulate delayed access completion */
@@ -403,8 +400,6 @@ static const OtOTPTokens OT_OTP_EG_TOKENS;
 #define OT_OTP_EG_PARTS
 /* NOLINTNEXTLINE */
 #include "ot_otp_eg_parts.c"
-/* NOLINTNEXTLINE */
-#include "ot_otp_eg_lcvalues.c"
 
 #define LC_TRANSITION_COUNT_MAX 24u
 #define LC_STATE_BIT_WIDTH      5u
@@ -1005,28 +1000,6 @@ static void ot_otp_eg_swcfg_write(void *opaque, hwaddr addr, uint64_t value,
                   addr, ot_otp_eg_swcfg_reg_name(reg));
 }
 
-static void ot_otp_eg_decode_lc_partition(OtOTPEgState *s)
-{
-    OtOTPStorage *otp = &s->otp;
-    s->lc.state = LC_ENCODE_STATE(LC_STATE_INVALID);
-    s->lc.tcount = LC_TRANSITION_COUNT_MAX + 1u;
-    for (unsigned ix = 0; ix < ARRAY_SIZE(lc_states); ix++) {
-        if (!memcmp(&otp->data[R_LC_STATE], lc_states[ix], LC_STATE_SIZE)) {
-            s->lc.state = LC_ENCODE_STATE(ix);
-            break;
-        }
-    }
-    for (unsigned ix = 0; ix < ARRAY_SIZE(lc_transition_cnts); ix++) {
-        if (!memcmp(&otp->data[R_LC_TRANSITION_CNT], lc_transition_cnts[ix],
-                    LC_TRANSITION_CNT_SIZE)) {
-            s->lc.tcount = ix;
-            break;
-        }
-    }
-    trace_ot_otp_initial_lifecycle(s->ot_id, s->lc.tcount, s->lc.state,
-                                   LC_STATE_BITS(s->lc.state));
-}
-
 static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
 {
     OtOTPStorage *otp = &s->otp;
@@ -1038,7 +1011,7 @@ static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
     memcpy(hw_cfg->manuf_state, &otp->data[R_MANUF_STATE],
            sizeof(*hw_cfg->manuf_state));
     uint32_t cfg = otp->data[R_HW_CFG_ENABLE];
-    hw_cfg->soc_dbg_state = 0;
+    memset(hw_cfg->soc_dbg_state, 0, sizeof(hw_cfg->soc_dbg_state));
     hw_cfg->en_sram_ifetch =
         (uint8_t)FIELD_EX32(cfg, HW_CFG_ENABLE, EN_SRAM_IFETCH);
 
@@ -1051,24 +1024,27 @@ static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
 }
 
 static void ot_otp_eg_ctrl_get_lc_info(
-    const OtOTPState *s, uint32_t *lc_state, unsigned *tcount,
+    const OtOTPState *s, uint16_t *lc_tcount, uint16_t *lc_state,
     uint8_t *lc_valid, uint8_t *secret_valid, const OtOTPTokens **tokens)
 {
-    OtOTPEgState *ds = OT_OTP_EG(s);
+    OtOTPEgState *es = OT_OTP_EG(s);
+    const OtOTPStorage *otp = &es->otp;
 
-    if (lc_state) {
-        *lc_state = ds->lc.state;
+    if (lc_tcount) {
+        memcpy(lc_tcount, &otp->data[R_LC_TRANSITION_CNT],
+               LC_TRANSITION_CNT_SIZE);
     }
-    if (tcount) {
-        *tcount = ds->lc.tcount;
+    if (lc_state) {
+        memcpy(lc_state, &otp->data[R_LC_STATE], LC_STATE_SIZE);
     }
     if (lc_valid) {
         /* dummy implementation, should check status of secret0, secret2 & LC */
         *lc_valid = OT_MULTIBITBOOL_LC4_TRUE;
     }
     if (secret_valid) {
+        /* dummy implementation */
         *secret_valid =
-            ot_otp_eg_swcfg_get_part_digest(ds, OTP_PART_SECRET2) != 0 ?
+            ot_otp_eg_swcfg_get_part_digest(es, OTP_PART_SECRET2) != 0 ?
                 OT_MULTIBITBOOL_LC4_TRUE :
                 OT_MULTIBITBOOL_LC4_FALSE;
     }
@@ -1208,7 +1184,6 @@ static void ot_otp_eg_load(OtOTPEgState *s, Error **errp)
     otp->data_size = data_size;
     otp->ecc_size = ecc_size;
 
-    ot_otp_eg_decode_lc_partition(s);
     ot_otp_eg_load_hw_cfg(s);
 }
 

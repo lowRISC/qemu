@@ -48,7 +48,6 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "ot_lc_defs.h"
 #include "sysemu/block-backend.h"
 #include "trace.h"
 
@@ -527,13 +526,8 @@ REG32(LC_STATE, 16344u)
 #define SECRET2_CREATOR_ROOT_KEY_SHARE1_SIZE                 32u
 #define SECRET2_CREATOR_SEED_SIZE                            32u
 #define SECRET3_OWNER_SEED_SIZE                              32u
-#define LC_TRANSITION_COUNT                                  25u
-#define OWNERSHIP_COUNT                                      8u
-#define SOCDBG_COUNT                                         3u
 #define LC_TRANSITION_CNT_SIZE                               48u
 #define LC_STATE_SIZE                                        40u
-#define OWNERSHIP_SIZE                                       16u
-#define SOCDBG_SIZE                                          4u
 
 #define INTR_MASK (INTR_OTP_OPERATION_DONE_MASK | INTR_OTP_ERROR_MASK)
 #define ALERT_TEST_MASK \
@@ -582,12 +576,6 @@ REG32(LC_STATE, 16344u)
 #define OTP_ENTROPY_BUF_COUNT \
     (OTP_ENTROPY_PRESENT_WORDS + OTP_ENTROPY_NONCE_WORDS)
 
-#define LC_STATE_SLOT_COUNT (LC_STATE_SIZE / sizeof(uint16_t))
-#define LC_STATE_TRANSITION_SLOT_COUNT \
-    ((LC_TRANSITION_CNT_SIZE) / sizeof(uint16_t))
-#define OWNERSHIP_SLOT_COUNT (OWNERSHIP_SIZE / sizeof(uint16_t))
-#define SOCDBG_SLOT_COUNT    (SOCDBG_SIZE / sizeof(uint16_t))
-
 typedef enum {
     OTP_PART_VENDOR_TEST,
     OTP_PART_CREATOR_SW_CFG,
@@ -616,28 +604,6 @@ typedef enum {
     OTP_ENTRY_KDI, /* Key derivation issue, not really OTP */
     OTP_ENTRY_COUNT,
 } OtOTPPartitionType;
-
-/* Ownership states */
-typedef enum {
-    OWNERSHIP_ST_RAW,
-    OWNERSHIP_ST_LOCKED0,
-    OWNERSHIP_ST_RELEASED0,
-    OWNERSHIP_ST_LOCKED1,
-    OWNERSHIP_ST_RELEASED1,
-    OWNERSHIP_ST_LOCKED2,
-    OWNERSHIP_ST_RELEASED2,
-    OWNERSHIP_ST_LOCKED_3,
-    OWNERSHIP_ST_SCRAPPED,
-    OWNERSHIP_ST_COUNT,
-} OtOtpOwnershipState;
-
-/* SocDbg states */
-typedef enum {
-    SOCDBG_ST_RAW,
-    SOCDBG_ST_PRE_PROD,
-    SOCDBG_ST_PROD,
-    SOCDBG_ST_COUNT,
-} SocDbgState;
 
 /* Error code (compliant with ERR_CODE registers) */
 typedef enum {
@@ -713,20 +679,6 @@ typedef enum {
     OTP_LCI_ERROR,
 } OtOTPLCIState;
 
-typedef enum {
-    OTP_TRANS_LC_STATE,
-    OTP_TRANS_LC_TCOUNT,
-    OTP_TRANS_OWNERSHIP,
-    OTP_TRANS_SOCDBG,
-    OTP_TRANS_COUNT
-} OtOTPTransition;
-
-enum OtOTPTState {
-    OTP_TSTATE_FIRST, /* initial value */
-    OTP_TSTATE_LAST, /* terminal value */
-    OTP_TSTATE_COUNT,
-};
-
 // TODO: wr and rd lock need to be rewritten (not simple boolean)
 
 typedef struct {
@@ -762,11 +714,6 @@ static_assert(NUM_PART <= 64, "Maximum part count reached");
 #define OTP_DIGEST_ADDR_MASK (sizeof(uint64_t) - 1u)
 
 typedef struct {
-    /* string of hexadecimal encoded bytes */
-    char *state[OTP_TSTATE_COUNT];
-} OtOTPTransitionConfig;
-
-typedef struct {
     union {
         OtOTPBufState b;
         OtOTPUnbufState u;
@@ -794,10 +741,6 @@ typedef struct {
     QEMUBH *prog_bh; /* OTP prog trigger */
     OtOTPLCIState state;
     OtOTPError error;
-    struct {
-        uint32_t state;
-        unsigned tcount;
-    } lc;
     ot_otp_program_ack_fn ack_fn;
     void *ack_data;
     uint16_t data[OTP_PART_LIFE_CYCLE_SIZE / sizeof(uint16_t)];
@@ -837,11 +780,6 @@ typedef struct {
     uint8_t nonce[SRAM_NONCE_BYTES];
 } OtOTPScrmblKeyInit;
 
-typedef uint16_t OtOTPStateValue[LC_STATE_SLOT_COUNT];
-typedef uint16_t OtOTPTransitionValue[LC_STATE_TRANSITION_SLOT_COUNT];
-typedef uint16_t OtOTPOwnershipValue[OWNERSHIP_SLOT_COUNT];
-typedef uint16_t OtOTPSocDbgValue[SOCDBG_SLOT_COUNT];
-
 struct OtOTPDjState {
     OtOTPState parent_obj;
 
@@ -874,10 +812,6 @@ struct OtOTPDjState {
     OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;
     OtOTPTokens *tokens;
-    OtOTPStateValue *lc_states; /* LC_STATE_VALID_COUNT array */
-    OtOTPTransitionValue *lc_transitions; /*LC_TRANSITION_COUNT array */
-    OtOTPOwnershipValue *ownership; /*OWNERSHIP_ST_COUNT array */
-    OtOTPSocDbgValue *socdbg; /* SOCDBG_ST_COUNT array */
 
     char *ot_id;
     BlockBackend *blk; /* OTP host backend */
@@ -888,15 +822,8 @@ struct OtOTPDjState {
     char *digest_iv_xstr;
     char *sram_const_xstr;
     char *sram_iv_xstr;
-    OtOTPTransitionConfig trans_cfg[OTP_TRANS_COUNT];
     uint8_t edn_ep;
 };
-
-typedef struct {
-    unsigned slot_count; /* sequence size (count of 16-bit slot) */
-    unsigned step_count; /* how many different steps/stages, incl. raw/blanck */
-    const char *name; /* helper name */
-} OtOTPTransitionDesc;
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
@@ -1061,34 +988,6 @@ static const char *ERR_CODE_NAMES[] = {
     OTP_NAME_ENTRY(OTP_FSM_STATE_ERROR),
 };
 
-static const char *TSTATE_NAMES[OTP_TSTATE_COUNT] = {
-    [OTP_TSTATE_FIRST] = "first",
-    [OTP_TSTATE_LAST] = "last",
-};
-
-static const OtOTPTransitionDesc TRANSITION_DESC[OTP_TRANS_COUNT] = {
-    [OTP_TRANS_LC_STATE] = {
-        .slot_count = LC_STATE_SLOT_COUNT,
-        .step_count = LC_STATE_VALID_COUNT,
-        .name = "lc_state",
-    },
-    [OTP_TRANS_LC_TCOUNT] = {
-        .slot_count = LC_STATE_TRANSITION_SLOT_COUNT,
-        .step_count = LC_TRANSITION_COUNT,
-        .name = "lc_tcount",
-    },
-    [OTP_TRANS_OWNERSHIP] = {
-        .slot_count = OWNERSHIP_SLOT_COUNT,
-        .step_count = OWNERSHIP_COUNT,
-        .name = "ownership",
-    },
-    [OTP_TRANS_SOCDBG] = {
-        .slot_count = SOCDBG_SLOT_COUNT,
-        .step_count = SOCDBG_COUNT,
-        .name = "socdbg",
-    },
-};
-
 /* clang-format on */
 
 #undef OTP_NAME_ENTRY
@@ -1119,115 +1018,6 @@ static const OtOTPTransitionDesc TRANSITION_DESC[OTP_TRANS_COUNT] = {
     (((unsigned)(_err_)) < ARRAY_SIZE(ERR_CODE_NAMES) ? \
          ERR_CODE_NAMES[(_err_)] : \
          "?")
-#define TSTATE_NAME(_st_) \
-    (((unsigned)(_st_)) < ARRAY_SIZE(TSTATE_NAMES) ? TSTATE_NAMES[(_st_)] : "?")
-
-#define LC_STATE_A (1u << 6u)
-#define LC_STATE_B (1u << 7u)
-
-#define ZRO 0
-#undef A
-#undef B
-#define A(_n_) ((LC_STATE_A) | (_n_))
-#define B(_n_) ((LC_STATE_B) | (_n_))
-
-/* clang-format off */
-static const uint8_t
-LC_STATES_TPL[LC_STATE_VALID_COUNT][LC_STATE_SLOT_COUNT] = {
-    [LC_STATE_RAW] = {
-        ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,
-        ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,   ZRO,
-    },
-    [LC_STATE_TESTUNLOCKED0] = {
-        B(0),  A(1),  A(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTLOCKED0] = {
-        B(0),  B(1),  A(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTUNLOCKED1] = {
-        B(0),  B(1),  B(2),  A(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTLOCKED1] = {
-        B(0),  B(1),  B(2),  B(3),  A(4),  A(5),  A(6),  A(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTUNLOCKED2] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  A(5),  A(6),  A(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTLOCKED2] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  A(6),  A(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTUNLOCKED3] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  A(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTLOCKED3] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  A(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTUNLOCKED4] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  A(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTLOCKED4] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        A(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTUNLOCKED5] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), A(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTLOCKED5] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), A(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTUNLOCKED6] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), A(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTLOCKED6] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), B(13), A(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_TESTUNLOCKED7] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), B(13), B(14), A(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_DEV] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), B(13), B(14), B(15), A(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_PROD] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), B(13), B(14), A(15), B(16), A(17), A(18), A(19),
-    },
-    [LC_STATE_PRODEND] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), B(13), B(14), A(15), A(16), B(17), A(18), A(19),
-    },
-    [LC_STATE_RMA] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), B(13), B(14), B(15), B(16), A(17), B(18), B(19),
-    },
-    [LC_STATE_SCRAP] = {
-        B(0),  B(1),  B(2),  B(3),  B(4),  B(5),  B(6),  B(7),  B(8),  B(9),
-        B(10), B(11), B(12), B(13), B(14), B(15), B(16), B(17), B(18), B(19),
-    },
-};
-/* clang-format on */
-
-#define LC_STATE_A_SLOT(_x_)    ((bool)((_x_) & LC_STATE_A))
-#define LC_STATE_B_SLOT(_x_)    ((bool)((_x_) & LC_STATE_B))
-#define LC_STATE_ZERO_SLOT(_x_) ((_x_) == 0u)
-#define LC_STATE_SLOT(_x_)      ((_x_) & ~(LC_STATE_A | LC_STATE_B))
-#undef ZRO
-#undef A
-#undef B
 
 static void ot_otp_dj_dai_set_error(OtOTPDjState *s, OtOTPError err);
 
@@ -1248,16 +1038,6 @@ ot_otp_dj_lci_change_state_line(OtOTPDjState *s, OtOTPLCIState state, int line);
 #define OT_OTP_PART_DATA_BYTE_SIZE(_pix_) \
     ((unsigned)(OtOTPPartDescs[(_pix_)].size - \
                 sizeof(uint32_t) * NUM_DIGEST_WORDS))
-
-#define LC_STATE_BIT_WIDTH 5u
-#define LC_ENCODE_STATE(_x_) \
-    (((_x_) << (LC_STATE_BIT_WIDTH * 0)) | \
-     ((_x_) << (LC_STATE_BIT_WIDTH * 1u)) | \
-     ((_x_) << (LC_STATE_BIT_WIDTH * 2u)) | \
-     ((_x_) << (LC_STATE_BIT_WIDTH * 3u)) | \
-     ((_x_) << (LC_STATE_BIT_WIDTH * 4u)) | \
-     ((_x_) << (LC_STATE_BIT_WIDTH * 5u)))
-#define LC_STATE_BITS(_elc_) ((_elc_) & ((1u << LC_STATE_BIT_WIDTH) - 1u))
 
 #ifdef OT_OTP_DEBUG
 #define TRACE_OTP(msg, ...) qemu_log("%s: " msg "\n", __func__, ##__VA_ARGS__);
@@ -3250,37 +3030,6 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     return MEMTX_OK;
 }
 
-static void ot_otp_dj_decode_lc_partition(OtOTPDjState *s)
-{
-    OtOTPStorage *otp = s->otp;
-    OtOTPLCIController *lci = s->lci;
-    const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
-
-    g_assert(lcdesc->offset == A_LC_TRANSITION_CNT);
-
-    lci->lc.state = LC_ENCODE_STATE(LC_STATE_INVALID);
-    lci->lc.tcount = LC_TRANSITION_COUNT;
-
-    for (unsigned ix = 0; ix < LC_TRANSITION_COUNT; ix++) {
-        if (!memcmp(&otp->data[R_LC_TRANSITION_CNT], s->lc_transitions[ix],
-                    sizeof(OtOTPTransitionValue))) {
-            lci->lc.tcount = ix;
-            break;
-        }
-    }
-
-    for (unsigned ix = 0; ix < LC_STATE_VALID_COUNT; ix++) {
-        if (!memcmp(&otp->data[R_LC_STATE], s->lc_states[ix],
-                    sizeof(OtOTPStateValue))) {
-            lci->lc.state = LC_ENCODE_STATE(ix);
-            break;
-        }
-    }
-
-    trace_ot_otp_initial_lifecycle(s->ot_id, lci->lc.tcount, lci->lc.state,
-                                   LC_STATE_BITS(lci->lc.state));
-}
-
 static void ot_otp_dj_load_hw_cfg(OtOTPDjState *s)
 {
     OtOTPStorage *otp = s->otp;
@@ -3290,8 +3039,8 @@ static void ot_otp_dj_load_hw_cfg(OtOTPDjState *s)
            sizeof(*hw_cfg->device_id));
     memcpy(hw_cfg->manuf_state, &otp->data[R_HW_CFG0_MANUF_STATE],
            sizeof(*hw_cfg->manuf_state));
-
-    hw_cfg->soc_dbg_state = otp->data[R_HW_CFG1_SOC_DBG_STATE];
+    memcpy(&hw_cfg->soc_dbg_state[0], &otp->data[R_HW_CFG1_SOC_DBG_STATE],
+           sizeof(uint32_t));
     hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH];
 }
 
@@ -3340,18 +3089,21 @@ static void ot_otp_dj_load_tokens(OtOTPDjState *s)
 }
 
 static void ot_otp_dj_get_lc_info(
-    const OtOTPState *s, uint32_t *lc_state, unsigned *tcount,
+    const OtOTPState *s, uint16_t *lc_tcount, uint16_t *lc_state,
     uint8_t *lc_valid, uint8_t *secret_valid, const OtOTPTokens **tokens)
 {
     const OtOTPDjState *ds = OT_OTP_DJ(s);
-    const OtOTPLCIController *lci = ds->lci;
+    const OtOTPStorage *otp = ds->otp;
+
+    if (lc_tcount) {
+        memcpy(lc_tcount, &otp->data[R_LC_TRANSITION_CNT],
+               LC_TRANSITION_CNT_SIZE);
+    }
 
     if (lc_state) {
-        *lc_state = lci->lc.state;
+        memcpy(lc_state, &otp->data[R_LC_STATE], LC_STATE_SIZE);
     }
-    if (tcount) {
-        *tcount = lci->lc.tcount;
-    }
+
     if (lc_valid) {
         *lc_valid = !(ds->partctrls[OTP_PART_SECRET0].failed ||
                       ds->partctrls[OTP_PART_SECRET2].failed ||
@@ -3365,11 +3117,6 @@ static void ot_otp_dj_get_lc_info(
                             OT_MULTIBITBOOL_LC4_TRUE :
                             OT_MULTIBITBOOL_LC4_FALSE;
     }
-    trace_ot_otp_lc_info(ds->ot_id, LC_STATE_BITS(lci->lc.state),
-                         lci->lc.tcount,
-                         !ds->partctrls[OTP_PART_SECRET0].failed,
-                         !ds->partctrls[OTP_PART_SECRET2].failed,
-                         !ds->partctrls[OTP_PART_LIFE_CYCLE].failed);
     if (tokens) {
         *tokens = ds->tokens;
     }
@@ -3537,40 +3284,9 @@ static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
     }
 }
 
-static void ot_otp_dj_create_lc_data(OtOTPDjState *s, OtOTPLCIController *lci,
-                                     uint32_t lc_state, unsigned tcount)
-{
-    if (tcount >= LC_TRANSITION_COUNT) {
-        error_setg(&error_fatal, "%s: Invalid tcount: 0x%08x", __func__,
-                   lc_state);
-        /* linter does not know error_setg never returns */
-        return;
-    }
-
-    unsigned lcix = LC_STATE_BITS(lc_state);
-    if (LC_ENCODE_STATE(lcix) != lc_state || lcix >= LC_STATE_VALID_COUNT) {
-        error_setg(&error_fatal, "%s: Invalid lc_state: 0x%08x", __func__,
-                   lc_state);
-        /* linter does not know error_setg never returns */
-        return;
-    }
-
-    unsigned hpos = 0;
-    memcpy(&lci->data[hpos], s->lc_transitions[tcount],
-           sizeof(OtOTPTransitionValue));
-    hpos += sizeof(OtOTPTransitionValue) / sizeof(uint16_t);
-    memcpy(&lci->data[hpos], s->lc_states[lcix], sizeof(OtOTPStateValue));
-    hpos += sizeof(OtOTPStateValue) / sizeof(uint16_t);
-    g_assert(hpos ==
-             OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size / sizeof(uint16_t));
-
-    /* current position in LC buffer to write to backend */
-    lci->hpos = 0;
-}
-
-static bool ot_otp_dj_program_req(OtOTPState *s, uint32_t lc_state,
-                                  unsigned tcount, ot_otp_program_ack_fn ack,
-                                  void *opaque)
+static bool ot_otp_dj_program_req(OtOTPState *s, const uint16_t *lc_tcount,
+                                  const uint16_t *lc_state,
+                                  ot_otp_program_ack_fn ack, void *opaque)
 {
     OtOTPDjState *ds = OT_OTP_DJ(s);
     OtOTPLCIController *lci = ds->lci;
@@ -3596,7 +3312,16 @@ static bool ot_otp_dj_program_req(OtOTPState *s, uint32_t lc_state,
     lci->ack_data = opaque;
 
     if (lci->state == OTP_LCI_IDLE) {
-        ot_otp_dj_create_lc_data(ds, lci, lc_state, tcount);
+        unsigned hpos = 0;
+        memcpy(&lci->data[hpos], lc_tcount, LC_TRANSITION_CNT_SIZE);
+        hpos += LC_TRANSITION_CNT_SIZE / sizeof(uint16_t);
+        memcpy(&lci->data[hpos], lc_state, LC_STATE_SIZE);
+        hpos += LC_STATE_SIZE / sizeof(uint16_t);
+        g_assert(hpos ==
+                 OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size / sizeof(uint16_t));
+
+        /* current position in LC buffer to write to backend */
+        lci->hpos = 0;
     }
 
     /*
@@ -3768,7 +3493,6 @@ static void ot_otp_dj_pwr_otp_bh(void *opaque)
     trace_ot_otp_pwr_otp_req(s->ot_id, "initialize");
 
     ot_otp_dj_initialize_partitions(s);
-    ot_otp_dj_decode_lc_partition(s);
     ot_otp_dj_load_hw_cfg(s);
     ot_otp_dj_load_tokens(s);
 
@@ -3910,121 +3634,6 @@ static void ot_otp_dj_configure_sram(OtOTPDjState *s)
     }
 
     s->sram_iv = ldq_le_p(sram_iv);
-}
-
-static void ot_otp_dj_load_transitions(OtOTPDjState *s, OtOTPTransition trans,
-                                       uint16_t **first, uint16_t **last)
-{
-    g_assert(trans >= 0 && trans < OTP_TRANS_COUNT);
-
-    const OtOTPTransitionDesc *tdesc = &TRANSITION_DESC[trans];
-    size_t len;
-
-    Error *err = NULL;
-    uint16_t *state[OTP_TSTATE_COUNT] = { NULL, NULL };
-
-    for (unsigned ix = 0; ix < OTP_TSTATE_COUNT; ix++) {
-        state[ix] = g_new0(uint16_t, tdesc->slot_count);
-
-        if (!s->trans_cfg[trans].state[ix]) {
-            trace_ot_otp_configure_missing_state(s->ot_id, tdesc->name,
-                                                 TSTATE_NAME(ix));
-            /* non-fatal, state has been cleared out */
-            continue;
-        }
-
-        len = strlen(s->trans_cfg[trans].state[ix]);
-        /* each byte is encoding with two ASCII nibbles */
-        if (len != tdesc->slot_count * sizeof(uint16_t) * 2u) {
-            qemu_log("%s %s %s %zu %zu\n", __func__, tdesc->name,
-                     TSTATE_NAME(ix), len,
-                     tdesc->slot_count * sizeof(uint16_t));
-            error_setg(&err, "%s: %s invalid %s %s length\n", __func__,
-                       s->ot_id, tdesc->name, TSTATE_NAME(ix));
-            break;
-        }
-
-        if (ot_common_parse_hexa_str((uint8_t *)state[ix],
-                                     s->trans_cfg[trans].state[ix],
-                                     tdesc->slot_count * sizeof(uint16_t),
-                                     false, true)) {
-            error_setg(&err, "%s: %s unable to parse %s %s\n", __func__,
-                       s->ot_id, tdesc->name, TSTATE_NAME(ix));
-            break;
-        }
-    }
-
-    if (!err) {
-        /*
-         * if the configuration is missing, it is not a fatal error. Use an
-         * blank sequence, so that emulation works as if the config was not
-         * valid
-         */
-        g_assert(state[OTP_TSTATE_FIRST] && state[OTP_TSTATE_LAST]);
-        *first = state[OTP_TSTATE_FIRST];
-        *last = state[OTP_TSTATE_LAST];
-        return;
-    }
-
-    for (unsigned ix = 0; ix < OTP_TSTATE_COUNT; ix++) {
-        g_free(state[ix]);
-    }
-
-    /* equivalent to error_fatal usage */
-    error_report_err(err);
-    exit(1);
-}
-
-static void ot_otp_dj_configure_lc_states(OtOTPDjState *s)
-{
-    uint16_t *first;
-    uint16_t *last;
-
-    ot_otp_dj_load_transitions(s, OTP_TRANS_LC_STATE, &first, &last);
-
-    for (unsigned lcix = 0; lcix < LC_STATE_VALID_COUNT; lcix++) {
-        uint16_t *lcval = &s->lc_states[lcix][0];
-        const uint8_t *tpl = LC_STATES_TPL[lcix];
-        for (unsigned pos = 0; pos < LC_STATE_SLOT_COUNT; pos++) {
-            unsigned slot = LC_STATE_SLOT(tpl[pos]);
-            g_assert(slot < LC_STATE_SLOT_COUNT);
-            if (LC_STATE_A_SLOT(tpl[pos])) {
-                lcval[pos] = first[slot];
-            } else if (LC_STATE_B_SLOT(tpl[pos])) {
-                lcval[pos] = last[slot];
-            } else if (LC_STATE_ZERO_SLOT(tpl[pos])) {
-                lcval[pos] = 0u;
-            } else {
-                g_assert_not_reached();
-            }
-        }
-    }
-
-    g_free(last);
-    g_free(first);
-}
-
-static void ot_otp_dj_configure_transitions(
-    OtOTPDjState *s, OtOTPTransition trans, uint16_t *table)
-{
-    const OtOTPTransitionDesc *tdesc = &TRANSITION_DESC[trans];
-
-    uint16_t *first;
-    uint16_t *last;
-    ot_otp_dj_load_transitions(s, trans, &first, &last);
-
-    uint16_t *lcval = table;
-    memset(lcval, 0, tdesc->slot_count * sizeof(uint16_t)); /* RAW stage */
-    lcval += tdesc->slot_count;
-    for (unsigned tix = 1; tix < tdesc->step_count;
-         tix++, lcval += tdesc->slot_count) {
-        memcpy(&lcval[0], &last[0], tix * sizeof(uint16_t));
-        memcpy(&lcval[tix], &first[tix],
-               (tdesc->step_count - tix) * sizeof(uint16_t));
-    }
-
-    g_free(last);
-    g_free(first);
 }
 
 static void ot_otp_dj_load(OtOTPDjState *s)
@@ -4170,22 +3779,6 @@ static Property ot_otp_dj_properties[] = {
     DEFINE_PROP_STRING("digest_iv", OtOTPDjState, digest_iv_xstr),
     DEFINE_PROP_STRING("sram_const", OtOTPDjState, sram_const_xstr),
     DEFINE_PROP_STRING("sram_iv", OtOTPDjState, sram_iv_xstr),
-    DEFINE_PROP_STRING("lc_state_first", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_LC_STATE].state[OTP_TSTATE_FIRST]),
-    DEFINE_PROP_STRING("lc_state_last", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_LC_STATE].state[OTP_TSTATE_LAST]),
-    DEFINE_PROP_STRING("lc_trscnt_first", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_LC_TCOUNT].state[OTP_TSTATE_FIRST]),
-    DEFINE_PROP_STRING("lc_trscnt_last", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_LC_TCOUNT].state[OTP_TSTATE_LAST]),
-    DEFINE_PROP_STRING("ownership_first", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_OWNERSHIP].state[OTP_TSTATE_FIRST]),
-    DEFINE_PROP_STRING("ownership_last", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_OWNERSHIP].state[OTP_TSTATE_LAST]),
-    DEFINE_PROP_STRING("socdbg_first", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_SOCDBG].state[OTP_TSTATE_FIRST]),
-    DEFINE_PROP_STRING("socdbg_last", OtOTPDjState,
-                       trans_cfg[OTP_TRANS_SOCDBG].state[OTP_TSTATE_LAST]),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -4284,12 +3877,6 @@ static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
     ot_otp_dj_configure_scrmbl_key(s);
     ot_otp_dj_configure_digest(s);
     ot_otp_dj_configure_sram(s);
-    ot_otp_dj_configure_lc_states(s);
-    ot_otp_dj_configure_transitions(s, OTP_TRANS_LC_TCOUNT,
-                                    (uint16_t *)s->lc_transitions);
-    ot_otp_dj_configure_transitions(s, OTP_TRANS_OWNERSHIP,
-                                    (uint16_t *)s->ownership);
-    ot_otp_dj_configure_transitions(s, OTP_TRANS_SOCDBG, (uint16_t *)s->socdbg);
     ot_otp_dj_load(s);
 }
 
@@ -4342,10 +3929,6 @@ static void ot_otp_dj_init(Object *obj)
     s->keygen = g_new0(OtOTPKeyGen, 1u);
     s->otp = g_new0(OtOTPStorage, 1u);
     s->scrmbl_key_init = g_new0(OtOTPScrmblKeyInit, 1u);
-    s->lc_states = g_new0(OtOTPStateValue, LC_STATE_VALID_COUNT);
-    s->lc_transitions = g_new0(OtOTPTransitionValue, LC_TRANSITION_COUNT);
-    s->ownership = g_new0(OtOTPOwnershipValue, OWNERSHIP_ST_COUNT);
-    s->socdbg = g_new0(OtOTPSocDbgValue, SOCDBG_ST_COUNT);
 
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
         if (!OtOTPPartDescs[ix].buffered) {

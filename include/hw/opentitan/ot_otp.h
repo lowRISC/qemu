@@ -58,7 +58,7 @@ typedef enum {
 typedef struct {
     uint32_t device_id[8u];
     uint32_t manuf_state[8u];
-    uint32_t soc_dbg_state; /* meaningless for Earlgrey platforms */
+    uint16_t soc_dbg_state[2u]; /* may be meaningless, dep. on the platform */
     /* the following value is stored as OT_MULTIBITBOOL8 */
     uint8_t en_sram_ifetch;
 } OtOTPHWCfg;
@@ -119,15 +119,16 @@ struct OtOTPStateClass {
      * Provide OTP lifecycle information.
      *
      * @s the OTP device
-     * @lc_state if not NULL, updated with the 5-bit encoded LifeCycle state
-     * @tcount if not NULL, updated with the LifeCycle transition count
-     * @lc_valid if not NULL, update with the LC valid state
-     * @secret_valid if not NULL, update with the LC secret_valid info
+     * @lc_tcount if not NULL, updated with the raw LifeCycle transition count
+     *            buffer.
+     * @lc_state if not NULL, updated with the raw LifeCycle state buffer.
+     * @lc_valid if not NULL, update with the LC valid state (scalar)
+     * @secret_valid if not NULL, update with the LC secret_valid info (scalar)
      *
      * @note: lc_valid and secret_valid use OT_MULTIBITBOOL_LC4 encoding
      */
-    void (*get_lc_info)(const OtOTPState *s, uint32_t *lc_state,
-                        unsigned *tcount, uint8_t *lc_valid,
+    void (*get_lc_info)(const OtOTPState *s, uint16_t *lc_state,
+                        uint16_t *lc_tcount, uint8_t *lc_valid,
                         uint8_t *secret_valid, const OtOTPTokens **tokens);
 
     /*
@@ -163,14 +164,15 @@ struct OtOTPStateClass {
      * is accepted.
      *
      * @s the OTP device
-     * @lc_state the LifeCycle 5-bit state
-     * @tcount the LifeCycle transition count
+     * @lc_tcount the raw LifeCycle transition count buffer
+     * @lc_state the raw LifeCycle state buffer
      * @ack the callback to asynchronously invoke on OTP completion/error
      * @opaque opaque data to forward to the ot_otp_program_ack_fn function
      * @return @c true if request is accepted, @c false is rejected.
      */
-    bool (*program_req)(OtOTPState *s, uint32_t lc_state, unsigned tcount,
-                        ot_otp_program_ack_fn ack, void *opaque);
+    bool (*program_req)(OtOTPState *s, const uint16_t *lc_tcount,
+                        const uint16_t *lc_state, ot_otp_program_ack_fn ack,
+                        void *opaque);
 };
 
 #endif /* HW_OPENTITAN_OT_OTP_H */
