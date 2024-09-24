@@ -190,14 +190,6 @@ class OtConfiguration:
             nameargs.append(socid)
         otpname = '.'.join(nameargs)
         otpdata = {}
-        self.add_pair(otpdata, 'lc_state_first', self._lc_states[0])
-        self.add_pair(otpdata, 'lc_state_last', self._lc_states[1])
-        self.add_pair(otpdata, 'lc_trscnt_first', self._lc_transitions[0])
-        self.add_pair(otpdata, 'lc_trscnt_last', self._lc_transitions[1])
-        self.add_pair(otpdata, 'ownership_first', self._ownership[0])
-        self.add_pair(otpdata, 'ownership_last', self._ownership[1])
-        self.add_pair(otpdata, 'socdbg_first', self._socdbg[0])
-        self.add_pair(otpdata, 'socdbg_last', self._socdbg[1])
         for kname, val in self._otp.items():
             self.add_pair(otpdata, kname, val)
         otpdata = dict(sorted(otpdata.items()))
@@ -210,8 +202,17 @@ class OtConfiguration:
             nameargs.append(socid)
         lcname = '.'.join(nameargs)
         lcdata = {}
+        self.add_pair(lcdata, 'lc_state_first', self._lc_states[0])
+        self.add_pair(lcdata, 'lc_state_last', self._lc_states[1])
+        self.add_pair(lcdata, 'lc_trscnt_first', self._lc_transitions[0])
+        self.add_pair(lcdata, 'lc_trscnt_last', self._lc_transitions[1])
+        self.add_pair(lcdata, 'ownership_first', self._ownership[0])
+        self.add_pair(lcdata, 'ownership_last', self._ownership[1])
+        self.add_pair(lcdata, 'socdbg_first', self._socdbg[0])
+        self.add_pair(lcdata, 'socdbg_last', self._socdbg[1])
         for kname, value in self._lc.items():
             self.add_pair(lcdata, kname, value)
+        lcdata = dict(sorted(lcdata.items()))
         cfg[f'ot_device "{lcname}"'] = lcdata
 
 
