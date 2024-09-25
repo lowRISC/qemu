@@ -52,12 +52,30 @@ typedef enum {
     OT_PWRMGR_WAKEUP_COUNT,
 } OtPwrMgrWakeup;
 
+/* Boot status packed as an IRQ */
+typedef union {
+    struct {
+        unsigned main_ip_clk_en : 1;
+        unsigned io_ip_clk_en : 1;
+        unsigned usb_ip_clk_en : 1; /* ignored for now */
+        unsigned otp_done : 1;
+        unsigned lc_done : 1;
+        unsigned cpu_fetch_en : 1;
+        unsigned strap_sampled : 1;
+        unsigned light_reset : 1;
+        unsigned rom_done : 4;
+        unsigned rom_good : 4;
+    };
+    int i32;
+} OtPwrMgrBootStatus;
+
 /* output lines */
-#define OT_PWRMGR_LC_REQ  TYPE_OT_PWRMGR "-lc-req"
-#define OT_PWRMGR_OTP_REQ TYPE_OT_PWRMGR "-otp-req"
-#define OT_PWRMGR_CPU_EN  TYPE_OT_PWRMGR "-cpu-en"
-#define OT_PWRMGR_STRAP   TYPE_OT_PWRMGR "-strap"
-#define OT_PWRMGR_RST_REQ TYPE_OT_PWRMGR "-reset-req"
+#define OT_PWRMGR_LC_REQ      TYPE_OT_PWRMGR "-lc-req"
+#define OT_PWRMGR_OTP_REQ     TYPE_OT_PWRMGR "-otp-req"
+#define OT_PWRMGR_CPU_EN      TYPE_OT_PWRMGR "-cpu-en"
+#define OT_PWRMGR_STRAP       TYPE_OT_PWRMGR "-strap"
+#define OT_PWRMGR_RST_REQ     TYPE_OT_PWRMGR "-reset-req"
+#define OT_PWRMGR_BOOT_STATUS TYPE_OT_PWRMGR "-boot-status"
 
 /* input lines */
 #define OT_PWRMGR_LC_RSP  TYPE_OT_PWRMGR "-lc-rsp"

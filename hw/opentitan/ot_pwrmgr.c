@@ -241,6 +241,7 @@ struct OtPwrMgrState {
     IbexIRQ pwr_lc_req;
     IbexIRQ pwr_otp_req;
     IbexIRQ reset_req;
+    IbexIRQ boot_st;
 
     OtPwrMgrFastState f_state;
     OtPwrMgrSlowState s_state;
@@ -248,6 +249,7 @@ struct OtPwrMgrState {
 
     uint32_t *regs;
     OtPwrMgrResetReq reset_request;
+    OtPwrMgrBootStatus boot_status;
 
     char *ot_id;
     uint8_t num_rom;
@@ -582,6 +584,9 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         PWR_CHANGE_FAST_STATE(s, ENABLE_CLOCKS);
         break;
     case OT_PWR_FAST_ST_ENABLE_CLOCKS:
+        s->boot_status.main_ip_clk_en = 1u;
+        s->boot_status.io_ip_clk_en = 1u;
+        ibex_irq_set(&s->boot_st, s->boot_status.i32);
         PWR_CHANGE_FAST_STATE(s, RELEASE_LC_RST);
         // TODO: need to release ROM controllers from reset here to emulate
         // they are clocked and start to verify their contents.
@@ -594,6 +599,8 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         if (s->fsm_events.otp_done) {
             /* release the request signal */
             ibex_irq_set(&s->pwr_otp_req, (int)false);
+            s->boot_status.otp_done = true;
+            ibex_irq_set(&s->boot_st, s->boot_status.i32);
             PWR_CHANGE_FAST_STATE(s, LC_INIT);
             ibex_irq_set(&s->pwr_lc_req, (int)true);
         }
@@ -602,6 +609,8 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         if (s->fsm_events.lc_done) {
             /* release the request signal */
             ibex_irq_set(&s->pwr_lc_req, (int)false);
+            s->boot_status.lc_done = true;
+            ibex_irq_set(&s->boot_st, s->boot_status.i32);
             PWR_CHANGE_FAST_STATE(s, ACK_PWR_UP);
         }
         break;
@@ -610,15 +619,21 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         break;
     case OT_PWR_FAST_ST_STRAP:
         ibex_irq_set(&s->strap, (int)true);
+        s->boot_status.strap_sampled = true;
+        ibex_irq_set(&s->boot_st, s->boot_status.i32);
         PWR_CHANGE_FAST_STATE(s, ROM_CHECK_DONE);
         break;
     case OT_PWR_FAST_ST_ROM_CHECK_DONE:
         ibex_irq_set(&s->strap, (int)false);
+        s->boot_status.rom_done = s->fsm_events.rom_done;
+        ibex_irq_set(&s->boot_st, s->boot_status.i32);
         if (s->fsm_events.rom_done == (1u << s->num_rom) - 1u) {
             PWR_CHANGE_FAST_STATE(s, ROM_CHECK_GOOD);
         }
         break;
     case OT_PWR_FAST_ST_ROM_CHECK_GOOD:
+        s->boot_status.rom_good = s->fsm_events.rom_good;
+        ibex_irq_set(&s->boot_st, s->boot_status.i32);
         if ((s->fsm_events.rom_good == (1u << s->num_rom) - 1u) &&
             !s->fsm_events.holdon_fetch) {
             PWR_CHANGE_FAST_STATE(s, ACTIVE);
@@ -627,12 +642,19 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
     case OT_PWR_FAST_ST_ACTIVE:
         if (!s->regs[R_RESET_STATUS]) {
             ibex_irq_set(&s->cpu_enable, (int)true);
+            s->boot_status.cpu_fetch_en = true;
+            ibex_irq_set(&s->boot_st, s->boot_status.i32);
         } else {
             ibex_irq_set(&s->cpu_enable, (int)false);
+            s->boot_status.cpu_fetch_en = false;
+            ibex_irq_set(&s->boot_st, s->boot_status.i32);
             PWR_CHANGE_FAST_STATE(s, DIS_CLKS);
         }
         break;
     case OT_PWR_FAST_ST_DIS_CLKS:
+        s->boot_status.main_ip_clk_en = 0u;
+        s->boot_status.io_ip_clk_en = 0u;
+        ibex_irq_set(&s->boot_st, s->boot_status.i32);
         PWR_CHANGE_FAST_STATE(s, RESET_PREP);
         break;
     case OT_PWR_FAST_ST_FALL_THROUGH:
@@ -926,6 +948,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     s->regs[R_RESET_EN_REGWEN] = 0x1u;
     s->fsm_events.bitmap = 0;
     s->fsm_events.holdon_fetch = s->fetch_ctrl;
+    s->boot_status.i32 = 0;
 
     PWR_CHANGE_FAST_STATE(s, LOW_POWER);
     PWR_CHANGE_SLOW_STATE(s, RESET);
@@ -937,6 +960,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     ibex_irq_set(&s->pwr_lc_req, 0);
     ibex_irq_set(&s->alert, 0);
     ibex_irq_set(&s->reset_req, 0);
+    ibex_irq_set(&s->boot_st, s->boot_status.i32);
 }
 
 static void ot_pwrmgr_reset_exit(Object *obj, ResetType type)
@@ -991,6 +1015,7 @@ static void ot_pwrmgr_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->cpu_enable, OT_PWRMGR_CPU_EN);
     ibex_qdev_init_irq(obj, &s->strap, OT_PWRMGR_STRAP);
     ibex_qdev_init_irq(obj, &s->reset_req, OT_PWRMGR_RST_REQ);
+    ibex_qdev_init_irq(obj, &s->boot_st, OT_PWRMGR_BOOT_STATUS);
 
     s->cdc_sync = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_pwrmgr_cdc_sync, s);
 
