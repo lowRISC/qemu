@@ -39,6 +39,7 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_pwrmgr.h"
+#include "hw/opentitan/ot_socdbg_ctrl.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -341,14 +342,6 @@ typedef enum {
     OWNERSHIP_ST_COUNT,
 } OtLcCtrlOwnershipState;
 
-/* SocDbg states */
-typedef enum {
-    SOCDBG_ST_RAW,
-    SOCDBG_ST_PRE_PROD,
-    SOCDBG_ST_PROD,
-    SOCDBG_ST_COUNT,
-} OtLcCtrlDbgState;
-
 typedef enum {
     LC_CTRL_TRANS_LC_STATE,
     LC_CTRL_TRANS_LC_TCOUNT,
@@ -378,6 +371,7 @@ struct OtLcCtrlState {
     IbexIRQ alerts[NUM_ALERTS];
     IbexIRQ broadcasts[OT_LC_BROADCAST_COUNT];
     IbexIRQ pwc_lc_rsp;
+    IbexIRQ socdbg_tx;
 
     uint32_t *regs; /* slots in xregs are not used in regs */
     uint32_t xregs[EXCLUSIVE_SLOTS_COUNT][EXCLUSIVE_REGS_COUNT];
@@ -414,6 +408,7 @@ struct OtLcCtrlState {
     uint8_t revision_id;
     uint8_t kmac_app;
     bool volatile_raw_unlock;
+    bool socdbg; /* whether this instance use SoCDbg state */
 };
 
 typedef struct {
@@ -1199,6 +1194,23 @@ static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
            sizeof(*hw_cfg->device_id));
     memcpy(&s->regs[R_MANUF_STATE_0], &hw_cfg->manuf_state[0],
            sizeof(*hw_cfg->manuf_state));
+
+    if (!s->socdbg) {
+        return;
+    }
+
+    /* default to lowest capabilities */
+    int socdbg_ix = OT_SOCDBG_ST_PROD;
+
+    for (unsigned six = 0; six < OT_SOCDBG_ST_COUNT; six++) {
+        if (!memcmp(hw_cfg->soc_dbg_state, s->socdbgs[six],
+                    sizeof(OtLcCtrlSocDbgValue))) {
+            socdbg_ix = (int)six;
+            break;
+        }
+    }
+
+    ibex_irq_set(&s->socdbg_tx, socdbg_ix);
 }
 
 static void ot_lc_ctrl_handle_otp_ack(void *opaque, bool ack)
@@ -2043,6 +2055,7 @@ static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_UINT8("revision_id", OtLcCtrlState, revision_id, 0),
     DEFINE_PROP_BOOL("volatile_raw_unlock", OtLcCtrlState, volatile_raw_unlock,
                      true),
+    DEFINE_PROP_BOOL("socdbg", OtLcCtrlState, socdbg, false),
     DEFINE_PROP_UINT8("kmac-app", OtLcCtrlState, kmac_app, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -2132,7 +2145,7 @@ static void ot_lc_ctrl_reset(DeviceState *dev)
     s->km_div = LC_DIV_INVALID;
 
     /*
-     * do not broadcast the current status, wait for initialization to happen,
+     * do not broadcast the current states, wait for initialization to happen,
      * triggered by the Power Manager
      */
 }
@@ -2152,8 +2165,10 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
                                      (uint16_t *)s->lc_transitions);
     ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_OWNERSHIP,
                                      (uint16_t *)s->ownerships);
-    ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_SOCDBG,
-                                     (uint16_t *)s->socdbgs);
+    if (s->socdbg) {
+        ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_SOCDBG,
+                                         (uint16_t *)s->socdbgs);
+    }
     ot_lc_ctrl_compute_predefined_tokens(s, &error_fatal);
 }
 
@@ -2186,6 +2201,8 @@ static void ot_lc_ctrl_init(Object *obj)
     }
 
     ibex_qdev_init_irq(obj, &s->pwc_lc_rsp, OT_PWRMGR_LC_RSP);
+    ibex_qdev_init_irq_default(obj, &s->socdbg_tx, OT_LC_CTRL_SOCDBG,
+                               OT_SOCDBG_ST_COUNT);
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_lc_ctrl_pwr_lc_req,
                             OT_PWRMGR_LC_REQ, 1);

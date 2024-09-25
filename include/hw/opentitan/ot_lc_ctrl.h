@@ -36,9 +36,10 @@ OBJECT_DECLARE_SIMPLE_TYPE(OtLcCtrlState, OT_LC_CTRL)
 /* Init request from power manager */
 #define OT_LC_PWR TYPE_OT_LC_CTRL "-pwr"
 
-#define OT_LC_BROADCAST TYPE_OT_LC_CTRL "-broadcast"
+#define OT_LC_BROADCAST   TYPE_OT_LC_CTRL "-broadcast"
+#define OT_LC_CTRL_SOCDBG TYPE_OT_LC_CTRL "-socdbg"
 
-/* Life cycle broadcast signals */
+/* Life cycle broadcast signals (booleans) */
 typedef enum {
     OT_LC_RAW_TEST_RMA, /* SoC debug control */
     OT_LC_DFT_EN, /* device for test */
