@@ -114,8 +114,8 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_AST,
     OT_DJ_SOC_DEV_CLKMGR,
     OT_DJ_SOC_DEV_CSRNG,
-    OT_DJ_SOC_DEV_DM_TL_LC_CTRL,
-    OT_DJ_SOC_DEV_DM_TL_MBX,
+    OT_DJ_SOC_DEV_DM_MBX,
+    OT_DJ_SOC_DEV_DM_LC_CTRL,
     OT_DJ_SOC_DEV_DM,
     OT_DJ_SOC_DEV_DMA,
     OT_DJ_SOC_DEV_DTM,
@@ -287,12 +287,11 @@ enum OtDjPinmuxMioOut {
 #define OT_DJ_CTN_RAM_SIZE (2u << 20u)
 
 /* DEBUG address space */
-#define OT_DJ_DEBUG_RV_DM_ADDR       0x0u
-#define OT_DJ_DEBUG_MBX_JTAG_ADDR    0x2200u
-#define OT_DJ_DEBUG_SOCDBG_CTRL_ADDR 0x2300u
-#define OT_DJ_DEBUG_LC_CTRL_ADDR     0x3000u
-#define OT_DJ_DEBUG_LC_CTRL_SIZE     0x400u
-#define OT_DJ_DBG_XBAR_SIZE          0x4000u
+#define OT_DJ_DEBUG_RV_DM_ADDR    0x0u
+#define OT_DJ_DEBUG_MBX_JTAG_ADDR 0x2200u
+#define OT_DJ_DEBUG_LC_CTRL_ADDR  0x3000u
+#define OT_DJ_DEBUG_LC_CTRL_SIZE  0x400u
+#define OT_DJ_DBG_XBAR_SIZE       0x4000u
 
 #define OT_DJ_PERIPHERAL_CLK_HZ 250000000u /* 250 MHz */
 #define OT_DJ_AON_CLK_HZ        62500000u /* 62.5 MHz */
@@ -408,7 +407,7 @@ static const uint32_t ot_dj_pmp_addrs[] = {
     OT_DJ_SOC_SIGNAL(_rsp_##_RSP, 0, _tgt_, _rsp_##_RSP, 0)
 
 #define OT_DJ_SOC_DEV_MBX(_ix_, _addr_, _asname_, _irq_, _alert_) \
-    .type = TYPE_OT_MBX, .instance = (_ix_), \
+    .type = TYPE_OT_MBX, .instance = IBEX_MAKE_INSTANCE_NUM(_ix_), \
     .memmap = MEMMAPENTRIES({ .base = (_addr_) }), \
     .gpio = IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
                              OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
@@ -420,7 +419,7 @@ static const uint32_t ot_dj_pmp_addrs[] = {
 
 #define OT_DJ_SOC_DEV_MBX_DUAL(_ix_, _addr_, _asname_, _irq_, _alert_, \
                                _xaddr_) \
-    .type = TYPE_OT_MBX, .instance = (_ix_), \
+    .type = TYPE_OT_MBX, .instance = IBEX_MAKE_INSTANCE_NUM(_ix_), \
     .memmap = MEMMAPENTRIES({ .base = (_addr_) }, { .base = (_xaddr_) }), \
     .gpio = IBEXGPIOCONNDEFS(OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, (_irq_)), \
                              OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, (_irq_) + 1u), \
@@ -541,23 +540,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("abstractauto", true)
         ),
     },
-    [OT_DJ_SOC_DEV_DM_TL_LC_CTRL] = {
+    [OT_DJ_SOC_DEV_DM_MBX] = {
         .type = TYPE_OT_DM_TL,
-        .instance = 0,
-        .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("dtm", DTM),
-            OT_DJ_SOC_DEVLINK("tl_dev", LC_CTRL)
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("dmi_addr", OT_DJ_DEBUG_LC_CTRL_DMI_ADDR),
-            IBEX_DEV_UINT_PROP("dmi_size", OT_DJ_DEBUG_LC_CTRL_DMI_SIZE),
-            IBEX_DEV_UINT_PROP("tl_addr", OT_DJ_DEBUG_LC_CTRL_ADDR),
-            IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
-        )
-    },
-    [OT_DJ_SOC_DEV_DM_TL_MBX] = {
-        .type = TYPE_OT_DM_TL,
-        .instance = 1,
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("dtm", DTM),
             OT_DJ_SOC_DEVLINK("tl_dev", MBX_JTAG)
@@ -566,6 +550,19 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("dmi_addr", OT_DJ_DEBUG_MBX_JTAG_DMI_ADDR),
             IBEX_DEV_UINT_PROP("dmi_size", OT_DJ_DEBUG_MBX_JTAG_DMI_SIZE),
             IBEX_DEV_UINT_PROP("tl_addr", OT_DJ_DEBUG_MBX_JTAG_ADDR),
+            IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
+        )
+    },
+    [OT_DJ_SOC_DEV_DM_LC_CTRL] = {
+        .type = TYPE_OT_DM_TL,
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("dtm", DTM),
+            OT_DJ_SOC_DEVLINK("tl_dev", LC_CTRL)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("dmi_addr", OT_DJ_DEBUG_LC_CTRL_DMI_ADDR),
+            IBEX_DEV_UINT_PROP("dmi_size", OT_DJ_DEBUG_LC_CTRL_DMI_SIZE),
+            IBEX_DEV_UINT_PROP("tl_addr", OT_DJ_DEBUG_LC_CTRL_ADDR),
             IBEX_DEV_STRING_PROP("tl_as_name", "ot-dbg")
         )
     },
@@ -670,7 +667,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_EDN0] = {
         .type = TYPE_OT_EDN,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x21170000u }
         ),
@@ -689,7 +685,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_EDN1] = {
         .type = TYPE_OT_EDN,
-        .instance = 1,
         .memmap = MEMMAPENTRIES(
             { .base = 0x21180000u }
         ),
@@ -708,7 +703,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_SRAM_MAIN] = {
         .type = TYPE_OT_SRAM_CTRL,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x211c0000u },
             { 0x10000000u }
@@ -726,7 +720,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_SRAM_MBX] = {
         .type = TYPE_OT_SRAM_CTRL,
-        .instance = 1,
         .memmap = MEMMAPENTRIES(
             { .base = 0x211d0000u },
             { 0x11000000u }
@@ -744,7 +737,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_ROM0] = {
         .type = TYPE_OT_ROM_CTRL,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x211e0000u },
             { 0x00008000u }
@@ -769,7 +761,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_ROM1] = {
         .type = TYPE_OT_ROM_CTRL,
-        .instance = 1,
         .memmap = MEMMAPENTRIES(
             { .base = 0x211e1000u },
             { 0x00020000u }
@@ -1021,7 +1012,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     [OT_DJ_SOC_DEV_UART0] = {
         .type = TYPE_OT_UART,
         .cfg = &ot_dj_soc_uart_configure,
-        .instance = 0,
+        .instance = IBEX_MAKE_INSTANCE_NUM(0),
         .memmap = MEMMAPENTRIES(
             { .base = 0x30010000u }
         ),
@@ -1052,7 +1043,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_I2C0] = {
         .type = TYPE_OT_I2C_DJ,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30080000u }
         ),
@@ -1222,7 +1212,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_OT_SPI_HOST,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30300000u }
         ),
@@ -1368,7 +1357,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_SRAM_RET] = {
         .type = TYPE_OT_SRAM_CTRL,
-        .instance = 2,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30500000u },
             { .base = 0x30600000u }
@@ -1387,14 +1375,12 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     /* IRQ splitters */
     [OT_DJ_SOC_SPLITTER_LC_HW_DEBUG] = {
         .type = TYPE_SPLIT_IRQ,
-        .instance = 0,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
         )
     },
     [OT_DJ_SOC_SPLITTER_LC_ESCALATE] = {
         .type = TYPE_SPLIT_IRQ,
-        .instance = 1,
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
                                   OT_OTP_LC_ESCALATE_EN)
@@ -1539,7 +1525,7 @@ static void ot_dj_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
 {
     (void)def;
     (void)parent;
-    qdev_prop_set_chr(dev, "chardev", serial_hd(def->instance));
+    qdev_prop_set_chr(dev, "chardev", serial_hd(IBEX_GET_INSTANCE_NUM(def)));
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1573,8 +1559,8 @@ static void ot_dj_soc_reset_hold(Object *obj, ResetType type)
     resettable_reset(dmi, type);
 
     // TODO: not sure where Reset is plugged here...
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_TL_LC_CTRL]), type);
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_TL_MBX]), type);
+    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_LC_CTRL]), type);
+    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_MBX]), type);
 
     Object *dm = OBJECT(s->devices[OT_DJ_SOC_DEV_DM]);
     resettable_reset(dm, type);

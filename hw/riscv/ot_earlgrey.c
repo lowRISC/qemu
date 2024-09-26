@@ -327,7 +327,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_UART0] = {
         .type = TYPE_OT_UART,
         .cfg = &ot_eg_soc_uart_configure,
-        .instance = 0,
+        .instance = IBEX_MAKE_INSTANCE_NUM(0),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40000000u }
         ),
@@ -348,7 +348,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_UART1] = {
         .type = TYPE_OT_UART,
         .cfg = &ot_eg_soc_uart_configure,
-        .instance = 1,
+        .instance = IBEX_MAKE_INSTANCE_NUM(1),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40010000u }
         ),
@@ -369,7 +369,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_UART2] = {
         .type = TYPE_OT_UART,
         .cfg = &ot_eg_soc_uart_configure,
-        .instance = 2,
+        .instance = IBEX_MAKE_INSTANCE_NUM(2),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40020000u }
         ),
@@ -390,7 +390,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_UART3] = {
         .type = TYPE_OT_UART,
         .cfg = &ot_eg_soc_uart_configure,
-        .instance = 3,
+        .instance = IBEX_MAKE_INSTANCE_NUM(3),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40030000u }
         ),
@@ -476,7 +476,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-i2c",
         .cfg = &ibex_unimp_configure,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40080000u }
         ),
@@ -488,7 +487,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-i2c",
         .cfg = &ibex_unimp_configure,
-        .instance = 1,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40090000u }
         ),
@@ -500,7 +498,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
         .name = "ot-i2c",
         .cfg = &ibex_unimp_configure,
-        .instance = 2,
         .memmap = MEMMAPENTRIES(
             { .base = 0x400a0000u }
         ),
@@ -608,7 +605,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_OT_SPI_HOST,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40300000u }
         ),
@@ -622,7 +618,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_SPI_HOST1] = {
         .type = TYPE_OT_SPI_HOST,
-        .instance = 1,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40310000u }
         ),
@@ -753,7 +748,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_SRAM_RET_CTRL] = {
         .type = TYPE_OT_SRAM_CTRL,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40500000u },
             { .base = 0x40600000u }
@@ -891,7 +885,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_EDN0] = {
         .type = TYPE_OT_EDN,
-        .instance = 0,
         .memmap = MEMMAPENTRIES(
             { .base = 0x41170000u }
         ),
@@ -908,7 +901,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_EDN1] = {
         .type = TYPE_OT_EDN,
-        .instance = 1,
         .memmap = MEMMAPENTRIES(
             { .base = 0x41180000u }
         ),
@@ -925,7 +917,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_SRAM_MAIN_CTRL] = {
         .type = TYPE_OT_SRAM_CTRL,
-        .instance = 1,
         .memmap = MEMMAPENTRIES(
             { .base = 0x411c0000u },
             { .base = 0x10000000u }
@@ -1167,7 +1158,7 @@ static void ot_eg_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
 {
     (void)def;
     (void)parent;
-    qdev_prop_set_chr(dev, "chardev", serial_hd(def->instance));
+    qdev_prop_set_chr(dev, "chardev", serial_hd(IBEX_GET_INSTANCE_NUM(def)));
 }
 
 /* ------------------------------------------------------------------------ */
