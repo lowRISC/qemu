@@ -168,14 +168,28 @@ typedef struct IbexMemMapEntry {
 
 #define IBEX_MEM_MAP_ENTRY_FLAG(_f_) (1u << (IBEX_MEM_MAP_ENTRY_FLAG_##_f_))
 
+#define IBEX_INSTANCE_FLAG           (1u << 31u)
+#define IBEX_MAKE_INSTANCE_NUM(_ix_) (IBEX_INSTANCE_FLAG | (_ix_))
+#define IBEX_HAS_INSTANCE_NUM(_def_) \
+    ((bool)(((_def_)->instance & IBEX_INSTANCE_FLAG)))
+#define IBEX_GET_INSTANCE_NUM(_def_) \
+    (IBEX_HAS_INSTANCE_NUM(_def_) ? \
+         ((_def_)->instance & ~IBEX_INSTANCE_FLAG) : \
+         UINT32_MAX)
+
 /* Device definition */
 struct IbexDeviceDef {
     /** Registered type of the device */
     const char *type;
     /** Optional name, may be NULL */
     const char *name;
-    /** Instance number, default to 0 */
-    int instance;
+    /*
+     * Instance number, default to auto-numbering, using a monotonic incremental
+     * value following the declaration order. Use IBEX_MAKE_INSTANCE_NUM macro
+     * to specify a unique instance of the type, when an instance needs to be
+     * explictly referenced by its instance number.
+     */
+    unsigned instance;
     /** Optional configuration function */
     ibex_dev_cfg_fn cfg;
     /** Array of memory map */

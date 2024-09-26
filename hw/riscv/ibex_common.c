@@ -41,6 +41,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "monitor/monitor.h"
 #include "sysemu/runstate.h"
+#include "trace.h"
 
 static void rust_demangle_fn(const char *st_name, int st_info,
                              uint64_t st_value, uint64_t st_size);
@@ -63,7 +64,10 @@ DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
                                   DeviceState *parent)
 {
     DeviceState **devices = g_new0(DeviceState *, count);
-    unsigned unimp_count = 0;
+    GHashTable *chtable =
+        g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
+    const char *pname = object_get_typename(OBJECT(parent));
+
     for (unsigned idx = 0; idx < count; idx++) {
         const IbexDeviceDef *def = &defs[idx];
         if (!def->type) {
@@ -72,21 +76,35 @@ DeviceState **ibex_create_devices(const IbexDeviceDef *defs, unsigned count,
         }
         devices[idx] = qdev_new(def->type);
 
-        char *name;
+        const char *tname;
         if (!strcmp(def->type, TYPE_UNIMPLEMENTED_DEVICE)) {
-            if (def->name) {
-                name = g_strdup_printf("%s[%u]", def->name, def->instance);
-            } else {
-                name = g_strdup_printf(TYPE_UNIMPLEMENTED_DEVICE "[%u]",
-                                       unimp_count);
-            }
-            unimp_count += 1u;
+            tname = def->name ? def->name : TYPE_UNIMPLEMENTED_DEVICE;
         } else {
-            name = g_strdup_printf("%s[%u]", def->type, def->instance);
+            tname = def->type;
         }
+
+        char *name;
+        if (!IBEX_HAS_INSTANCE_NUM(def)) {
+            gpointer sibling = g_hash_table_lookup(chtable, (gpointer)tname);
+            unsigned *chcount;
+            if (!sibling) {
+                chcount = g_new(unsigned, 1u);
+                *chcount = 0;
+                g_hash_table_insert(chtable, (gpointer)tname,
+                                    (gpointer)chcount);
+            } else {
+                chcount = (unsigned *)sibling;
+                *chcount = (*chcount) + 1u;
+            }
+            name = g_strdup_printf("%s.%u", tname, *chcount);
+        } else {
+            name = g_strdup_printf("%s[%u]", tname, IBEX_GET_INSTANCE_NUM(def));
+        }
+        trace_ibex_create_device(pname, name);
         object_property_add_child(OBJECT(parent), name, OBJECT(devices[idx]));
         g_free(name);
     }
+    g_hash_table_destroy(chtable);
     return devices;
 }
 
@@ -279,7 +297,14 @@ void ibex_map_devices_ext_mask_offset(
         g_assert(def->type);
         g_assert(def->memmap);
 
-        char *name = g_strdup_printf("%s[%u]", def->type, def->instance);
+        if (!IBEX_HAS_INSTANCE_NUM(def)) {
+            error_setg(&error_fatal, "Device %s @ %u instance is not known",
+                       def->type, ix);
+            return;
+        }
+
+        char *name =
+            g_strdup_printf("%s[%u]", def->type, IBEX_GET_INSTANCE_NUM(def));
         Object *child;
         child = object_property_get_link(OBJECT(dev), name, &error_fatal);
         SysBusDevice *sdev;
