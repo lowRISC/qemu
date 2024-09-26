@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Debug
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
@@ -63,6 +63,11 @@ struct RISCVDebugDeviceClass {
      * Read back value.
      */
     uint32_t (*read_value)(RISCVDebugDeviceState *dev);
+
+    /*
+     * Set next DM address
+     */
+    void (*set_next_dm)(RISCVDebugDeviceState *dev, uint32_t addr);
 };
 
 struct RISCVDebugDeviceState {

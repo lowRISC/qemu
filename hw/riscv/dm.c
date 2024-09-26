@@ -681,6 +681,13 @@ static uint32_t riscv_dm_read_value(RISCVDebugDeviceState *dev)
     return value;
 }
 
+static void riscv_dm_set_next_dm(RISCVDebugDeviceState *dev, uint32_t addr)
+{
+    RISCVDMState *dm = RISCV_DM(dev);
+
+    dm->regs[A_NEXTDM] = addr;
+}
+
 /* -------------------------------------------------------------------------- */
 /* DM implementation */
 /* -------------------------------------------------------------------------- */
@@ -2626,6 +2633,7 @@ static void riscv_dm_class_init(ObjectClass *klass, void *data)
     dmc->write_rq = &riscv_dm_write_rq;
     dmc->read_rq = &riscv_dm_read_rq;
     dmc->read_value = &riscv_dm_read_value;
+    dmc->set_next_dm = &riscv_dm_set_next_dm;
 
     /*
      * unfortunately, MemTxtAttrs is a bitfield and there is no built-time way
