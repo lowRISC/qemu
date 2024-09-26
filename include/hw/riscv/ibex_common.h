@@ -80,59 +80,59 @@ typedef struct IbexDeviceDef IbexDeviceDef;
 typedef void (*ibex_dev_cfg_fn)(DeviceState *dev, const IbexDeviceDef *def,
                                 DeviceState *parent);
 
-/**
+/*
  * Structure defining a GPIO connection (in particular, IRQs) from the current
  * device to a target device
  */
 typedef struct {
-    /** Source GPIO */
+    /* Source GPIO */
     struct {
-        /** Name of source GPIO array or NULL for unnamed */
+        /* Name of source GPIO array or NULL for unnamed */
         const char *name;
-        /** Index of source output GPIO */
+        /* Index of source output GPIO */
         int num;
     } out;
 
-    /** Target GPIO */
+    /* Target GPIO */
     struct {
-        /** Target device index */
+        /* Target device index */
         int index;
-        /** Name of target input GPIO array or NULL for unnamed */
+        /* Name of target input GPIO array or NULL for unnamed */
         const char *name;
-        /** Index of target input GPIO */
+        /* Index of target input GPIO */
         int num;
     } in;
 } IbexGpioConnDef;
 
-/**
+/*
  * Structure defining the export of a device GPIO connection to the parent level
  */
 typedef struct {
-    /** Device GPIO */
+    /* Device GPIO */
     struct {
-        /** Name of device GPIO array or NULL for unnamed */
+        /* Name of device GPIO array or NULL for unnamed */
         const char *name;
-        /** Index of device GPIO */
+        /* Index of device GPIO */
         int num;
     } device;
 
-    /** Parent GPIO */
+    /* Parent GPIO */
     struct {
-        /** Name of parent GPIO array or NULL for unnamed */
+        /* Name of parent GPIO array or NULL for unnamed */
         const char *name;
-        /** Index of parent GPIO */
+        /* Index of parent GPIO */
         int num;
     } parent;
 } IbexGpioExportDef;
 
 typedef struct {
-    /** Name of the property to assign the linked device to */
+    /* Name of the property to assign the linked device to */
     const char *propname;
-    /** Linked device index */
+    /* Linked device index */
     int index;
 } IbexDeviceLinkDef;
 
-/** Type of device property */
+/* Type of device property */
 typedef enum {
     IBEX_PROP_TYPE_BOOL,
     IBEX_PROP_TYPE_INT,
@@ -141,11 +141,11 @@ typedef enum {
 } IbexPropertyType;
 
 typedef struct {
-    /** Name of the property */
+    /* Name of the property */
     const char *propname;
-    /** Type of property */
+    /* Type of property */
     IbexPropertyType type;
-    /** Value */
+    /* Value */
     union {
         bool b;
         int64_t i;
@@ -179,9 +179,9 @@ typedef struct IbexMemMapEntry {
 
 /* Device definition */
 struct IbexDeviceDef {
-    /** Registered type of the device */
+    /* Registered type of the device */
     const char *type;
-    /** Optional name, may be NULL */
+    /* Optional name, may be NULL */
     const char *name;
     /*
      * Instance number, default to auto-numbering, using a monotonic incremental
@@ -190,27 +190,27 @@ struct IbexDeviceDef {
      * explictly referenced by its instance number.
      */
     unsigned instance;
-    /** Optional configuration function */
+    /* Optional configuration function */
     ibex_dev_cfg_fn cfg;
-    /** Array of memory map */
+    /* Array of memory map */
     const IbexMemMapEntry *memmap;
-    /** Array of GPIO connections */
+    /* Array of GPIO connections */
     const IbexGpioConnDef *gpio;
-    /** Array of linked devices */
+    /* Array of linked devices */
     const IbexDeviceLinkDef *link;
-    /** Array of properties */
+    /* Array of properties */
     const IbexDevicePropDef *prop;
-    /** Array of GPIO export */
+    /* Array of GPIO export */
     const IbexGpioExportDef *gpio_export;
 };
 
 /* Additional device mapping for external buses */
 typedef struct {
-    /** Registered type of the device */
+    /* Registered type of the device */
     const char *type;
-    /** Instance number, default to 0 */
+    /* Instance number, default to 0 */
     int instance;
-    /** Array of memory map */
+    /* Array of memory map */
     const IbexMemMapEntry *memmap;
 } IbexDeviceMapDef;
 
@@ -260,7 +260,7 @@ typedef struct {
 #define IBEX_MEMMAP_IGNORE(_mmap_) \
     ((bool)((_mmap_)->flags & IBEX_MEM_MAP_ENTRY_FLAG(SKIP)))
 
-/**
+/*
  * Create memory map entries, each arg is MemMapEntry definition
  */
 #define MEMMAPENTRIES(...) \
@@ -269,7 +269,7 @@ typedef struct {
         __VA_ARGS__, IBEX_MEMMAP_LAST \
     }
 
-/**
+/*
  * Create GPIO connection entries, each arg is IbexGpioConnDef definition
  */
 #define IBEXGPIOCONNDEFS(...) \
@@ -281,7 +281,7 @@ typedef struct {
         } \
     }
 
-/**
+/*
  * Create device link entries, each arg is IbexDeviceLinkDef definition
  */
 #define IBEXDEVICELINKDEFS(...) \
@@ -293,7 +293,7 @@ typedef struct {
         } \
     }
 
-/**
+/*
  * Create device property entries, each arg is IbexDevicePropDef definition
  */
 #define IBEXDEVICEPROPDEFS(...) \
@@ -305,7 +305,7 @@ typedef struct {
         } \
     }
 
-/**
+/*
  * Create device additional map entries, each arg is IbexDeviceMapDef definition
  */
 #define IBEXDEVICEMAPDEFS(...) \
@@ -317,7 +317,7 @@ typedef struct {
         } \
     }
 
-/**
+/*
  * Create device gpio export property entries, each arg is IbexGpioExportDef
  * definition
  */
@@ -330,7 +330,7 @@ typedef struct {
         } \
     }
 
-/**
+/*
  * Create a IbexGpioConnDef to connect two unnamed GPIOs
  */
 #define IBEX_GPIO(_irq_, _in_idx_, _num_) \
@@ -344,7 +344,7 @@ typedef struct {
         } \
     }
 
-/**
+/*
  * Create a IbexGpioConnDef to connect a SysBus IRQ to an unnamed GPIO
  */
 #define IBEX_GPIO_SYSBUS_IRQ(_irq_, _in_idx_, _num_) \
@@ -359,7 +359,7 @@ typedef struct {
         } \
     }
 
-/**
+/*
  * Create a IbexLinkDeviceDef to link one device to another
  */
 #define IBEX_DEVLINK(_pname_, _idx_) \
@@ -368,7 +368,7 @@ typedef struct {
         .index = (_idx_), \
     }
 
-/**
+/*
  * Create a IbexGpioExportDef to export a GPIO
  */
 #define IBEX_EXPORT_GPIO(_dname_, _dnum_, _pname_, _pnum_) \
@@ -383,13 +383,13 @@ typedef struct {
         }, \
     }
 
-/**
+/*
  * Create a IbexGpioExportDef to export a SysBus IRQ
  */
 #define IBEX_EXPORT_SYSBUS_IRQ(_dnum_, _pname_, _pnum_) \
     IBEX_EXPORT_GPIO(NULL, _dnum_, _pname_, _pnum_)
 
-/**
+/*
  * Create a boolean device property
  */
 #define IBEX_DEV_BOOL_PROP(_pname_, _b_) \
@@ -399,7 +399,7 @@ typedef struct {
         .b = (_b_), \
     }
 
-/**
+/*
  * Create a signed integer device property
  */
 #define IBEX_DEV_INT_PROP(_pname_, _i_) \
@@ -409,7 +409,7 @@ typedef struct {
         .i = (_i_), \
     }
 
-/**
+/*
  * Create an unsigned integer device property
  */
 #define IBEX_DEV_UINT_PROP(_pname_, _u_) \
@@ -419,7 +419,7 @@ typedef struct {
         .u = (_u_), \
     }
 
-/**
+/*
  * Create a string device property
  */
 #define IBEX_DEV_STRING_PROP(_pname_, _s_) \
@@ -476,7 +476,7 @@ void ibex_connect_soc_devices(DeviceState **soc_devices, DeviceState **devices,
                               const IbexDeviceDef *defs, unsigned count);
 DeviceState *ibex_get_child_device(DeviceState *s, const char *typename,
                                    unsigned instance);
-/**
+/*
  * Utility function to configure unimplemented device.
  * The Ibex device definition should have one defined memory entry, and an
  * optional name.
@@ -488,7 +488,7 @@ void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
 /* CPU */
 /* ------------------------------------------------------------------------ */
 
-/**
+/*
  * Load an ELF application into a CPU address space.
  *
  * @cpu the CPU to load the application for; maybe NULL in which case the
@@ -501,7 +501,7 @@ void ibex_unimp_configure(DeviceState *dev, const IbexDeviceDef *def,
  */
 uint32_t ibex_load_kernel(CPUState *cpu);
 
-/**
+/*
  * Helper for device debugging: report the current guest PC, if any.
  *
  * If a HW access is performed from another device but the CPU, reported PC
@@ -509,7 +509,7 @@ uint32_t ibex_load_kernel(CPUState *cpu);
  */
 uint32_t ibex_get_current_pc(void);
 
-/**
+/*
  * Helper for device debugging: report the current guest CPU index, if any.
  *
  * If a HW access is performed from another device but the CPU, reported CPU
@@ -552,7 +552,7 @@ enum {
     RV_GPR_T6 = (1u << 31u),
 };
 
-/**
+/*
  * Log current vCPU registers.
  *
  * @regbm is a bitmap of registers to be dumped [x1..t6], pc replace x0
@@ -563,7 +563,7 @@ void ibex_log_vcpu_registers(uint64_t regbm);
 /* CharDev utilities */
 /* ------------------------------------------------------------------------ */
 
-/**
+/*
  * Find a char device by its id, e.g. "-chardev type,id=<id>,...`"
  *
  * @chrid the id of the char device
