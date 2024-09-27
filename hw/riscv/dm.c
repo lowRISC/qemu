@@ -319,6 +319,7 @@ typedef struct RISCVDMConfig {
     uint16_t resume_offset;
     bool sysbus_access;
     bool abstractauto;
+    bool enable;
 } RISCVDMConfig;
 
 /** Debug Module */
@@ -2561,6 +2562,7 @@ static Property riscv_dm_properties[] = {
     DEFINE_PROP_UINT64("mta_dm", RISCVDMState, cfg.mta_dm, RISCVDM_DEFAULT_MTA),
     DEFINE_PROP_UINT64("mta_sba", RISCVDMState, cfg.mta_sba,
                        RISCVDM_DEFAULT_MTA),
+    DEFINE_PROP_BOOL("enable", RISCVDMState, cfg.enable, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2569,8 +2571,10 @@ static void riscv_dm_reset(DeviceState *dev)
     RISCVDMState *dm = RISCV_DM(dev);
 
     g_assert(dm->dtm != NULL);
-    dm->dtm_ok = riscv_dtm_register_dm(DEVICE(dm->dtm), RISCV_DEBUG_DEVICE(dev),
-                                       dm->cfg.dmi_addr, DM_REG_COUNT);
+    RISCVDTMClass *dtmc = RISCV_DTM_GET_CLASS(OBJECT(dm->dtm));
+    dm->dtm_ok =
+        (*dtmc->register_dm)(DEVICE(dm->dtm), RISCV_DEBUG_DEVICE(dev),
+                             dm->cfg.dmi_addr, DM_REG_COUNT, dm->cfg.enable);
 
     for (unsigned ix = 0; ix < DM_REG_COUNT; ix++) {
         if (ix != A_NEXTDM) {
