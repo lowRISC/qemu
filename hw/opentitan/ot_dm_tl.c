@@ -53,6 +53,7 @@ struct OtDMTLState {
     uint64_t tl_base;
     uint32_t dmi_addr;
     unsigned dmi_size;
+    bool enable;
     uint8_t role;
 };
 
@@ -136,6 +137,7 @@ static Property ot_dm_tl_properties[] = {
     DEFINE_PROP_UINT64("tl_addr", OtDMTLState, tl_base, 0),
     DEFINE_PROP_LINK("tl_dev", OtDMTLState, tl_dev, TYPE_SYS_BUS_DEVICE,
                      SysBusDevice *),
+    DEFINE_PROP_BOOL("enable", OtDMTLState, enable, true),
     DEFINE_PROP_UINT8("role", OtDMTLState, role, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -148,9 +150,10 @@ static void ot_dm_tl_reset(DeviceState *dev)
     g_assert(dmtl->dmi_size);
 
     if (!dmtl->dtm_ok) {
+        RISCVDTMClass *dtmc = RISCV_DTM_GET_CLASS(OBJECT(dmtl->dtm));
         dmtl->dtm_ok =
-            riscv_dtm_register_dm(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(dev),
-                                  dmtl->dmi_addr, dmtl->dmi_size);
+            (*dtmc->register_dm)(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(dev),
+                                 dmtl->dmi_addr, dmtl->dmi_size, dmtl->enable);
     }
 
     if (dmtl->dtm_ok) {
