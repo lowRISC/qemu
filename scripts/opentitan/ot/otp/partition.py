@@ -6,7 +6,7 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-from binascii import hexlify
+from binascii import hexlify, unhexlify, Error as hexerror
 from io import BytesIO
 from logging import getLogger
 from typing import BinaryIO, Optional, TextIO
@@ -207,7 +207,12 @@ class OtpLifecycleExtension(OtpLifecycle, OtpPartitionDecoder):
     """
 
     def decode(self, category: str, seq: str) -> Optional[str | int]:
-        return self._tables.get(category, {}).get(seq, None)
+        try:
+            iseq = hexlify(bytes(reversed(unhexlify(seq)))).decode()
+        except (ValueError, TypeError, hexerror) as exc:
+            self._log.error('Unable to parse LC data: %s', str(exc))
+            return None
+        return self._tables.get(category, {}).get(iseq, None)
 
 
 # imported here to avoid Python circular dependency issue
