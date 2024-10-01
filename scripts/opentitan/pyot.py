@@ -1708,6 +1708,7 @@ def main():
     if not isfile(qemu_path):
         qemu_path = None
     tmp_result: Optional[str] = None
+    result_file: Optional[str] = None
     try:
         args: Optional[Namespace] = None
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
@@ -1827,10 +1828,12 @@ def main():
         if _HJSON_ERROR:
             argparser.error('Missing HJSON module: {_HJSON_ERROR}')
 
-        if args.summary and not args.result:
-            tmpfd, tmp_result = mkstemp(suffix='.csv')
-            close(tmpfd)
-            args.result = tmp_result
+        if args.summary:
+            if not args.result:
+                tmpfd, tmp_result = mkstemp(suffix='.csv')
+                close(tmpfd)
+                args.result = tmp_result
+            result_file = args.result
 
         log = configure_loggers(args.verbose, 'pyot',
                                 args.vcp_verbose or 0,
@@ -1923,10 +1926,6 @@ def main():
                 print(format_exc(chain=False), file=stderr)
             argparser.error(str(exc))
         ret = qexc.run(debug, args.zero)
-        if args.summary:
-            rfmt = ResultFormatter()
-            rfmt.load(args.result)
-            rfmt.show(True)
         log.debug('End of execution with code %d', ret or 0)
         sysexit(ret)
     # pylint: disable=broad-except
@@ -1938,6 +1937,14 @@ def main():
     except KeyboardInterrupt:
         sysexit(2)
     finally:
+        if result_file:
+            rfmt = ResultFormatter()
+            try:
+                rfmt.load(result_file)
+                rfmt.show(True)
+            # pylint: disable=broad-except
+            except Exception as exc:
+                print(f'Cannot generate result file: {exc}', file=stderr)
         if tmp_result and isfile(tmp_result):
             unlink(tmp_result)
 
