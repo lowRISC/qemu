@@ -975,6 +975,9 @@ static const char *PART_NAMES[] = {
     OTP_NAME_ENTRY(OTP_PART_SECRET2),
     OTP_NAME_ENTRY(OTP_PART_SECRET3),
     OTP_NAME_ENTRY(OTP_PART_LIFE_CYCLE),
+    /* fake partitions */
+    OTP_NAME_ENTRY(OTP_ENTRY_DAI),
+    OTP_NAME_ENTRY(OTP_ENTRY_KDI),
 };
 
 static const char *ERR_CODE_NAMES[] = {
@@ -1928,6 +1931,8 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
         return;
     }
 
+    s->dai->partition = partition;
+
     if (!ot_otp_dj_is_buffered(partition)) {
         /* fake slow access to OTP cell */
         timer_mod(s->dai->delay,
@@ -2116,6 +2121,8 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
         }
     }
 
+    s->dai->partition = partition;
+
     if (is_wide || is_digest) {
         if (ot_otp_dj_dai_write_u64(s, address)) {
             return;
@@ -2293,6 +2300,7 @@ static void ot_otp_dj_dai_complete(void *opaque)
 
     switch (s->dai->state) {
     case OTP_DAI_READ_WAIT:
+        g_assert(s->dai->partition >= 0);
         trace_ot_otp_dai_read(s->ot_id, PART_NAME(s->dai->partition),
                               s->dai->partition,
                               s->regs[R_DIRECT_ACCESS_RDATA_1],
@@ -2301,6 +2309,7 @@ static void ot_otp_dj_dai_complete(void *opaque)
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
         break;
     case OTP_DAI_WRITE_WAIT:
+        g_assert(s->dai->partition >= 0);
         s->regs[R_INTR_STATE] |= INTR_OTP_OPERATION_DONE_MASK;
         s->dai->partition = -1;
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
