@@ -7,7 +7,7 @@
 ````text
 usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT] [-N LOG]
                [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
-               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c JSON] [-e]
+               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON] [-e]
                [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF]
                [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z] [-R]
                [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
@@ -48,8 +48,8 @@ Virtual machine:
 
 Files:
   -b file, --boot file  bootloader 0 file
-  -c JSON, --config JSON
-                        path to configuration file
+  -c HJSON, --config HJSON
+                        path to HJSON configuration file
   -e, --embedded-flash  generate an embedded flash image file
   -f RAW, --flash RAW   SPI flash image file
   -g file, --otcfg file
@@ -92,8 +92,8 @@ Extras:
 This tool may be used in two ways, which can be combined:
 
 * From the command line, it is possible to run a QEMU test session for one application.
-* Using a JSON configuration file, it is possible to run several QEMU test sessions for each
-  specified test in the configuration file. This mode is enabled when a JSON config file is
+* Using a HJSON configuration file, it is possible to run several QEMU test sessions for each
+  specified test in the configuration file. This mode is enabled when a HJSON config file is
   specified.
 
 ### Virtual machine
@@ -136,8 +136,8 @@ This tool may be used in two ways, which can be combined:
 * `-b` / ` --boot`  specify a bootloader 0 file that can be added to the flash image file when
   a ROM extension file is specified with the `-x` option. This option is mutually exclusive with
   the `-f` option.
-* `-c` / `--config` specify a (H)JSON configuration file, see the
-  [Configuration](#Configurationfile) section for details.
+* `-c` / `--config` specify a HJSON configuration file, see the [Configuration](#Configurationfile)
+  section for details.
 * `-e` / `embedded-flash` generate an embedded flash image file, default is to provide ROM and
   application files as device options
 * `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
@@ -191,85 +191,8 @@ This tool may be used in two ways, which can be combined:
 
 ## Configuration file
 
-### Legacy JSON syntax
-
-Sample config for running OpenTitan tests:
-````json
-{
-    "aliases": {
-        "BASEDIR": "${OT_DIR}/bazel-out/k8-fastbuild/bin"
-    },
-
-    "testdir": "${BASEDIR}/sw",
-
-    "default": {
-        "rom": "${BASEDIR}/sw/device/lib/testing/test_rom/test_rom_fpga_cw310.elf",
-        "otp": "${BASEDIR}/hw/ip/otp_ctrl/data/img_rma.24.vmem",
-        "timeout": 3,
-        "icount": 6
-    },
-
-    "include" : [
-        "**/*.fake_rsa_test_key_0.signed.bin"
-    ],
-
-    "exclude" : [
-        "alert_handler_*",
-        "ast_clk_out_*",
-        "clkmgr_off_*",
-        "i2c_*",
-        "manuf_cp_*",
-        "sensor_ctrl_*",
-        "spi_device_*",
-        "spi_passthru_*",
-        "usbdev_*"
-    ],
-
-    "suffixes": [
-        "_prog_fpga_cw310"
-    ],
-
-    "tests": {
-        "aes_idle_test": {
-            "opts": ["-global", "ot-aes.fast-mode=false"]
-        },
-        "alert_handler_lpg_reset_toggle_test" : {
-            "timeout": 10
-        },
-        "boot_data_functest": {
-            "icount": 1
-        },
-        "otbn_rsa_test": {
-            "timeout": 5
-        },
-        "mod_exp_otbn_functest_hardcoded": {
-            "icount": 0
-        },
-        "ecdsa_p256_functest": {
-            "timeout": 5
-        },
-        "ecdh_p256_functest": {
-            "timeout": 5
-        },
-        "entropy_src_csrng_test": {
-            "icount": ""
-        },
-        "csrng_edn_concurrency_test": {
-            "timeout": 15
-        },
-        "csrng_smoketest": {
-            "timeout": 5
-        }
-    }
-}
-````
-
-### HJSON syntax
-
-HJSON is a more user-friendly syntax that JSON. If the `hjson` module is available on the platform,
-this script uses it as a replacement for the system JSON module, hence supporting the improved
-syntax for configuration. It is encouraged to install the dependency-less HJSON module using a
-command such as `pip3 install hjson`.
+This script accepts HJSON configuration file to define how to run a test session.
+To install the dependency-less HJSON module, use a command such as `pip3 install hjson`.
 
 Sample config for running OpenTitan tests:
 ````hjson
@@ -596,12 +519,12 @@ The script returns the error code of the most occurring error, or success (0)
 
 ## Examples
 
-* The most typical usage requires a JSON configuration file and produces an output CSV file. `-vv`,
+* The most typical usage requires a HJSON configuration file and produces an output CSV file. `-vv`,
   that is the information log level, should be enough to track execution without getting too many
   log messages.
 
   ````sh
-  ./scripts/opentitan/pyot.py -vv -c pyot.json -w pyot.csv
+  ./scripts/opentitan/pyot.py -vv -c pyot.hjson -w pyot.csv
   ````
 
   Note that results can be live-tracked from another terminal using a command like the following:

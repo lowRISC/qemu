@@ -15,11 +15,13 @@ from csv import reader as csv_reader, writer as csv_writer
 from fnmatch import fnmatchcase
 from glob import glob
 try:
-    # try to use HJSON if available
+    _HJSON_ERROR = None
     from hjson import load as jload
-except ImportError:
-    # fallback on legacy JSON syntax otherwise
-    from json import load as jload
+except ImportError as hjson_exc:
+    _HJSON_ERROR = str(hjson_exc)
+    def hjload(*_, **__):  # noqa: E301
+        """dummy func if HJSON module is not available"""
+        return {}
 from os import close, curdir, environ, getcwd, linesep, pardir, sep, unlink
 from os.path import (abspath, basename, dirname, exists, isabs, isdir, isfile,
                      join as joinpath, normpath, relpath)
@@ -1749,9 +1751,9 @@ def main():
         files = argparser.add_argument_group(title='Files')
         files.add_argument('-b', '--boot',
                            metavar='file', help='bootloader 0 file')
-        files.add_argument('-c', '--config', metavar='JSON',
+        files.add_argument('-c', '--config', metavar='HJSON',
                            type=FileType('rt', encoding='utf-8'),
-                           help='path to configuration file')
+                           help='path to HJSON configuration file')
         files.add_argument('-e', '--embedded-flash', action='store_true',
                            help='generate an embedded flash image file')
         files.add_argument('-f', '--flash', metavar='RAW',
@@ -1821,6 +1823,10 @@ def main():
         args = argparser.parse_args(sargv)
         if args.debug is not None:
             debug = args.debug
+
+        if _HJSON_ERROR:
+            argparser.error('Missing HJSON module: {_HJSON_ERROR}')
+
         if args.summary and not args.result:
             tmpfd, tmp_result = mkstemp(suffix='.csv')
             close(tmpfd)
