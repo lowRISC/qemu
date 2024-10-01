@@ -1864,6 +1864,7 @@ def main():
                         continue
                 optname = f'--{arg}' if len(arg) > 1 else f'-{arg}'
                 if isinstance(val, list):
+                    val = QEMUExecuter.flatten(v.split() for v in val)
                     for valit in val:
                         jargs.append(f'{optname}={qfm.interpolate(valit)}')
                 else:
