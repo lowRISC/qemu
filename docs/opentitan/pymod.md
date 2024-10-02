@@ -4,7 +4,7 @@ The communication ports of the OpenTitan machines exposed through CharDev device
 to access the devices from the local host (or also from a remote host when the CharDev is created
 using a TCP socket).
 
-* `scripts/jtag`: JTAG / TAP controller client, using the _Remote BitBang Protocol_
+* `python/qemu/jtag`: JTAG / TAP controller client, using the _Remote BitBang Protocol_
 * `scripts/opentitan/ot`: OpenTitan tools
   * `dtm`: Debug Transport Module support,
   * `dm`: RISC-V Debug Module support,

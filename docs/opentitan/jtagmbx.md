@@ -36,7 +36,7 @@ instantiated and listens for incoming connection on TCP port 3335.
 
 OpenTitan implementation provides JTAG/DTM/DMI/Mailbox stack available as Python modules:
 
-* jtag/tap module is available from `scripts/jtag` directory
+* jtag/tap module is available from `python/qemu/jtag` directory
 * dtm/dmi and jtag mailbox modules are available from `scripts/opentitan` directory
 
 Python snippet to create a communication channel with the VM JTAG mailbox:
