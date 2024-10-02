@@ -50,10 +50,6 @@
 #include "sysemu/runstate.h"
 #include "trace.h"
 
-/*
- * Register definitions
- */
-
 /* clang-format off */
 
 /* Debug Module Interface and Control */
@@ -68,6 +64,8 @@ REG64(DMI, 0x11u)
     FIELD(DMI, OP, 0u, 2u)
     FIELD(DMI, DATA, 2u, 32u)
     FIELD(DMI, ADDRESS, 34u, 64u-34u) /* real width is a runtime property */
+
+/* clang-format on */
 
 #define xtrace_riscv_dtm_error(_msg_) \
     trace_riscv_dtm_error(__func__, __LINE__, _msg_)
@@ -91,8 +89,10 @@ typedef struct RISCVDebugModule {
     QLIST_ENTRY(RISCVDebugModule) entry;
     RISCVDebugDeviceState *dev;
     RISCVDebugDeviceClass *dc;
+    char *path;
     uint32_t base;
     uint32_t size;
+    bool enabled;
 } RISCVDebugModule;
 
 /** Debug Module Interface */
@@ -111,26 +111,19 @@ struct RISCVDTMState {
     unsigned abits; /* address bit count */
 };
 
-/*
- * Forward declarations
- */
-
 static void riscv_dtm_reset(DeviceState *dev);
-static RISCVDebugModule* riscv_dtm_get_dm(RISCVDTMState *s, uint32_t addr);
+static RISCVDebugModule *riscv_dtm_get_dm(RISCVDTMState *s, uint32_t addr);
 static void riscv_dtm_sort_dms(RISCVDTMState *s);
+static void riscv_dtm_activate_dms(RISCVDTMState *s);
 
 static void riscv_dtm_tap_dtmcs_capture(TapDataHandler *tdh);
 static void riscv_dtm_tap_dtmcs_update(TapDataHandler *tdh);
 static void riscv_dtm_tap_dmi_capture(TapDataHandler *tdh);
 static void riscv_dtm_tap_dmi_update(TapDataHandler *tdh);
 
-/*
- * Constants
- */
-
-#define RISCV_DEBUG_DMI_VERSION  1u /* RISC-V Debug spec 0.13.x & 1.0 */
-#define RISCVDMI_DTMCS_IR        0x10u
-#define RISCVDMI_DMI_IR          0x11u
+#define RISCV_DEBUG_DMI_VERSION 1u /* RISC-V Debug spec 0.13.x & 1.0 */
+#define RISCVDMI_DTMCS_IR       0x10u
+#define RISCVDMI_DMI_IR         0x11u
 
 static const TapDataHandler RISCVDMI_DTMCS = {
     .name = "dtmcs",
@@ -177,11 +170,12 @@ static const char *RISCVDMI_RUNSTATE_NAMES[] = {
          "?")
 
 /* -------------------------------------------------------------------------- */
-/* Public API */
+/* DTM API */
 /* -------------------------------------------------------------------------- */
 
-bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
-                           hwaddr base_addr, hwaddr size)
+static bool riscv_dtm_register_dm_(DeviceState *dev,
+                                   RISCVDebugDeviceState *dbgdev,
+                                   hwaddr base_addr, hwaddr size, bool enable)
 {
     RISCVDTMState *s = RISCV_DTM(dev);
 
@@ -230,16 +224,52 @@ bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
     dm->dc = RISCV_DEBUG_DEVICE_GET_CLASS(OBJECT(dbgdev));
     dm->base = base_addr;
     dm->size = size;
+    dm->enabled = enable;
+    dm->path =
+        g_strdup_printf("%s/%s",
+                        object_get_canonical_path_component(
+                            OBJECT(dbgdev)->parent),
+                        object_get_canonical_path_component(OBJECT(dbgdev)));
 
     QLIST_INSERT_HEAD(&s->dms, dm, entry);
     s->last_dm = dm;
 
-    trace_riscv_dtm_register_dm(count, base_addr, base_addr + size - 1u,
-                                tap_ok);
+    trace_riscv_dtm_register_dm(dm->path, count, base_addr,
+                                base_addr + size - 1u, enable, tap_ok);
 
     riscv_dtm_sort_dms(s);
+    riscv_dtm_activate_dms(s);
 
     return tap_ok;
+}
+
+static void riscv_dtm_enable_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
+                                bool enable)
+{
+    RISCVDTMState *s = RISCV_DTM(dev);
+
+    RISCVDebugModule *node;
+    bool update = false;
+    QLIST_FOREACH(node, &s->dms, entry) {
+        if (node->dev == dbgdev) {
+            update = node->enabled != enable;
+            node->enabled = enable;
+            trace_riscv_dtm_enable_dm(object_get_canonical_path_component(
+                                          OBJECT(dbgdev)),
+                                      enable, update);
+            break;
+        }
+    }
+
+    if (update) {
+        riscv_dtm_activate_dms(s);
+    }
+}
+
+bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
+                           hwaddr base_addr, hwaddr size)
+{
+    return riscv_dtm_register_dm_(dev, dbgdev, base_addr, size, true);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -454,6 +484,40 @@ static void riscv_dtm_sort_dms(RISCVDTMState *s)
     g_free(dma);
 }
 
+static void riscv_dtm_update_next_dm(RISCVDebugModule *dm,
+                                     const RISCVDebugModule *next_dm)
+{
+    if (dm->dc->set_next_dm) {
+        uint32_t next_addr = next_dm ? next_dm->base : 0u;
+        trace_riscv_dtm_set_next_dm(dm->path, dm->base,
+                                    next_dm ? next_dm->path : "end", next_addr);
+        (*dm->dc->set_next_dm)(dm->dev, next_addr);
+    }
+}
+
+static void riscv_dtm_activate_dms(RISCVDTMState *s)
+{
+    RISCVDebugModule *dm;
+    RISCVDebugModule *prev_dm = NULL;
+    QLIST_FOREACH(dm, &s->dms, entry) {
+        /*
+         * devices that do not implement set_next_dm are not part of the next_dm
+         * chain and therefore ignored
+         */
+        if (dm->enabled && dm->dc->set_next_dm) {
+            /* do not bother updating a disabled DM */
+            if (prev_dm && prev_dm->enabled) {
+                riscv_dtm_update_next_dm(prev_dm, dm);
+            }
+            prev_dm = dm;
+        }
+    }
+
+    if (prev_dm) {
+        riscv_dtm_update_next_dm(prev_dm, NULL);
+    }
+}
+
 static Property riscv_dtm_properties[] = {
     DEFINE_PROP_UINT32("abits", RISCVDTMState, abits, 0x7u),
     DEFINE_PROP_LINK("tap_ctrl", RISCVDTMState, tap_ctrl, TYPE_DEVICE,
@@ -499,6 +563,10 @@ static void riscv_dtm_class_init(ObjectClass *klass, void *data)
     dc->realize = &riscv_dtm_realize;
     device_class_set_props(dc, riscv_dtm_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    RISCVDTMClass *dmc = RISCV_DTM_CLASS(klass);
+    dmc->register_dm = &riscv_dtm_register_dm_;
+    dmc->enable_dm = &riscv_dtm_enable_dm;
 }
 
 static const TypeInfo riscv_dtm_info = {
@@ -507,6 +575,7 @@ static const TypeInfo riscv_dtm_info = {
     .instance_size = sizeof(RISCVDTMState),
     .instance_init = &riscv_dtm_init,
     .class_init = &riscv_dtm_class_init,
+    .class_size = sizeof(RISCVDTMClass),
 };
 
 static void riscv_dtm_register_types(void)

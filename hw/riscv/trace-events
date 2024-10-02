@@ -1,6 +1,7 @@
 # See documentation at docs/devel/tracing.rst
 
-# Debug Module
+# dm.c
+
 riscv_dm_aarsize_error(const char *soc, unsigned aarsize) "%s: aarsize %u not supported"
 riscv_dm_absdata(const char *soc, const char *op, unsigned woffset, unsigned wcount, uint64_t value, uint32_t res) "%s: %s: @ %u[%u] = 0x%08" PRIx64 ": res %u"
 riscv_dm_abstract_cmd(const char *soc, uint32_t addr, uint32_t inst) "%s: [%x]: %08x"
@@ -27,11 +28,14 @@ riscv_dm_sysbus_data_read(const char *soc, uint64_t address, unsigned size, uint
 riscv_dm_sysbus_data_write(const char *soc, uint64_t address, unsigned size, uint64_t val64, unsigned res) "%s: 0x%08" PRIx64 "[+%u] -> %08" PRIx64 ": res %u"
 riscv_dm_unavailable(const char *soc, bool unavail) "%s: %u"
 
-# Debug Transport Module
+# dtm.c
+
 riscv_dtm_dtmcs_reset(void) ""
+riscv_dtm_enable_dm(const char *cls, bool enable, bool update) "%s: en:%u upd:%u"
 riscv_dtm_error(const char *func, int line, const char *msg) "%s:%d %s"
 riscv_dtm_info(const char *func, int line, const char *msg, uint32_t val) "%s:%d %s 0x%08x"
-riscv_dtm_register_dm(unsigned count, uint64_t first, uint64_t last, bool ok) "#%u 0x%" PRIx64 "..0x%" PRIx64 ": %u"
+riscv_dtm_register_dm(const char *cls, unsigned count, uint64_t first, uint64_t last, bool enabled, bool ok) "%s: #%u 0x%" PRIx64 "..0x%" PRIx64 ": enabled:%u tap:%u"
+riscv_dtm_set_next_dm(const char *fromcls, uint32_t fromaddr, const char *tocls, uint32_t toaddr) "%s @ 0x%x next_dm %s @ 0x%x"
 riscv_dtm_vm_state_change(const char *name, unsigned state) "VM state: %s[%u]"
 
 # ibex_common.c
