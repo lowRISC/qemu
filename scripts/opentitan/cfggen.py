@@ -11,11 +11,15 @@
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from logging import getLogger
-from os.path import isdir, isfile, join as joinpath, normpath
-from re import match, search
-from sys import exit as sysexit, modules, stderr, stdout
+from os.path import dirname, isdir, isfile, join as joinpath, normpath
 from traceback import format_exc
 from typing import Optional
+import re
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 try:
     _HJSON_ERROR = None
@@ -26,10 +30,10 @@ except ImportError as hjson_exc:
         """dummy func if HJSON module is not available"""
         return {}
 
-from ot.util.log import configure_loggers
-from ot.util.misc import camel_to_snake_case
 from ot.otp.const import OtpConstants
 from ot.otp.lifecycle import OtpLifecycle
+from ot.util.log import configure_loggers
+from ot.util.misc import camel_to_snake_case
 
 
 OtParamRegex = str
@@ -130,7 +134,7 @@ class OtConfiguration:
             with open(outpath, 'wt') as ofp:
                 cfg.write(ofp)
         else:
-            cfg.write(stdout)
+            cfg.write(sys.stdout)
 
     @classmethod
     def add_pair(cls, data: dict[str, str], kname: str, value: str) -> None:
@@ -147,7 +151,7 @@ class OtConfiguration:
             if not isinstance(params, dict):
                 continue
             for regex in regexes:
-                pmo = match(regex, params['name'])
+                pmo = re.match(regex, params['name'])
                 if not pmo:
                     continue
                 value = params.get('default')
@@ -157,7 +161,7 @@ class OtConfiguration:
                     value = value[2:]
                 kname = camel_to_snake_case(pmo.group(1))
                 if multi:
-                    imo = search(r'(\d+)$', modname)
+                    imo = re.search(r'(\d+)$', modname)
                     idx = int(imo.group(1)) if imo else 'None'
                     if idx not in odict:
                         odict[idx] = {}
@@ -221,7 +225,7 @@ def main():
     debug = True
     default_top = 'darjeeling'
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         files = argparser.add_argument_group(title='Files')
         files.add_argument('opentitan', nargs=1, metavar='TOPDIR',
@@ -289,12 +293,12 @@ def main():
         cfg.save(args.socid, args.count, args.out)
 
     except (IOError, ValueError, ImportError) as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

@@ -13,13 +13,17 @@ from binascii import hexlify
 from logging import getLogger
 from os import linesep
 from os.path import dirname, isfile, join as joinpath, normpath
-from re import compile as re_compile
 from socket import (SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR, socket,
                     timeout as LegacyTimeoutError)
 from string import ascii_uppercase
-from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from typing import BinaryIO, Optional, TextIO
+import re
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
@@ -280,7 +284,7 @@ class QEMUGDBReplay:
     """Maximum packet size."""
 
     # Trace 0: 0x280003d00 [00000000/00008c9a/00101003/ff020000] _boot_start
-    TCRE = re_compile(r'^Trace\s(\d+):\s0x[0-9a-f]+\s\[[0-9a-f]+/([0-9a-f]+)'
+    TCRE = re.compile(r'^Trace\s(\d+):\s0x[0-9a-f]+\s\[[0-9a-f]+/([0-9a-f]+)'
                       r'/[0-9a-f]+/[0-9a-f]+\](?:\s([&,<>\s\w:]+))?\s*$')
     """Regex to parse QEMU execution trace from a QEMU log file."""
 
@@ -648,7 +652,7 @@ def main():
         qemu_path = None
     try:
         args: Optional[Namespace] = None
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('-t', '--trace', metavar='LOG',
                                type=FileType('rt'),
@@ -697,15 +701,15 @@ def main():
 
         gdbr.serve(args.gdb)
 
-        sysexit(0)
+        sys.exit(0)
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'{linesep}Error: {exc}', file=stderr)
+        print(f'{linesep}Error: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

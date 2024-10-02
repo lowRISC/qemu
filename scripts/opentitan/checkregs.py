@@ -11,10 +11,10 @@ from logging import DEBUG, ERROR, getLogger, Formatter, StreamHandler
 from os import pardir, walk
 from os.path import (basename, dirname, join as joinpath, normpath, relpath,
                      splitext)
-from re import compile as re_compile, sub as re_sub
-from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from typing import NamedTuple, Optional, TextIO
+import re
+import sys
 
 
 class ValueLocation(NamedTuple):
@@ -58,7 +58,7 @@ class OtRegisters:
         # the following RE matches two kinds of definition:
         #   #define <COMPONENT>_<RADIX>_REG_OFFSET <HEXVAL>
         #   #define <COMPONENT>_PARAM_<RADIX>_OFFSET <HEXVAL>
-        reg_cre = re_compile(rf'^#define {rre}(?P<param>PARAM_)?'
+        reg_cre = re.compile(rf'^#define {rre}(?P<param>PARAM_)?'
                              r'(?P<name>[A-Z][\w]+?)(?(param)|_REG)_OFFSET\s+'
                              r'(?P<val>(?:0x)?[A-Fa-f0-9]+)(?:\s|$)')
         for lno, line in enumerate(hfp, start=1):
@@ -80,7 +80,7 @@ class OtRegisters:
     def find_qemu_impl(self, filename: str, basedir: str, nomap: bool) \
             -> Optional[str]:
         filename = basename(filename)
-        radix = re_sub(r'_regs$', '', splitext(filename)[0])
+        radix = re.sub(r'_regs$', '', splitext(filename)[0])
         if not nomap:
             radix = self.DEFMAP.get(radix, radix)
         impl_name = f'ot_{radix}.c'
@@ -99,7 +99,7 @@ class OtRegisters:
 
     def _parse_ot_qemu(self, qfp: TextIO) -> RegisterDefs:
         defs = {}
-        regfield_cre = re_compile(r'^\s*REG32\(([A-Z][\w]+),\s+'
+        regfield_cre = re.compile(r'^\s*REG32\(([A-Z][\w]+),\s+'
                                   r'((?:0x)?[A-Fa-f0-9]+)u?\)(?:\s|$)')
         for lno, line in enumerate(qfp, start=1):
             line = line.strip()
@@ -208,7 +208,7 @@ def main():
     debug = False
     qemu_default_dir = dirname(dirname(dirname(normpath(__file__))))
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('regs', nargs='+', metavar='file',
                                help='register header file')
@@ -238,7 +238,7 @@ def main():
         loglevel = min(ERROR, loglevel)
         formatter = Formatter('%(levelname)8s %(name)-10s %(message)s')
         log = getLogger('ot')
-        logh = StreamHandler(stderr)
+        logh = StreamHandler(sys.stderr)
         logh.setFormatter(formatter)
         log.setLevel(loglevel)
         log.addHandler(logh)
@@ -265,18 +265,18 @@ def main():
             mismatch_count += mm_count
 
         if mismatch_count:
-            print(f'{mismatch_count} differences', file=stderr)
-            sysexit(1)
-        print('No differences', file=stderr)
+            print(f'{mismatch_count} differences', file=sys.stderr)
+            sys.exit(1)
+        print('No differences', file=sys.stderr)
 
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

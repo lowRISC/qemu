@@ -11,9 +11,14 @@
 from argparse import ArgumentParser, FileType
 from logging import getLogger
 from os import linesep
-from sys import exit as sysexit, modules, stderr
+from os.path import dirname, join as joinpath, normpath
 from time import sleep, time as now
 from traceback import format_exc
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.spi import SpiDevice
 from ot.util.log import configure_loggers
@@ -83,7 +88,7 @@ def main():
     """Main routine"""
     debug = True
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('-f', '--file', type=FileType('rb'),
                                required=True,
@@ -114,15 +119,15 @@ def main():
         flasher.program(data, args.address)
         flasher.disconnect()
 
-        sysexit(0)
+        sys.exit(0)
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'{linesep}Error: {exc}', file=stderr)
+        print(f'{linesep}Error: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

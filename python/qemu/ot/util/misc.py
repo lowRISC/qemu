@@ -7,9 +7,9 @@
 """
 
 from io import BytesIO
-from re import sub
 from sys import stdout
 from typing import Any, Iterable, Optional, TextIO
+import re
 
 try:
     # only available from Python 3.12+
@@ -109,4 +109,4 @@ def round_up(value: int, rnd: int) -> int:
 def camel_to_snake_case(camel: str) -> str:
     """Convert CamelString string into snake_case lower string."""
     pattern = r'(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])'
-    return sub(pattern, '_', camel).lower()
+    return re.sub(pattern, '_', camel).lower()

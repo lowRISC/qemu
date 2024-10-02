@@ -10,12 +10,17 @@
 
 from argparse import ArgumentParser, FileType
 from logging import getLogger
-from re import match as re_match
+from os.path import dirname, join as joinpath, normpath
 from socket import create_server, socket, SHUT_RDWR
-from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from time import sleep
 from typing import Optional, TextIO
+import re
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt
@@ -40,7 +45,7 @@ class GpioChecker:
         error = 0
         for lno, line in enumerate(lfp, start=1):
             line = line.strip()
-            cmo = re_match(chk_re, line)
+            cmo = re.match(chk_re, line)
             if not cmo:
                 self._log.error('Unknown check line @ %d: %s', lno, line)
                 error += 1
@@ -268,7 +273,7 @@ def main():
     """
     debug = False
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('-p', '--port', type=int, default=8007,
                                help='remote host TCP port (defaults to 8007)')
@@ -305,15 +310,15 @@ def main():
         exec_ok = gpio.run(args.port, args.single, args.quit_on_error, args.end)
         if args.record:
             gpio.save(args.record)
-        sysexit(int(not exec_ok))
+        sys.exit(int(not exec_ok))
 
     except (IOError, ValueError, ImportError) as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

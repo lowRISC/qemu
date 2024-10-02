@@ -7,8 +7,8 @@
 """
 
 from logging import getLogger
-from re import finditer
 from typing import TextIO
+import re
 
 from ot.util.misc import camel_to_snake_case
 
@@ -28,19 +28,19 @@ class OtpConstants:
            :param svp: System Verilog stream with OTP definitions.
         """
         svdata = svp.read()
-        for smo in finditer(r"\stypedef\s+enum\s+logic\s+\[[^]]+\]\s"
-                            r"{((?:\s+\w+,?)+)\s*}\s(\w+)_sel_e;", svdata):
+        for smo in re.finditer(r"\stypedef\s+enum\s+logic\s+\[[^]]+\]\s"
+                               r"{((?:\s+\w+,?)+)\s*}\s(\w+)_sel_e;", svdata):
             values, name = smo.groups()
             if name in self._consts:
                 raise ValueError(f'Multiple definitions of enumeration {name}')
             enums = self._enums[name] = {}
-            for emo in finditer(r"\s+(\w+),?", values):
+            for emo in re.finditer(r"\s+(\w+),?", values):
                 vname = camel_to_snake_case(emo.group(1))
                 enums[vname] = len(enums)
 
-        for amo in finditer(r"\s+parameter\s+(\w+)_array_t\s+(\w+)\s+=\s+"
-                            r"{(\s+(?:(?:64|128)'h[0-9A-F]+,?\s+)+)};",
-                            svdata):
+        for amo in re.finditer(r"\s+parameter\s+(\w+)_array_t\s+(\w+)\s+=\s+"
+                               r"{(\s+(?:(?:64|128)'h[0-9A-F]+,?\s+)+)};",
+                               svdata):
             _type, name, values = amo.groups()
             sc_name = camel_to_snake_case(name)
             sc_parts = sc_name.split('_')
@@ -52,7 +52,7 @@ class OtpConstants:
             if name in self._consts:
                 raise ValueError(f'Multiple definitions of constant {name}')
             consts = self._consts[name] = []
-            for cmo in finditer(r"(64|128)'h([0-9A-F]+),?", values):
+            for cmo in re.finditer(r"(64|128)'h([0-9A-F]+),?", values):
                 consts.append(cmo.group(2).lower())
             # RTL order in array is reversed
             consts.reverse()

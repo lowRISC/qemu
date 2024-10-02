@@ -11,11 +11,15 @@
 from argparse import ArgumentParser
 from logging import getLogger
 from os import walk
-from os.path import basename, dirname, join as joinpath, splitext
+from os.path import basename, dirname, join as joinpath, normpath, splitext
 from pprint import pprint
-from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from typing import Iterator, TextIO
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.util.log import configure_loggers
 
@@ -113,7 +117,7 @@ def main():
     """Main routine"""
     debug = False
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('ot', nargs='+', metavar='dir',
                                help='HJSON top-level directory')
@@ -132,12 +136,12 @@ def main():
 
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

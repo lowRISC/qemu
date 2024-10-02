@@ -5,7 +5,7 @@ to access the devices from the local host (or also from a remote host when the C
 using a TCP socket).
 
 * `python/qemu/jtag`: JTAG / TAP controller client, using the _Remote BitBang Protocol_
-* `scripts/opentitan/ot`: OpenTitan tools
+* `python/qemu/ot`: OpenTitan tools
   * `dtm`: Debug Transport Module support,
   * `dm`: RISC-V Debug Module support,
   * `lc_ctrl`: [Life Cycle controller](lc_ctrl_dmi.md) over JTAG/DMI support,

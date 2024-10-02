@@ -10,17 +10,21 @@
 
 from argparse import ArgumentParser, FileType
 from logging import getLogger
-from os.path import basename, splitext
-from re import compile as re_compile, sub as re_sub
-from sys import exit as sysexit, modules, stderr
+from os.path import basename, dirname, splitext, join as joinpath, normpath
 from traceback import format_exc
 from typing import TextIO
+import re
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.util.log import configure_loggers
 
 # pylint: disable=missing-function-docstring
 
-REG_CRE = re_compile(r'^#define ([A-Z][\w]+)_REG_(OFFSET|RESVAL)\s+'
+REG_CRE = re.compile(r'^#define ([A-Z][\w]+)_REG_(OFFSET|RESVAL)\s+'
                      r'((?:0x)?[A-Fa-f0-9]+)(?:\s|$)')
 
 RegisterDefs = dict[str, tuple[int, int]]
@@ -40,7 +44,7 @@ def parse_defs(hfp: TextIO) -> RegisterDefs:
         sregname = rmo.group(1)
         sregkind = rmo.group(2)
         sregaddr = rmo.group(3)
-        regname = re_sub(radix_re, '', sregname)
+        regname = re.sub(radix_re, '', sregname)
         regval = int(sregaddr, 16 if sregaddr.startswith('0x') else 10)
         if sregkind == 'OFFSET':
             defs[regname] = (regval, 0)
@@ -86,7 +90,7 @@ def main():
     """Main routine"""
     debug = False
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('log', nargs=1, metavar='file',
                                type=FileType('rt'),
@@ -111,12 +115,12 @@ def main():
 
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

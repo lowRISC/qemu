@@ -12,6 +12,4 @@ disable=
     too-many-nested-blocks,
     too-many-public-methods,
     too-many-statements,
-    unspecified-encoding,
-    wrong-import-order,
-    wrong-import-position,
+    unspecified-encoding

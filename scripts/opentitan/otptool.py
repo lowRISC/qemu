@@ -9,20 +9,19 @@
 """
 
 from argparse import ArgumentParser, FileType
-from os.path import basename
-from sys import argv, exit as sysexit, modules, stderr, stdout, version_info
+from os.path import basename, dirname, join as joinpath, normpath
 from traceback import format_exc
 from typing import Optional
+import sys
 
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
+
+from ot.otp import (OtpImage, OtpLifecycleExtension, OtpMap,
+                    OTPPartitionDesc, OTPRegisterDef)
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt
-from ot.otp import (OtpImage, OtpLifecycleExtension, OtpMap, OTPPartitionDesc,
-                    OTPRegisterDef)
-
-
-# requirement: Python 3.7+: dict entries are kept in creation order
-if version_info[:2] < (3, 7):
-    raise RuntimeError('Unsupported Python version')
 
 
 def main():
@@ -30,7 +29,7 @@ def main():
     debug = True
     genfmts = 'LCVAL LCTPL PARTS REGS'.split()
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         files = argparser.add_argument_group(title='Files')
         files.add_argument('-j', '--otp-map', type=FileType('rt'),
@@ -150,17 +149,18 @@ def main():
         elif args.generate in ('LCVAL', 'LCTPL'):
             argparser.error('Cannot generate LC array w/o a lifecycle file')
 
-        output = stdout if not args.output else args.output
+        output = sys.stdout if not args.output else args.output
 
         if not args.generate:
             pass
         elif args.generate == 'PARTS':
             partdesc = OTPPartitionDesc(otpmap)
-            partdesc.save(basename(args.otp_map.name), basename(argv[0]),
+            partdesc.save(basename(args.otp_map.name), basename(sys.argv[0]),
                           output)
         elif args.generate == 'REGS':
             regdef = OTPRegisterDef(otpmap)
-            regdef.save(basename(args.otp_map.name), basename(argv[0]), output)
+            regdef.save(basename(args.otp_map.name), basename(sys.argv[0]),
+                        output)
         elif args.generate == 'LCVAL':
             lcext.save(output, True)
         elif args.generate == 'LCTPL':
@@ -206,7 +206,7 @@ def main():
             if lcext:
                 otp.load_lifecycle(lcext)
             if args.show:
-                otp.decode(not args.no_decode, args.wide, stdout)
+                otp.decode(not args.no_decode, args.wide, sys.stdout)
             if args.digest:
                 if not otp.has_present_constants:
                     if args.raw and otp.version == 1:
@@ -230,12 +230,12 @@ def main():
                     otp.save_raw(rfp)
 
     except (IOError, ValueError, ImportError) as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

@@ -8,10 +8,6 @@
 
 from logging import getLogger
 
-# see scripts/jtag
-# pylint: disable=import-error
-# pylint: disable=unused-import
-from jtag.jtag import JtagError  # noqa: F401
 from .sysmbox import SysMbox
 from ..dtm import DebugTransportModule
 

@@ -10,9 +10,9 @@ from binascii import unhexlify
 from io import StringIO
 from logging import getLogger
 from os.path import basename
-from re import finditer, match, sub
 from textwrap import fill
 from typing import TextIO
+import re
 
 from ot.util.misc import camel_to_snake_case, group
 
@@ -53,7 +53,7 @@ class OtpLifecycle:
             if cmt >= 0:
                 line = line[:cmt]
             line = line.strip()
-            abmo = match(ab_re, line)
+            abmo = re.match(ab_re, line)
             if not sequences and abmo:
                 name = abmo.group(1)
                 sval = abmo.group(2)
@@ -64,7 +64,7 @@ class OtpLifecycle:
                     continue
                 codes[name] = val
                 continue
-            smo = match(tbl_re, line)
+            smo = re.match(tbl_re, line)
             if smo:
                 kind = smo.group(1).lower()
                 name = smo.group(2)
@@ -79,7 +79,7 @@ class OtpLifecycle:
                 continue
         self._sequences = sequences
         svp.seek(0)
-        for tmo in finditer(r"\s+parameter\s+lc_token_t\s+(\w+)\s+="
+        for tmo in re.finditer(r"\s+parameter\s+lc_token_t\s+(\w+)\s+="
                             r"\s+\{\s+128'h([0-9A-F]+)\s+\};",
                             svp.getvalue()):
             token, value = tmo.group(1), tmo.group(2)
@@ -150,7 +150,7 @@ class OtpLifecycle:
         for stname, stwords in states.items():
             print(f'    [LC_STATE_{stname.upper()}] = {{', file=cfp)
             for wgrp in group(stwords, len(stwords)//2):
-                items = (sub(r'(\d+)', r'(\1)', wg) for wg in wgrp)
+                items = (re.sub(r'(\d+)', r'(\1)', wg) for wg in wgrp)
                 stws = ' '.join(f'{w:<6s}' for w in (f'{i},' for i in items))
                 print(f'        {stws.rstrip()}', file=cfp)
             print('    },', file=cfp)

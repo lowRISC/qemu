@@ -10,12 +10,11 @@
 
 from argparse import ArgumentParser, FileType
 from struct import pack as spack
-from sys import exit as sysexit, modules, stderr, stdout
 from traceback import format_exc
 from typing import Union
+import sys
 
 # pylint: disable=missing-function-docstring
-
 
 BASE_ADDRESS = {
     'earlgrey': 0x411f0000,
@@ -26,7 +25,7 @@ BASE_ADDRESS = {
 LUI_MASK = (1 << 12) - 1
 
 
-def to_int(value: Union[int,str]) -> int:
+def to_int(value: Union[int, str]) -> int:
     if isinstance(value, int):
         return value
     return int(value.strip(), value.startswith('0x') and 16 or 10)
@@ -55,12 +54,14 @@ def ibexdemo_code(addr: int) -> bytes:
 def main():
     debug = False
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}')
         argparser.add_argument('-a', '--address', type=to_int,
-                               help='Base address for swexit device (default: depends on SoC)')
+                               help='Base address for swexit device '
+                                    '(default: depends on SoC)')
         argparser.add_argument('-b', '--base', type=to_int, default=0x80,
-                               help='Offset for the first instruction (default: 0x80)')
+                               help='Offset for the first instruction '
+                                    '(default: 0x80)')
         argparser.add_argument('-t', '--soc', choices=list(BASE_ADDRESS),
                                help='SoC type', required=True)
         argparser.add_argument('-o', '--output', type=FileType('wb'),
@@ -75,19 +76,19 @@ def main():
             bincode = ibexdemo_code(addr)
         else:
             bincode = opentitan_code(addr)
-        out = args.output or stdout.buffer
+        out = args.output or sys.stdout.buffer
         padding = bytes(args.base)
         out.write(padding)
         out.write(bincode)
 
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

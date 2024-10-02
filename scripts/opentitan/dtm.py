@@ -11,28 +11,25 @@
 from argparse import ArgumentParser, Namespace, FileType
 from io import BytesIO
 from os import linesep
-from os.path import dirname, normpath
+from os.path import dirname, join as joinpath, normpath
 from socket import create_connection, socket, AF_UNIX, SOCK_STREAM
 from traceback import format_exc
 from typing import Optional
 import sys
 
-# pylint: disable=wrong-import-position
-# pylint: disable=wrong-import-order
-# pylint: disable=import-error
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
-# JTAG module is available from the scripts/ directory
-sys.path.append(normpath(dirname(dirname(sys.argv[0]))))
+from jtag.bitbang import JtagBitbangController
+from jtag.bits import BitSequence
+from jtag.jtag import JtagEngine
 
-from ot.util.elf import ElfBlob  # noqa: E402
-from ot.util.log import configure_loggers  # noqa: E402
-from ot.util.misc import HexInt, dump_buffer  # noqa: E402
-from ot.dtm import DebugTransportModule  # noqa: E402
-from ot.dm import DebugModule  # noqa: E402
-from jtag.bits import BitSequence  # noqa: E402
-from jtag.bitbang import JtagBitbangController  # noqa: E402
-from jtag.jtag import JtagEngine  # noqa: E402
-
+from ot.dm import DebugModule
+from ot.dtm import DebugTransportModule
+from ot.util.elf import ElfBlob
+from ot.util.log import configure_loggers
+from ot.util.misc import HexInt, dump_buffer
 
 DEFAULT_IR_LENGTH = 5
 """Default TAP Instruction Register length."""
@@ -125,7 +122,8 @@ def main():
                 else:
                     raise ValueError(f"Invalid socket type {socket_type}")
             else:
-                sock = create_connection((default_host, default_port), timeout=0.5)
+                sock = create_connection((default_host, default_port),
+                                         timeout=0.5)
         except Exception as exc:
             raise RuntimeError(f'Cannot connect to {args.socket}: '
                                f'{exc}') from exc

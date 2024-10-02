@@ -29,7 +29,6 @@ from select import POLLIN, POLLERR, POLLHUP, poll as spoll
 from shutil import rmtree
 from socket import socket, timeout as LegacyTimeoutError
 from subprocess import Popen, PIPE, TimeoutExpired
-from sys import argv, exit as sysexit, modules, stderr
 from threading import Event, Thread
 from tempfile import mkdtemp, mkstemp
 from time import time as now
@@ -38,6 +37,16 @@ from typing import Any, Iterator, NamedTuple, Optional
 
 import logging
 import re
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
+print(__file__, sys.path[-1])
+
+# pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-order
+# pylint: disable=import-error
 
 from ot.util.log import ColorLogFormatter, configure_loggers
 from ot.util.misc import EasyDict
@@ -314,7 +323,7 @@ class QEMUWrapper:
                     except OSError as exc:
                         log.error('Cannot setup QEMU VCP connection %s: %s',
                                   vcpid, exc)
-                        print(format_exc(chain=False), file=stderr)
+                        print(format_exc(chain=False), file=sys.stderr)
                         raise
                 # removal from dictionary cannot be done while iterating it
                 for vcpid in connected:
@@ -1230,7 +1239,7 @@ class QEMUExecuter:
                 except Exception as exc:
                     self._log.critical('%s', str(exc))
                     if debug:
-                        print(format_exc(chain=False), file=stderr)
+                        print(format_exc(chain=False), file=sys.stderr)
                     tret = 99
                     xtime = 0.0
                     err = str(exc)
@@ -1714,7 +1723,7 @@ def main():
     result_file: Optional[str] = None
     try:
         args: Optional[Namespace] = None
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         qvm = argparser.add_argument_group(title='Virtual machine')
         rel_qemu_path = relpath(qemu_path) if qemu_path else '?'
@@ -1817,11 +1826,11 @@ def main():
 
         try:
             # all arguments after `--` are forwarded to QEMU
-            pos = argv.index('--')
-            sargv = argv[1:pos]
-            opts = argv[pos+1:]
+            pos = sys.argv.index('--')
+            sargv = sys.argv[1:pos]
+            opts = sys.argv[pos+1:]
         except ValueError:
-            sargv = argv[1:]
+            sargv = sys.argv[1:]
             opts = []
         cli_opts = list(opts)
         args = argparser.parse_args(sargv)
@@ -1921,24 +1930,24 @@ def main():
         if args.list:
             for tst in qexc.enumerate_tests():
                 print(tst)
-            sysexit(0)
+            sys.exit(0)
         try:
             qexc.build()
         except ValueError as exc:
             if debug:
-                print(format_exc(chain=False), file=stderr)
+                print(format_exc(chain=False), file=sys.stderr)
             argparser.error(str(exc))
         ret = qexc.run(debug, args.zero)
         log.debug('End of execution with code %d', ret or 0)
-        sysexit(ret)
+        sys.exit(ret)
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'{linesep}Error: {exc}', file=stderr)
+        print(f'{linesep}Error: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
     finally:
         if result_file:
             rfmt = ResultFormatter()
@@ -1947,7 +1956,7 @@ def main():
                 rfmt.show(True)
             # pylint: disable=broad-except
             except Exception as exc:
-                print(f'Cannot generate result file: {exc}', file=stderr)
+                print(f'Cannot generate result file: {exc}', file=sys.stderr)
         if tmp_result and isfile(tmp_result):
             unlink(tmp_result)
 

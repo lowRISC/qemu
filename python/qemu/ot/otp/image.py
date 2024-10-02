@@ -10,9 +10,9 @@ from binascii import unhexlify
 from configparser import ConfigParser, NoOptionError
 from io import BytesIO
 from logging import getLogger
-from re import match as re_match, sub as re_sub
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from typing import Any, BinaryIO, Optional, Sequence, TextIO, Union
+import re
 
 from .map import OtpMap
 from .partition import OtpPartition, OtpLifecycleExtension
@@ -142,18 +142,18 @@ class OtpImage:
             raise ValueError(f"Unknown VMEM file kind '{vmem_kind}'")
         for lno, line in enumerate(vfp, start=1):
             if vkind is None:
-                kmo = re_match(self.RE_VMEMDESC, line)
+                kmo = re.match(self.RE_VMEMDESC, line)
                 if kmo:
                     vkind = kmo.group(1)
                     row_count = int(kmo.group(2))
                     bits = int(kmo.group(3))
                     byte_count = bits // 8
                     continue
-            line = re_sub(r'//.*', '', line)
+            line = re.sub(r'//.*', '', line)
             line = line.strip()
             if not line:
                 continue
-            lmo = re_match(self.RE_VMEMLOC, line)
+            lmo = re.match(self.RE_VMEMLOC, line)
             if not lmo:
                 self._log.error('Unexpected line @ %d: %s', lno, line)
                 continue

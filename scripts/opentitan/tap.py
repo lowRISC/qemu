@@ -11,10 +11,15 @@
 from argparse import ArgumentParser
 from enum import IntEnum
 from logging import getLogger
+from os.path import dirname, join as joinpath, normpath
 from socket import create_server, socket, SHUT_RDWR
-from sys import exit as sysexit, modules, stderr
 from traceback import format_exc
 from typing import Optional
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.util.log import configure_loggers
 
@@ -616,7 +621,7 @@ def main():
     """
     debug = False
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('-p', '--port', type=int, default=3335,
                                help='remote host TCP port (defaults to 3335)')
@@ -634,15 +639,15 @@ def main():
         ext = TAPExtension(args.abits)
         tap = BitBangController(ext)
         tap.run(args.port)
-        sysexit(0)
+        sys.exit(0)
 
     except (IOError, ValueError, ImportError) as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

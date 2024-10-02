@@ -11,9 +11,8 @@ from logging import getLogger
 from sys import modules
 from typing import Optional
 
-# pylint: disable=import-error
-from jtag.bits import BitSequence  # noqa: E402
-from jtag.jtag import JtagEngine  # noqa: E402
+from jtag.bits import BitSequence
+from jtag.jtag import JtagEngine
 
 
 class DMIError(RuntimeError):

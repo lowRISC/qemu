@@ -11,11 +11,16 @@
 from argparse import ArgumentParser
 from collections import deque
 from logging import getLogger
+from os.path import dirname, join as joinpath, normpath
 from socketserver import StreamRequestHandler, ThreadingTCPServer
-from sys import exit as sysexit, modules, stderr, stdout
 from threading import Event, Lock, Thread
 from traceback import format_exc
 from typing import Optional, TextIO
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.util.log import configure_loggers
 
@@ -67,7 +72,7 @@ class UartHandler(StreamRequestHandler):
                     self.server.push(self._id, line)
         except Exception as exc:
             if self.server.debug:
-                print(format_exc(chain=False), file=stderr)
+                print(format_exc(chain=False), file=sys.stderr)
             else:
                 self._log.critical('Error: %s', str(exc))
             self.server.resume = False
@@ -206,7 +211,7 @@ def main():
     default_channel_count = 3
     mux = None
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('name', nargs='*',
                                help='assign name to input connection')
@@ -231,21 +236,22 @@ def main():
         configure_loggers(args.verbose, 'mux')
 
         ThreadingTCPServer.allow_reuse_address = True
-        mux = UartMuxer((args.iface, args.port), stdout, debug, args.separator)
+        mux = UartMuxer((args.iface, args.port), sys.stdout, debug,
+                        args.separator)
         channel = args.channel
         if channel is None:
             channel = len(args.name) if args.name else default_channel_count
         mux.run(channel, args.name)
 
     except (IOError, ValueError, ImportError) as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
         if mux:
             mux.resume = False
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

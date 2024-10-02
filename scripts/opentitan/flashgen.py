@@ -14,12 +14,17 @@ from hashlib import sha256
 from itertools import repeat
 from logging import getLogger
 from os import SEEK_END, SEEK_SET, rename, stat
-from os.path import abspath, basename, exists, isfile
-from re import sub as re_sub
+from os.path import (abspath, basename, dirname, exists, isfile,
+                     join as joinpath, normpath)
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
-from sys import exit as sysexit, modules, stderr, version_info
 from traceback import format_exc
 from typing import Any, BinaryIO, NamedTuple, Optional
+import re
+import sys
+
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
 from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
@@ -159,9 +164,6 @@ class FlashGen:
         hfmt = ''.join(self.HEADER_FORMAT.values())
         header_size = scalc(hfmt)
         assert header_size == 32
-        # dict in Python 3.7+ are kept ordered
-        if version_info[:2] < (3, 7):
-            raise RuntimeError('Unsupported Python version')
         self._header_size = header_size
         bhfmt = ''.join(self.BOOT_HEADER_FORMAT.values())
         self._boot_header_size = scalc(bhfmt)
@@ -488,7 +490,7 @@ class FlashGen:
 
     def _get_elf_filename(self, filename: str) -> str:
         pathname = abspath(filename)
-        radix = re_sub(r'.[a-z_]+_0.signed.bin$', '', pathname)
+        radix = re.sub(r'.[a-z_]+_0.signed.bin$', '', pathname)
         elfname = f'{radix}.elf'
         if not exists(elfname):
             self._log.warning('No ELF debug info found')
@@ -602,7 +604,7 @@ def main():
     debug = True
     banks = list(range(FlashGen.NUM_BANKS))
     try:
-        desc = modules[__name__].__doc__.split('.', 1)[0].strip()
+        desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         img = argparser.add_argument_group(title='Image')
         img.add_argument('flash', nargs=1, metavar='flash',
@@ -682,17 +684,17 @@ def main():
         finally:
             gen.close()
             if backup_filename:
-                print('Restoring previous file after error', file=stderr)
+                print('Restoring previous file after error', file=sys.stderr)
                 rename(backup_filename, flash_pathname)
 
     # pylint: disable=broad-except
     except Exception as exc:
-        print(f'\nError: {exc}', file=stderr)
+        print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=stderr)
-        sysexit(1)
+            print(format_exc(chain=False), file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
-        sysexit(2)
+        sys.exit(2)
 
 
 if __name__ == '__main__':

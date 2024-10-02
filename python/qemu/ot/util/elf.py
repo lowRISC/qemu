@@ -9,8 +9,8 @@
 from io import BytesIO
 from logging import getLogger
 from os.path import basename
-from re import compile as re_compile
 from typing import BinaryIO, Iterator, NamedTuple, Optional
+import re
 
 try:
     _ELF_ERROR = None
@@ -52,7 +52,7 @@ class ElfBlob:
     RUST_ERROR = _RUST_ERROR
     """Report whether Rust tools have been loaded."""
 
-    RUST_TRAIL_CRE = re_compile(r'::h[0-9a-f]{16}$')
+    RUST_TRAIL_CRE = re.compile(r'::h[0-9a-f]{16}$')
     """Regex to get rid of Rust trailing symbol string."""
 
     def __init__(self):

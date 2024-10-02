@@ -18,21 +18,19 @@ from traceback import format_exc
 from typing import Optional
 import sys
 
-# pylint: disable=wrong-import-position
-# pylint: disable=wrong-import-order
-# pylint: disable=import-error
+QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
+                       'python', 'qemu')
+sys.path.append(QEMU_PYPATH)
 
-# JTAG module is available from the scripts/ directory
-sys.path.append(joinpath(normpath(dirname(dirname(sys.argv[0])))))
+from jtag.bitbang import JtagBitbangController
+from jtag.jtag import JtagEngine
 
-from ot.util.log import configure_loggers  # noqa: E402
-from ot.util.misc import HexInt, dump_buffer  # noqa: E402
-from ot.dtm import DebugTransportModule  # noqa: E402
-from ot.dm import DebugModule  # noqa: E402
-from ot.dm.otp import OTPController  # noqa: E402
-from ot.otp import OtpMap  # noqa: E402
-from jtag.bitbang import JtagBitbangController  # noqa: E402
-from jtag.jtag import JtagEngine  # noqa: E402
+from ot.dm import DebugModule
+from ot.dm.otp import OTPController
+from ot.dtm import DebugTransportModule
+from ot.otp import OtpMap
+from ot.util.log import configure_loggers
+from ot.util.misc import HexInt, dump_buffer
 
 
 DEFAULT_IR_LENGTH = 5
