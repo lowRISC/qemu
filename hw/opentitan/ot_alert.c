@@ -757,9 +757,9 @@ static void ot_alert_signal_tx(void *opaque, int n, int level)
 
     trace_ot_alert_signal_class(s->ot_id, alert, ACLASS(nclass), class_en);
 
-    if (class_en) {
-        DVAL(s->regs.intr->state) |= 1u << nclass;
+    DVAL(s->regs.intr->state) |= 1u << nclass;
 
+    if (class_en) {
         /* saturate (no roll over) */
         if (DVAL(aclass->accum_cnt) < CLASS_ACCUM_CNT_MASK) {
             DVAL(aclass->accum_cnt) += 1u;
