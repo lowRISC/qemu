@@ -593,6 +593,9 @@ class QEMUFileManager:
             name = smo.group(1)
             val = self._env[name] if name in self._env \
                 else environ.get(name, '')
+            if not val:
+                getLogger('pyot.file').warning("Unknown placeholder '%s'",
+                                               name)
             return val
         svalue = str(value)
         nvalue = re.sub(r'\$\{(\w+)\}', replace, svalue)
