@@ -18,7 +18,7 @@ ninja
 ninja qemu-img
 ````
 
-* `--enable-gtk` and `--enable-cococa` are only useful when using a graphical display, such as the
+* `--enable-gtk` and `--enable-cocoa` are only useful when using a graphical display, such as the
   IbexDemo platform. It is mosly useless with the OpenTitan platform.
 
     * `--enable-gtk` should be used on Linux hosts
