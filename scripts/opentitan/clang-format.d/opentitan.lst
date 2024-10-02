@@ -4,6 +4,7 @@ hw/opentitan/*.c
 hw/opentitan/*.h
 hw/riscv/debug.c
 hw/riscv/dm*.c
+hw/riscv/dtm*.c
 hw/riscv/ibex*.c
 hw/riscv/ot_*.c
 include/hw/jtag/*.h
@@ -11,6 +12,7 @@ include/hw/misc/pulp_rv_dm.h
 include/hw/opentitan/*.h
 include/hw/riscv/debug.h
 include/hw/riscv/dm*.h
+include/hw/riscv/dtm*.h
 include/hw/riscv/ibex*.h
 include/hw/riscv/ot_*.h
 target/riscv/ibex*.c
