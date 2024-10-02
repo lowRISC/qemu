@@ -29,34 +29,21 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/ctype.h"
-#include "qemu/cutils.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
-#include "qemu/sockets.h"
 #include "qapi/error.h"
 #include "qom/object.h"
 #include "chardev/char-fe.h"
 #include "chardev/char.h"
-#include "exec/gdbstub.h"
-#include "exec/hwaddr.h"
-#include "hw/boards.h"
-#include "hw/cpu/cluster.h"
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/resettable.h"
-#include "monitor/monitor.h"
-#include "semihosting/semihost.h"
-#include "sysemu/hw_accel.h"
-#include "sysemu/replay.h"
 #include "sysemu/runstate.h"
 #include "trace.h"
 
-
-/* clang-format off */
 
 typedef enum {
     TEST_LOGIC_RESET,
@@ -77,10 +64,6 @@ typedef enum {
     UPDATE_IR,
     _TAP_STATE_COUNT
 } TAPState;
-
-#define TAP_CTRL_BYPASS_INST  0
-
-/* clang-format on */
 
 typedef TapDataHandler *tap_ctrl_data_reg_extender_t(uint64_t value);
 
@@ -135,6 +118,8 @@ typedef struct _TAPProcess {
 #define DEFAULT_JTAG_BITBANG_PORT "3335"
 #define MAX_PACKET_LENGTH         4096u
 
+#define TAP_CTRL_BYPASS_INST 0u
+
 /*
  * TAP controller state machine state/event matrix
  *
@@ -173,13 +158,13 @@ static const char TAPFSM_NAMES[_TAP_STATE_COUNT][18U] = {
 static void tap_ctrl_rbb_idcode_capture(TapDataHandler *tdh);
 
 /* Common TAP instructions */
-static const TapDataHandler tap_ctrl_rbb_bypass = {
+static const TapDataHandler TAP_CTRL_RBB_BYPASS = {
     .name = "bypass",
     .length = 1,
     .value = 0,
 };
 
-static const TapDataHandler tap_ctrl_rbb_idcode = {
+static const TapDataHandler TAP_CTRL_RBB_IDCODE = {
     .name = "idcode",
     .length = 32,
     .capture = &tap_ctrl_rbb_idcode_capture,
@@ -669,10 +654,10 @@ static void tap_ctrl_rbb_realize(DeviceState *dev, Error **errp)
 
     size_t irslots = 1u << tap->ir_length;
     tap_ctrl_rbb_register_handler(tap, TAP_CTRL_BYPASS_INST,
-                                  &tap_ctrl_rbb_bypass, true);
-    tap_ctrl_rbb_register_handler(tap, tap->idcode_inst, &tap_ctrl_rbb_idcode,
+                                  &TAP_CTRL_RBB_BYPASS, true);
+    tap_ctrl_rbb_register_handler(tap, tap->idcode_inst, &TAP_CTRL_RBB_IDCODE,
                                   true);
-    tap_ctrl_rbb_register_handler(tap, irslots - 1u, &tap_ctrl_rbb_bypass,
+    tap_ctrl_rbb_register_handler(tap, irslots - 1u, &TAP_CTRL_RBB_BYPASS,
                                   true);
     /* special case for ID code: opaque store the constant idcode value */
     TapDataHandler *tdh = tap_ctrl_rbb_get_data_handler(tap, tap->idcode_inst);
