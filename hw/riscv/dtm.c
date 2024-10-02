@@ -173,9 +173,9 @@ static const char *RISCVDMI_RUNSTATE_NAMES[] = {
 /* DTM API */
 /* -------------------------------------------------------------------------- */
 
-static bool riscv_dtm_register_dm_(DeviceState *dev,
-                                   RISCVDebugDeviceState *dbgdev,
-                                   hwaddr base_addr, hwaddr size, bool enable)
+static bool riscv_dtm_register_dm(DeviceState *dev,
+                                  RISCVDebugDeviceState *dbgdev,
+                                  hwaddr base_addr, hwaddr size, bool enable)
 {
     RISCVDTMState *s = RISCV_DTM(dev);
 
@@ -264,12 +264,6 @@ static void riscv_dtm_enable_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
     if (update) {
         riscv_dtm_activate_dms(s);
     }
-}
-
-bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dbgdev,
-                           hwaddr base_addr, hwaddr size)
-{
-    return riscv_dtm_register_dm_(dev, dbgdev, base_addr, size, true);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -565,7 +559,7 @@ static void riscv_dtm_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     RISCVDTMClass *dmc = RISCV_DTM_CLASS(klass);
-    dmc->register_dm = &riscv_dtm_register_dm_;
+    dmc->register_dm = &riscv_dtm_register_dm;
     dmc->enable_dm = &riscv_dtm_enable_dm;
 }
 

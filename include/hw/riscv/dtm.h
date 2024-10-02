@@ -61,11 +61,4 @@ struct RISCVDTMClass {
                       bool enable);
 };
 
-/*
- * Register a debug module on the Debug Transport Module.
- * Compatibility wrapper for RISCVDTMClass.register_dm
- */
-bool riscv_dtm_register_dm(DeviceState *dev, RISCVDebugDeviceState *dmif,
-                           hwaddr base_addr, hwaddr size);
-
 #endif /* HW_RISCV_DTM_H */
