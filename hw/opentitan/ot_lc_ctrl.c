@@ -394,6 +394,7 @@ struct OtLcCtrlState {
     } status_cache; /* special debug cache for status register */
     bool ext_clock_en; /* request for external clock */
     bool volatile_unlocked; /* set on successful volatile unlock */
+    bool force_raw; /* survivability mode */
     uint8_t volatile_raw_unlock_bm; /* xslot-indexed bitmap */
     uint8_t state_invalid_error_bm; /* error bitmap */
 
@@ -1124,6 +1125,14 @@ static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
     oc->get_lc_info(s->otp_ctrl, lc_tcount, lc_state, &lc_valid, &secret_valid,
                     &tokens);
 
+    if (s->force_raw) {
+        trace_ot_lc_ctrl_load_lc_info_force_raw(s->ot_id);
+        memcpy(lc_state, s->lc_states[0], sizeof(OtLcCtrlStateValue));
+        memcpy(lc_tcount, s->lc_transitions[0],
+               sizeof(OtLcCtrlTransitionCountValue));
+        lc_valid = true;
+    }
+
     switch (secret_valid) {
     case OT_MULTIBITBOOL_LC4_FALSE:
         /* blank */
@@ -1577,6 +1586,19 @@ static void ot_lc_ctrl_escalate_rx(void *opaque, int n, int level)
     g_assert((unsigned)n < 2u);
 
     trace_ot_lc_ctrl_escalate_rx(s->ot_id, (unsigned)n, (bool)level);
+
+    if (level) {
+        qemu_bh_schedule(s->escalate_bh);
+    }
+}
+
+static void ot_lc_ctrl_a0_force_raw(void *opaque, int n, int level)
+{
+    OtLcCtrlState *s = opaque;
+
+    g_assert(n == 0);
+
+    trace_ot_lc_ctrl_force_raw(s->ot_id, (bool)level);
 
     if (level) {
         qemu_bh_schedule(s->escalate_bh);
@@ -2127,6 +2149,7 @@ static void ot_lc_ctrl_reset(DeviceState *dev)
     s->regs[R_CLAIM_TRANSITION_IF_REGWEN] = 1u;
     s->ext_clock_en = false;
     s->volatile_unlocked = false;
+    s->force_raw = false;
     s->volatile_raw_unlock_bm = 0;
     s->state_invalid_error_bm = 0;
 
@@ -2208,6 +2231,8 @@ static void ot_lc_ctrl_init(Object *obj)
                             OT_PWRMGR_LC_REQ, 1);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_lc_ctrl_escalate_rx,
                             OT_ALERT_ESCALATE, 2);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_lc_ctrl_a0_force_raw,
+                            OT_LC_A0_FORCE_RAW, 1);
 
     s->pwc_lc_bh = qemu_bh_new(&ot_lc_ctrl_pwr_lc_bh, s);
     s->escalate_bh = qemu_bh_new(&ot_lc_ctrl_escalate_bh, s);

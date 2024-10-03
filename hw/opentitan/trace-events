@@ -253,12 +253,14 @@ ot_lc_ctrl_change_state(const char * id, int line, const char *old, int nold, co
 ot_lc_ctrl_error(const char * id, const char *msg) "%s: %s"
 ot_lc_ctrl_escalate(const char * id, const char *fsm, const char *lc) "%s: %s: %s"
 ot_lc_ctrl_escalate_rx(const char * id, unsigned line, bool level) "%s: %u: %u"
+ot_lc_ctrl_force_raw(const char * id, bool level) "%s: %u"
 ot_lc_ctrl_info(const char * id, const char *msg) "%s: %s"
 ot_lc_ctrl_initial_lifecycle(const char * id, unsigned tcount, uint32_t lc_state, unsigned stix) "%s: transcount %u, lifecyle 0x%x [%u]"
 ot_lc_ctrl_initialize(const char * id, const char *cst, int cstix, unsigned tcount, const char *state, int six) "%s: %s (%d), tcount %u, state %s (%u)"
 ot_lc_ctrl_io_read_out(const char * id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_lc_ctrl_io_read_out_repeat(const char * id, uint32_t addr, const char * regname, unsigned count, uint32_t val) "%s: addr=0x%02x (%s) repeated %u times, val=0x%x"
 ot_lc_ctrl_io_write(const char * id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_lc_ctrl_load_lc_info_force_raw(const char * id) "%s: force_raw enabled"
 ot_lc_ctrl_load_otp_hw_cfg(const char * id, const char *socdbg) "%s: socdbg_state: %s"
 ot_lc_ctrl_load_otp_token(const char * id, const char *tk, unsigned tkix, const char *inv, uint64_t hi, uint64_t lo) "%s: token %s (%u) %svalid: 0x%016" PRIx64 "%016" PRIx64
 ot_lc_ctrl_mismatch_token(const char * id, const char *tkkind, const char *tkname, unsigned tok, uint64_t htkhi, uint64_t htklo, uint64_t rtkhi, uint64_t rtklo) "%s: %s token %s (%u): 0x%016" PRIx64 "%016" PRIx64 ", ref 0x%016" PRIx64 "%016" PRIx64

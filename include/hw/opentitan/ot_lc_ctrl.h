@@ -33,9 +33,11 @@
 #define TYPE_OT_LC_CTRL "ot-lc_ctrl"
 OBJECT_DECLARE_SIMPLE_TYPE(OtLcCtrlState, OT_LC_CTRL)
 
-/* Init request from power manager */
-#define OT_LC_PWR TYPE_OT_LC_CTRL "-pwr"
+/* input lines */
+#define OT_LC_PWR          TYPE_OT_LC_CTRL "-pwr"
+#define OT_LC_A0_FORCE_RAW TYPE_OT_LC_CTRL "-a0-force-raw"
 
+/* output lines */
 #define OT_LC_BROADCAST   TYPE_OT_LC_CTRL "-broadcast"
 #define OT_LC_CTRL_SOCDBG TYPE_OT_LC_CTRL "-socdbg"
 
