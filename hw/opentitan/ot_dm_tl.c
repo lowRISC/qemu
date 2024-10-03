@@ -134,7 +134,7 @@ static Property ot_dm_tl_properties[] = {
     DEFINE_PROP_UINT32("dmi_addr", OtDMTLState, dmi_addr, 0),
     DEFINE_PROP_UINT32("dmi_size", OtDMTLState, dmi_size, 0),
     DEFINE_PROP_STRING("tl_as_name", OtDMTLState, tl_as_name),
-    DEFINE_PROP_UINT64("tl_addr", OtDMTLState, tl_base, 0),
+    DEFINE_PROP_UINT64("tl_addr", OtDMTLState, tl_base, UINT64_MAX),
     DEFINE_PROP_LINK("tl_dev", OtDMTLState, tl_dev, TYPE_SYS_BUS_DEVICE,
                      SysBusDevice *),
     DEFINE_PROP_BOOL("enable", OtDMTLState, enable, true),
@@ -187,6 +187,10 @@ static void ot_dm_tl_realize(DeviceState *dev, Error **errp)
         dmtl->dev_name = g_strdup(object_get_typename(OBJECT(dmtl->tl_dev)));
     } else {
         dmtl->dev_name = g_strdup("");
+    }
+
+    if (dmtl->tl_base == UINT64_MAX) {
+        dmtl->tl_base = dmtl->dmi_addr * sizeof(uint32_t);
     }
 }
 
