@@ -144,6 +144,9 @@ config OT_SENSOR
 config OT_SOC_PROXY
     bool
 
+config OT_SOCDBG_CTRL
+    bool
+
 config OT_SPI_DEVICE
     bool
 

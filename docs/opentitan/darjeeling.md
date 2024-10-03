@@ -31,6 +31,7 @@ Please check out `hw/opentitan/ot_ref.log`
     ECC (detection and correction) is supported.
 * [RISC-V Debug Module](jtag-dm.md) and Pulp Debug Module
 * [ROM controller](rom_ctrl.md)
+* SoC Debug controller
 * SPI data flash (from QEMU upstream w/ fixes)
 * SPI host controller
   * HW bus config is ignored (SPI mode, speed, ...)
@@ -164,10 +165,6 @@ See [`tools.md`](tools.md)
 * `-cpu lowrisc-ibex,x-zbr=false` can be used to force disable the Zbr experimental-and-deprecated
   RISC-V bitmap extension for CRC32 extension.
 
-* `-global ot-rstmgr.fatal_reset=N`, where `N` is an unsigned integer. Force QEMU VM to exit the
-  N^th^ time the reset manager received a reset request, rather than rebooting the whole machine as
-  the default behavior.
-
 ### AES
 
 * `-global ot-aes.fast-mode=false` can be used to better emulate AES HW IP, as some OT tests expect
@@ -206,6 +203,18 @@ See [`tools.md`](tools.md)
   file used as the OpenTitan OTP image. This _RAW_ file should have been generated with the
   [`otptool.py`](otptool.md) tool.
 
+### SoC Debug controller
+
+SoC debug controller manages SoC debug policies based on external signals - such as GPIO, Power
+Manager states and LifeCycle states, the later being defined from the OTP content. If no OTP image
+is provided, or a RAW (blank) image is provided, or if the OTP image defines a LifeCycle in any of
+TEST* or RMA states, a Darjeeling machine that features a SoC Debug controller may enter the DFT
+("Debug For Test") execution mode, where the Ibex core may not resume execution till a JTAG debugger
+triggers it.
+
+To force QEMU to execute an application despite this feature, bypassing the DFT mode, use
+`-global ot-socdbg_ctrl.dft-ignore=on` QEMU option.
+
 ### SPI Device
 
 * See [SPI device](spi_devide.md) for options.
@@ -223,6 +232,16 @@ See [`tools.md`](tools.md)
 
   For now, bus 0 is assigned to the SPI Host controller with an external flash storage. See also
   Flash controller section.
+
+### Reset Manager
+
+It is possible to limit the number of times the VM reboots the guest. This option may be useful
+during the development process when an issue in the early FW stages - such as the ROM - causes an
+endless reboot cycles of the guest.
+
+To limit the reboot cyckes, use the `-global ot-rstmgr.fatal_reset=<N>` option, where `N` is an
+unsigned integer. This option forces the QEMU VM to exit the N^th^ time the reset manager receives
+a reset request, rather than rebooting the whole machine endlessly as the default behavior.
 
 ### UART
 

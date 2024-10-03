@@ -47,6 +47,7 @@ system_ss.add(when: 'CONFIG_OT_ROM_CTRL', if_true: files('ot_rom_ctrl.c', 'ot_ro
 system_ss.add(when: 'CONFIG_OT_RSTMGR', if_true: files('ot_rstmgr.c'))
 system_ss.add(when: 'CONFIG_OT_SENSOR', if_true: files('ot_sensor.c'))
 system_ss.add(when: 'CONFIG_OT_SOC_PROXY', if_true: files('ot_soc_proxy.c'))
+system_ss.add(when: 'CONFIG_OT_SOCDBG_CTRL', if_true: files('ot_socdbg_ctrl.c'))
 system_ss.add(when: 'CONFIG_OT_SPI_DEVICE', if_true: files('ot_spi_device.c'))
 system_ss.add(when: 'CONFIG_OT_SPI_HOST', if_true: files('ot_spi_host.c'))
 system_ss.add(when: 'CONFIG_OT_SRAM_CTRL', if_true: files('ot_sram_ctrl.c'))

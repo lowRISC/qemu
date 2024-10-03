@@ -399,6 +399,21 @@ ot_soc_proxy_io_read_out(const char * id, uint32_t addr, const char * regname, u
 ot_soc_proxy_io_write(const char * id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
 ot_soc_proxy_update_irq(const char * id, unsigned n, int prev, int next) "%s: #%u %d -> %d"
 
+# ot_socdbg_ctrl.c
+
+ot_socdbg_ctrl_boot_status(const char *id, bool mclk, bool ioclk, bool otp, bool lc, bool cpu, unsigned rdone, unsigned rgood) "%s: mclk:%u ioclk:%u otp:%u lc:%u cpu_en:%u rom_done:0x%x rom_good:0x%x"
+ot_socdbg_ctrl_change_state(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
+ot_socdbg_ctrl_core_io_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_socdbg_ctrl_core_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_socdbg_ctrl_core_update_irq(const char *id, int new) "%s: %u"
+ot_socdbg_ctrl_dmi_io_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_socdbg_ctrl_dmi_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_socdbg_ctrl_rcv(const char *id, const char *src, unsigned n, int level) "%s: %s #%d: lvl 0x%x"
+ot_socdbg_ctrl_schedule_fsm(const char *id, const char *func, int line, unsigned tc) "%s: @ %s:%d (%u)"
+ot_socdbg_ctrl_socdbg_state(const char *id, const char *st) "%s: %s"
+ot_socdbg_ctrl_update(const char *id, unsigned policy, bool valid) "%s: debug policy:0x%1x valid:%u"
+
+
 # ot_spi_device.c
 
 ot_spi_device_buf_read_out(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%03x, sz=%u, val=0x%08x, pc=0x%x"
