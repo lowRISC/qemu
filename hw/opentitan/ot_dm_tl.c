@@ -154,6 +154,8 @@ static void ot_dm_tl_reset(DeviceState *dev)
         dmtl->dtm_ok =
             (*dtmc->register_dm)(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(dev),
                                  dmtl->dmi_addr, dmtl->dmi_size, dmtl->enable);
+        trace_ot_dm_tl_register(dmtl->dev_name, dmtl->dmi_addr, dmtl->dmi_size,
+                                dmtl->enable, dmtl->dtm_ok);
     }
 
     if (dmtl->dtm_ok) {
