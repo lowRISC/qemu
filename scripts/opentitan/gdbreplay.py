@@ -448,6 +448,7 @@ class QEMUGDBReplay:
         else:
             self._send('')
             return
+        # pylint: disable=not-callable
         resp = handler(bytes(req[clen:]))
         if resp is not None:
             self._send(resp)
@@ -526,6 +527,7 @@ class QEMUGDBReplay:
         handler = getattr(self, f'_do_query_{parts[0].decode().lower()}', None)
         if not handler:
             return ''
+        # pylint: disable=not-callable
         return handler(bytes(parts[1]) if len(parts) > 1 else b'')
 
     def _do_m(self, payload: bytes) -> str:

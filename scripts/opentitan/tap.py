@@ -318,6 +318,7 @@ class BitBangController(TAPController):
         if handler is None:
             self._log.warning('Unimplemented handler for %s', command)
             return None
+        # pylint: disable=not-callable
         return handler(*args)
 
     def _inject_quit(self):
@@ -491,6 +492,7 @@ class TAP_DMI(TAPRegister):
                            f' {data:08x}' if write else '')
         handler = getattr(self, f'_{regname}_{opname}', None)
         if handler:
+            # pylint: disable=not-callable
             handler(data)
 
     def _dmcontrol_write(self, value: int):

@@ -1696,6 +1696,7 @@ class ProxyEngine:
                     if not dispatcher:
                         self._log.error('Unsupported notification: %s', handler)
                         continue
+                    # pylint: disable=not-callable
                     dispatcher(payload)
                 else:
                     if not self._request_handler:

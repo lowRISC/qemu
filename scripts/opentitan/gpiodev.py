@@ -219,6 +219,7 @@ class GpioDevice:
             return None
         self._log.info('Execute %s: 0x%08x', command, word)
         self._record.append((cmd, word))
+        # pylint: disable=not-callable
         out = handler(word)
         if it_cmd:
             try:

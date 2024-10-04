@@ -1,6 +1,7 @@
 [MESSAGES CONTROL]
 
 disable=
+    unknown-option-value,
     import-error,
     too-few-public-methods,
     too-many-arguments,
@@ -10,8 +11,9 @@ disable=
     too-many-lines,
     too-many-locals,
     too-many-nested-blocks,
+    too-many-positional-arguments,
     too-many-public-methods,
     too-many-statements,
     unspecified-encoding,
     wrong-import-order,
-    wrong-import-position,
+    wrong-import-position
