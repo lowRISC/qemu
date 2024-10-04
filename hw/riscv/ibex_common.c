@@ -432,11 +432,9 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
                         g_assert_not_reached();
                     }
                 }
-                if (ngl->num_in) {
-                    /* num_in is the max index, i.e. n-1 */
-                    ngl->num_in += 1u;
-                    ngl->in = g_new(qemu_irq, ngl->num_in);
-                }
+                /* num_in is the max index, i.e. n-1 */
+                ngl->num_in += 1u;
+                ngl->in = g_new(qemu_irq, ngl->num_in);
                 QLIST_REMOVE(ngl, node);
                 QLIST_INSERT_HEAD(&parent->gpios, ngl, node);
             }
@@ -473,6 +471,7 @@ void ibex_export_gpios(DeviceState **devices, DeviceState *parent,
                         }
                     }
                 }
+
                 assert(ngl && ngl->in);
                 ngl->in[export->parent.num] = devirq;
                 (void)object_ref(OBJECT(devirq));
