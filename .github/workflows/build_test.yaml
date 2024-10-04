@@ -76,9 +76,25 @@ jobs:
           sudo apt-get install -y clang-format-18
       - name: Check out QEMU
         uses: actions/checkout@v4
-      - name: Check execution
+      - name: Check C code format
         run: |
           scripts/opentitan/ot-format.sh --ci -i
+
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update &&
+          sudo apt-get install -y python3-pip
+          # ubuntu "latest" is too old to require --break-system-packages ...
+          pip3 install pylint
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Lint Python code
+        run: |
+          pylint --rcfile scripts/opentitan/.pylintrc -d 'duplicate-code' -d 'fixme' \
+            scripts/opentitan/*.py python/qemu/jtag python/qemu/ot
 
   lint-clang:
     runs-on: ubuntu-latest
