@@ -41,3 +41,7 @@ riscv_dtm_vm_state_change(const char *name, unsigned state) "VM state: %s[%u]"
 # ibex_common.c
 
 ibex_create_device(const char *pname, const char *name) "%s.%s"
+
+# ibex_gpio.c
+
+ibex_gpio_combine_conflict(const char *name, bool weak, bool elvel) "%s: w:%u %u"

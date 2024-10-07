@@ -7,6 +7,9 @@ config IBEX
 config IBEX_COMMON
     bool
 
+config IBEX_GPIO
+    bool
+
 # RISC-V machines in alphabetical order
 
 config OT_DARJEELING

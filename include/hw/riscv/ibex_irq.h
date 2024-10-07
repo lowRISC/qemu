@@ -30,7 +30,6 @@
 #include "hw/qdev-core.h"
 #include "hw/sysbus.h"
 
-
 /** Simple IRQ wrapper to limit propagation of no-change calls */
 typedef struct {
     qemu_irq irq;
@@ -80,7 +79,6 @@ static inline void ibex_qdev_init_irq(Object *obj, IbexIRQ *irq,
 {
     ibex_qdev_init_irq_default(obj, irq, name, 0);
 }
-
 
 static inline void ibex_qdev_init_irqs_default(
     Object *obj, IbexIRQ *irqs, const char *name, unsigned count, int level)
