@@ -188,7 +188,10 @@ static void ot_gpio_eg_update_data_in(OtGpioEgState *s)
     uint32_t data_in = s->data_in & ~ign_mask;
 
     /* apply pull up (/down) on non- input enabled pins */
-    data_in |= s->pull_en & ign_mask & s->pull_sel;
+    data_in |= s->pull_en & s->pull_sel;
+
+    trace_ot_gpio_in_ign(s->ot_id, s->data_gi, s->data_bi, s->connected,
+                         ign_mask);
 
     /* apply inversion if any */
     data_in ^= s->invert;
@@ -199,7 +202,9 @@ static void ot_gpio_eg_update_data_in(OtGpioEgState *s)
 
     s->regs[R_DATA_IN] = data_mix;
 
-    trace_ot_gpio_update_input(s->ot_id, prev, s->data_in, data_mix, ign_mask);
+    trace_ot_gpio_update_input(s->ot_id, s->pull_en, s->pull_sel, s->invert,
+                               data_in, data_mix);
+
     ot_gpio_eg_update_intr_level(s);
     ot_gpio_eg_update_intr_edge(s, prev);
     ot_gpio_eg_update_irqs(s);
@@ -219,12 +224,12 @@ static void ot_gpio_eg_update_data_out(OtGpioEgState *s)
     /* keep non- opendrain high values */
     outv &= out_en;
 
-    trace_ot_gpio_update_output(s->ot_id, outv);
+    trace_ot_gpio_update_output(s->ot_id, outv, 0, 0);
     for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
         if ((out_en >> ix) & 1u) {
             int level = (int)((outv >> ix) & 1u);
             if (level != ibex_irq_get_level(&s->gpos[ix])) {
-                trace_ot_gpio_update_out_line(s->ot_id, ix, level);
+                trace_ot_gpio_update_out_line_bool(s->ot_id, ix, level);
             }
             ibex_irq_set(&s->gpos[ix], level);
         }
@@ -235,7 +240,7 @@ static void ot_gpio_eg_in_change(void *opaque, int no, int level)
 {
     OtGpioEgState *s = opaque;
 
-    trace_ot_gpio_in_change(s->ot_id, no, level < 0, level > 0);
+    trace_ot_gpio_in_change(s->ot_id, no, level < 0, level > 0, 0);
 
     g_assert(no < PARAM_NUM_IO);
 
@@ -268,37 +273,46 @@ static void ot_gpio_eg_pad_attr_change(void *opaque, int no, int level)
 {
     OtGpioEgState *s = opaque;
 
-    trace_ot_gpio_pad_attr_change(s->ot_id, no, (uint32_t)level);
-
     g_assert(no < PARAM_NUM_IO);
 
     uint32_t cfg = (uint32_t)level;
     uint32_t bit = 1u << no;
+    char confstr[4u];
 
     if (cfg & OT_PINMUX_PAD_ATTR_INVERT_MASK) {
         s->invert |= bit;
+        confstr[0u] = '!';
     } else {
         s->invert &= ~bit;
+        confstr[0u] = '.';
     }
 
     if (cfg & (OT_PINMUX_PAD_ATTR_OD_EN_MASK |
                OT_PINMUX_PAD_ATTR_VIRTUAL_OD_EN_MASK)) {
         s->opendrain |= bit;
+        confstr[1u] = 'o';
     } else {
         s->opendrain &= ~bit;
+        confstr[1u] = '.';
     }
 
     if (cfg & OT_PINMUX_PAD_ATTR_PULL_SELECT_MASK) {
         s->pull_sel |= bit;
+        confstr[2u] = 'u';
     } else {
         s->pull_sel &= ~bit;
+        confstr[2u] = 'd';
     }
 
     if (cfg & OT_PINMUX_PAD_ATTR_PULL_EN_MASK) {
         s->pull_en |= bit;
     } else {
         s->pull_en &= ~bit;
+        confstr[2u] = '.';
     }
+    confstr[3u] = '\0';
+
+    trace_ot_gpio_pad_attr_change(s->ot_id, no, cfg, confstr);
 
     ot_gpio_eg_update_data_in(s);
     ot_gpio_eg_update_data_out(s);

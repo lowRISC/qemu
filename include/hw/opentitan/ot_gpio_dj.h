@@ -31,7 +31,7 @@
 #include "hw/opentitan/ot_gpio.h"
 
 #define TYPE_OT_GPIO_DJ "ot-gpio-dj"
-OBJECT_DECLARE_SIMPLE_TYPE(OtGpioDjState, OT_GPIO_DJ)
+OBJECT_DECLARE_TYPE(OtGpioDjState, OtGpioDjClass, OT_GPIO_DJ)
 
 #define OT_GPIO_STRAP_EN TYPE_OT_GPIO "-strap-en"
 

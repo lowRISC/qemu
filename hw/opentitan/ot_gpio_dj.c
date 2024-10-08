@@ -38,6 +38,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
+#include "hw/riscv/ibex_gpio.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
 #include "sysemu/runstate.h"
@@ -112,6 +113,12 @@ typedef struct {
     uint32_t out_v;
 } OtGpioDjBackendState;
 
+typedef enum {
+    IO_IDLE,
+    IO_RESET,
+    IO_READY,
+} OtGpioDjIOState;
+
 struct OtGpioDjState {
     SysBusDevice parent_obj;
 
@@ -135,15 +142,22 @@ struct OtGpioDjState {
 
     char ibuf[PARAM_NUM_IO]; /* backed input buffer */
     unsigned ipos;
+    OtGpioDjIOState io_state;
     OtGpioDjBackendState backend_state; /* cache */
 
     char *ot_id;
     uint32_t reset_in; /* initial input levels */
     uint32_t reset_out; /* initial output levels */
     uint32_t reset_oe; /* initial output enable vs. hi-z levels */
+    uint32_t ibex_out; /* output w/ ibex_gpio (vs. tri-state) signalization */
     CharBackend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
     bool wipe; /* whether to wipe the backend at reset */
+};
+
+struct OtGpioDjClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static void ot_gpio_dj_update_backend(OtGpioDjState *s);
@@ -192,7 +206,10 @@ static void ot_gpio_dj_update_data_in(OtGpioDjState *s)
     uint32_t data_in = s->data_in & ~ign_mask;
 
     /* apply pull up (/down) on non- input enabled pins */
-    data_in |= s->pull_en & ign_mask & s->pull_sel;
+    data_in |= s->pull_en & s->pull_sel;
+
+    trace_ot_gpio_in_ign(s->ot_id, s->data_gi, s->data_bi, s->connected,
+                         ign_mask);
 
     /* apply inversion if any */
     data_in ^= s->invert;
@@ -203,7 +220,9 @@ static void ot_gpio_dj_update_data_in(OtGpioDjState *s)
 
     s->regs[R_DATA_IN] = data_mix;
 
-    trace_ot_gpio_update_input(s->ot_id, prev, s->data_in, data_mix, ign_mask);
+    trace_ot_gpio_update_input(s->ot_id, s->pull_en, s->pull_sel, s->invert,
+                               data_in, data_mix);
+
     ot_gpio_dj_update_intr_level(s);
     ot_gpio_dj_update_intr_edge(s, prev);
     ot_gpio_dj_update_irqs(s);
@@ -213,33 +232,61 @@ static void ot_gpio_dj_update_data_out(OtGpioDjState *s)
 {
     uint32_t outv = s->data_out;
     /* assume invert is performed on device output data, not on pull up/down */
-    outv ^= s->invert;
+    outv ^= s->invert; /* OV */
 
-    uint32_t out_en = s->data_oe;
+    /*
+     *   OE  OD  OV  PE  PU  NA  Wk  IbexOut BinOut
+     *  |---|---|---|---|---|---|---|-------|------|
+     *    0   X   X   0   X   1   0     z    undef
+     *    0   X   X   1   0   1   1     l     0
+     *    0   X   X   1   1   1   1     h     1
+     *    1   0   0   X   X   0   0     L     0
+     *    1   0   1   X   X   0   0     H     1
+     *    1   1   0   X   X   0   0     L     0
+     *    1   1   1   0   X   1   0     z    undef
+     *    1   1   1   1   0   1   1     l     0
+     *    1   1   1   1   1   1   1     h     1
+     */
 
-    /* if open drain is active and output is high, disable output enable */
-    out_en &= ~(s->opendrain & outv);
+    uint32_t not_active =
+        ~s->data_oe | (s->data_oe & s->opendrain & outv); /* NA */
+    uint32_t hi_z = ~s->pull_en & not_active;
+    uint32_t weak = s->pull_en & not_active; /* Wk */
 
-    /* keep non- opendrain high values */
-    outv &= out_en;
-
-    trace_ot_gpio_update_output(s->ot_id, outv);
+    trace_ot_gpio_update_output(s->ot_id, outv, weak, hi_z);
     for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
-        if ((out_en >> ix) & 1u) {
-            int level = (int)((outv >> ix) & 1u);
-            if (level != ibex_irq_get_level(&s->gpos[ix])) {
-                trace_ot_gpio_update_out_line(s->ot_id, ix, level);
+        unsigned bit = 1u << ix;
+        int level;
+        if (s->ibex_out & bit) {
+            /* Ibex GPIO output */
+            level =
+                hi_z & bit ?
+                    IBEX_GPIO_HIZ :
+                    (weak & bit ? IBEX_GPIO_FROM_WEAK_SIG(s->pull_sel & bit) :
+                                  IBEX_GPIO_FROM_ACTIVE_SIG(outv & bit));
+        } else {
+            /* binary output */
+            if (hi_z & bit) {
+                /* skip */
+                continue;
             }
-            ibex_irq_set(&s->gpos[ix], level);
+            level = (int)(bool)((weak ? s->pull_sel : outv) & bit);
         }
+        if (level != ibex_irq_get_level(&s->gpos[ix])) {
+            if (s->ibex_out & bit) {
+                trace_ot_gpio_update_out_line_ibex(s->ot_id, ix,
+                                                   ibex_gpio_repr(level));
+            } else {
+                trace_ot_gpio_update_out_line_bool(s->ot_id, ix, level);
+            }
+        }
+        ibex_irq_set(&s->gpos[ix], level);
     }
 }
 
 static void ot_gpio_dj_strap_en(void *opaque, int no, int level)
 {
     OtGpioDjState *s = opaque;
-
-    trace_ot_gpio_strap_en(s->ot_id, no, (bool)level);
 
     g_assert(no == 0);
 
@@ -248,18 +295,33 @@ static void ot_gpio_dj_strap_en(void *opaque, int no, int level)
         s->regs[R_HW_STRAPS_DATA_IN_VALID] =
             R_HW_STRAPS_DATA_IN_VALID_VALID_MASK;
     }
+
+    trace_ot_gpio_strap_en(s->ot_id, no, (bool)level,
+                           s->regs[R_HW_STRAPS_DATA_IN]);
 }
 
 static void ot_gpio_dj_in_change(void *opaque, int no, int level)
 {
     OtGpioDjState *s = opaque;
 
-    trace_ot_gpio_in_change(s->ot_id, no, level < 0, level > 0);
-
     g_assert(no < PARAM_NUM_IO);
 
-    bool ignore = level < 0;
-    bool on = (bool)level;
+    bool ibex_in = ibex_gpio_check(level);
+    bool hiz;
+    bool on;
+    bool weak;
+
+    if (ibex_in) {
+        hiz = ibex_gpio_is_hiz(level);
+        on = ibex_gpio_level(level);
+        weak = ibex_gpio_is_weak(level);
+    } else {
+        hiz = level < 0;
+        on = level > 0;
+        weak = false;
+    }
+    trace_ot_gpio_in_change(s->ot_id, no, hiz, on, weak);
+
     uint32_t bit = 1u << no;
 
     /*
@@ -268,7 +330,7 @@ static void ot_gpio_dj_in_change(void *opaque, int no, int level)
      */
     s->connected |= bit;
 
-    if (!ignore) {
+    if (!hiz) {
         if (on) {
             s->data_in |= bit;
         } else {
@@ -287,41 +349,53 @@ static void ot_gpio_dj_pad_attr_change(void *opaque, int no, int level)
 {
     OtGpioDjState *s = opaque;
 
-    trace_ot_gpio_pad_attr_change(s->ot_id, no, (uint32_t)level);
-
     g_assert(no < PARAM_NUM_IO);
 
     uint32_t cfg = (uint32_t)level;
     uint32_t bit = 1u << no;
+    char confstr[4u];
 
     if (cfg & OT_PINMUX_PAD_ATTR_INVERT_MASK) {
         s->invert |= bit;
+        confstr[0u] = '!';
     } else {
         s->invert &= ~bit;
+        confstr[0u] = '.';
     }
 
     if (cfg & (OT_PINMUX_PAD_ATTR_OD_EN_MASK |
                OT_PINMUX_PAD_ATTR_VIRTUAL_OD_EN_MASK)) {
         s->opendrain |= bit;
+        confstr[1u] = 'o';
     } else {
         s->opendrain &= ~bit;
+        confstr[1u] = '.';
     }
 
     if (cfg & OT_PINMUX_PAD_ATTR_PULL_SELECT_MASK) {
         s->pull_sel |= bit;
+        confstr[2u] = 'h';
     } else {
         s->pull_sel &= ~bit;
+        confstr[2u] = 'l';
     }
 
     if (cfg & OT_PINMUX_PAD_ATTR_PULL_EN_MASK) {
         s->pull_en |= bit;
     } else {
         s->pull_en &= ~bit;
+        confstr[2u] = '.';
     }
 
-    ot_gpio_dj_update_data_in(s);
-    ot_gpio_dj_update_data_out(s);
-    ot_gpio_dj_update_backend(s);
+    confstr[3u] = '\0';
+
+    trace_ot_gpio_pad_attr_change(s->ot_id, no, cfg, confstr);
+
+    if (s->io_state == IO_READY) {
+        ot_gpio_dj_update_data_out(s);
+        ot_gpio_dj_update_backend(s);
+        ot_gpio_dj_update_data_in(s);
+    }
 }
 
 static uint64_t ot_gpio_dj_read(void *opaque, hwaddr addr, unsigned size)
@@ -690,19 +764,29 @@ static Property ot_gpio_dj_properties[] = {
     DEFINE_PROP_UINT32("in", OtGpioDjState, reset_in, 0u),
     DEFINE_PROP_UINT32("out", OtGpioDjState, reset_out, 0u),
     DEFINE_PROP_UINT32("oe", OtGpioDjState, reset_oe, 0u),
+    DEFINE_PROP_UINT32("ibex_out", OtGpioDjState, ibex_out, 0u),
     DEFINE_PROP_BOOL("wipe", OtGpioDjState, wipe, false),
     DEFINE_PROP_CHR("chardev", OtGpioDjState, chr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_gpio_dj_reset(DeviceState *dev)
+static void ot_gpio_dj_reset_enter(Object *obj, ResetType type)
 {
-    OtGpioDjState *s = OT_GPIO_DJ(dev);
+    OtGpioDjClass *c = OT_GPIO_DJ_GET_CLASS(obj);
+    OtGpioDjState *s = OT_GPIO_DJ(obj);
 
     if (!s->ot_id) {
         s->ot_id =
             g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
+
+    trace_ot_gpio_reset(s->ot_id, "> enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    s->io_state = IO_RESET;
 
     memset(s->regs, 0, sizeof(s->regs));
     memset(&s->backend_state, 0, sizeof(s->backend_state));
@@ -712,7 +796,8 @@ static void ot_gpio_dj_reset(DeviceState *dev)
     s->data_out = s->reset_out;
     s->data_oe = s->reset_oe;
     s->data_bi = 0;
-    s->data_gi = 0;
+    /* all input disable until signal is received, or output is forced */
+    s->data_gi = ~s->reset_oe;
     s->pull_en = 0;
     s->pull_sel = 0;
     s->invert = 0;
@@ -725,14 +810,35 @@ static void ot_gpio_dj_reset(DeviceState *dev)
     ot_gpio_dj_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
 
+    trace_ot_gpio_reset(s->ot_id, "< enter");
+}
+
+static void ot_gpio_dj_reset_exit(Object *obj, ResetType type)
+{
+    /*
+     * use of a Resettable full API enables performing I/O updates only once
+     * the pinmux configuration has been received (from its own reset stage)
+     */
+    OtGpioDjClass *c = OT_GPIO_DJ_GET_CLASS(obj);
+    OtGpioDjState *s = OT_GPIO_DJ(obj);
+
+    trace_ot_gpio_reset(s->ot_id, "> exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
     ot_gpio_dj_init_backend(s);
     ot_gpio_dj_update_data_out(s);
     ot_gpio_dj_update_backend(s);
+    ot_gpio_dj_update_data_in(s);
 
+    s->io_state = IO_READY;
     /*
-     * do not reset the input backed buffer as external GPIO changes is fully
+     * do not reset the input backend buffer as external GPIO changes is fully
      * async with OT reset. However, it should be reset when the backend changes
      */
+    trace_ot_gpio_reset(s->ot_id, "< exit");
 }
 
 static void ot_gpio_dj_realize(DeviceState *dev, Error **errp)
@@ -768,6 +874,8 @@ static void ot_gpio_dj_init(Object *obj)
                             PARAM_NUM_IO);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_dj_pad_attr_change,
                             OT_PINMUX_PAD, PARAM_NUM_IO);
+
+    s->io_state = IO_IDLE;
 }
 
 static void ot_gpio_dj_class_init(ObjectClass *klass, void *data)
@@ -775,10 +883,15 @@ static void ot_gpio_dj_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_gpio_dj_reset;
     dc->realize = &ot_gpio_dj_realize;
     device_class_set_props(dc, ot_gpio_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(dc);
+    OtGpioDjClass *pc = OT_GPIO_DJ_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_gpio_dj_reset_enter, NULL,
+                                       &ot_gpio_dj_reset_exit,
+                                       &pc->parent_phases);
 }
 
 static const TypeInfo ot_gpio_dj_info = {
@@ -787,6 +900,7 @@ static const TypeInfo ot_gpio_dj_info = {
     .instance_size = sizeof(OtGpioDjState),
     .instance_init = &ot_gpio_dj_init,
     .class_init = &ot_gpio_dj_class_init,
+    .class_size = sizeof(OtGpioDjClass)
 };
 
 static void ot_gpio_dj_register_types(void)
