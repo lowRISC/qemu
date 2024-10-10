@@ -308,9 +308,12 @@ def main():
         gpio = GpioDevice()
         if args.check:
             gpio.load(args.check)
-        exec_ok = gpio.run(args.port, args.single, args.quit_on_error, args.end)
-        if args.record:
-            gpio.save(args.record)
+        try:
+            exec_ok = gpio.run(args.port, args.single, args.quit_on_error,
+                               args.end)
+        finally:
+            if args.record:
+                gpio.save(args.record)
         sys.exit(int(not exec_ok))
 
     except (IOError, ValueError, ImportError) as exc:
