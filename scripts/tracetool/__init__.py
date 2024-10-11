@@ -146,8 +146,10 @@ class Arguments:
                 arg_type += '*'
                 identifier = identifier.strip()
             else:
-                arg_type, identifier = arg.rsplit(None, 1)
-
+                try:
+                    arg_type, identifier = arg.rsplit(None, 1)
+                except ValueError as exc:
+                    raise ValueError(f'Malformed argument: {arg}') from exc
             validate_type(arg_type)
             res.append((arg_type, identifier))
         return Arguments(res)
