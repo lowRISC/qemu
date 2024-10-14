@@ -1505,7 +1505,7 @@ class QEMUExecuter:
                               f'events={self.abspath(args.trace.name)}'))
         qemu_args.extend(self._build_qemu_log_sources(args))
         if args.singlestep:
-            qemu_args.append('-singlestep')
+            qemu_args.extend(('-accel', 'tcg,one-insn-per-tb=on'))
         if 'icount' in args:
             if args.icount is not None:
                 qemu_args.extend(('-icount', f'shift={args.icount}'))
