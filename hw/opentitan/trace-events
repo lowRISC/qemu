@@ -189,18 +189,21 @@ ot_flash_op_start(int op) "%d"
 # ot_gpio.c
 
 ot_gpio_in_change(const char *id, int no, bool ign, bool on, bool weak) "%s: gpio[%02d] hiz:%u on:%u wk:%u"
-ot_gpio_in_ign(const char *id, uint32_t gi, uint32_t bi, uint32_t cn, uint32_t ig) "%s: gi:0x%08x bi:0x%08x cx:0x%08x -> ign:0x%08x"
-ot_gpio_io_read_out(const char *id, uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_gpio_io_write(const char *id, uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%x, pc=0x%x"
+ot_gpio_in_ignore(const char *id, uint32_t cn, uint32_t gi, uint32_t bi, uint32_t oe) "%s: cx:0x%08x gi:0x%08x bi:0x%08x oe:0x%08x"
+ot_gpio_in_line(const char *id, uint32_t ii, uint32_t im, uint32_t di) "%s: ii:0x%08x im:0x%08x di:0x%08x"
+ot_gpio_in_backend(const char *id, uint32_t ib, uint32_t bm, uint32_t data_ib) "%s: ib:0x%08x bm:0x%08x bi:0x%08x"
+ot_gpio_in_pull(const char *id, uint32_t pe, uint32_t ps, uint32_t pm, uint32_t pi) "%s: pe:0x%08x ps:0x%08x pm:0x%08x pi:0x%08x"
+ot_gpio_in_update(const char *id, uint32_t iv, uint32_t di, uint32_t do_, uint32_t dm) "%s: iv:0x%08x di:0x%08x di:0x%08x dm:0x%08x"
+ot_gpio_io_read_out(const char *id, uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%08x, pc=0x%x"
+ot_gpio_io_write(const char *id, uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%08x, pc=0x%x"
 ot_gpio_irqs(const char *id, uint32_t active, uint32_t mask, uint32_t eff) "%s: act:0x%08x msk:0x%08x eff:0x%08x"
 ot_gpio_pad_attr_change(const char *id, int no, uint32_t cfg, const char *conf) "%s: gpio[%02d] 0x%08x: {%s}"
 ot_gpio_refresh_config(const char *id) "%s"
 ot_gpio_reset(const char *id, const char *state) "%s: %s"
 ot_gpio_strap_en(const char *id, int no, bool en, uint32_t straps) "%s: gpio[%02d] en:%u sampled:0x%08x"
-ot_gpio_update_input(const char *id, uint32_t pe, uint32_t ps, uint32_t iv, uint32_t di, uint32_t dm) "%s: pe:0x%08x ps:0x%08x iv:0x%08x di:0x%08x -> dm:0x%08x"
-ot_gpio_update_output(const char *id, uint32_t out, uint32_t weak, uint32_t hiz) "%s: out:0x%08x wk:0x%08x hiz:0x%08x"
-ot_gpio_update_out_line_bool(const char *id, unsigned ix, int level) "%s: [%02u]: %u"
-ot_gpio_update_out_line_ibex(const char *id, unsigned ix, char repr) "%s: [%02u]: {%c}"
+ot_gpio_out_update(const char *id, uint32_t out, uint32_t weak, uint32_t hiz) "%s: out:0x%08x wk:0x%08x hiz:0x%08x"
+ot_gpio_out_update_line_bool(const char *id, unsigned ix, int level) "%s: [%02u]: %u"
+ot_gpio_out_update_line_ibex(const char *id, unsigned ix, char repr) "%s: [%02u]: {%c}"
 
 # ot_hmac.c
 

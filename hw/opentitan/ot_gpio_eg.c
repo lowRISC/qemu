@@ -118,7 +118,8 @@ struct OtGpioEgState {
     uint32_t regs[REGS_COUNT];
     uint32_t data_out; /* output data */
     uint32_t data_oe; /* output enable */
-    uint32_t data_in; /* input data */
+    uint32_t data_ii; /* input data from IRQ lines */
+    uint32_t data_ib; /* input data from backend */
     uint32_t data_bi; /* ignore backend input */
     uint32_t data_gi; /* ignore GPIO input */
     uint32_t invert; /* invert signal */
@@ -182,28 +183,31 @@ static void ot_gpio_eg_update_data_in(OtGpioEgState *s)
 {
     uint32_t prev = s->regs[R_DATA_IN];
 
-    uint32_t ign_mask = s->data_gi & (s->data_bi & ~s->connected);
+    uint32_t ii_mask = s->connected & ~s->data_gi & ~s->data_oe;
+    uint32_t bi_mask = ~s->connected & ~s->data_bi & ~s->data_oe;
+    uint32_t pi_mask = s->connected & s->data_gi & s->data_bi & ~s->data_oe;
 
-    /* ignore disabled input pins */
-    uint32_t data_in = s->data_in & ~ign_mask;
+    uint32_t data_ii = s->data_ii & ii_mask;
+    uint32_t data_ib = s->data_ib & bi_mask;
+    uint32_t pull_in = s->pull_en & s->pull_sel & pi_mask;
+    uint32_t data_in = data_ii | data_ib | pull_in;
 
-    /* apply pull up (/down) on non- input enabled pins */
-    data_in |= s->pull_en & s->pull_sel;
-
-    trace_ot_gpio_in_ign(s->ot_id, s->data_gi, s->data_bi, s->connected,
-                         ign_mask);
+    trace_ot_gpio_in_ignore(s->ot_id, s->connected, s->data_gi, s->data_bi,
+                            s->data_oe);
+    trace_ot_gpio_in_line(s->ot_id, s->data_ii, ii_mask, data_ii);
+    trace_ot_gpio_in_backend(s->ot_id, s->data_ib, bi_mask, data_ib);
+    trace_ot_gpio_in_pull(s->ot_id, s->pull_en, s->pull_sel, pi_mask, pull_in);
 
     /* apply inversion if any */
     data_in ^= s->invert;
 
     /* inject back output pin values into input */
-    uint32_t data_mix = data_in & ~s->data_oe;
-    data_mix |= s->data_out & s->data_oe;
+    uint32_t data_mix = data_in | (s->data_out & s->data_oe);
 
     s->regs[R_DATA_IN] = data_mix;
 
-    trace_ot_gpio_update_input(s->ot_id, s->pull_en, s->pull_sel, s->invert,
-                               data_in, data_mix);
+    trace_ot_gpio_in_update(s->ot_id, s->invert, data_in, s->data_out,
+                            data_mix);
 
     ot_gpio_eg_update_intr_level(s);
     ot_gpio_eg_update_intr_edge(s, prev);
@@ -224,12 +228,12 @@ static void ot_gpio_eg_update_data_out(OtGpioEgState *s)
     /* keep non- opendrain high values */
     outv &= out_en;
 
-    trace_ot_gpio_update_output(s->ot_id, outv, 0, 0);
+    trace_ot_gpio_out_update(s->ot_id, outv, 0, 0);
     for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
         if ((out_en >> ix) & 1u) {
             int level = (int)((outv >> ix) & 1u);
             if (level != ibex_irq_get_level(&s->gpos[ix])) {
-                trace_ot_gpio_update_out_line_bool(s->ot_id, ix, level);
+                trace_ot_gpio_out_update_line_bool(s->ot_id, ix, level);
             }
             ibex_irq_set(&s->gpos[ix], level);
         }
@@ -256,9 +260,9 @@ static void ot_gpio_eg_in_change(void *opaque, int no, int level)
 
     if (!ignore) {
         if (on) {
-            s->data_in |= bit;
+            s->data_ii |= bit;
         } else {
-            s->data_in &= ~bit;
+            s->data_ii &= ~bit;
         }
         s->data_gi &= ~bit;
     } else {
@@ -531,7 +535,7 @@ static void ot_gpio_eg_chr_receive(void *opaque, const uint8_t *buf, int size)
                 s->data_bi = data_in;
                 ot_gpio_eg_update_data_in(s);
             } else if (cmd == 'I') {
-                s->data_in = data_in;
+                s->data_ib = data_in;
                 ot_gpio_eg_update_data_in(s);
             } else if (cmd == 'R') {
                 ot_gpio_eg_update_backend(s);
@@ -698,7 +702,8 @@ static void ot_gpio_eg_reset(DeviceState *dev)
     memset(&s->backend_state, 0, sizeof(s->backend_state));
 
     /* reset_* fields are properties, never get reset */
-    s->data_in = s->reset_in;
+    s->data_ii = s->reset_in;
+    s->data_ib = 0;
     s->data_out = s->reset_out;
     s->data_oe = s->reset_oe;
     s->data_bi = 0;

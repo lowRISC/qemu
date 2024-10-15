@@ -189,7 +189,14 @@ See [`tools.md`](tools.md)
 
 ### GPIO
 
-  See [gpio](gpio.md) documentation for options.
+See [gpio](gpio.md) documentation for options.
+
+When using multiple GPIO IPs, traces may become highly verbose, coming from multiple source.
+It is possible to limit the trace to a single GPIO IP, using the following option:
+
+`-global ot-gpio-dj.log_id=<ot_id>` where _ot_id_ is the OpenTitan identifier of the GPIO device.
+
+When no `log_id` option is specified, all GPIO IP may emit trace messages.
 
 ### Ibex Wrapper
 

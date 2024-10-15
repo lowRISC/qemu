@@ -131,7 +131,8 @@ struct OtGpioDjState {
     uint32_t regs[REGS_COUNT];
     uint32_t data_out; /* output data */
     uint32_t data_oe; /* output enable */
-    uint32_t data_in; /* input data */
+    uint32_t data_ii; /* input data from IRQ lines */
+    uint32_t data_ib; /* input data from backend */
     uint32_t data_bi; /* ignore backend input */
     uint32_t data_gi; /* ignore GPIO input */
     uint32_t invert; /* invert signal */
@@ -144,8 +145,10 @@ struct OtGpioDjState {
     unsigned ipos;
     OtGpioDjIOState io_state;
     OtGpioDjBackendState backend_state; /* cache */
+    bool log_en; /* trace enable */
 
     char *ot_id;
+    char *log_id;
     uint32_t reset_in; /* initial input levels */
     uint32_t reset_out; /* initial output levels */
     uint32_t reset_oe; /* initial output enable vs. hi-z levels */
@@ -165,8 +168,10 @@ static void ot_gpio_dj_update_backend(OtGpioDjState *s);
 static void ot_gpio_dj_update_irqs(OtGpioDjState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
-    trace_ot_gpio_irqs(s->ot_id, s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
-                       level);
+    if (s->log_en) {
+        trace_ot_gpio_irqs(s->ot_id, s->regs[R_INTR_STATE],
+                           s->regs[R_INTR_ENABLE], level);
+    }
     for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
@@ -200,28 +205,36 @@ static void ot_gpio_dj_update_data_in(OtGpioDjState *s)
 {
     uint32_t prev = s->regs[R_DATA_IN];
 
-    uint32_t ign_mask = s->data_gi & (s->data_bi & ~s->connected);
+    uint32_t ii_mask = s->connected & ~s->data_gi & ~s->data_oe;
+    uint32_t bi_mask = ~s->connected & ~s->data_bi & ~s->data_oe;
+    uint32_t pi_mask = s->connected & s->data_gi & s->data_bi & ~s->data_oe;
 
-    /* ignore disabled input pins */
-    uint32_t data_in = s->data_in & ~ign_mask;
+    uint32_t data_ii = s->data_ii & ii_mask;
+    uint32_t data_ib = s->data_ib & bi_mask;
+    uint32_t pull_in = s->pull_en & s->pull_sel & pi_mask;
+    uint32_t data_in = data_ii | data_ib | pull_in;
 
-    /* apply pull up (/down) on non- input enabled pins */
-    data_in |= s->pull_en & s->pull_sel;
-
-    trace_ot_gpio_in_ign(s->ot_id, s->data_gi, s->data_bi, s->connected,
-                         ign_mask);
+    if (s->log_en) {
+        trace_ot_gpio_in_ignore(s->ot_id, s->connected, s->data_gi, s->data_bi,
+                                s->data_oe);
+        trace_ot_gpio_in_line(s->ot_id, s->data_ii, ii_mask, data_ii);
+        trace_ot_gpio_in_backend(s->ot_id, s->data_ib, bi_mask, data_ib);
+        trace_ot_gpio_in_pull(s->ot_id, s->pull_en, s->pull_sel, pi_mask,
+                              pull_in);
+    }
 
     /* apply inversion if any */
     data_in ^= s->invert;
 
     /* inject back output pin values into input */
-    uint32_t data_mix = data_in & ~s->data_oe;
-    data_mix |= s->data_out & s->data_oe;
+    uint32_t data_mix = data_in | (s->data_out & s->data_oe);
 
     s->regs[R_DATA_IN] = data_mix;
 
-    trace_ot_gpio_update_input(s->ot_id, s->pull_en, s->pull_sel, s->invert,
-                               data_in, data_mix);
+    if (s->log_en) {
+        trace_ot_gpio_in_update(s->ot_id, s->invert, data_in, s->data_out,
+                                data_mix);
+    }
 
     ot_gpio_dj_update_intr_level(s);
     ot_gpio_dj_update_intr_edge(s, prev);
@@ -240,9 +253,8 @@ static void ot_gpio_dj_update_data_out(OtGpioDjState *s)
      *    0   X   X   0   X   1   0     z    undef
      *    0   X   X   1   0   1   1     l     0
      *    0   X   X   1   1   1   1     h     1
-     *    1   0   0   X   X   0   0     L     0
+     *    1   X   0   X   X   0   0     L     0
      *    1   0   1   X   X   0   0     H     1
-     *    1   1   0   X   X   0   0     L     0
      *    1   1   1   0   X   1   0     z    undef
      *    1   1   1   1   0   1   1     l     0
      *    1   1   1   1   1   1   1     h     1
@@ -253,7 +265,9 @@ static void ot_gpio_dj_update_data_out(OtGpioDjState *s)
     uint32_t hi_z = ~s->pull_en & not_active;
     uint32_t weak = s->pull_en & not_active; /* Wk */
 
-    trace_ot_gpio_update_output(s->ot_id, outv, weak, hi_z);
+    if (s->log_en) {
+        trace_ot_gpio_out_update(s->ot_id, outv, weak, hi_z);
+    }
     for (unsigned ix = 0; ix < PARAM_NUM_IO; ix++) {
         unsigned bit = 1u << ix;
         int level;
@@ -272,12 +286,12 @@ static void ot_gpio_dj_update_data_out(OtGpioDjState *s)
             }
             level = (int)(bool)((weak ? s->pull_sel : outv) & bit);
         }
-        if (level != ibex_irq_get_level(&s->gpos[ix])) {
+        if (level != ibex_irq_get_level(&s->gpos[ix]) && s->log_en) {
             if (s->ibex_out & bit) {
-                trace_ot_gpio_update_out_line_ibex(s->ot_id, ix,
+                trace_ot_gpio_out_update_line_ibex(s->ot_id, ix,
                                                    ibex_gpio_repr(level));
             } else {
-                trace_ot_gpio_update_out_line_bool(s->ot_id, ix, level);
+                trace_ot_gpio_out_update_line_bool(s->ot_id, ix, level);
             }
         }
         ibex_irq_set(&s->gpos[ix], level);
@@ -291,13 +305,15 @@ static void ot_gpio_dj_strap_en(void *opaque, int no, int level)
     g_assert(no == 0);
 
     if (level) {
-        s->regs[R_HW_STRAPS_DATA_IN] = s->data_in;
+        s->regs[R_HW_STRAPS_DATA_IN] = s->regs[R_DATA_IN];
         s->regs[R_HW_STRAPS_DATA_IN_VALID] =
             R_HW_STRAPS_DATA_IN_VALID_VALID_MASK;
     }
 
-    trace_ot_gpio_strap_en(s->ot_id, no, (bool)level,
-                           s->regs[R_HW_STRAPS_DATA_IN]);
+    if (s->log_en) {
+        trace_ot_gpio_strap_en(s->ot_id, no, (bool)level,
+                               s->regs[R_HW_STRAPS_DATA_IN]);
+    }
 }
 
 static void ot_gpio_dj_in_change(void *opaque, int no, int level)
@@ -320,7 +336,9 @@ static void ot_gpio_dj_in_change(void *opaque, int no, int level)
         on = level > 0;
         weak = false;
     }
-    trace_ot_gpio_in_change(s->ot_id, no, hiz, on, weak);
+    if (s->log_en) {
+        trace_ot_gpio_in_change(s->ot_id, no, hiz, on, weak);
+    }
 
     uint32_t bit = 1u << no;
 
@@ -332,9 +350,9 @@ static void ot_gpio_dj_in_change(void *opaque, int no, int level)
 
     if (!hiz) {
         if (on) {
-            s->data_in |= bit;
+            s->data_ii |= bit;
         } else {
-            s->data_in &= ~bit;
+            s->data_ii &= ~bit;
         }
         s->data_gi &= ~bit;
     } else {
@@ -389,7 +407,9 @@ static void ot_gpio_dj_pad_attr_change(void *opaque, int no, int level)
 
     confstr[3u] = '\0';
 
-    trace_ot_gpio_pad_attr_change(s->ot_id, no, cfg, confstr);
+    if (s->log_en) {
+        trace_ot_gpio_pad_attr_change(s->ot_id, no, cfg, confstr);
+    }
 
     if (s->io_state == IO_READY) {
         ot_gpio_dj_update_data_out(s);
@@ -449,8 +469,10 @@ static uint64_t ot_gpio_dj_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_gpio_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
-                              pc);
+    if (s->log_en) {
+        trace_ot_gpio_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg),
+                                  val32, pc);
+    }
 
     return (uint64_t)val32;
 };
@@ -614,7 +636,7 @@ static void ot_gpio_dj_chr_receive(void *opaque, const uint8_t *buf, int size)
                 s->data_bi = data_in;
                 ot_gpio_dj_update_data_in(s);
             } else if (cmd == 'I') {
-                s->data_in = data_in;
+                s->data_ib = data_in;
                 ot_gpio_dj_update_data_in(s);
             } else if (cmd == 'R') {
                 ot_gpio_dj_update_backend(s);
@@ -761,6 +783,7 @@ static const MemoryRegionOps ot_gpio_dj_regs_ops = {
 
 static Property ot_gpio_dj_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtGpioDjState, ot_id),
+    DEFINE_PROP_STRING("log_id", OtGpioDjState, log_id),
     DEFINE_PROP_UINT32("in", OtGpioDjState, reset_in, 0u),
     DEFINE_PROP_UINT32("out", OtGpioDjState, reset_out, 0u),
     DEFINE_PROP_UINT32("oe", OtGpioDjState, reset_oe, 0u),
@@ -780,7 +803,11 @@ static void ot_gpio_dj_reset_enter(Object *obj, ResetType type)
             g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
 
-    trace_ot_gpio_reset(s->ot_id, "> enter");
+    s->log_en = s->log_id ? !strcmp(s->ot_id, s->log_id) : true;
+
+    if (s->log_en) {
+        trace_ot_gpio_reset(s->ot_id, "> enter");
+    }
 
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
@@ -792,10 +819,11 @@ static void ot_gpio_dj_reset_enter(Object *obj, ResetType type)
     memset(&s->backend_state, 0, sizeof(s->backend_state));
 
     /* reset_* fields are properties, never get reset */
-    s->data_in = s->reset_in;
+    s->data_ii = s->reset_in;
+    s->data_ib = 0;
     s->data_out = s->reset_out;
     s->data_oe = s->reset_oe;
-    s->data_bi = 0;
+    s->data_bi = UINT32_MAX;
     /* all input disable until signal is received, or output is forced */
     s->data_gi = ~s->reset_oe;
     s->pull_en = 0;
@@ -810,7 +838,9 @@ static void ot_gpio_dj_reset_enter(Object *obj, ResetType type)
     ot_gpio_dj_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
 
-    trace_ot_gpio_reset(s->ot_id, "< enter");
+    if (s->log_en) {
+        trace_ot_gpio_reset(s->ot_id, "< enter");
+    }
 }
 
 static void ot_gpio_dj_reset_exit(Object *obj, ResetType type)
@@ -822,7 +852,9 @@ static void ot_gpio_dj_reset_exit(Object *obj, ResetType type)
     OtGpioDjClass *c = OT_GPIO_DJ_GET_CLASS(obj);
     OtGpioDjState *s = OT_GPIO_DJ(obj);
 
-    trace_ot_gpio_reset(s->ot_id, "> exit");
+    if (s->log_en) {
+        trace_ot_gpio_reset(s->ot_id, "> exit");
+    }
 
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj, type);
@@ -838,7 +870,9 @@ static void ot_gpio_dj_reset_exit(Object *obj, ResetType type)
      * do not reset the input backend buffer as external GPIO changes is fully
      * async with OT reset. However, it should be reset when the backend changes
      */
-    trace_ot_gpio_reset(s->ot_id, "< exit");
+    if (s->log_en) {
+        trace_ot_gpio_reset(s->ot_id, "< exit");
+    }
 }
 
 static void ot_gpio_dj_realize(DeviceState *dev, Error **errp)
