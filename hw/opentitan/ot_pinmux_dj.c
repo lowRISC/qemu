@@ -77,9 +77,9 @@ REG32(MIO_OUTSEL_REGWEN,
       A_MIO_PERIPH_INSEL + REG_SIZE(PARAM_N_MIO_PERIPH_IN))
     FIELD(MIO_OUTSEL_REGWEN, EN, 0u, 1u)
 REG32(MIO_OUTSEL,
-      A_MIO_OUTSEL_REGWEN + REG_SIZE(PARAM_N_MIO_PERIPH_OUT))
+      A_MIO_OUTSEL_REGWEN + REG_SIZE(PARAM_N_MIO_PADS))
 REG32(MIO_PAD_ATTR_REGWEN,
-      A_MIO_OUTSEL + REG_SIZE(PARAM_N_MIO_PERIPH_OUT))
+      A_MIO_OUTSEL + REG_SIZE(PARAM_N_MIO_PADS))
     FIELD(MIO_PAD_ATTR_REGWEN, EN, 0u, 1u)
 REG32(MIO_PAD_ATTR,
       A_MIO_PAD_ATTR_REGWEN + REG_SIZE(PARAM_N_MIO_PADS))
@@ -220,10 +220,10 @@ static uint64_t ot_pinmux_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
     case CASE_RANGE(MIO_PERIPH_INSEL, PARAM_N_MIO_PERIPH_IN):
         val32 = regs->mio_periph_insel[reg - R_MIO_PERIPH_INSEL];
         break;
-    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PERIPH_OUT):
+    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PADS):
         val32 = regs->mio_outsel_regwen[reg - R_MIO_OUTSEL_REGWEN];
         break;
-    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PERIPH_OUT):
+    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PADS):
         val32 = regs->mio_outsel[reg - R_MIO_OUTSEL];
         break;
     case CASE_RANGE(MIO_PAD_ATTR_REGWEN, PARAM_N_MIO_PADS):
@@ -339,11 +339,11 @@ static void ot_pinmux_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                           __func__, (uint32_t)addr);
         }
         break;
-    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PERIPH_OUT):
+    case CASE_RANGE(MIO_OUTSEL_REGWEN, PARAM_N_MIO_PADS):
         val32 &= R_MIO_OUTSEL_REGWEN_EN_MASK;
         regs->mio_outsel_regwen[reg - R_MIO_OUTSEL_REGWEN] = val32;
         break;
-    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PERIPH_OUT):
+    case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PADS):
         if (OT_PINMUX_DJ_IS_REGWEN(reg, mio_outsel, MIO_OUTSEL)) {
             if (val32 >= PARAM_N_MIO_PERIPH_OUT + 2u) {
                 qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x too large: %u\n",
