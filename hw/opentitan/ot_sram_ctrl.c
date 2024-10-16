@@ -302,7 +302,7 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
                                  sizeof(uint32_t));
     }
 
-    s->regs[R_CTRL_REGWEN] &= ~R_CTRL_RENEW_SCR_KEY_MASK;
+    s->regs[R_CTRL] &= ~R_CTRL_RENEW_SCR_KEY_MASK;
     s->regs[R_STATUS] |= R_STATUS_SCR_KEY_VALID_MASK;
 }
 
