@@ -1004,12 +1004,19 @@ class QEMUContext:
             env['PATH'] = ':'.join((env['PATH'], dirname(self._qemu_cmd[0])))
         if ctx:
             for cmd in ctx:
-                if cmd.endswith('&'):
+                bkgnd = ctx_name == 'with'
+                if cmd.endswith('!'):
+                    bkgnd = False
+                    cmd = cmd[:-1]
+                elif cmd.endswith('&'):
+                    bkgnd = True
+                    cmd = cmd[:-1]
+                cmd = normpath(cmd.rstrip())
+                if bkgnd:
                     if ctx_name == 'post':
                         raise ValueError(f"Cannot execute background command "
                                          f"in [{ctx_name}] context for "
                                          f"'{self._test_name}'")
-                    cmd = normpath(cmd[:-1].rstrip())
                     rcmd = relpath(cmd)
                     if rcmd.startswith(pardir):
                         rcmd = cmd

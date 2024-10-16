@@ -360,7 +360,7 @@ Sample config for running some non-OpenTitan tests:
             ]
             with:
             [
-                ${BASEDIR}/tools/katcomm.py -t ${BASEDIR}/data/aes/nist/kat/*.rsp&
+                ${BASEDIR}/tools/katcomm.py -t ${BASEDIR}/data/aes/nist/kat/*.rsp
             ]
             timeout: 30
         }
@@ -478,11 +478,16 @@ successful. Moreover, commands in the `post` subsection are only executed if the
 completed successfully.
 
 Background commands are commands that run in the background till they complete on their own, or
-automatically once the QEMU session has completed. Note that `post` commands cannot be defined as
-background commands.
+automatically once the QEMU session has completed.
 
-To create a background command, use the same syntax as with a shell command, _i.e._ append a `&`
-after the last argument of the command to execute.
+1. `pre` and `post` commands default to synchronous execution; `post` commands cannot be defined as
+background commands.
+2. `with` commands default to background execution.
+
+To change the default execution style for a command, add a suffix to the command definition:
+
+1. append a `&` character to select background execution, useful with `pre` commands
+2. append a `!` character to select synchronous execution, useful with `with` commands
 
 #### Temporary directories
 
@@ -556,8 +561,8 @@ The script returns the error code of the most occurring error, or success (0)
 
 ## Tips
 
-* `-M int` option is quite useful to debug application startup issues.
+* `-N I` option is quite useful to debug application startup issues.
 
-* `-M in_asm` option only displays the first time that a RISC-V instruction block is translated to
-  host code, not each time the instructions are executed. Use `-M exec` to display the actual
+* `-N A` option only displays the first time that a RISC-V instruction block is translated to
+  host code, not each time the instructions are executed. Use `-N E` to display the actual
   executed instructions. Enabling single stepping is also helpful in this case (with `-s`).
