@@ -10,8 +10,8 @@ usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o C] [-r RAW]
                   [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG] [-c INT] [-i INT]
                   [-w] [-n] [-s] [-E] [-D] [-U] [--empty PARTITION]
                   [--clear-bit CLEAR_BIT] [--set-bit SET_BIT]
-                  [--toggle-bit TOGGLE_BIT] [-G {LCVAL,LCTPL,PARTS,REGS}] [-v]
-                  [-d]
+                  [--toggle-bit TOGGLE_BIT] [--fix-ecc]
+                  [-G {LCVAL,LCTPL,PARTS,REGS}] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -19,23 +19,19 @@ options:
   -h, --help            show this help message and exit
 
 Files:
-  -j HJSON, --otp-map HJSON
-                        input OTP controller memory map file
-  -m VMEM, --vmem VMEM  input VMEM file
-  -l SV, --lifecycle SV
-                        input lifecycle system verilog file
-  -o C, --output C      output filename for C file generation
-  -r RAW, --raw RAW     QEMU OTP raw image file
+  -j, --otp-map HJSON   input OTP controller memory map file
+  -m, --vmem VMEM       input VMEM file
+  -l, --lifecycle SV    input lifecycle system verilog file
+  -o, --output C        output filename for C file generation
+  -r, --raw RAW         QEMU OTP raw image file
 
 Parameters:
-  -k {auto,otp,fuz}, --kind {auto,otp,fuz}
+  -k, --kind {auto,otp,fuz}
                         kind of content in VMEM input file, default: auto
-  -e BITS, --ecc BITS   ECC bit count
-  -C CONFIG, --config CONFIG
-                        read Present constants from QEMU config file
-  -c INT, --constant INT
-                        finalization constant for Present scrambler
-  -i INT, --iv INT      initialization vector for Present scrambler
+  -e, --ecc BITS        ECC bit count
+  -C, --config CONFIG   read Present constants from QEMU config file
+  -c, --constant INT    finalization constant for Present scrambler
+  -i, --iv INT          initialization vector for Present scrambler
   -w, --wide            use wide output, non-abbreviated content
   -n, --no-decode       do not attempt to decode OTP fields
 
@@ -51,7 +47,8 @@ Commands:
   --set-bit SET_BIT     set a bit at specified location
   --toggle-bit TOGGLE_BIT
                         toggle a bit at specified location
-  -G {LCVAL,LCTPL,PARTS,REGS}, --generate {LCVAL,LCTPL,PARTS,REGS}
+  --fix-ecc             rebuild ECC
+  -G, --generate {LCVAL,LCTPL,PARTS,REGS}
                         generate C code, see doc for options
 
 Extras:
@@ -171,6 +168,13 @@ Fuse RAW images only use the v1 type.
   is only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
   a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
 
+* `--fix-ecc` may be used to rebuild the ECC values for all slots that have been modified using the
+  ECC modification operations, and any detected error.
+
+All modification features can only be performed on RAW image, VMEM images are never modified. To
+modify RAW file content, either a VMEM file is required in addition to the RAW file as the data
+source, or the `-U` is required to tell that the RAW file should be read, modified and written back.
+
 #### Note
 
 Earlgrey OTP virtual device has not been updated to support Present scrambler, so neither `-c` nor
@@ -188,6 +192,10 @@ address 2N and 2N+1 are considered the same.
 If the bit is larger than the data slot, it indicates the location with the ECC part, _e.g._ if OTP
 fuses are organized as 16-bit slots wtih 6-bit ECC, bit 0 to 15 indicates a bit into the data slot,
 while bit 16 to 21 indicates an ECC bit.
+
+It is possible to tell the script to rebuild the ECC value for the modified bits, using `--fix-ecc`.
+The default behavior is to not automatically update the ECC value, as the primary usage for these
+bit modification operations is to test the error detection and correction feature.
 
 ### Generation [#generation]
 

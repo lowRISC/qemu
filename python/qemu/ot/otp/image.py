@@ -71,6 +71,7 @@ class OtpImage:
         self._digest_constant: Optional[int] = None
         self._partitions: list[OtpPartition] = []
         self._part_offsets: list[int] = []
+        self._dirty_offsets: list[int] = []
 
     @property
     def version(self) -> int:
@@ -109,6 +110,7 @@ class OtpImage:
         self._ecc_bytes = header['dlength']
         self._ecc_granule = header['eccgran']
         self._ecc_bytes = (self._ecc_bits + 7) // 8
+        self._dirty_offsets.clear()
         if header['version'] > 1:
             self._digest_iv = header['digiv']
             self._digest_constant = header['digfc']
@@ -434,7 +436,7 @@ class OtpImage:
                             off, chunk, ecc)
             if err > 0:
                 partinfo = f' in {partition.name}' if partition else ''
-                if getattr(partition, 'integrity', False):
+                if not getattr(partition, 'integrity', False):
                     self._log.warning('Ignoring ECC error%s @ '
                                       '0x%04x', partinfo, off)
                     continue
@@ -448,6 +450,7 @@ class OtpImage:
                                       'data:%04x->%04x ecc:%02x',
                                       'ed' if recover else 'able',
                                       off, partinfo, chunk, fchunk, ecc)
+                self._dirty_offsets.append(off)
                 if recover:
                     self._data[off:off+granule] = fchunk.to_bytes(granule,
                                                                   'little')
@@ -468,6 +471,40 @@ class OtpImage:
             self._log.info('Updating partition %s with recover data', part.name)
             part.load(bfp)
         return fatal_cnt, err_cnt
+
+    def fix_ecc(self) -> int:
+        """Fix all ECC regions that have been flagged as defective or whose
+           data have been altered.
+
+           :return: how many ECC locations have been updated
+        """
+        if not self._dirty_offsets:
+            self._log.info('No ECC to fix')
+            return 0
+        dirty_len = len(self._dirty_offsets)
+        self._log.info('%d dirty locations to fix', dirty_len)
+        granule = self._ecc_granule
+        ecclen = (self._ecc_bits + 7) // 8
+        if ecclen != 1:
+            raise NotImplementedError('Multi-byte ECC not yet supported')
+        bitgran = granule * 8
+        bitcount = bitgran + self._ecc_bits
+        try:
+            ecc_fn = getattr(self, f'_compute_ecc_{bitcount}_{bitgran}')
+        except AttributeError as exc:
+            raise NotImplementedError('ECC function for {self._ecc.bits}'
+                                      'not supported') from exc
+
+        for off in self._dirty_offsets:
+            data = int.from_bytes(self._data[off:off+granule], 'little')
+            new_ecc = ecc_fn(data)
+            eccoff = off//granule
+            old_ecc = self._ecc[eccoff]
+            self._log.info('New ECC @ 0x%04x: 0x%x -> 0x%x', off, old_ecc,
+                           new_ecc)
+            self._ecc[eccoff] = new_ecc
+        self._dirty_offsets.clear()
+        return dirty_len
 
     def _compute_ecc_22_16(self, data: int) -> int:
 
@@ -618,8 +655,9 @@ class OtpImage:
                 self._log.info('Changed data bit %d @ 0x%x: 0x%x -> 0x%x',
                                bit, off, old, chunk)
                 self._data[off:off+granule] = chunk.to_bytes(granule, 'little')
+                self._dirty_offsets.append(off)
 
-    def _get_partition_bounds(self, partref: Union[str|OtpPartition]) \
+    def _get_partition_bounds(self, partref: Union[str, OtpPartition]) \
             -> Optional[tuple[int, int]]:
         if isinstance(partref, str):
             name = partref

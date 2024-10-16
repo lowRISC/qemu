@@ -85,6 +85,8 @@ def main():
                               help='set a bit at specified location')
         commands.add_argument('--toggle-bit', action='append',  default=[],
                               help='toggle a bit at specified location')
+        commands.add_argument('--fix-ecc', action='store_true',
+                              help='rebuild ECC')
         commands.add_argument('-G', '--generate', choices=genfmts,
                               help='generate C code, see doc for options')
         extra = argparser.add_argument_group(title='Extras')
@@ -107,11 +109,15 @@ def main():
         if not args.vmem and args.kind:
             argparser.error('VMEM kind only applies for VMEM input files')
 
+        if args.fix_ecc and not (args.raw and (args.vmem or args.update)):
+            argparser.error('Can only fix ECC when RAW file is generated or '
+                            'updated')
+
         if args.update:
             if not args.raw:
                 argparser.error('No RAW file specified for update')
             if args.vmem:
-                argparser.error('RAW update mutuallly exclusive with VMEM')
+                argparser.error('RAW update mutually exclusive with VMEM')
 
         bit_actions = ('clear', 'set', 'toggle')
         alter_bits: list[list[tuple[int, int]]] = []
@@ -224,6 +230,8 @@ def main():
                         getattr(otp, f'{bitact}_bits')(alter_bits[pos])
                 if not args.update and any(alter_bits):
                     otp.verify_ecc(False)
+                if args.fix_ecc:
+                    otp.fix_ecc()
                 # when both RAW and VMEM are selected, QEMU RAW image file
                 # should be generated
                 with open(args.raw, 'wb') as rfp:
