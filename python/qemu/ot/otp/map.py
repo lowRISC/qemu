@@ -103,15 +103,11 @@ class OtpMap:
                 item_name = item['name']
                 del item['name']
                 item_size = int(item['size'])
-                # handle very weird case where the size define the number of
-                # a multibit bool but not its size in bytes
-                item_size = round_up(item_size, 4)
                 item['size'] = item_size
                 assert item_name not in items
                 items[item_name] = item
             part['items'] = items
-            # size are always encoded as strings, not integers
-            items_size = sum(int(i.get('size')) for i in items.values())
+            items_size = sum(it['size'] for it in items.values())
             # some partitions define their overall size, most don't
             # if the size is defined, it takes precedence over the sum of its
             # items

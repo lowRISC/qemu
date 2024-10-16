@@ -159,6 +159,7 @@ class OtpPartition:
             itsize = itdef['size']
             itvalue = buf.read(itsize)
             soff = f'[{f"{base+offset:d}":>5s}]' if base is not None else ''
+            offset += itsize
             if itname.startswith(f'{pname}_'):
                 name = f'{pname}:{itname[len(pname)+1:]}'
             else:
@@ -190,7 +191,6 @@ class OtpPartition:
                              name, soff, str(OtpMap.HARDENED_BOOLEANS[ival]))
                         continue
                 emit('%-48s %s %x', name, soff, ival)
-            offset += itsize
         if self._digest_bytes is not None:
             emit('%-48s %s %s', f'{pname}:DIGEST', soff,
                  hexlify(self._digest_bytes).decode())
