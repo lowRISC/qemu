@@ -363,7 +363,8 @@ class QEMUWrapper:
                     wret = tdef.context.check_error()
                     if wret:
                         ret = wret
-                        last_error = 'Fail to execute worker'
+                        last_error = tdef.context.first_error or \
+                            'Fail to execute worker'
                         raise OSError(wret, last_error)
                 xret = proc.poll()
                 if xret is not None:
@@ -857,6 +858,7 @@ class QEMUContextWorker:
         self._resume = False
         self._thread: Optional[Thread] = None
         self._ret = None
+        self._first_error = ''
 
     def run(self):
         """Start the worker.
@@ -886,6 +888,11 @@ class QEMUContextWorker:
         """
         return normpath(self._cmd.split(' ', 1)[0])
 
+    @property
+    def first_error(self):
+        """Return the message of the first error, if any."""
+        return self._first_error
+
     def _run(self):
         self._resume = True
         if self._sync and not self._sync.is_set():
@@ -907,6 +914,8 @@ class QEMUContextWorker:
             while self._log_q:
                 err, qline = self._log_q.popleft()
                 if err:
+                    if not self._first_error:
+                        self._first_error = qline
                     loglevel = classifier.classify(qline)
                     self._log.log(loglevel, qline)
                 else:
@@ -935,8 +944,10 @@ class QEMUContextWorker:
         # retrieve the remaining log messages
         stdlog = self._log.info if self._ret else self._log.debug
         try:
-            for sfp, logger in zip(proc.communicate(timeout=0.1),
-                                   (stdlog, self._log.error)):
+            outs, errs = proc.communicate(timeout=0.1)
+            if not self._first_error:
+                self._first_error = errs.split('\n', 1)[0]
+            for sfp, logger in zip((outs, errs), (stdlog, self._log.error)):
                 for line in sfp.split('\n'):
                     line = line.strip()
                     if line:
@@ -977,6 +988,7 @@ class QEMUContext:
         self._context = context
         self._env = env or {}
         self._workers: list[Popen] = []
+        self._first_error: str = ''
 
     def execute(self, ctx_name: str, code: int = 0,
                 sync: Optional[Event] = None) -> None:
@@ -1050,6 +1062,7 @@ class QEMUContext:
                         proc.kill()
                         outs, errs = proc.communicate()
                         ret = proc.returncode
+                    self._first_error = errs.split('\n', 1)[0]
                     for sfp, logger in zip(
                             (outs, errs),
                             (self._clog.debug,
@@ -1061,8 +1074,9 @@ class QEMUContext:
                     if ret:
                         self._clog.error("Fail to execute '%s' command for "
                                          "'%s'", cmd, self._test_name)
-                        raise OSError(ret,
-                                      f'Cannot execute [{ctx_name}] command')
+                        errmsg = self._first_error or \
+                            f'Cannot execute [{ctx_name}] command'
+                        raise OSError(ret, errmsg)
         if ctx_name == 'post':
             if not self._qfm.keep_temporary:
                 self._qfm.delete_default_dir(self._test_name)
@@ -1076,9 +1090,16 @@ class QEMUContext:
             ret = worker.exit_code()
             if not ret:
                 continue
+            if not self._first_error:
+                self._first_error = worker.first_error
             self._clog.error("%s exited with %d", worker.command, ret)
             return ret
         return 0
+
+    @property
+    def first_error(self):
+        """Return the message of the first error, if any."""
+        return self._first_error
 
     def finalize(self) -> int:
         """Terminate any running background command, in reverse order.
@@ -1818,7 +1839,7 @@ def main():
                            help='increase verbosity')
         extra.add_argument('-V', '--vcp-verbose', action='count',
                            help='increase verbosity of QEMU virtual comm ports')
-        extra.add_argument('-d', action='store_true',
+        extra.add_argument('-d', dest='dbg', action='store_true',
                            help='enable debug mode')
         extra.add_argument('--quiet', action='store_true',
                            help='quiet logging: only be verbose on errors')
@@ -1841,8 +1862,8 @@ def main():
             opts = []
         cli_opts = list(opts)
         args = argparser.parse_args(sargv)
-        if args.debug is not None:
-            debug = args.debug
+        if args.dbg is not None:
+            debug = args.dbg
 
         if _HJSON_ERROR:
             argparser.error('Missing HJSON module: {_HJSON_ERROR}')
