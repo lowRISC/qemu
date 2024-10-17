@@ -188,6 +188,8 @@ ot_flash_op_start(int op) "%d"
 
 # ot_gpio.c
 
+ot_gpio_backend_recv(const char *id, char cmd, uint32_t data_in) "%s: %c:%08x"
+ot_gpio_backend_send(const char *id, const char *buf) "%s: %s"
 ot_gpio_in_change(const char *id, int no, bool ign, bool on, bool weak) "%s: gpio[%02d] hiz:%u on:%u wk:%u"
 ot_gpio_in_ignore(const char *id, uint32_t cn, uint32_t gi, uint32_t bi, uint32_t oe) "%s: cx:0x%08x gi:0x%08x bi:0x%08x oe:0x%08x"
 ot_gpio_in_line(const char *id, uint32_t ii, uint32_t im, uint32_t di) "%s: ii:0x%08x im:0x%08x di:0x%08x"
