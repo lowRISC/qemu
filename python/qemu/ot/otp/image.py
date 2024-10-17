@@ -434,8 +434,8 @@ class OtpImage:
             err, fchunk = ecc_fn(chunk, ecc)
             self._log.debug("ECC check @ %u data:%04x ecc:%02x",
                             off, chunk, ecc)
+            partinfo = f' in {partition.name}' if partition else ''
             if err > 0:
-                partinfo = f' in {partition.name}' if partition else ''
                 if not getattr(partition, 'integrity', False):
                     self._log.warning('Ignoring ECC error%s @ '
                                       '0x%04x', partinfo, off)
