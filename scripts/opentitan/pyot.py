@@ -928,7 +928,7 @@ class QEMUContextWorker:
             # give some time for the process to complete on its own
             proc.wait(0.2)
             self._ret = proc.returncode
-            self._log.debug('"%s" completed with %d', self.command, self._ret)
+            self._log.debug("'%s' completed with '%d'", self.command, self._ret)
         except TimeoutExpired:
             # still executing
             proc.terminate()
@@ -938,7 +938,7 @@ class QEMUContextWorker:
                 self._ret = 0
             except TimeoutExpired:
                 # otherwise kill it
-                self._log.error('Force-killing command "%s"', self.command)
+                self._log.error("Force-killing command '%s'", self.command)
                 proc.kill()
                 self._ret = proc.returncode
         # retrieve the remaining log messages
@@ -1062,7 +1062,8 @@ class QEMUContext:
                         proc.kill()
                         outs, errs = proc.communicate()
                         ret = proc.returncode
-                    self._first_error = errs.split('\n', 1)[0]
+                    if not self._first_error:
+                        self._first_error = errs.split('\n', 1)[0]
                     for sfp, logger in zip(
                             (outs, errs),
                             (self._clog.debug,
@@ -1113,8 +1114,10 @@ class QEMUContext:
             ret = worker.stop()
             rets.add(ret)
             if ret:
-                self._clog.warning('Command "%s" has failed for "%s": %d',
+                self._clog.warning("Command '%s' has failed for '%s': %d",
                                    worker.command, self._test_name, ret)
+                if not self._first_error:
+                    self._first_error = worker.first_error
         return max(rets)
 
 
@@ -1218,9 +1221,9 @@ class QEMUExecuter:
                               float(self._argdict.get('timeout_factor',
                                                       DEFAULT_TIMEOUT_FACTOR))))
                 self._log.debug('Execute %s', basename(self._argdict['exec']))
-                ret, xtime, err = qot.run(self._qemu_cmd, timeout,
-                                          self.get_test_radix(app), None,
-                                          self.DEFAULT_START_DELAY)
+                adef = EasyDict(command=self._qemu_cmd, timeout=timeout,
+                                start_delay=self.DEFAULT_START_DELAY)
+                ret, xtime, err = qot.run(adef)
                 results[ret] += 1
                 sret = self.RESULT_MAP.get(ret, ret)
                 icount = self._argdict.get('icount')
@@ -1262,6 +1265,8 @@ class QEMUExecuter:
                             tret = 98
                     if tret == 0 and cret != 0:
                         tret = 99
+                    if tret and not err:
+                        err = exec_info.context.first_error
                     exec_info.context.execute('post', tret)
                 # pylint: disable=broad-except
                 except Exception as exc:
