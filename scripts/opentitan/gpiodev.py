@@ -91,6 +91,7 @@ class GpioDevice:
         'O': 'output',
         'P': 'pull',
         'Q': 'query',
+        'Y': 'ynput',
         'Z': 'hi_z',
     }
 
@@ -111,6 +112,7 @@ class GpioDevice:
         self._wpud = 0  # weak pull (1: up 0: down)
         self._inact = 0xffff_ffff  # input activated
         self._in = 0  # input value (to peer)
+        self._yn = 0  # mirror input value handled by QEMU
         self._error_count = 0
         self._record = []
 
@@ -155,6 +157,7 @@ class GpioDevice:
                         break
             try:
                 self._log.info('Disconnect from %s:%d', *addr)
+                peer.close()
                 peer.shutdown(SHUT_RDWR)
             except OSError:
                 pass
@@ -163,6 +166,7 @@ class GpioDevice:
             if fail and fatal:
                 break
         try:
+            self._socket.close()
             self._socket.shutdown(SHUT_RDWR)
         except OSError:
             pass
@@ -183,15 +187,15 @@ class GpioDevice:
             if resp is not None:
                 for oline in resp.split('\n'):
                     if oline:
-                        self._log.info('out %s', oline.strip())
+                        self._log.info('send %s', oline.strip())
                 out = resp.encode('utf8')
                 peer.send(out)
 
     def _terminate(self, peer: socket, end: int) -> None:
-        resp = self._build_reply(mask=end, input=end)
+        resp = self._build_reply(mask=~end, input=end)
         for oline in resp.split('\n'):
             if oline:
-                self._log.info('out %s', oline.strip())
+                self._log.info('send %s', oline.strip())
         out = resp.encode('utf8')
         peer.send(out)
         sleep(0.1)
@@ -217,7 +221,7 @@ class GpioDevice:
         if handler is None:
             self._log.warning('Unimplemented handler for %s', command)
             return None
-        self._log.info('Execute %s: 0x%08x', command, word)
+        self._log.info('recv %s: 0x%08x', command, word)
         self._record.append((cmd, word))
         # pylint: disable=not-callable
         out = handler(word)
@@ -261,10 +265,14 @@ class GpioDevice:
     def _inject_hi_z(self, value) -> None:
         self._hiz = value
 
+    def _inject_ynput(self, value) -> None:
+        self._yn = value
+
     @classmethod
     def _build_reply(cls, **kwargs) -> str:
         lines = []
         for cmd, value in kwargs.items():
+            value &= (1 << 32) - 1
             lines.append(f'{cls.OUTPUT_CMD_MAP[cmd]}:{value:08x}\r\n')
         return ''.join(lines)
 
