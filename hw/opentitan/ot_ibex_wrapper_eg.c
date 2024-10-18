@@ -237,6 +237,7 @@ struct OtIbexWrapperEgState {
     char *ot_id;
     OtEDNState *edn;
     uint8_t edn_ep;
+    uint8_t qemu_version;
     CharBackend chr;
 };
 
@@ -951,6 +952,7 @@ static Property ot_ibex_wrapper_eg_properties[] = {
     DEFINE_PROP_LINK("edn", OtIbexWrapperEgState, edn, TYPE_OT_EDN,
                      OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtIbexWrapperEgState, edn_ep, UINT8_MAX),
+    DEFINE_PROP_UINT8("qemu_version", OtIbexWrapperEgState, qemu_version, 0),
     DEFINE_PROP_CHR("logdev", OtIbexWrapperEgState, chr), /* optional */
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -993,7 +995,8 @@ static void ot_ibex_wrapper_eg_reset(DeviceState *dev)
     s->regs[R_IBUS_REGWEN_1] = 0x1u;
     s->regs[R_DBUS_REGWEN_0] = 0x1u;
     s->regs[R_DBUS_REGWEN_1] = 0x1u;
-    s->regs[R_FPGA_INFO] = 0x554d4551u; /* 'QEMU' in LE */
+    /* 'QMU_' in LE, _ is the QEMU version stored in the MSB */
+    s->regs[R_FPGA_INFO] = 0x00554d51u + (((uint32_t)s->qemu_version) << 24u);
     s->entropy_requested = false;
     /* LC cycle triggerring is not supported on Earlgrey emulation for now */
     s->cpu_en_bm = 1u << OT_IBEX_LC_CTRL_CPU_EN;

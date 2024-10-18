@@ -191,6 +191,13 @@ See [`tools.md`](tools.md)
 
   See [gpio](gpio.md) documentation for options.
 
+### Ibex Wrapper
+
+The `FPGA_INFO` register of the Ibex Wrapper device is used to report that the HW platform is a QEMU
+virtual machine. It contains three ASCII chars `QMU` followed with a configurable _version_ field in
+the MSB, whose meaning is not defined. It can be any 8-byte value, and defaults to 0x0. To configure
+this version field, use the `qemu_version` property of the Ibex Wrapper device.
+
 ### OTBN
 
 * `-global ot-otbn.logfile=<filename>` dumps executed instructions on OTBN core into the specified

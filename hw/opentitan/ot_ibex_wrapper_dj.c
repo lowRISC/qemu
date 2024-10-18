@@ -719,6 +719,7 @@ struct OtIbexWrapperDjState {
     char *lc_ignore_ids;
     OtEDNState *edn;
     uint8_t edn_ep;
+    uint8_t qemu_version;
     bool lc_ignore;
     CharBackend chr;
 };
@@ -1498,6 +1499,7 @@ static Property ot_ibex_wrapper_dj_properties[] = {
                      OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtIbexWrapperDjState, edn_ep, UINT8_MAX),
     DEFINE_PROP_BOOL("lc-ignore", OtIbexWrapperDjState, lc_ignore, false),
+    DEFINE_PROP_UINT8("qemu_version", OtIbexWrapperDjState, qemu_version, 0),
     DEFINE_PROP_STRING("lc-ignore-ids", OtIbexWrapperDjState, lc_ignore_ids),
     DEFINE_PROP_CHR("logdev", OtIbexWrapperDjState, chr),
     DEFINE_PROP_END_OF_LIST(),
@@ -1552,7 +1554,8 @@ static void ot_ibex_wrapper_dj_reset(DeviceState *dev)
         s->regs[R_IBUS_REGWEN_0 + ix] = 0x1u;
         s->regs[R_DBUS_REGWEN_0 + ix] = 0x1u;
     }
-    s->regs[R_FPGA_INFO] = 0x554d4551u; /* 'QEMU' in LE */
+    /* 'QMU_' in LE, _ is the QEMU version stored in the MSB */
+    s->regs[R_FPGA_INFO] = 0x00554d51u + (((uint32_t)s->qemu_version) << 24u);
     s->entropy_requested = false;
     s->cpu_en_bm = s->lc_ignore ? (1u << OT_IBEX_LC_CTRL_CPU_EN) : 0;
 
