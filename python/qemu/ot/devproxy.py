@@ -1314,6 +1314,11 @@ class ProxyEngine:
             self._port.close()
             self._port = None
 
+    @property
+    def socket(self) -> Optional[socket]:
+        """Get the current socket to connect to the VM, if any."""
+        return self._socket
+
     def quit(self, code: int) -> None:
         """Tell the remote target to exit the application.
         """
