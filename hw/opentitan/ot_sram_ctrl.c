@@ -133,6 +133,7 @@ struct OtSramCtrlState {
     uint32_t init_chunk_words; /* init chunk size in words */
     bool ifetch; /* only used when no otp_ctrl is defined */
     bool noinit; /* discard initialization emulation feature */
+    bool noswitch; /* do not switch to performance/host RAM after init */
 };
 
 #ifdef OT_SRAM_CTRL_DEBUG
@@ -224,10 +225,14 @@ static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count,
 
         s->init_slot_bm = g_new0(uint64_t, s->init_slot_count);
 
-        /* switch memory to SRAM */
-        trace_ot_sram_ctrl_initialization_complete(s->ot_id, "ctrl");
-
-        qemu_bh_schedule(s->switch_mr_bh);
+        if (!s->noswitch) {
+            /* switch memory to SRAM */
+            trace_ot_sram_ctrl_initialization_complete(s->ot_id, "ctrl");
+            qemu_bh_schedule(s->switch_mr_bh);
+        } else {
+            trace_ot_sram_ctrl_initialization_complete(s->ot_id,
+                                                       "ctrl/noswitch");
+        }
 
         return true;
     }
@@ -592,14 +597,22 @@ static MemTxResult ot_sram_ctrl_mem_init_write_with_attrs(
 
         if (!s->init_slot_bm[slot]) {
             if (ot_sram_ctrl_mem_is_fully_initialized(s)) {
-                s->initialized = true;
-                /*
-                 * perform the memory switch in a BH so that the current mr
-                 * is not in use when switching
-                 */
-                trace_ot_sram_ctrl_initialization_complete(s->ot_id, "write");
+                if (!s->noswitch) {
+                    /*
+                     * perform the memory switch in a BH so that the current mr
+                     * is not in use when switching
+                     */
+                    trace_ot_sram_ctrl_initialization_complete(s->ot_id,
+                                                               "write");
 
-                qemu_bh_schedule(s->switch_mr_bh);
+                    qemu_bh_schedule(s->switch_mr_bh);
+                } else {
+                    if (!s->initialized) {
+                        trace_ot_sram_ctrl_initialization_complete(
+                            s->ot_id, "write/noswitch");
+                    }
+                }
+                s->initialized = true;
             }
         }
     }
@@ -615,6 +628,7 @@ static Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_UINT32("wci_size", OtSramCtrlState, init_chunk_words, 0u),
     DEFINE_PROP_BOOL("ifetch", OtSramCtrlState, ifetch, false),
     DEFINE_PROP_BOOL("noinit", OtSramCtrlState, noinit, false),
+    DEFINE_PROP_BOOL("noswitch", OtSramCtrlState, noswitch, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
