@@ -38,6 +38,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
+#include "trace/trace-hw_opentitan.h"
 
 
 /* clang-format off */
@@ -275,6 +276,11 @@ static void ot_socdbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
 {
     bool cpu_boot_done = false;
 
+    trace_ot_socdbg_ctrl_tick_fsm(s->ot_id, STATE_NAME(s->fsm_state),
+                                  s->boot_status_bm, s->lc_broadcast_bm,
+                                  s->socdbg_bm, s->dft_ignore,
+                                  s->boot_continue);
+
     switch (s->fsm_state) {
     case ST_IDLE:
         if (s->boot_status_bm & R_BOOT_STATUS_LC_DONE_MASK) {
@@ -319,7 +325,11 @@ static void ot_socdbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
     }
 
     /* as with PwrMgr, use simple boolean value, not MuBi4 */
-    ibex_irq_set(&s->cpu_boot[CPU_BOOT_DONE], (int)cpu_boot_done);
+    int cpu_boot_done_i = (int)cpu_boot_done;
+    if (ibex_irq_get_level(&s->cpu_boot[CPU_BOOT_DONE]) != cpu_boot_done_i) {
+        trace_ot_socdbg_ctrl_cpu_boot_done(s->ot_id, cpu_boot_done_i);
+    }
+    ibex_irq_set(&s->cpu_boot[CPU_BOOT_DONE], cpu_boot_done_i);
 }
 
 static void ot_socdbg_ctrl_update(OtSoCDbgCtrlState *s)
@@ -658,9 +668,8 @@ ot_socdbg_ctrl_dmi_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
 
-    uint32_t pc = ibex_get_current_pc();
     trace_ot_socdbg_ctrl_dmi_io_read_out(s->ot_id, (uint32_t)addr,
-                                         REG_NAME(DMI, reg), val32, pc);
+                                         REG_NAME(DMI, reg), val32);
 
     return (uint32_t)val32;
 }
@@ -674,9 +683,8 @@ static void ot_socdbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
 
     hwaddr reg = R32_OFF(addr);
 
-    uint32_t pc = ibex_get_current_pc();
     trace_ot_socdbg_ctrl_dmi_io_write(s->ot_id, (uint32_t)addr,
-                                      REG_NAME(DMI, reg), val32, pc);
+                                      REG_NAME(DMI, reg), val32);
 
     switch (reg) {
     case R_DMI_CONTROL:
@@ -733,6 +741,7 @@ static void ot_socdbg_ctrl_reset_enter(Object *dev, ResetType type)
     ot_socdbg_ctrl_core_update_irq(s);
     ibex_irq_set(&s->alert, 0);
     ibex_irq_set(&s->cpu_boot[CPU_BOOT_GOOD], (int)false);
+    ibex_irq_set(&s->cpu_boot[CPU_BOOT_DONE], (int)false);
 
     CHANGE_STATE(s, IDLE);
     s->fsm_tick_count = 0u;
@@ -742,6 +751,7 @@ static void ot_socdbg_ctrl_reset_enter(Object *dev, ResetType type)
     s->socdbg_state = OT_SOCDBG_ST_PROD;
     s->debug_policy = s->dbg_locked;
     s->debug_valid = false;
+    s->boot_continue = false;
 }
 
 static void ot_socdbg_ctrl_reset_exit(Object *obj, ResetType type)
@@ -760,7 +770,6 @@ static void ot_socdbg_ctrl_reset_exit(Object *obj, ResetType type)
 
     SCHEDULE_FSM(s);
 }
-
 
 static void ot_socdbg_ctrl_realize(DeviceState *dev, Error **errp)
 {
