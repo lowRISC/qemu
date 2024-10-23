@@ -98,6 +98,8 @@ class JtagBitbangController(JtagController):
         if self._last is not None:
             self._tdi = self._last
             self._last = None
+        else:
+            self._tdi = False
         if self._link_log:
             self._log.debug('write TMS [%d] %s', len(modesel), modesel)
         tck = self._tck
