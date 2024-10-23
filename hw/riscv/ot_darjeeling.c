@@ -644,7 +644,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { .base = 0x21140000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("size", 0x100u)
+            IBEX_DEV_UINT_PROP("size", 0x100u),
+            IBEX_DEV_BOOL_PROP("warn-once", true)
         ),
     },
     [OT_DJ_SOC_DEV_CSRNG] = {

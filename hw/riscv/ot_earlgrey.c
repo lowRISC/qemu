@@ -545,6 +545,20 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 1u)
+            // Scrambling support is yet to be backported from Darjeeling
+            // implementation. Those are the Earlgrey constants defined for
+            // Earlgrey-M2.5.2-RC0:
+            // IBEX_DEV_STRING_PROP("scrmbl_key",
+            //     "605fefe9977b00b6fdc21d577a172d04"
+            //     "7dcf0eebbdd268afd4e2506df1d0603f"),
+            // IBEX_DEV_STRING_PROP("digest_const",
+            //     "30faa0c47e3809585a24109fbc53e920"),
+            // IBEX_DEV_STRING_PROP("digest_iv",
+            //     "af12b341a53780ab"),
+            // IBEX_DEV_STRING_PROP("sram_const",
+            //     "5f2c075769000c39cda36eab93cd263d"),
+            // IBEX_DEV_STRING_PROP("sram_iv",
+            //     "f2dae31d857d1d39")
         ),
     },
     [OT_EG_SOC_DEV_OTP_BACKEND] = {
@@ -578,7 +592,19 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_BOOL_PROP("volatile_raw_unlock", true),
             IBEX_DEV_UINT_PROP("kmac-app", 1u),
             IBEX_DEV_STRING_PROP("raw_unlock_token",
-                                 "ea2b3f32cbe77554e43c8ea7ebf197c2")
+                                 "51e6121c8694c6bc41f36e2175199296"),
+            IBEX_DEV_STRING_PROP("lc_state_first",
+                "f29f2eb011e290c9210fb1d4302b323db0e81df4"
+                "a59985e47749732c6c910d3015a62e61b0c383c1"),
+            IBEX_DEV_STRING_PROP("lc_state_last",
+                "f29f3fb41fe3d2fda7afffd676abb3ffbaeefff4"
+                "a5ffefe4ff4f7fbeed9ddff29db77ee5b7d3d7e5"),
+            IBEX_DEV_STRING_PROP("lc_trscnt_first",
+                "3cfc8321c4f818ac4d53d244a4c4631e90656423004b81ba"
+                "aa5b692c13f2f21d609b685ec45d05042876e8628a8b0dd0"),
+            IBEX_DEV_STRING_PROP("lc_trscnt_last",
+                "3cfcfb23eef99fad6f7ffb44e6ce7b5ed47767e753cbabfe"
+                "bf5fe96e77f3f35d6f9f68ffde5d5564be76fd6bfb8fcdfb")
         )
     },
     [OT_EG_SOC_DEV_ALERT_HANDLER] = {
@@ -848,7 +874,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41140000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("size", 0x100u)
+            IBEX_DEV_UINT_PROP("size", 0x100u),
+            IBEX_DEV_BOOL_PROP("warn-once", true)
         )
     },
     [OT_EG_SOC_DEV_CSRNG] = {
