@@ -98,19 +98,19 @@ class OtConfiguration:
         if socdbg:
             for raw in {s for s in socdbg if int(s, 16) == 0}:
                 del socdbg[raw]
-        osoc = list(socdbg)
-        self._socdbg = osoc[0], osoc[-1]
-        self._log.info("Socdbg first: '%s', last '%s'",
-                       socdbg[self._socdbg[0]], socdbg[self._socdbg[1]])
+            osoc = list(socdbg)
+            self._socdbg = osoc[0], osoc[-1]
+            self._log.info("Socdbg first: '%s', last '%s'",
+                           socdbg[self._socdbg[0]], socdbg[self._socdbg[1]])
         ownership = lcext.get_configuration('OWNERSHIP')
         if ownership:
             for raw in {s for s in ownership if int(s, 16) == 0}:
                 del ownership[raw]
-        osoc = list(ownership)
-        self._ownership = osoc[0], osoc[-1]
-        self._log.info("Socdbg first: '%s', last '%s'",
-                       ownership[self._ownership[0]],
-                       ownership[self._ownership[1]])
+            osoc = list(ownership)
+            self._ownership = osoc[0], osoc[-1]
+            self._log.info("Ownership first: '%s', last '%s'",
+                           ownership[self._ownership[0]],
+                           ownership[self._ownership[1]])
 
     def load_otp_constants(self, otppath: str) -> None:
         """Load OTP data from RTL file."""
@@ -120,7 +120,7 @@ class OtConfiguration:
         self._otp.update(otpconst.get_digest_pair('cnsty_digest', 'digest'))
         self._otp.update(otpconst.get_digest_pair('sram_data_key', 'sram'))
 
-    def save(self, socid: Optional[str], count: Optional[int],
+    def save(self, variant: str, socid: Optional[str], count: Optional[int],
              outpath: Optional[str]) \
             -> None:
         """Save QEMU configuration file using a INI-like file format,
@@ -128,7 +128,7 @@ class OtConfiguration:
         """
         cfg = ConfigParser()
         self._generate_roms(cfg, socid, count or 1)
-        self._generate_otp(cfg, socid)
+        self._generate_otp(cfg, variant, socid)
         self._generate_life_cycle(cfg, socid)
         if outpath:
             with open(outpath, 'wt') as ofp:
@@ -162,7 +162,7 @@ class OtConfiguration:
                 kname = camel_to_snake_case(pmo.group(1))
                 if multi:
                     imo = re.search(r'(\d+)$', modname)
-                    idx = int(imo.group(1)) if imo else 'None'
+                    idx = int(imo.group(1)) if imo else None
                     if idx not in odict:
                         odict[idx] = {}
                     odict[idx][kname] = value
@@ -187,9 +187,9 @@ class OtConfiguration:
                     self.add_pair(romdata, kname, val)
                 cfg[f'ot_device "{romname}"'] = romdata
 
-    def _generate_otp(self, cfg: ConfigParser, socid: Optional[str] = None) \
-            -> None:
-        nameargs = ['ot-otp-dj']
+    def _generate_otp(self, cfg: ConfigParser, variant: str,
+                      socid: Optional[str] = None) -> None:
+        nameargs = [f'ot-otp-{variant}']
         if socid:
             nameargs.append(socid)
         otpname = '.'.join(nameargs)
@@ -223,7 +223,7 @@ class OtConfiguration:
 def main():
     """Main routine"""
     debug = True
-    default_top = 'darjeeling'
+    default_top = 'Darjeeling'
     try:
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
@@ -264,6 +264,11 @@ def main():
             argparser.error('Invalid OpenTitan top directory')
         ot_dir = normpath(topdir)
         top = f'top_{args.top.lower()}'
+        if args.top.lower() != default_top.lower():
+            var = ''.join(w[0]
+                          for w in camel_to_snake_case(args.top).split('_'))
+        else:
+            var = 'dj'
 
         if not args.topcfg:
             cfgpath = joinpath(ot_dir, f'hw/{top}/data/autogen/{top}.gen.hjson')
@@ -290,7 +295,7 @@ def main():
         cfg.load_top_config(cfgpath)
         cfg.load_lifecycle(lcpath)
         cfg.load_otp_constants(ocpath)
-        cfg.save(args.socid, args.count, args.out)
+        cfg.save(var, args.socid, args.count, args.out)
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)
