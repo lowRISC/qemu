@@ -529,7 +529,7 @@ class QEMUWrapper:
             pass
         # try to find in the regular expression whether the match is one of
         # the alternative in the first group
-        alts = re.sub(rb'^.*\((.*?)\).*$', r'\1', xmo.re.pattern).split(b'|')
+        alts = re.sub(rb'^.*\((.*?)\).*$', rb'\1', xmo.re.pattern).split(b'|')
         try:
             pos = alts.index(match)
             if pos:
@@ -1413,6 +1413,10 @@ class QEMUExecuter:
             if xtype == 'spiflash':
                 fw_args.extend(('-drive',
                                 f'if=mtd,bus=0,format=raw,file={exec_path}'))
+            elif xtype == 'bin':
+                if not args.embedded_flash:
+                    raise ValueError(f'{xtype} test type not supported without '
+                                     f'embedded-flash option')
             else:
                 if xtype != 'elf':
                     raise ValueError(f'No support for test type: {xtype} '
@@ -1800,7 +1804,8 @@ def main():
         files.add_argument('-c', '--config', metavar='HJSON',
                            type=FileType('rt', encoding='utf-8'),
                            help='path to HJSON configuration file')
-        files.add_argument('-e', '--embedded-flash', action='store_true',
+        files.add_argument('-e', '--embedded-flash', action='store_const',
+                           const=True,
                            help='generate an embedded flash image file')
         files.add_argument('-f', '--flash', metavar='RAW',
                            help='SPI flash image file')
@@ -1937,6 +1942,13 @@ def main():
                         argparser.error(f'Unknown config file default: {name}')
                     if getattr(args, name) is None:
                         setattr(args, name, val)
+            opts = json.get('opts', [])
+            if not isinstance(opts, list):
+                argparser.error("'opts' should be defined as a list")
+            opts = [opt for optline in json.get('opts', [])
+                    for opt in optline.split() if opt]
+            opts.extend(getattr(args, 'opts', None) or [])
+            setattr(args, 'opts', opts)
         elif args.filter:
             argparser.error('Filter option only valid with a config file')
         if cli_opts:
