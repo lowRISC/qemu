@@ -78,6 +78,9 @@ class LifeCycleController:
     ALERTS = 'prog_error state_error bus_integ_error'.split()
     """Alerts."""
 
+    DEFAULT_DMI_ADDRESS = 0xc00
+    """Default DMI address of the controller."""
+
     TOKEN_FORMAT = '<4I'
 
     def __init__(self, dtm: DebugTransportModule, address: int):

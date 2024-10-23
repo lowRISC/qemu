@@ -16,6 +16,9 @@ class JtagMbox(SysMbox):
     """JTAG Mailbox requester API
     """
 
+    DEFAULT_DMI_ADDRESS = 0x880
+    """Default DMI address of the mailbox."""
+
     SYSREGS = {'control': 2, 'status': 3, 'wdata': 4, 'rdata': 5}
 
     def __init__(self, dtm: 'DebugTransportModule', address: int):

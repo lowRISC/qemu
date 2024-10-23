@@ -234,7 +234,7 @@ class DebugTransportModule:
         self._regs = self._load_registers()
         self._sticky: Optional[DMIError] = None
 
-    def __getitem__(self, name: str):
+    def __getitem__(self, name: str) -> DTMRegister:
         try:
             return self._regs[name]
         except KeyError as exc:
@@ -258,11 +258,13 @@ class DebugTransportModule:
 
     def read(self, address: int, length: int) -> BitSequence:
         """Read a bit sequence value."""
+        self._log.debug("read addr: 0x%x len: %d", address, length)
         self._engine.write_ir(BitSequence(address, self._ir_length))
         return self._engine.read_dr(length)
 
     def write(self, address: int, bseq: BitSequence) -> None:
         """Write a bit sequence value."""
+        self._log.debug("write addr: 0x%x len: %d", address, len(bseq))
         self._engine.write_ir(BitSequence(address, self._ir_length))
         self._engine.write_dr(bseq)
         self._engine.run()
