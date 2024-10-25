@@ -128,6 +128,8 @@ class FlashGen:
     MANIFEST_SIZE = 1024
     MANIFEST_VERSION_MINOR1 = 0x6c47
     MANIFEST_VERSION_MAJOR1 = 0x71c3
+    # Allow v2 manifests, the only difference is that signatures are ECDSA.
+    MANIFEST_VERSION_MAJOR2 = 0x0002
     MANIFEST_EXT_TABLE_COUNT = 15
 
     MANIFEST_TRUE = 0x739  # 'true' value for address_translation field
@@ -566,8 +568,8 @@ class FlashGen:
         manifest = dict(zip(self.MANIFEST_FORMAT,
                             sunpack(f'<{mfmt}', data[:slen])))
         self._log_manifest(manifest)
-        if (manifest['manifest_version_major'] !=
-                self.MANIFEST_VERSION_MAJOR1
+        if (manifest['manifest_version_major'] not in
+                (self.MANIFEST_VERSION_MAJOR1, self.MANIFEST_VERSION_MAJOR2)
             or manifest['manifest_version_minor'] !=
                 self.MANIFEST_VERSION_MINOR1):
             raise ValueError('Unsupported manifest version')
