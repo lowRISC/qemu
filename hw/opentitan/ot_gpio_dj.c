@@ -140,7 +140,7 @@ struct OtGpioDjState {
     uint32_t opendrain; /* open drain (1 -> hi-z) */
     uint32_t pull_en; /* pull up/down enable */
     uint32_t pull_sel; /* pull up or pull down */
-    uint32_t connected; /* connected to an external device */
+    uint32_t connected; /* connected to an external device or preset */
 
     char ibuf[PARAM_NUM_IO]; /* backed input buffer */
     unsigned ipos;
@@ -153,6 +153,7 @@ struct OtGpioDjState {
     uint32_t reset_in; /* initial input levels */
     uint32_t reset_out; /* initial output levels */
     uint32_t reset_oe; /* initial output enable vs. hi-z levels */
+    uint32_t reset_ie; /* initial input enable (reset_in active GPIOs) */
     uint32_t ibex_out; /* output w/ ibex_gpio (vs. tri-state) signalization */
     CharBackend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
@@ -208,7 +209,7 @@ static void ot_gpio_dj_update_data_in(OtGpioDjState *s)
 
     uint32_t ii_mask = s->connected & ~s->data_gi & ~s->data_oe;
     uint32_t bi_mask = ~s->connected & ~s->data_bi & ~s->data_oe;
-    uint32_t pi_mask = s->connected & s->data_gi & s->data_bi & ~s->data_oe;
+    uint32_t pi_mask = s->data_gi & s->data_bi & ~s->data_oe;
 
     uint32_t data_ii = s->data_ii & ii_mask;
     uint32_t data_ib = s->data_ib & bi_mask;
@@ -801,6 +802,7 @@ static Property ot_gpio_dj_properties[] = {
     DEFINE_PROP_STRING("log_id", OtGpioDjState, log_id),
     DEFINE_PROP_UINT32("in", OtGpioDjState, reset_in, 0u),
     DEFINE_PROP_UINT32("out", OtGpioDjState, reset_out, 0u),
+    DEFINE_PROP_UINT32("ie", OtGpioDjState, reset_ie, 0u),
     DEFINE_PROP_UINT32("oe", OtGpioDjState, reset_oe, 0u),
     DEFINE_PROP_UINT32("ibex_out", OtGpioDjState, ibex_out, 0u),
     DEFINE_PROP_BOOL("wipe", OtGpioDjState, wipe, false),
@@ -834,17 +836,16 @@ static void ot_gpio_dj_reset_enter(Object *obj, ResetType type)
     memset(&s->backend_state, 0, sizeof(s->backend_state));
 
     /* reset_* fields are properties, never get reset */
+    s->connected = s->reset_oe | s->reset_ie;
     s->data_ii = s->reset_in;
     s->data_ib = 0;
     s->data_out = s->reset_out;
     s->data_oe = s->reset_oe;
     s->data_bi = UINT32_MAX;
-    /* all input disable until signal is received, or output is forced */
-    s->data_gi = ~s->reset_oe;
+    s->data_gi = ~s->connected;
     s->pull_en = 0;
     s->pull_sel = 0;
     s->invert = 0;
-    s->connected = 0;
 
     s->regs[R_DATA_IN] = s->reset_in;
     s->regs[R_DIRECT_OUT] = s->reset_out;
