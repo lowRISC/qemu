@@ -9,6 +9,7 @@
 from binascii import hexlify, unhexlify
 from collections import deque
 from enum import IntEnum
+from inspect import currentframe
 from logging import getLogger
 from socket import create_connection, socket, SHUT_RDWR
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
@@ -1255,6 +1256,9 @@ class ProxyEngine:
         REMOVE = 2
         SET = 3
 
+    LogOnce: set[str] = set()
+    # whether initial log of remote device capabilities has been done
+
     def __init__(self):
         self._log = getLogger('proxy.proxy')
         self._socket: Optional[socket] = None
@@ -1345,7 +1349,10 @@ class ProxyEngine:
         if len(devices) % devlen:
             raise ValueError('Unexpected response length')
         devcount = len(devices) // devlen
-        self._log.info('Found %d remote devices', devcount)
+        fname = currentframe().f_code.co_name
+        if fname not in self.LogOnce:
+            self.LogOnce.add(fname)
+            self._log.info('Found %d remote devices', devcount)
         self._devices.clear()
         while devices:
             devhdr = devices[0:devlen]
@@ -1380,7 +1387,10 @@ class ProxyEngine:
         if len(mregions) % mrlen:
             raise ValueError('Unexpected response length')
         mrcount = len(mregions) // mrlen
-        self._log.info('Found %d remote memory root regions', mrcount)
+        fname = currentframe().f_code.co_name
+        if fname not in self.LogOnce:
+            self.LogOnce.add(fname)
+            self._log.info('Found %d remote memory root regions', mrcount)
         self._mroots.clear()
         while mregions:
             mrhdr = mregions[0:mrlen]
@@ -1778,8 +1788,11 @@ class ProxyEngine:
         if len(payload) < hshdrlen:
             raise ValueError('Unexpected response length')
         vmin, vmaj, _ = sunpack(hshdrfmt, payload[:hshdrlen])
-        self._log.info('Local version %d.%d, remote version %d.%d',
-                       self.VERSION[0], self.VERSION[1], vmaj, vmin)
+        fname = currentframe().f_code.co_name
+        if fname not in self.LogOnce:
+            self.LogOnce.add(fname)
+            self._log.info('Local version %d.%d, remote version %d.%d',
+                           self.VERSION[0], self.VERSION[1], vmaj, vmin)
         if vmaj != self.VERSION[0]:
             raise ValueError('Unsuppported version: {vmaj}.{vmin}')
         if vmin < self.VERSION[1]:
