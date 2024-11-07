@@ -256,6 +256,7 @@ struct OtDMAState {
     OtDMAOp op;
     OtDMASHA sha;
     uint32_t *regs;
+    unsigned tb_size; /* DMA transfer block size */
     OtDMAControl control; /* captured regs on initial IDLE-GO transition */
     bool abort;
 
@@ -263,6 +264,7 @@ struct OtDMAState {
     char *ot_as_name; /* private AS unique name */
     char *ctn_as_name; /* externel port AS unique name */
     char *sys_as_name; /* external system AS unique name */
+    uint8_t block_size_lg2; /* log2 of DMA transfer block size */
 #ifdef OT_DMA_HAS_ROLE
     uint8_t role;
 #endif
@@ -288,8 +290,8 @@ struct OtDMAState {
 #define DMA_ERROR(_err_) (1u << (_err_))
 
 /* the following values are arbitrary end may be changed if needed */
-#define DMA_PACE_NS             10000u /* 10us: slow down DMA, handle aborts */
-#define DMA_TRANSFER_BLOCK_SIZE 4096u /* size of a single DMA block */
+#define DMA_PACE_NS            10000u /* 10us: slow down DMA, handle aborts */
+#define DMA_TRANSFER_BLOCK_LG2 12u /* log2(size) of a single DMA block */
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
@@ -1037,7 +1039,7 @@ static void ot_dma_transfer(void *opaque)
 
         smp_mb();
 
-        hwaddr size = MIN(op->size, DMA_TRANSFER_BLOCK_SIZE);
+        hwaddr size = MIN(op->size, s->tb_size);
 
         CHANGE_STATE(s, SEND_WRITE);
 
@@ -1313,6 +1315,8 @@ static Property ot_dma_properties[] = {
     DEFINE_PROP_STRING("ot_as_name", OtDMAState, ot_as_name),
     DEFINE_PROP_STRING("ctn_as_name", OtDMAState, ctn_as_name),
     DEFINE_PROP_STRING("sys_as_name", OtDMAState, sys_as_name),
+    DEFINE_PROP_UINT8("block_size_lg2", OtDMAState, block_size_lg2,
+                      DMA_TRANSFER_BLOCK_LG2),
 #ifdef OT_DMA_HAS_ROLE
     DEFINE_PROP_UINT8("role", OtDMAState, role, UINT8_MAX),
 #endif
@@ -1376,6 +1380,20 @@ static void ot_dma_reset(DeviceState *dev)
     }
 }
 
+static void ot_dma_realize(DeviceState *dev, Error **errp)
+{
+    OtDMAState *s = OT_DMA(dev);
+    (void)errp;
+
+    if (s->block_size_lg2 < 8u || s->block_size_lg2 > 20u) {
+        error_setg(&error_fatal, "%s: invalid DMA transfer block size: %u",
+                   __func__, 1u << s->block_size_lg2);
+        return;
+    }
+
+    s->tb_size = 1u << s->block_size_lg2;
+}
+
 static void ot_dma_init(Object *obj)
 {
     OtDMAState *s = OT_DMA(obj);
@@ -1401,6 +1419,7 @@ static void ot_dma_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
+    dc->realize = &ot_dma_realize;
     dc->reset = &ot_dma_reset;
     device_class_set_props(dc, ot_dma_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
