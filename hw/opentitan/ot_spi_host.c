@@ -816,11 +816,11 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     if (length) {
         /* if the transfer early ended, a stall condition has been detected */
         if (write && txfifo_is_empty(s->tx_fifo)) {
-            trace_ot_spi_host_debug(s->ot_id, "Tx stall");
+            trace_ot_spi_host_stall(s->ot_id, "TX", length);
             s->fsm.tx_stall = true;
         }
         if (read && fifo8_is_full(s->rx_fifo)) {
-            trace_ot_spi_host_debug(s->ot_id, "Rx stall");
+            trace_ot_spi_host_stall(s->ot_id, "RX", length);
             s->fsm.rx_stall = true;
         }
 
@@ -834,8 +834,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     headcmd->command = (uint16_t)command;
     headcmd->ongoing = ongoing;
 
-    timer_mod(s->fsm_delay,
-              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + FSM_TRIGGER_DELAY_NS);
+    timer_mod_anticipate(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
+                                           FSM_TRIGGER_DELAY_NS);
 
     ot_spi_host_trace_status(s->ot_id, "S<", ot_spi_host_get_status(s));
 }
@@ -973,8 +973,19 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
             val32 |= (uint32_t)fifo8_pop(s->rx_fifo);
         }
         val32 = bswap32(val32);
-        bool resume = !cmdfifo_is_empty(s->cmd_fifo) && s->fsm.rx_stall &&
-                      !s->fsm.tx_stall;
+        bool resume = false;
+        if (!cmdfifo_is_empty(s->cmd_fifo)) {
+            if (!s->fsm.tx_stall) {
+                uint32_t rxwm = REG_GET(s, CONTROL, RX_WATERMARK);
+                if (rxwm < sizeof(uint32_t)) {
+                    rxwm = sizeof(uint32_t);
+                }
+                uint32_t inlen = fifo8_num_used(s->rx_fifo) / sizeof(uint32_t);
+                if (inlen <= rxwm) {
+                    resume = true;
+                }
+            }
+        }
         s->fsm.rx_stall = false;
         if (resume) {
             ot_spi_host_step_fsm(s, "rx");
@@ -1073,6 +1084,9 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             ot_spi_host_reset(s);
         }
         s->fsm.output_en = FIELD_EX32(val32, CONTROL, OUTPUT_EN);
+        if (!cmdfifo_is_empty(s->cmd_fifo)) {
+            ot_spi_host_step_fsm(s, "ctrl");
+        }
         break;
     case R_CONFIGOPTS:
         /* Update the respective config-opts register based on CSIDth index */
