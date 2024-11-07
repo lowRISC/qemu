@@ -264,6 +264,7 @@ struct OtDMAState {
     char *ot_as_name; /* private AS unique name */
     char *ctn_as_name; /* externel port AS unique name */
     char *sys_as_name; /* external system AS unique name */
+    uint32_t pace_delay; /* pace DMA scheduling (ns) */
     uint8_t block_size_lg2; /* log2 of DMA transfer block size */
 #ifdef OT_DMA_HAS_ROLE
     uint8_t role;
@@ -289,7 +290,7 @@ struct OtDMAState {
 
 #define DMA_ERROR(_err_) (1u << (_err_))
 
-/* the following values are arbitrary end may be changed if needed */
+/* default values, can be overridden with properties */
 #define DMA_PACE_NS            10000u /* 10us: slow down DMA, handle aborts */
 #define DMA_TRANSFER_BLOCK_LG2 12u /* log2(size) of a single DMA block */
 
@@ -924,7 +925,7 @@ static bool ot_dma_go(OtDMAState *s)
 
     timer_del(s->timer);
     uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-    timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
+    timer_mod_anticipate(s->timer, (int64_t)(now + s->pace_delay));
 
     return true;
 }
@@ -943,7 +944,7 @@ static void ot_dma_abort(OtDMAState *s)
     /* simulate a delayed response */
     timer_del(s->timer);
     uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-    timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
+    timer_mod(s->timer, (int64_t)(now + s->pace_delay));
 }
 
 static void ot_dma_complete(OtDMAState *s)
@@ -1064,7 +1065,7 @@ static void ot_dma_transfer(void *opaque)
 
                 /* schedule next block if any */
                 uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-                timer_mod(s->timer, (int64_t)(now + DMA_PACE_NS));
+                timer_mod(s->timer, (int64_t)(now + s->pace_delay));
                 return;
             }
         }
@@ -1315,6 +1316,7 @@ static Property ot_dma_properties[] = {
     DEFINE_PROP_STRING("ot_as_name", OtDMAState, ot_as_name),
     DEFINE_PROP_STRING("ctn_as_name", OtDMAState, ctn_as_name),
     DEFINE_PROP_STRING("sys_as_name", OtDMAState, sys_as_name),
+    DEFINE_PROP_UINT32("pace_delay", OtDMAState, pace_delay, DMA_PACE_NS),
     DEFINE_PROP_UINT8("block_size_lg2", OtDMAState, block_size_lg2,
                       DMA_TRANSFER_BLOCK_LG2),
 #ifdef OT_DMA_HAS_ROLE
