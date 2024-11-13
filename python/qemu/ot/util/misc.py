@@ -8,7 +8,7 @@
 
 from io import BytesIO
 from sys import stdout
-from typing import Any, Iterable, Optional, TextIO
+from typing import Any, Iterable, Optional, TextIO, Union
 import re
 
 try:
@@ -32,13 +32,45 @@ class HexInt(int):
         return f'0x{self:x}'
 
     @staticmethod
-    def parse(val: Optional[str], base: Optional[int] = None) -> Optional[int]:
+    def parse(val: Optional[str], base: Optional[int] = None) \
+            -> Optional['HexInt']:
         """Simple helper to support hexadecimal integer in argument parser."""
         if val is None:
             return None
         if base is not None:
             return HexInt(int(val, base))
         return HexInt(int(val, val.startswith('0x') and 16 or 10))
+
+    @staticmethod
+    def xparse(value: Union[None, int, str]) -> Optional['HexInt']:
+        """Parse a value and convert it into an integer value if possible.
+
+        Input value may be:
+        - None
+        - a string with an integer coded as a decimal value
+        - a string with an integer coded as a hexadecimal value
+        - a integral value
+        - a integral value with a unit specifier (kilo or mega)
+
+        :param value: input value to convert to an integer
+        :return: the value as an integer
+        :raise ValueError: if the input value cannot be converted into an int
+        """
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return HexInt(value)
+        imo = re.match(r'^\s*(\d+)\s*(?:([KMkm]i?)?B?)?\s*$', value)
+        if imo:
+            mult = {'K': (1000),
+                    'KI': (1 << 10),
+                    'M': (1000 * 1000),
+                    'MI': (1 << 20)}
+            value = int(imo.group(1))
+            if imo.group(2):
+                value *= mult[imo.group(2).upper()]
+            return value
+        return HexInt(int(value.strip(), value.startswith('0x') and 16 or 10))
 
 
 class EasyDict(dict):
