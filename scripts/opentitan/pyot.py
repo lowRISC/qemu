@@ -42,13 +42,12 @@ import sys
 QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
                        'python', 'qemu')
 sys.path.append(QEMU_PYPATH)
-print(__file__, sys.path[-1])
 
 # pylint: disable=wrong-import-position
 # pylint: disable=wrong-import-order
 # pylint: disable=import-error
 
-from ot.util.log import ColorLogFormatter, configure_loggers
+from ot.util.log import ColorLogFormatter, RemoteLogService, configure_loggers
 from ot.util.misc import EasyDict
 
 
@@ -591,6 +590,13 @@ class QEMUFileManager:
                         file
         """
         self._env['CONFIG'] = abspath(path)
+
+    def set_udp_log_port(self, port: int) -> None:
+        """Assign the UDP logger port.
+
+           :param port: the UDP logger port
+        """
+        self._env['UDPLOG'] = f'{port}'
 
     def interpolate(self, value: Any) -> str:
         """Interpolate a ${...} marker with shell substitutions or local
@@ -1758,6 +1764,7 @@ def main():
         qemu_path = None
     tmp_result: Optional[str] = None
     result_file: Optional[str] = None
+    rlog: Optional[RemoteLogService] = None
     try:
         args: Optional[Namespace] = None
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
@@ -1855,6 +1862,9 @@ def main():
                            help='quiet logging: only be verbose on errors')
         extra.add_argument('--log-time', action='store_true',
                            help='show local time in log messages')
+        extra.add_argument('--log-udp', type=int, metavar='UDP_PORT',
+                           help='Change UDP port for log messages, '
+                                'use 0 to disable')
         extra.add_argument('--debug', action='append', metavar='LOGGER',
                            help='assign debug level to logger(s)')
         extra.add_argument('--info', action='append', metavar='LOGGER',
@@ -1887,13 +1897,19 @@ def main():
 
         log = configure_loggers(args.verbose, 'pyot',
                                 args.vcp_verbose or 0,
-                                'pyot.vcp', name_width=16,
+                                'pyot.vcp', name_width=30,
                                 ms=args.log_time, quiet=args.quiet,
                                 debug=args.debug, info=args.info,
                                 warning=args.warn)[0]
 
         qfm = QEMUFileManager(args.keep_tmp)
         qfm.set_qemu_src_dir(qemu_dir)
+
+        if args.log_udp != 0:
+            rlog = RemoteLogService(port=args.log_udp)
+            rlog.start()
+            qfm.set_udp_log_port(rlog.port)
+
 
         # this is a bit circomvulted, as we need to parse the config filename
         # if any, and load the default values out of the configuration file,
@@ -1994,6 +2010,8 @@ def main():
     except KeyboardInterrupt:
         sys.exit(2)
     finally:
+        if rlog:
+            rlog.stop()
         if result_file:
             rfmt = ResultFormatter()
             try:
