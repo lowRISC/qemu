@@ -7,11 +7,17 @@
 """
 
 from os import getenv, isatty
+from pickle import loads as ploads
+from socketserver import DatagramRequestHandler, ThreadingUDPServer
+from struct import calcsize as scalc, unpack as sunpack
 from sys import stderr
+from threading import Thread
 from typing import NamedTuple, Optional, Sequence, Union
 
 import logging
-from logging.handlers import MemoryHandler
+from logging.handlers import (DatagramHandler, MemoryHandler,
+                              DEFAULT_UDP_LOGGING_PORT)
+
 
 try:
     getLevelNamesMapping = logging.getLevelNamesMapping
@@ -127,7 +133,7 @@ class ColorLogFormatter(logging.Formatter):
         else:
             tfmt = ''
         sep = ' ' if not use_lineno else ''
-        fnc = f' %(funcName)s{sep}' if use_func else ' '
+        fnc = f' %(funcName)s(){sep}' if use_func else ' '
         sep = ' ' if not use_func else ''
         lno = f'{sep}[%(lineno)d] ' if use_lineno else ''
         fmt_trail = f' %(name)-{name_width}s{fnc}{lno}%(scr)s%(message)s%(ecr)s'
@@ -190,7 +196,93 @@ class ColorLogFormatter(logging.Formatter):
         cls.XCOLORS = xcolors
 
 
-def configure_loggers(level: int, *lognames: list[Union[str | int | Color]],
+class RemoteLogHandler(DatagramRequestHandler):
+    """Handle a remote log UDP request."""
+
+    HEADER_FMT = '!L'
+    """UDP prefix that specifies the payload length."""
+
+    HEADER_SIZE = scalc(HEADER_FMT)
+    """The length in bytes of the header."""
+
+    def handle(self):
+        buffer = bytearray()
+        while True:
+            data = self.rfile.read(4)
+            if not data:
+                break
+            buffer.extend(data)
+            if len(buffer) < self.HEADER_SIZE:
+                continue
+            header, buffer = (buffer[:self.HEADER_SIZE],
+                buffer[self.HEADER_SIZE:])
+            record_len, = sunpack(self.HEADER_FMT, header)
+            while len(buffer) < record_len:
+                data = self.rfile.read(4096)
+                if not data:
+                    break
+                buffer.extend(data)
+            obj_data = buffer[:record_len]
+            obj = ploads(obj_data)
+            record = logging.makeLogRecord(obj)
+            logname = f'pyot.{record.name}'
+            self.server.do_log(logname, record)
+
+
+class RemoteLogServer(ThreadingUDPServer):
+    """ThreadingUDPServer extension with logger cache manager."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cache: dict[str, logging.Logger] = {}
+
+    def do_log(self, logname: str, record: logging.LogRecord):
+        """Do actual log.
+
+           This function enables log level local filtering and caching.
+
+           :param logname: name of the logger
+           :param record: the log record
+        """
+        if logname not in self._cache:
+            logger = logging.getLogger(logname)
+            self._cache[logname] = logger
+        lgr = self._cache[logname]
+        lgr.handle(record)
+
+
+class RemoteLogService:
+    """Simple UDP receiver for handling remote log record."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+
+    def __init__(self,  host='127.0.0.1', port=0):
+        RemoteLogServer.allow_reuse_address = True
+        RemoteLogServer.daemon_threads = True
+        self._port = port or DEFAULT_UDP_LOGGING_PORT
+        self._server = RemoteLogServer((host, self._port), RemoteLogHandler)
+        self._thread = Thread(target=self._serve, daemon=True)
+
+    @property
+    def port(self) -> int:
+        """Return the selected UDP port."""
+        return self._port
+
+    def start(self):
+        """Start the logging service thread."""
+        self._thread.start()
+
+    def stop(self):
+        """Stop the logging service thread."""
+        self._server.shutdown()
+
+    def _serve(self):
+        with self._server:
+            self._server.serve_forever()
+
+
+def configure_loggers(level: int, *lognames: list[Union[str,  int, Color]],
                       **kwargs) -> list[logging.Logger]:
     """Configure loggers.
 
@@ -209,8 +301,16 @@ def configure_loggers(level: int, *lognames: list[Union[str | int | Color]],
                 lnames = [lnames]
             loglevels[lvl] = tuple(lnames)
     quiet = kwargs.pop('quiet', False)
+    udplog = kwargs.pop('udplog', None)
     formatter = ColorLogFormatter(**kwargs)
-    shandler = logging.StreamHandler(stderr)
+    if udplog is not None:
+        udpport = udplog or DEFAULT_UDP_LOGGING_PORT
+        assert isinstance(udpport, int)
+        # use IP value rather than localhost host to avoid repetitive name
+        # resolution
+        shandler = DatagramHandler('127.0.0.1', udpport)
+    else:
+        shandler = logging.StreamHandler(stderr)
     shandler.setFormatter(formatter)
     if quiet:
         logh = MemoryHandler(100000, target=shandler, flushOnClose=False)
