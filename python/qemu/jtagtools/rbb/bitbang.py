@@ -1,9 +1,7 @@
-# Copyright (c) 2024 Rivos, Inc.
+# Copyright (c) 2024 Rivos Inc. Emmanuel Blot <eblot@rivosinc.com>
 # SPDX-License-Identifier: Apache2
 
 """JTAG controller for OpenOCD/QEMU bitbang protocol.
-
-   :author: Emmanuel Blot <eblot@rivosinc.com>
 
    Protocol abstract:
 
@@ -32,8 +30,8 @@ from socket import socket
 from time import time as now
 from typing import Optional
 
-from .bits import BitSequence
-from .jtag import JtagController
+from ..bits import BitSequence
+from ..jtag.controller import JtagController
 
 
 class JtagBitbangController(JtagController):

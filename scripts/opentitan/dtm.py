@@ -21,9 +21,9 @@ QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
                        'python', 'qemu')
 sys.path.append(QEMU_PYPATH)
 
-from jtag.bitbang import JtagBitbangController
-from jtag.bits import BitSequence
-from jtag.jtag import JtagEngine
+from jtagtools.rbb import JtagBitbangController
+from jtagtools.bits import BitSequence
+from jtagtools.jtag import JtagEngine
 
 from ot.dm import DebugModule
 from ot.dtm import DebugTransportModule
@@ -42,8 +42,9 @@ def idcode(engine: JtagEngine, ir_length: int) -> None:
     """Retrieve ID code."""
     code = JtagBitbangController.INSTRUCTIONS['idcode']
     engine.write_ir(BitSequence(code, ir_length))
-    value = engine.read_dr(32)
+    engine.read_dr(32)
     engine.go_idle()
+    value = engine.scan()
     return int(value)
 
 

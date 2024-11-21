@@ -190,6 +190,7 @@ class DebugModule:
 
     def initialize(self) -> None:
         """Initialize the debug module."""
+        self._log.info('Initialize')
         btf = self.BITFIELDS['DMCONTROL']
         self.dmcontrol = 0
         enable = btf.encode(dmactive=True)
@@ -201,7 +202,7 @@ class DebugModule:
         select = btf.encode(dmactive=True, hasel=False, hartsello=self._hart)
         self.dmcontrol = select
         dmcontrol = btf.decode(self.dmcontrol)
-        assert dmcontrol['dmactive']
+        assert dmcontrol['dmactive'], "Debug Module not active"
         btf = self.BITFIELDS['DMSTATUS']
         version = btf.decode(self.dmstatus)['version']
         if version == self.VERSION['v0.11']:

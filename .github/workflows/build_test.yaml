@@ -94,7 +94,7 @@ jobs:
       - name: Lint Python code
         run: |
           pylint --rcfile scripts/opentitan/.pylintrc -d 'duplicate-code' -d 'fixme' \
-            scripts/opentitan/*.py python/qemu/jtag python/qemu/ot
+            scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
 
   lint-clang:
     runs-on: ubuntu-latest

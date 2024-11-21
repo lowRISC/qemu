@@ -2,21 +2,15 @@
 # Copyright (c) 2016, Emmanuel Bouaziz <ebouaziz@free.fr>
 # All rights reserved.
 #
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: Apache2
 
-"""JTAG tools.
-
-   Based on JTAG support for FTDI from PyFtdi module
-"""
+"""JTAG state machine."""
 
 from logging import getLogger
 from typing import Union
 
-from .bits import BitSequence
-
-
-class JtagError(Exception):
-    """Generic JTAG error."""
+from .error import JtagStateError
+from ..bits import BitSequence
 
 
 class JtagState:
@@ -170,7 +164,7 @@ class JtagStateMachine:
                 if xstate == dstate:
                     events.append(epos)
         if len(events) != len(path) - 1:
-            raise JtagError("Invalid path")
+            raise JtagStateError("Invalid path")
         return BitSequence(events)
 
     def handle_events(self, events: BitSequence) -> None:
@@ -185,136 +179,3 @@ class JtagStateMachine:
         for event in events:
             self._current = self._current.getx(event)
         self._tr_cache[transit] = self._current
-
-
-class JtagController:
-    """JTAG master API."""
-
-    INSTRUCTIONS = {'bypass': 0x0, 'idcode': 0x1}
-    """Common instruction register codes."""
-
-    def tap_reset(self, use_trst: bool = False) -> None:
-        """Reset the TAP controller.
-
-           :param use_trst: use TRST HW wire if available
-        """
-        raise NotImplementedError('ABC')
-
-    def system_reset(self) -> None:
-        """Reset the device."""
-
-    def quit(self) -> None:
-        """Terminate session."""
-
-    def write_tms(self, modesel: BitSequence) -> None:
-        """Change the TAP controller state.
-
-           :note: modesel content may be consumed, i.e. emptied
-           :note: last TMS bit should be stored and clocked on next write
-                  request
-
-           :param modesel: the bit sequence of TMS bits to clock in
-        """
-        raise NotImplementedError('ABC')
-
-    def write(self, out: BitSequence):
-        """Write a sequence of bits to TDI.
-
-           :note: out content may be consumed, i.e. emptied
-           :param out: the bot sequence of TDI bits to clock in
-        """
-        raise NotImplementedError('ABC')
-
-    def read(self, length: int) -> BitSequence:
-        """Read out a sequence of bits from TDO.
-
-           :param length: the number of bits to clock out from the remote device
-           :return: the received TDO bits (length-long)
-        """
-        raise NotImplementedError('ABC')
-
-
-class JtagEngine:
-    """High-level JTAG engine controller"""
-
-    def __init__(self, ctrl: 'JtagController'):
-        self._ctrl = ctrl
-        self._log = getLogger('jtag.eng')
-        self._fsm = JtagStateMachine()
-        self._tr_cache: dict[tuple[str,  # from state
-                                   str],  # to state
-                             BitSequence] = {}  # TMS sequence
-        self._seq = bytearray()
-
-    @property
-    def fsm(self) -> JtagStateMachine:
-        """Return the state machine."""
-        return self._fsm
-
-    @property
-    def controller(self) -> 'JtagController':
-        """Return the JTAG controller."""
-        return self._ctrl
-
-    def reset(self) -> None:
-        """Reset the attached TAP controller"""
-        self._ctrl.reset()
-        self._fsm.reset()
-
-    def get_available_statenames(self):
-        """Return a list of supported state name"""
-        return [str(s) for s in self._fsm.states]
-
-    def change_state(self, statename) -> None:
-        """Advance the TAP controller to the defined state"""
-        transition = (self._fsm.state, statename)
-        if transition not in self._tr_cache:
-            # find the state machine path to move to the new instruction
-            path = self._fsm.find_path(statename)
-            self._log.debug('new path: %s',
-                            ', '.join((str(s).upper() for s in path[1:])))
-            # convert the path into an event sequence
-            events = self._fsm.get_events(path)
-            self._tr_cache[transition] = events
-        else:
-            # transition already in cache
-            events = self._tr_cache[transition]
-        # update the remote device tap controller (write TMS consumes the seq)
-        self._ctrl.write_tms(events.copy())
-        # update the current state machine's state
-        self._fsm.handle_events(events.copy())
-
-    def go_idle(self) -> None:
-        """Change the current TAP controller to the IDLE state"""
-        self.change_state('run_test_idle')
-
-    def run(self) -> None:
-        """Change the current TAP controller to the IDLE state"""
-        self.change_state('run_test_idle')
-
-    def capture_ir(self) -> None:
-        """Capture the current instruction from the TAP controller"""
-        self.change_state('capture_ir')
-
-    def write_ir(self, instruction) -> None:
-        """Change the current instruction of the TAP controller"""
-        self.change_state('shift_ir')
-        self._ctrl.write(instruction)
-        self.change_state('update_ir')
-
-    def capture_dr(self) -> None:
-        """Capture the current data register from the TAP controller"""
-        self.change_state('capture_dr')
-
-    def write_dr(self, data) -> None:
-        """Change the data register of the TAP controller"""
-        self.change_state('shift_dr')
-        self._ctrl.write(data)
-        self.change_state('update_dr')
-
-    def read_dr(self, length: int) -> BitSequence:
-        """Read the data register from the TAP controller"""
-        self.change_state('shift_dr')
-        data = self._ctrl.read(length)
-        self.change_state('update_dr')
-        return data

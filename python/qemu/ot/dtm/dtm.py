@@ -11,8 +11,8 @@ from logging import getLogger
 from sys import modules
 from typing import Optional
 
-from jtag.bits import BitSequence
-from jtag.jtag import JtagEngine
+from jtagtools.bits import BitSequence
+from jtagtools.jtag import JtagEngine
 
 
 class DMIError(RuntimeError):
@@ -40,7 +40,8 @@ class DTMRegister:
         name = self.__class__.__name__
         if (not hasattr(self.__class__, 'ADDRESS') or
                 not isinstance(getattr(self, 'ADDRESS'), int)):
-            raise NotImplementedError(f'{name} address not defined')
+            raise NotImplementedError(f'Unknown/invalid register address for '
+                                      f'{self.__class__.__name__}')
         self._dtm = dtm
         self._log = getLogger(f'dtm.{name.lower()}')
 
@@ -168,12 +169,12 @@ class DMI(DTMRegister):
     def write(self, address: int, value: int) -> None:
         """Write a 32-bit value to the specified address
         """
+        self._log.debug('dmi 0x%x 0x%08x', address, value)
         dmi = self._build_dmi(address)
         value &= 0xffff_ffff
         dmi |= value << 2
         dmi |= self.OPS['write']
         wbseq = BitSequence(dmi, self.length)
-        self._log.debug('write: 0x%08x', value)
         self._write(wbseq)
         rbseq = self._read(self.length)
         res = int(rbseq) & 0b11
@@ -260,14 +261,15 @@ class DebugTransportModule:
         """Read a bit sequence value."""
         self._log.debug("read addr: 0x%x len: %d", address, length)
         self._engine.write_ir(BitSequence(address, self._ir_length))
-        return self._engine.read_dr(length)
+        self._engine.read_dr(length)
+        return self._engine.scan()
 
     def write(self, address: int, bseq: BitSequence) -> None:
         """Write a bit sequence value."""
         self._log.debug("write addr: 0x%x len: %d", address, len(bseq))
         self._engine.write_ir(BitSequence(address, self._ir_length))
         self._engine.write_dr(bseq)
-        self._engine.run()
+        self._engine.scan()
 
     def read_word(self, address: int) -> int:
         """Read a 32-bit value."""

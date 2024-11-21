@@ -22,8 +22,8 @@ QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
                        'python', 'qemu')
 sys.path.append(QEMU_PYPATH)
 
-from jtag.bitbang import JtagBitbangController
-from jtag.jtag import JtagEngine
+from jtagtools.rbb import JtagBitbangController
+from jtagtools.jtag.engine import JtagEngine
 
 from ot.dm import DebugModule
 from ot.dm.otp import OTPController
