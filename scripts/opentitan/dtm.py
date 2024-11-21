@@ -27,6 +27,7 @@ from jtagtools.jtag import JtagEngine
 
 from ot.dm import DebugModule
 from ot.dtm import DebugTransportModule
+from ot.dtm.dtm import DMI, DTMCS
 from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt, dump_buffer
@@ -37,7 +38,7 @@ try:
     from pyftdi import __version__ as PyFtdiVersion
     from pyftdi.jtag import JtagFtdiController
 except ImportError as _exc:
-    _FTDI_ERR = str(_exc).split(':')[-1]
+    _FTDI_ERR = str(_exc).split(':', 1)[-1]
     JtagFtdiController = None
 
 
@@ -48,9 +49,8 @@ DEFAULT_DMI_ADDRESS = 0x0
 """Default DMI address of the DM."""
 
 
-def idcode(engine: JtagEngine, ir_length: int) -> None:
+def idcode(engine: JtagEngine, code: int, ir_length: int) -> int:
     """Retrieve ID code."""
-    code = JtagBitbangController.INSTRUCTIONS['idcode']
     engine.write_ir(BitSequence(code, ir_length))
     engine.read_dr(32)
     engine.go_idle()
@@ -62,7 +62,7 @@ def main():
     """Entry point."""
     debug = True
     default_socket = f'tcp:localhost:{JtagBitbangController.DEFAULT_PORT}'
-    default_port = JtagBitbangController.DEFAULT_PORT
+    default_idcode = JtagBitbangController.INSTRUCTIONS['idcode']
     try:
         args: Optional[Namespace] = None
         argparser = ArgumentParser(
@@ -78,6 +78,14 @@ def main():
                          default=DEFAULT_IR_LENGTH,
                          help=f'bit length of the IR register '
                               f'(default: {DEFAULT_IR_LENGTH})')
+        dmi.add_argument('--idcode', type=int, default=default_idcode,
+                         help=f'define the ID code (default: {default_idcode})')
+        dmi.add_argument('--dtmcs', type=HexInt.parse,
+                         help=f'define an alternative DTMCS register '
+                              f'(default: 0x{DTMCS.ADDRESS:x})')
+        dmi.add_argument('--dmi', type=HexInt.parse,
+                         help=f'define an alternative DMI register '
+                              f'(default: 0x{DMI.ADDRESS:x})')
         dmi.add_argument('-b', '--base', type=HexInt.parse,
                          default=DEFAULT_DMI_ADDRESS,
                          help=f'define DMI base address '
@@ -157,11 +165,15 @@ def main():
         eng = JtagEngine(ctrl)
         ctrl.tap_reset(trst)
         ir_length = args.ir_length
+        if args.dtmcs:
+            DTMCS.ADDRESS = args.dtmcs
+        if args.dmi:
+            DMI.ADDRESS = args.dmi
         dtm = DebugTransportModule(eng, ir_length)
         rvdm = None
         try:
             if args.info:
-                code = idcode(eng, ir_length)
+                code = idcode(eng, args.idcode, ir_length)
                 print(f'IDCODE:    0x{code:x}')
                 version = dtm['dtmcs'].dmi_version
                 abits = dtm['dtmcs'].abits
