@@ -80,10 +80,15 @@ Extras:
   operation, `--file` argument is mandatory. The content of the binary file is copied into the
   memory, starting at the `--address`. See also the `--elf` option for uploading applications.
 
-* `-S` specify the socket info of the JTAG server in the QEMU VM. For TCP, this should follow the
-  setting of the `-chardev socket,id=taprbb,host=<host>,port=<num>,...` option for invoking QEMU.
-  For unix sockets, host/port are replaced with the unix socket path specified instead:
-  `-chardev socket,id=taprbb,path=<socket/path>`.
+* `-S` specify the socket info to connect to the remote device.
+    * for QEMU VM JTAG server, TCP and Unix sockets are supported, _i.e._ `tcp:host:port` or
+      `unix:path/to/socket`.
+        * For TCP, this should follow the setting of the
+          `-chardev socket,id=taprbb,host=<host>,port=<num>,...` option for invoking QEMU.
+        * for Unix sockets, host/port are replaced with the unix socket path specified instead:
+          `-chardev socket,id=taprbb,path=<socket/path>`.
+    * for FTDI *232H USB-JTAG interfaces, PyFtdi v0.59+ Python module should be installed, and
+      pyftdi URL should be used to specify the FTDI device: _e.g._ `ftdi://ftdi:2232/1`
 
 * `-s` specify the number of bytes to read from or write to memory. Useful with the `--mem` option.
   See also the `--address` option. This option may be omitted for the `write` memory operation, in
@@ -134,4 +139,3 @@ option:
   ./scripts/opentitan/dtm.py -m write -a 0x1000_0000 -f file.dat -X
 
   ````
-

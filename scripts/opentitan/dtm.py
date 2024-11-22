@@ -31,6 +31,16 @@ from ot.util.elf import ElfBlob
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt, dump_buffer
 
+try:
+    _FTDI_ERR = None
+    PYFTDI_MIN_VER = (0, 59)
+    from pyftdi import __version__ as PyFtdiVersion
+    from pyftdi.jtag import JtagFtdiController
+except ImportError as _exc:
+    _FTDI_ERR = str(_exc).split(':')[-1]
+    JtagFtdiController = None
+
+
 DEFAULT_IR_LENGTH = 5
 """Default TAP Instruction Register length."""
 
@@ -51,7 +61,7 @@ def idcode(engine: JtagEngine, ir_length: int) -> None:
 def main():
     """Entry point."""
     debug = True
-    default_host = 'localhost'
+    default_socket = f'tcp:localhost:{JtagBitbangController.DEFAULT_PORT}'
     default_port = JtagBitbangController.DEFAULT_PORT
     try:
         args: Optional[Namespace] = None
@@ -59,9 +69,8 @@ def main():
             description=sys.modules[__name__].__doc__.split('.')[0])
         qvm = argparser.add_argument_group(title='Virtual machine')
 
-        qvm.add_argument('-S', '--socket',
-                         help=f'unix:path/to/socket or tcp:host:port '
-                              f'(default tcp:{default_host}:{default_port})')
+        qvm.add_argument('-S', '--socket', default=default_socket,
+                         help=f'connection (default {default_socket})')
         qvm.add_argument('-t', '--terminate', action='store_true',
                          help='terminate QEMU when done')
         dmi = argparser.add_argument_group(title='DMI')
@@ -109,29 +118,44 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        configure_loggers(args.verbose, 'dtm.rvdm', -1, 'dtm', 'jtag')
-
+        main_loggers = ['dtm']
         try:
-            if args.socket:
-                socket_type, socket_args = args.socket.split(":", 1)
-                if socket_type == "tcp":
-                    host, port = socket_args.split(":")
-                    sock = create_connection((host, int(port)), timeout=0.5)
-                elif socket_type == "unix":
-                    sock = socket(AF_UNIX, SOCK_STREAM)
-                    sock.connect(socket_args)
-                else:
-                    raise ValueError(f"Invalid socket type {socket_type}")
+            socket_type, socket_args = args.socket.split(':', 1)
+            if socket_type == 'tcp':
+                host, port = socket_args.split(':')
+                sock = create_connection((host, int(port)), timeout=0.5)
+            elif socket_type == 'unix':
+                sock = socket(AF_UNIX, SOCK_STREAM)
+                sock.connect(socket_args)
+            elif socket_type == 'ftdi':
+                if not JtagFtdiController:
+                    argparser.error(f'Cannot use PyFdti; {_FTDI_ERR}')
+                pyver = tuple(map(int, PyFtdiVersion.split('.')[:2]))
+                if pyver < PYFTDI_MIN_VER:
+                    argparser.error(f'PyFtdi version {PYFTDI_MIN_VER[0]}.'
+                                    f'{PYFTDI_MIN_VER[1]}+ required')
+                sock = None
+                main_loggers.append('pyftdi.jtag')
             else:
-                sock = create_connection((default_host, default_port),
-                                         timeout=0.5)
+                raise ValueError(f'Invalid socket type {socket_type}')
         except Exception as exc:
             raise RuntimeError(f'Cannot connect to {args.socket}: '
                                f'{exc}') from exc
-        sock.settimeout(0.1)
-        ctrl = JtagBitbangController(sock)
+
+        configure_loggers(args.verbose, *main_loggers, -1, 'jtag',
+            funcname=True, name_width=20)
+
+        if sock:
+            sock.settimeout(0.1)
+            ctrl = JtagBitbangController(sock)
+            trst = True
+        else:
+            ctrl = JtagFtdiController()
+            ctrl.configure(args.socket, frequency=4000000, direction=0x60eb,
+                           initial=0x00e8)
+            trst = False
         eng = JtagEngine(ctrl)
-        ctrl.tap_reset(True)
+        ctrl.tap_reset(trst)
         ir_length = args.ir_length
         dtm = DebugTransportModule(eng, ir_length)
         rvdm = None
@@ -174,7 +198,7 @@ def main():
                                            f'0x{args.csr_check:08x}')
                 else:
                     pad = ' ' * (10 - len(args.csr))
-                    print(f'{args.csr}:{pad}0x{csr_val:08x}')
+                    print(f'{args.csr}:{pad}0x{csr_val:08x} (0b{csr_val:032b})')
             if args.mem:
                 if args.address is None:
                     argparser.error('no address specified for memory operation')
