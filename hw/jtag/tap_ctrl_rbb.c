@@ -35,6 +35,7 @@
 #include "qapi/error.h"
 #include "qom/object.h"
 #include "chardev/char-fe.h"
+#include "chardev/char-socket.h"
 #include "chardev/char.h"
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
@@ -509,6 +510,12 @@ static void tap_ctrl_rbb_chr_event_hander(void *opaque, QEMUChrEvent event)
     if (event == CHR_EVENT_OPENED) {
         if (!qemu_chr_fe_backend_connected(&tap->chr)) {
             return;
+        }
+
+        Object *sock;
+        sock = object_dynamic_cast(OBJECT(tap->chr.chr), TYPE_CHARDEV_SOCKET);
+        if (sock) {
+            qio_channel_set_delay(SOCKET_CHARDEV(sock)->ioc, false);
         }
 
         tap_ctrl_rbb_tap_reset(tap);
