@@ -31,6 +31,7 @@ from socket import socket, timeout as LegacyTimeoutError
 from subprocess import Popen, PIPE, TimeoutExpired
 from threading import Event, Thread
 from tempfile import mkdtemp, mkstemp
+from textwrap import shorten
 from time import time as now
 from traceback import format_exc
 from typing import Any, Iterator, NamedTuple, Optional
@@ -101,11 +102,12 @@ class ResultFormatter:
         """
         if spacing:
             print('')
-        widths = [max(len(x) for x in col) for col in zip(*self._results)]
+        results = [r[:-1] + [shorten(r[-1], width=100)] for r in self._results]
+        widths = [max(len(x) for x in col) for col in zip(*results)]
         self._show_line(widths, '-')
-        self._show_row(widths, self._results[0])
+        self._show_row(widths, results[0])
         self._show_line(widths, '=')
-        for row in self._results[1:]:
+        for row in results[1:]:
             self._show_row(widths, row)
             self._show_line(widths, '-')
         if spacing:
@@ -1758,7 +1760,7 @@ class QEMUExecuter:
 
 
 def main():
-    """Main routine"""
+    """Main routine."""
     debug = True
     qemu_dir = normpath(joinpath(dirname(dirname(dirname(normpath(__file__))))))
     qemu_path = normpath(joinpath(qemu_dir, 'build', 'qemu-system-riscv32'))
