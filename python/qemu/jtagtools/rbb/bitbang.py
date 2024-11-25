@@ -26,7 +26,7 @@
 """
 
 from logging import getLogger
-from socket import socket
+from socket import socket, SOCK_STREAM, IPPROTO_TCP, TCP_NODELAY
 from time import time as now
 from typing import Optional
 
@@ -67,6 +67,9 @@ class JtagBitbangController(JtagController):
         self._tdi = False
         self._trst = False
         self._srst = False
+        if self._sock.proto == IPPROTO_TCP and self._sock.type == SOCK_STREAM:
+            self._sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        self._sock.settimeout(self.RECV_TIMEOUT)
 
     def tap_reset(self, use_trst: bool = False) -> None:
         self._log.info('TAP reset (%s)', 'TRST' if use_trst else 'SW')
