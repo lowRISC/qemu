@@ -47,7 +47,8 @@ sys.path.append(QEMU_PYPATH)
 # pylint: disable=wrong-import-order
 # pylint: disable=import-error
 
-from ot.util.log import ColorLogFormatter, RemoteLogService, configure_loggers
+from ot.util.log import (ColorLogFormatter, RemoteLogService, configure_loggers,
+                         flush_memory_loggers)
 from ot.util.misc import EasyDict
 
 
@@ -1284,6 +1285,7 @@ class QEMUExecuter:
                     err = str(exc)
                 finally:
                     self._qfm.cleanup_transient()
+                    flush_memory_loggers(['pyot', 'pyot.vcp'], logging.INFO)
                 results[tret] += 1
                 sret = self.RESULT_MAP.get(tret, tret)
                 if targs:
