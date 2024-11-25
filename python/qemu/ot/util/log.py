@@ -343,3 +343,31 @@ def configure_loggers(level: int, *lognames: list[Union[str,  int, Color]],
         if not log.hasHandlers():
             log.addHandler(logh)
     return loggers
+
+
+def flush_memory_loggers(loggers: Sequence[Union[logging.Logger, str]],
+                         level: Optional[int] = None) -> None:
+    """Discard all buffered records of any MemoryHandler logger handlers.
+
+       :param loggers: the loggers to consider, or the root logger if none is
+                       specified.
+       :param level: if not None, flush all records whose level is higher or
+                     equal to the specified level.
+    """
+    if not loggers:
+        loggers = [logging.getLogger()]
+    for log in loggers:
+        if isinstance(log, str):
+            log = logging.getLogger(log)
+        for hdlr in log.handlers:
+            if not isinstance(hdlr, MemoryHandler):
+                continue
+            if level is None:
+                super(MemoryHandler, hdlr).flush()
+                continue
+            with hdlr.lock:
+                if hdlr.target:
+                    for record in hdlr.buffer:
+                        if record.levelno >= level:
+                            hdlr.target.handle(record)
+                    hdlr.buffer.clear()
