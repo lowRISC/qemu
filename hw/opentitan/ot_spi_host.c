@@ -58,7 +58,7 @@
 /* ------------------------------------------------------------------------ */
 
 /* undef to get all the repeated, identical status query traces */
-#define DISCARD_REPEATED_STATUS_TRACES
+#undef DISCARD_REPEATED_STATUS_TRACES
 
 /* fake delayed completion of HW commands */
 #define FSM_TRIGGER_DELAY_NS 100U /* nanoseconds */
@@ -249,17 +249,21 @@ static void ot_spi_host_trace_status(const char *ot_id, const char *msg,
     unsigned rxd = FIELD_EX32(status, STATUS, RXQD);
     unsigned txd = FIELD_EX32(status, STATUS, TXQD);
     char str[64u];
-    (void)snprintf(str, sizeof(str), "%s%s%s%s%s%s%s%s%s%s",
-                   FIELD_EX32(status, STATUS, RXWM) ? "RXM|" : "",
-                   FIELD_EX32(status, STATUS, RXSTALL) ? "RXS|" : "",
-                   FIELD_EX32(status, STATUS, RXEMPTY) ? "RXE|" : "",
-                   FIELD_EX32(status, STATUS, RXFULL) ? "RXF|" : "",
-                   FIELD_EX32(status, STATUS, TXWM) ? "TXM|" : "",
-                   FIELD_EX32(status, STATUS, TXSTALL) ? "TXS|" : "",
-                   FIELD_EX32(status, STATUS, TXEMPTY) ? "TXE|" : "",
-                   FIELD_EX32(status, STATUS, TXFULL) ? "TXF|" : "",
-                   FIELD_EX32(status, STATUS, ACTIVE) ? "ACT|" : "",
-                   FIELD_EX32(status, STATUS, READY) ? "RDY|" : "");
+    int last =
+        snprintf(str, sizeof(str), "%s%s%s%s%s%s%s%s%s%s",
+                 FIELD_EX32(status, STATUS, RXWM) ? "RXM|" : "",
+                 FIELD_EX32(status, STATUS, RXSTALL) ? "RXS|" : "",
+                 FIELD_EX32(status, STATUS, RXEMPTY) ? "RXE|" : "",
+                 FIELD_EX32(status, STATUS, RXFULL) ? "RXF|" : "",
+                 FIELD_EX32(status, STATUS, TXWM) ? "TXM|" : "",
+                 FIELD_EX32(status, STATUS, TXSTALL) ? "TXS|" : "",
+                 FIELD_EX32(status, STATUS, TXEMPTY) ? "TXE|" : "",
+                 FIELD_EX32(status, STATUS, TXFULL) ? "TXF|" : "",
+                 FIELD_EX32(status, STATUS, ACTIVE) ? "ACT|" : "",
+                 FIELD_EX32(status, STATUS, READY) ? "RDY|" : "");
+    if (str[last - 1] == '|') {
+        str[last - 1] = '\0';
+    }
     trace_ot_spi_host_status(ot_id, msg, status, str, cmd, rxd, txd);
 }
 
@@ -325,6 +329,7 @@ struct OtSPIHostState {
     IbexIRQ alert; /**< OpenTitan alert */
     uint32_t events; /**< Active events */
     uint32_t last_events; /**< Last detected events */
+    uint64_t total_transfer; /**< Transfered bytes since reset */
 
     OtSPIHostFsm fsm;
     bool on_reset;
@@ -617,26 +622,19 @@ static bool ot_spi_host_update_event(OtSPIHostState *s)
     /* new events' state */
     uint32_t events = ot_spi_host_build_event_bits(s);
 
-    /* events that have changed since last call (detect rising/falling edges) */
-    uint32_t changes = s->last_events ^ events;
-    /* RXWM/TXWM are not edge events, but level ones */
-    changes |= R_EVENT_ENABLE_RXWM_MASK | R_EVENT_ENABLE_TXWM_MASK;
+    /* events that have been raised since last call */
+    uint32_t raised_events = events & (s->last_events ^ events);
     s->last_events = events;
 
-    /* pick up changes */
-    events &= changes;
-
     /* accumulate events */
-    s->events |= events;
+    s->events |= raised_events;
 
     /* mask disabled events to get the spi event state */
-    bool event = (bool)(s->events & s->regs[R_EVENT_ENABLE]);
-    trace_ot_spi_host_debug1(s->ot_id, "event", event);
+    uint32_t eff_events = s->events & s->regs[R_EVENT_ENABLE];
+    trace_ot_spi_host_events(s->ot_id, events, raised_events, s->events,
+                             s->regs[R_EVENT_ENABLE], eff_events);
 
-    /*
-     * if the spi event test has been enabled, force event and clear its bit
-     * right away
-     */
+    bool event = (bool)eff_events;
     event |= (bool)(s->regs[R_INTR_TEST] & INTR_SPI_EVENT_MASK);
     s->regs[R_INTR_TEST] &= ~INTR_SPI_EVENT_MASK;
     if (event) {
@@ -645,7 +643,6 @@ static bool ot_spi_host_update_event(OtSPIHostState *s)
         s->regs[R_INTR_STATE] &= ~INTR_SPI_EVENT_MASK;
     }
 
-    /* now update the IRQ signal (event could have been already signalled) */
     bool event_level = (bool)(s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE] &
                               INTR_SPI_EVENT_MASK);
     if (event_level != (bool)ibex_irq_get_level(&s->irqs[IRQ_SPI_EVENT])) {
@@ -737,6 +734,8 @@ static void ot_spi_host_reset(OtSPIHostState *s)
 
     ot_spi_host_update_regs(s);
     ot_spi_host_update_alert(s);
+
+    s->total_transfer = 0;
 }
 
 /**
@@ -807,7 +806,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
             fifo8_push(s->rx_fifo, rx);
         }
 
-        trace_ot_spi_host_transfer(s->ot_id, tx, rx);
+        trace_ot_spi_host_transfer(s->ot_id, s->total_transfer, tx, rx);
+        s->total_transfer += 1u;
 
         length--;
     }
@@ -833,6 +833,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
     headcmd->command = (uint16_t)command;
     headcmd->ongoing = ongoing;
+
+    ot_spi_host_update_regs(s);
 
     timer_mod_anticipate(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
                                            FSM_TRIGGER_DELAY_NS);
@@ -901,7 +903,7 @@ static void ot_spi_host_post_fsm(void *opaque)
             /* more commands have been scheduled */
             trace_ot_spi_host_debug(s->ot_id, "Next cmd");
             if (!ot_spi_host_is_on_error(s)) {
-                qemu_bh_schedule(s->fsm_bh);
+                ot_spi_host_step_fsm(s, "post");
             } else {
                 trace_ot_spi_host_debug(s->ot_id, "no resched: on err");
             }
@@ -962,6 +964,8 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
     case R_RXDATA: {
         /* here, size != 4 is illegal, what to do in this case? */
         if (fifo8_num_used(s->rx_fifo) < sizeof(uint32_t)) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Read underflow: %u\n",
+                          __func__, s->ot_id, fifo8_num_used(s->rx_fifo));
             REG_UPDATE(s, ERROR_STATUS, UNDERFLOW, 1);
             ot_spi_host_update_regs(s);
             val32 = 0u;
@@ -972,6 +976,7 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
             val32 <<= 8u;
             val32 |= (uint32_t)fifo8_pop(s->rx_fifo);
         }
+        ot_spi_host_trace_status(s->ot_id, "rxd", ot_spi_host_get_status(s));
         val32 = bswap32(val32);
         bool resume = false;
         if (!cmdfifo_is_empty(s->cmd_fifo)) {
@@ -1009,7 +1014,9 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
     if (trace_cache.pc != pc || trace_cache.addr != addr ||
         trace_cache.value != val32) {
         if (trace_cache.count > 1u) {
-            trace_ot_spi_host_io_read_repeat(s->ot_id, trace_cache.count);
+            hwaddr rreg = R32_OFF(trace_cache.addr);
+            trace_ot_spi_host_io_read_repeat(s->ot_id, REG_NAME(rreg),
+                                             trace_cache.count);
         }
 #endif /* DISCARD_REPEATED_STATUS_TRACES */
         trace_ot_spi_host_io_read(s->ot_id, (uint32_t)addr, REG_NAME(reg),
@@ -1055,11 +1062,10 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= INTR_MASK;
         s->regs[R_INTR_STATE] &= ~val32;
         if (val32 & INTR_SPI_EVENT_MASK) {
-            /* store current state */
-            s->last_events = ot_spi_host_build_event_bits(s);
             /* clear up all signalled events */
             s->events = 0u;
         }
+        /* this call also regenerates all raised events */
         ot_spi_host_update_regs(s);
         break;
     case R_INTR_ENABLE:
