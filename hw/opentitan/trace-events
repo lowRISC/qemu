@@ -467,16 +467,17 @@ ot_spi_host_command(const char *id, const char *dir, const char *spd, uint32_t c
 ot_spi_host_cs(const char *id, uint32_t csid, const char *level) "%s: cs#:%u %sselected"
 ot_spi_host_debug(const char *id, const char *msg) "%s: %s"
 ot_spi_host_debug1(const char *id, const char *msg, uint32_t val) "%s: %s 0x%x"
+ot_spi_host_events(const char *id, uint32_t cur, uint32_t raised, uint32_t active, uint32_t mask, uint32_t eff) "%s: cur:0x%02x rsd:0x%02x act:0x%02x msk:0x%02x eff:0x%02x"
 ot_spi_host_fsm(const char *id, const char *cause) "%s: step %s"
-ot_spi_host_io_read(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr:0x%02x (%s), val:0x%x, pc:0x%x"
-ot_spi_host_io_read_repeat(const char *id, size_t count) "%s: last read repeated %zu times"
-ot_spi_host_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr:0x%02x (%s), val:0x%x, pc:0x%x"
+ot_spi_host_io_read(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr:0x%02x (%s), val:0x%08x, pc:0x%x"
+ot_spi_host_io_read_repeat(const char *id, const char * regname, size_t count) "%s: last %s read repeated %zu times"
+ot_spi_host_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr:0x%02x (%s), val:0x%08x, pc:0x%x"
 ot_spi_host_reject(const char *id, const char *msg) "%s: %s"
 ot_spi_host_reset(const char *id, const char *msg) "%s: %s"
-ot_spi_host_stall(const char *id, const char *msg, uint32_t val) "%s: %s %u"
+ot_spi_host_stall(const char *id, const char *msg, uint32_t val) "%s: %s rem %u"
 ot_spi_host_status(const char *id, const char *msg, uint32_t status, const char *str, unsigned cmd, unsigned rxd, unsigned txd) "%s: %s 0x%08x s:%s cq:%u rq:%u tq:%u"
-ot_spi_host_transfer(const char *id, uint32_t tx_data, uint32_t rx_data) "%s: tx_data: 0x%02x rx_data: 0x%02x"
-ot_spi_host_update_irq(const char *id, const char *channel, int level) "%s: %s: %d"
+ot_spi_host_transfer(const char *id, uint64_t transfer, uint32_t tx_data, uint32_t rx_data) "%s: {%" PRIu64 "} tx_data: 0x%02x rx_data: 0x%02x"
+ot_spi_host_update_irq(const char *id, const char *channel, int level) "%s: irq %s: %d"
 
 # ot_sram_ctrl.c
 
