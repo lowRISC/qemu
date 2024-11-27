@@ -32,7 +32,7 @@ from subprocess import Popen, PIPE, TimeoutExpired
 from threading import Event, Thread
 from tempfile import mkdtemp, mkstemp
 from textwrap import shorten
-from time import time as now
+from time import sleep, time as now
 from traceback import format_exc
 from typing import Any, Iterator, NamedTuple, Optional
 
@@ -2004,6 +2004,9 @@ def main():
             argparser.error(str(exc))
         ret = qexc.run(debug, args.zero)
         log.debug('End of execution with code %d', ret or 0)
+        if rlog:
+            # leave extra time for last logging packets to be received
+            sleep(0.1)
         sys.exit(ret)
     # pylint: disable=broad-except
     except Exception as exc:
