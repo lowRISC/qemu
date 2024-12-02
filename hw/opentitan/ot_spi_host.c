@@ -369,15 +369,22 @@ struct TxFifo {
     uint32_t num;
 };
 
+enum CmdState {
+    CMD_SCHEDULED, /* command scheduled for execution, not yet handled */
+    CMD_ONGOING, /* command is being executed, not yet completed */
+    CMD_EXECUTED, /* commmand has been executed, need to be popped out */
+};
+
 /**
  * Command FIFO stores commands alongs with SPI device configuration.
- * To fit into 64-bit word, limit supported CS lines down to 64K rather than 4G.
+ * To fit into 64-bit word, limit supported CS lines down to 256 rather than 4G,
+ * and use "int8_t" for command state.
  */
 typedef struct {
     uint32_t opts; /* configopts */
     uint16_t command; /* command[15:0] */
     uint8_t csid; /* csid[7:0] */
-    bool ongoing; /* command is being processed */
+    int8_t state; /* enum CmdState */
 } CmdFifoSlot;
 
 static_assert(sizeof(TxFifoSlot) == sizeof(uint64_t),
@@ -751,6 +758,10 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     s->fsm.active = true;
     ot_spi_host_update_event(s);
 
+    if (headcmd->state == CMD_EXECUTED) {
+        goto post;
+    }
+
     uint32_t command = (uint32_t)headcmd->command;
     bool read = ot_spi_host_is_rx(command);
     bool write = ot_spi_host_is_tx(command);
@@ -812,7 +823,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         length--;
     }
 
-    bool ongoing;
+    int8_t cmd_state;
     if (length) {
         /* if the transfer early ended, a stall condition has been detected */
         if (write && txfifo_is_empty(s->tx_fifo)) {
@@ -825,15 +836,16 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         }
 
         command = FIELD_DP32(command, COMMAND, LEN, length - 1);
-        ongoing = true;
+        cmd_state = CMD_ONGOING;
     } else {
         command = FIELD_DP32(command, COMMAND, LEN, 0);
-        ongoing = false;
+        cmd_state = CMD_EXECUTED;
     }
 
     headcmd->command = (uint16_t)command;
-    headcmd->ongoing = ongoing;
+    headcmd->state = cmd_state;
 
+post:
     ot_spi_host_update_regs(s);
 
     timer_mod_anticipate(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
@@ -863,11 +875,11 @@ static void ot_spi_host_post_fsm(void *opaque)
 
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
     uint32_t command = (uint32_t)headcmd->command;
-    bool ongoing = headcmd->ongoing;
+    bool retire = headcmd->state == CMD_EXECUTED;
 
     ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
 
-    if (!ongoing) {
+    if (retire) {
         if (ot_spi_host_is_rx(command)) {
             /*
              * transfer has been completed, RX FIFO may need padding up to a
@@ -897,11 +909,11 @@ static void ot_spi_host_post_fsm(void *opaque)
 
     ot_spi_host_trace_status(s->ot_id, "P<", ot_spi_host_get_status(s));
 
-    if (!ongoing) {
+    if (retire) {
         /* last command has completed */
         if (!cmdfifo_is_empty(s->cmd_fifo)) {
             /* more commands have been scheduled */
-            trace_ot_spi_host_debug(s->ot_id, "Next cmd");
+            trace_ot_spi_host_debug(s->ot_id, "next cmd");
             if (!ot_spi_host_is_on_error(s)) {
                 ot_spi_host_step_fsm(s, "post");
             } else {
@@ -1152,7 +1164,7 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             .opts = s->config_opts[csid],
             .command = (uint16_t)val32, /* only b15..b0 are meaningful */
             .csid = csid,
-            .ongoing = false,
+            .state = CMD_SCHEDULED,
         };
 
         bool activate = cmdfifo_is_empty(s->cmd_fifo) && !s->fsm.rx_stall &&
