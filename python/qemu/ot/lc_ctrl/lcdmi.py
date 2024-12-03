@@ -110,6 +110,11 @@ class LifeCycleController:
                   for b in range(len(self.STATUS))}
         return status
 
+    @property
+    def dtm(self) -> DebugTransportModule:
+        """Return the DTM"""
+        return self._dtm
+
     def disable_claim_transition_if_regwen(self):
         """Disable claim transition interface."""
         self._write_reg('claim_transition_if_regwen', 0)
