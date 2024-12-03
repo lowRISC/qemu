@@ -288,6 +288,10 @@ Sample config for running some non-OpenTitan tests:
         timeout:  3
         machine:  ot-earlgrey,no_epmp_cfg=true
     }
+    virtual:
+    {
+        ot-flash: ${BASEDIR}/flash.raw
+    }
     # It would be nice if ELF files could have an .elf extension w/ Cargo
     # Let's include everything and exclude non-ELF files
     include:
@@ -395,6 +399,15 @@ Sample config for running some non-OpenTitan tests:
   The option names are the same ones as the script option switches, please refer to the Usage
   section for details.
 
+* `virtual`
+  This section defines virtual tests, as a mapping.
+  Each entry defines the name of the virtual test to create and the actual test binary to execute.
+
+  This enables testing the same binary in multiple configurations, using different options and
+  settings.
+
+  Virtual tests can be filtered and configured as any regular tests.
+
 * `include`
   This section contains the list of tests to be run.
 
@@ -421,6 +434,8 @@ Sample config for running some non-OpenTitan tests:
   of the current include file.
 
   Note that `include_from` (and `exclude_from`) do not support globalization patterns (`*` and `?`).
+
+  Virtual tests cannot be specified in `include_from`, nor `exclude_from` files.
 
 * `exclude`
   This section contains the list of tests not to be run.

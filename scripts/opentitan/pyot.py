@@ -1179,6 +1179,7 @@ class QEMUExecuter:
         self._argdict: dict[str, Any] = {}
         self._qemu_cmd: list[str] = []
         self._suffixes = []
+        self._virtual_tests: dict[str, str] = {}
         if hasattr(self._args, 'opts'):
             setattr(self._args, 'global_opts', getattr(self._args, 'opts'))
             setattr(self._args, 'opts', [])
@@ -1380,7 +1381,7 @@ class QEMUExecuter:
                 delete_file(filename)
 
     def _build_qemu_fw_args(self, args: Namespace) \
-            -> tuple[str, str, list[str]]:
+            -> tuple[str, Optional[str], list[str], Optional[str]]:
         rom_exec = bool(args.rom_exec)
         roms = args.rom or []
         multi_rom = (len(roms) + int(rom_exec)) > 1
@@ -1397,6 +1398,7 @@ class QEMUExecuter:
                                     if x)
             except ValueError:
                 self._log.warning('Unknown variant syntax %s', variant)
+        rom_counts: list[int] = [0]
         for chip_id in range(chiplet_count):
             rom_count = 0
             for rom in roms:
@@ -1416,9 +1418,13 @@ class QEMUExecuter:
                 rom_opt = f'ot-rom_img,id={rom_id},file={rom_path}'
                 fw_args.extend(('-object', rom_opt))
                 rom_count += 1
+            rom_counts.append(rom_count)
+        rom_count = max(rom_counts)
         xtype = None
         if args.exec:
-            exec_path = self.abspath(args.exec)
+            exec_path = self._virtual_tests.get(args.exec)
+            if not exec_path:
+                exec_path = self.abspath(args.exec)
             xtype = self.guess_test_type(exec_path)
             if xtype == 'spiflash':
                 fw_args.extend(('-drive',
@@ -1448,7 +1454,9 @@ class QEMUExecuter:
                     rom_count += 1
                 else:
                     fw_args.extend(('-kernel', exec_path))
-        return machine, xtype, fw_args
+        else:
+            exec_path = None
+        return machine, xtype, fw_args, exec_path
 
     def _build_qemu_log_sources(self, args: Namespace) -> list[str]:
         if not args.log:
@@ -1503,7 +1511,7 @@ class QEMUExecuter:
         """
         if args.qemu is None:
             raise ValueError('QEMU path is not defined')
-        machine, xtype, fw_args = self._build_qemu_fw_args(args)
+        machine, xtype, fw_args, xexec = self._build_qemu_fw_args(args)
         qemu_args = [args.qemu, '-M', machine]
         if args.otcfg:
             qemu_args.extend(('-readconfig', self.abspath(args.otcfg)))
@@ -1533,13 +1541,13 @@ class QEMUExecuter:
             flash_path = self.abspath(args.flash)
             qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_path},'
                                         f'format=raw'))
-        elif any((args.exec, args.boot)):
-            if args.exec and not isfile(args.exec):
-                raise ValueError(f'No such exec file: {args.exec}')
+        elif any((xexec, args.boot)):
+            if xexec and not isfile(xexec):
+                raise ValueError(f'No such exec file: {xexec}')
             if args.boot and not isfile(args.boot):
                 raise ValueError(f'No such bootloader file: {args.boot}')
             if args.embedded_flash:
-                flash_file = self._qfm.create_eflash_image(args.exec, args.boot)
+                flash_file = self._qfm.create_eflash_image(xexec, args.boot)
                 temp_files['flash'].add(flash_file)
                 qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_file},'
                                  f'format=raw'))
@@ -1597,6 +1605,22 @@ class QEMUExecuter:
             tfilters = ['*'] + pfilters
         else:
             tfilters = list(pfilters)
+        virttests = self._config.get('virtual', {})
+        if not isinstance(virttests, dict):
+            raise ValueError('Invalid virtual tests definition')
+        vtests = {}
+        for vname, vpath in virttests.items():
+            if not isinstance(vname, str):
+                raise ValueError(f"Invalid virtual test definition '{vname}'")
+            if sep in vname:
+                raise ValueError(f"Virtual test name cannot contain directory "
+                                 f"specifier: '{vname}'")
+            rpath = normpath(self._qfm.interpolate(vpath))
+            if not isfile(rpath):
+                raise ValueError(f"Invalid virtual test '{vname}': "
+                                 f"missing file '{rpath}'")
+            vtests[vname] = rpath
+        self._virtual_tests.update(vtests)
         inc_filters = self._build_config_list('include')
         if inc_filters:
             self._log.debug('Searching for tests from %s dir', testdir)
@@ -1610,17 +1634,21 @@ class QEMUExecuter:
                             if fnmatchcase(self.get_test_radix(path), tfilter):
                                 pathnames.add(path)
                                 break
+                for vpath in vtests:
+                    for tfilter in tfilters:
+                        if fnmatchcase(self.get_test_radix(vpath), tfilter):
+                            pathnames.add(vpath)
+                            break
         for testfile in self._enumerate_from('include_from'):
             if not isfile(testfile):
                 raise ValueError(f'Unable to locate test file '
                                  f'"{testfile}"')
             for tfilter in tfilters:
-                if fnmatchcase(self.get_test_radix(testfile),
-                               tfilter):
+                if fnmatchcase(self.get_test_radix(testfile), tfilter):
                     pathnames.add(testfile)
         if not pathnames:
             return []
-        roms = self._argdict.get('rom')
+        roms = self._argdict.get('rom', [])
         pathnames -= {normpath(rom) for rom in roms}
         xtfilters = [f[1:].strip() for f in cfilters if f.startswith('!')]
         exc_filters = self._build_config_list('exclude')
@@ -1631,6 +1659,11 @@ class QEMUExecuter:
                     path_filter = joinpath(testdir, path_filter)
                 paths = set(glob(path_filter, recursive=True))
                 pathnames -= paths
+                vdiscards: set[str] = set()
+                for vpath in vtests:
+                    if fnmatchcase(vpath, basename(path_filter)):
+                        vdiscards.add(vpath)
+                pathnames -= vdiscards
         pathnames -= set(self._enumerate_from('exclude_from'))
         if alphasort:
             return sorted(pathnames, key=basename)
@@ -1684,7 +1717,7 @@ class QEMUExecuter:
         return cfglist
 
     def _build_test_args(self, test_name: str) \
-            -> tuple[Namespace, list[str], int]:
+            -> tuple[Namespace, list[str], int, int]:
         tests_cfg = self._config.get('tests', {})
         if not isinstance(tests_cfg, dict):
             raise ValueError('Invalid tests sub-section')
