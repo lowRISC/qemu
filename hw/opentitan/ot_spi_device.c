@@ -1524,7 +1524,6 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
         f->len = 1u;
         FLASH_CHANGE_STATE(f, UP_DUMMY);
     } else if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
-        qemu_log("%s INPUT PAYLOAD as %08x\n", __func__, f->cmd_info);
         ot_spi_device_flash_init_payload(s);
     } else {
         s->spi_regs[R_UPLOAD_STATUS2] = 0;
