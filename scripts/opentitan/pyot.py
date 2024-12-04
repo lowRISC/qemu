@@ -1438,19 +1438,20 @@ class QEMUExecuter:
                     raise ValueError(f'No support for test type: {xtype} '
                                      f'({basename(exec_path)})')
                 if rom_exec:
-                    # generate ROM option for the application itself
-                    rom_ids = []
-                    if args.first_soc:
-                        if chiplet_count == 1:
-                            rom_ids.append(f'{args.first_soc}.')
-                        else:
-                            rom_ids.append(f'{args.first_soc}0.')
-                    rom_ids.append('rom')
-                    if multi_rom:
-                        rom_ids.append(f'{rom_count}')
-                    rom_id = ''.join(rom_ids)
-                    rom_opt = f'ot-rom_img,id={rom_id},file={exec_path}'
-                    fw_args.extend(('-object', rom_opt))
+                    # generate ROM option(s) for the application itself
+                    for chip in range(chiplet_count):
+                        rom_id_parts = []
+                        if args.first_soc:
+                            if chiplet_count == 1:
+                                rom_id_parts.append(f'{args.first_soc}.')
+                            else:
+                                rom_id_parts.append(f'{args.first_soc}{chip}.')
+                        rom_id_parts.append('rom')
+                        if multi_rom:
+                            rom_id_parts.append(f'{rom_count}')
+                        rom_id = ''.join(rom_id_parts)
+                        rom_opt = f'ot-rom_img,id={rom_id},file={exec_path}'
+                        fw_args.extend(('-object', rom_opt))
                     rom_count += 1
                 else:
                     fw_args.extend(('-kernel', exec_path))
