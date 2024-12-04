@@ -1665,7 +1665,8 @@ class ProxyEngine:
                 if len(buffer) < length:
                     continue
                 packet = bytes(buffer[:length])
-                self._log.debug('RX payload:%s', self.to_str(packet))
+                self._log.debug('RX payload:%s%s', self.to_str(packet)[:80],
+                    '...' if len(packet) > 80 else '')
                 buffer = buffer[length:]
                 if resp:
                     if self._tx_uid != uid:
