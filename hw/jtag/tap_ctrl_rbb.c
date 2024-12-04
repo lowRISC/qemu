@@ -235,18 +235,18 @@ static void tap_ctrl_rbb_tap_reset(TapCtrlRbbState *tap)
 
 static void tap_ctrl_rbb_system_reset(TapCtrlRbbState *tap)
 {
-    Object *mc = qdev_get_machine();
-    ObjectClass *oc = object_get_class(mc);
+    Object *ms = qdev_get_machine();
+    ObjectClass *mc = object_get_class(ms);
     (void)tap;
 
-    if (!object_class_dynamic_cast(oc, TYPE_RESETTABLE_INTERFACE)) {
+    if (!object_class_dynamic_cast(mc, TYPE_RESETTABLE_INTERFACE)) {
         qemu_log_mask(LOG_UNIMP, "%s: Machine %s is not resettable\n", __func__,
-                      object_get_typename(mc));
+                      object_get_typename(ms));
         return;
     }
 
     trace_tap_ctrl_rbb_system_reset();
-    resettable_reset(mc, RESET_TYPE_COLD);
+    resettable_reset(ms, RESET_TYPE_COLD);
 }
 
 static TAPState tap_ctrl_rbb_get_next_state(TapCtrlRbbState *tap, bool tms)
