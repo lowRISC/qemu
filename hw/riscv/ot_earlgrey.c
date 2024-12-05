@@ -339,7 +339,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 5),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 6),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 7),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 9)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -353,14 +354,15 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40010000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 9),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 10),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 11),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 12),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 13),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 14),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 15),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 16)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 10),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 11),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 12),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 13),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 14),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 15),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 16),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 17),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 18)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -374,14 +376,15 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40020000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 17),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 18),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 19),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 20),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 21),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 22),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 23),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 24)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 19),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 20),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 21),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 22),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 23),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 24),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 25),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 26),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 27)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -395,14 +398,15 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40030000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 25),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 26),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 27),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 28),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 29),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 30),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 31),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 32)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 28),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 29),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 30),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 31),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 32),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 33),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 34),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 35),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 36)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -414,38 +418,38 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40040000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 33),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 34),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 35),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 36),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 37),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 38),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 49),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 40),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 41),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 42),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 43),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 44),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 45),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 46),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 47),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 48),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 59),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 50),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(18, PLIC, 51),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(19, PLIC, 52),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(20, PLIC, 53),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(21, PLIC, 54),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(22, PLIC, 55),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(23, PLIC, 56),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(24, PLIC, 57),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(25, PLIC, 58),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(26, PLIC, 69),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(27, PLIC, 60),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 61),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 62),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 63),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 64)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 37),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 38),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 39),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 40),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 41),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 42),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 43),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 44),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 45),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 46),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 47),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 48),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 49),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 50),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 51),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 52),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 53),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 54),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(18, PLIC, 55),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(19, PLIC, 56),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(20, PLIC, 57),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(21, PLIC, 58),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(22, PLIC, 59),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(23, PLIC, 60),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(24, PLIC, 61),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(25, PLIC, 62),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(26, PLIC, 63),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(27, PLIC, 64),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 65),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 66),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 67),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 68)
         )
     },
     [OT_EG_SOC_DEV_SPI_DEVICE] = {
@@ -455,18 +459,14 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40050000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 65),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 66),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 67),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 68),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 69),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 70),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 71),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 72),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 73),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 74),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 75),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 76)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 69),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 70),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 71),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 72),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 73),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 74),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 75),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 76)
         ),
     },
     [OT_EG_SOC_DEV_I2C0] = {
@@ -611,9 +611,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 128),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 129),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 130)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 128),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 129),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 130)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
@@ -669,7 +669,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40400000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 152),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 153),
             /* loopback signal since Earlgrey OTP signal are not supported yet*/
             OT_EG_SOC_SIGNAL(OT_PWRMGR_OTP_REQ, 0, PWRMGR,
                              OT_PWRMGR_OTP_RSP, 0),
@@ -746,8 +746,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40470000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 156),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 156),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 157),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR, \
                              OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
@@ -792,12 +792,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x20000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 159),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 160),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 160),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 161),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 162),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 163),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 164)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 162),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 163),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 164),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 165)
         ),
     },
     [OT_EG_SOC_DEV_AES] = {
@@ -821,9 +821,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41110000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 165),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 166),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 167),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 166),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 167),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 168),
             OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
         ),
     },
@@ -833,9 +833,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41120000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 168),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 169),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 170)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 169),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 170),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 171)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
@@ -851,7 +851,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41130000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 171),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 172),
             OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -881,10 +881,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41150000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 173),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 174),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 175),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 176)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 174),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 175),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 176),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 177)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("random_src", ENTROPY_SRC),
@@ -897,10 +897,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41160000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 177),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 178),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 179),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 180)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 178),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 179),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 180),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 181)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("ast", AST),
@@ -913,8 +913,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41170000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 181),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 182)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 182),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 183)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("csrng", CSRNG)
@@ -929,8 +929,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41180000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 183),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 184)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 184),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 185)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("csrng", CSRNG)
@@ -1015,7 +1015,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_STRING_PROP("hart-config", "M"),
             IBEX_DEV_UINT_PROP("hartid-base", 0u),
             /* note: should always be max_irq + 1 */
-            IBEX_DEV_UINT_PROP("num-sources", 185u),
+            IBEX_DEV_UINT_PROP("num-sources", 186u),
             IBEX_DEV_UINT_PROP("num-priorities", 3u),
             IBEX_DEV_UINT_PROP("priority-base", 0x0u),
             IBEX_DEV_UINT_PROP("pending-base", 0x1000u),
