@@ -47,12 +47,13 @@
 REG32(INTR_STATE, 0x00u)
     SHARED_FIELD(INTR_TX_WATERMARK, 0u, 1u)
     SHARED_FIELD(INTR_RX_WATERMARK, 1u, 1u)
-    SHARED_FIELD(INTR_TX_EMPTY, 2u, 1u)
+    SHARED_FIELD(INTR_TX_DONE, 2u, 1u)
     SHARED_FIELD(INTR_RX_OVERFLOW, 3u, 1u)
     SHARED_FIELD(INTR_RX_FRAME_ERR, 4u, 1u)
     SHARED_FIELD(INTR_RX_BREAK_ERR, 5u, 1u)
     SHARED_FIELD(INTR_RX_TIMEOUT, 6u, 1u)
     SHARED_FIELD(INTR_RX_PARITY_ERR, 7u, 1u)
+    SHARED_FIELD(INTR_TX_EMPTY, 8u, 1u)
 REG32(INTR_ENABLE, 0x04u)
 REG32(INTR_TEST, 0x08u)
 REG32(ALERT_TEST, 0x0cu)
@@ -97,9 +98,9 @@ REG32(TIMEOUT_CTRL, 0x30u)
 /* clang-format on */
 
 #define INTR_MASK \
-    (INTR_TX_WATERMARK_MASK | INTR_RX_WATERMARK_MASK | INTR_TX_EMPTY_MASK | \
+    (INTR_TX_WATERMARK_MASK | INTR_RX_WATERMARK_MASK | INTR_TX_DONE_MASK | \
      INTR_RX_OVERFLOW_MASK | INTR_RX_FRAME_ERR_MASK | INTR_RX_BREAK_ERR_MASK | \
-     INTR_RX_TIMEOUT_MASK | INTR_RX_PARITY_ERR_MASK)
+     INTR_RX_TIMEOUT_MASK | INTR_RX_PARITY_ERR_MASK | INTR_TX_EMPTY_MASK)
 
 #define CTRL_MASK \
     (R_CTRL_TX_MASK | R_CTRL_RX_MASK | R_CTRL_NF_MASK | R_CTRL_SLPBK_MASK | \
@@ -112,7 +113,7 @@ REG32(TIMEOUT_CTRL, 0x30u)
 #define OT_UART_NCO_BITS     16u
 #define OT_UART_TX_FIFO_SIZE 128u
 #define OT_UART_RX_FIFO_SIZE 128u
-#define OT_UART_IRQ_NUM      8u
+#define OT_UART_IRQ_NUM      9u
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
@@ -271,6 +272,7 @@ static void ot_uart_reset_tx_fifo(OtUARTState *s)
 {
     fifo8_reset(&s->tx_fifo);
     s->regs[R_INTR_STATE] |= INTR_TX_EMPTY_MASK;
+    s->regs[R_INTR_STATE] |= INTR_TX_DONE_MASK;
     if (s->tx_watermark_level) {
         s->regs[R_INTR_STATE] |= INTR_TX_WATERMARK_MASK;
         s->tx_watermark_level = 0;
@@ -323,6 +325,7 @@ static void ot_uart_xmit(OtUARTState *s)
     /* update INTR_STATE */
     if (fifo8_is_empty(&s->tx_fifo)) {
         s->regs[R_INTR_STATE] |= INTR_TX_EMPTY_MASK;
+        s->regs[R_INTR_STATE] |= INTR_TX_DONE_MASK;
     }
     if (s->tx_watermark_level &&
         fifo8_num_used(&s->tx_fifo) < s->tx_watermark_level) {
