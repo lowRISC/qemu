@@ -52,208 +52,186 @@
 #define PARAM_TPM_WR_FIFO_PTR_W  7u
 #define PARAM_TPM_RD_FIFO_PTR_W  5u
 #define PARAM_TPM_RD_FIFO_WIDTH  32u
-#define PARAM_NUM_IRQS           12u
+#define PARAM_NUM_IRQS           8u
 #define PARAM_NUM_ALERTS         1u
 #define PARAM_REG_WIDTH          32u
 
 /* SPI device registers */
+/* clang-format off */
 REG32(INTR_STATE, 0x0u)
-SHARED_FIELD(INTR_GENERIC_RX_FULL, 0u, 1u)
-SHARED_FIELD(INTR_GENERIC_RX_WATERMARK, 1u, 1u)
-SHARED_FIELD(INTR_GENERIC_TX_WATERMARK, 2u, 1u)
-SHARED_FIELD(INTR_GENERIC_RX_ERROR, 3u, 1u)
-SHARED_FIELD(INTR_GENERIC_RX_OVERFLOW, 4u, 1u)
-SHARED_FIELD(INTR_GENERIC_TX_UNDERFLOW, 5u, 1u)
-SHARED_FIELD(INTR_UPLOAD_CMDFIFO_NOT_EMPTY, 6u, 1u)
-SHARED_FIELD(INTR_UPLOAD_PAYLOAD_NOT_EMPTY, 7u, 1u)
-SHARED_FIELD(INTR_UPLOAD_PAYLOAD_OVERFLOW, 8u, 1u)
-SHARED_FIELD(INTR_READBUF_WATERMARK, 9u, 1u)
-SHARED_FIELD(INTR_READBUF_FLIP, 10u, 1u)
-SHARED_FIELD(INTR_TPM_HEADER_NOT_EMPTY, 11u, 1u)
+    SHARED_FIELD(INTR_UPLOAD_CMDFIFO_NOT_EMPTY, 0u, 1u)
+    SHARED_FIELD(INTR_UPLOAD_PAYLOAD_NOT_EMPTY, 1u, 1u)
+    SHARED_FIELD(INTR_UPLOAD_PAYLOAD_OVERFLOW, 2u, 1u)
+    SHARED_FIELD(INTR_READBUF_WATERMARK, 3u, 1u)
+    SHARED_FIELD(INTR_READBUF_FLIP, 4u, 1u)
+    SHARED_FIELD(INTR_TPM_HEADER_NOT_EMPTY, 5u, 1u)
+    SHARED_FIELD(INTR_TPM_RDFIFO_CMD_END, 6u, 1u)
+    SHARED_FIELD(INTR_TPM_RDFIFO_DROP, 7u, 1u)
 REG32(INTR_ENABLE, 0x4u)
 REG32(INTR_TEST, 0x8u)
 REG32(ALERT_TEST, 0xcu)
-FIELD(ALERT_TEST, FATAL_FAULT, 0u, 1u)
+    FIELD(ALERT_TEST, FATAL_FAULT, 0u, 1u)
 REG32(CONTROL, 0x10u)
-FIELD(CONTROL, ABORT, 0u, 1u)
-FIELD(CONTROL, MODE, 4u, 2u)
-FIELD(CONTROL, RST_TXFIFO, 16u, 1u)
-FIELD(CONTROL, RST_RXFIFO, 17u, 1u)
-FIELD(CONTROL, SRAM_CLK_EN, 31u, 1u)
+    FIELD(CONTROL, FLASH_STATUS_FIFO_CLR, 0u, 1u)
+    FIELD(CONTROL, FLASH_READ_BUFFER_CLR, 1u, 1u)
+    FIELD(CONTROL, MODE, 4u, 2u)
 REG32(CFG, 0x14u)
-FIELD(CFG, CPOL, 0u, 1u)
-FIELD(CFG, CPHA, 1u, 1u)
-FIELD(CFG, TX_ORDER, 2u, 1u)
-FIELD(CFG, RX_ORDER, 3u, 1u)
-FIELD(CFG, TIMER_V, 8u, 8u)
-FIELD(CFG, ADDR_4B_EN, 16u, 1u)
-FIELD(CFG, MAILBOX_EN, 24u, 1u)
-REG32(FIFO_LEVEL, 0x18u)
-FIELD(FIFO_LEVEL, RXLVL, 0u, 16u)
-FIELD(FIFO_LEVEL, TXLVL, 16u, 16u)
-REG32(ASYNC_FIFO_LEVEL, 0x1cu)
-FIELD(ASYNC_FIFO_LEVEL, RXLVL, 0u, 8u)
-FIELD(ASYNC_FIFO_LEVEL, TXLVL, 16, 8u)
-REG32(STATUS, 0x20u)
-FIELD(STATUS, RXF_FULL, 0u, 1u)
-FIELD(STATUS, RXF_EMPTY, 1u, 1u)
-FIELD(STATUS, TXF_FULL, 2u, 1u)
-FIELD(STATUS, TXF_EMPTY, 3u, 1u)
-FIELD(STATUS, ABORT_DONE, 4u, 1u)
-FIELD(STATUS, CSB, 5u, 1u)
-FIELD(STATUS, TPM_CSB, 6u, 1u)
-REG32(RXF_PTR, 0x24u)
-FIELD(RXF_PTR, RPTR, 0u, 16u)
-FIELD(RXF_PTR, WPTR, 16u, 16u)
-REG32(TXF_PTR, 0x28u)
-FIELD(TXF_PTR, RPTR, 0u, 16u)
-FIELD(TXF_PTR, WPTR, 16u, 16u)
-REG32(RXF_ADDR, 0x2cu)
-FIELD(RXF_ADDR, BASE, 0u, 16u)
-FIELD(RXF_ADDR, LIMIT, 16u, 16u)
-REG32(TXF_ADDR, 0x30u)
-FIELD(TXF_ADDR, BASE, 0u, 16u)
-FIELD(TXF_ADDR, LIMIT, 16u, 16u)
-REG32(INTERCEPT_EN, 0x34u)
-FIELD(INTERCEPT_EN, STATUS, 0u, 1u)
-FIELD(INTERCEPT_EN, JEDEC, 1u, 1u)
-FIELD(INTERCEPT_EN, SFDP, 2u, 1u)
-FIELD(INTERCEPT_EN, MBX, 3u, 1u)
-REG32(LAST_READ_ADDR, 0x38u)
-REG32(FLASH_STATUS, 0x3cu)
-FIELD(FLASH_STATUS, BUSY, 0u, 1u)
-FIELD(FLASH_STATUS, WEL, 1u, 1u)
-FIELD(FLASH_STATUS, BP0, 2u, 1u)
-FIELD(FLASH_STATUS, BP1, 3u, 1u)
-FIELD(FLASH_STATUS, BP2, 4u, 1u)
-FIELD(FLASH_STATUS, TB, 5u, 1u) /* beware actual bits depend on emulated dev. */
-FIELD(FLASH_STATUS, SEC, 6u, 1u)
-FIELD(FLASH_STATUS, SRP0, 7u, 1u)
-FIELD(FLASH_STATUS, SRP1, 8u, 1u)
-FIELD(FLASH_STATUS, QE, 9u, 1u)
-FIELD(FLASH_STATUS, LB1, 11u, 1u)
-FIELD(FLASH_STATUS, LB2, 12u, 1u)
-FIELD(FLASH_STATUS, LB3, 13u, 1u)
-FIELD(FLASH_STATUS, CMP, 14u, 1u)
-FIELD(FLASH_STATUS, SUS, 15u, 1u)
-FIELD(FLASH_STATUS, WPS, 18u, 1u)
-FIELD(FLASH_STATUS, DRV0, 21u, 1u)
-FIELD(FLASH_STATUS, DRV1, 22u, 1u)
-FIELD(FLASH_STATUS, HOLD_NRST, 23u, 1u)
-REG32(JEDEC_CC, 0x40u)
-FIELD(JEDEC_CC, CC, 0u, 8u)
-FIELD(JEDEC_CC, NUM_CC, 8u, 8u)
-REG32(JEDEC_ID, 0x44u)
-FIELD(JEDEC_ID, ID, 0u, 16u)
-FIELD(JEDEC_ID, MF, 16u, 8u)
-REG32(READ_THRESHOLD, 0x48u)
-FIELD(READ_THRESHOLD, THRESHOLD, 0u, 10u)
-REG32(MAILBOX_ADDR, 0x4cu)
-FIELD(MAILBOX_ADDR, LOWER, 0u, 9u)
-FIELD(MAILBOX_ADDR, UPPER, 10u, 22u)
-REG32(UPLOAD_STATUS, 0x50u)
-FIELD(UPLOAD_STATUS, CMDFIFO_DEPTH, 0u, 5u)
-FIELD(UPLOAD_STATUS, CMDFIFO_NOTEMPTY, 7u, 1u)
-FIELD(UPLOAD_STATUS, ADDRFIFO_DEPTH, 8u, 5u)
-FIELD(UPLOAD_STATUS, ADDRFIFO_NOTEMPTY, 15u, 1u)
-REG32(UPLOAD_STATUS2, 0x54u)
-FIELD(UPLOAD_STATUS2, PAYLOAD_DEPTH, 0u, 9u)
-FIELD(UPLOAD_STATUS2, PAYLOAD_START_IDX, 16u, 8u)
-REG32(UPLOAD_CMDFIFO, 0x58u)
-FIELD(UPLOAD_CMDFIFO, DATA, 0u, 8u)
-REG32(UPLOAD_ADDRFIFO, 0x5cu)
-REG32(CMD_FILTER_0, 0x60u)
-REG32(CMD_FILTER_1, 0x64u)
-REG32(CMD_FILTER_2, 0x68u)
-REG32(CMD_FILTER_3, 0x6cu)
-REG32(CMD_FILTER_4, 0x70u)
-REG32(CMD_FILTER_5, 0x74u)
-REG32(CMD_FILTER_6, 0x78u)
-REG32(CMD_FILTER_7, 0x7cu)
-REG32(ADDR_SWAP_MASK, 0x80u)
-REG32(ADDR_SWAP_DATA, 0x84u)
-REG32(PAYLOAD_SWAP_MASK, 0x88u)
-REG32(PAYLOAD_SWAP_DATA, 0x8cu)
-REG32(CMD_INFO_0, 0x90u) /* ReadStatus1 */
-SHARED_FIELD(CMD_INFO_OPCODE, 0u, 8u)
-SHARED_FIELD(CMD_INFO_ADDR_MODE, 8u, 2u)
-SHARED_FIELD(CMD_INFO_ADDR_SWAP_EN, 10u, 1u) /* not used in Flash mode */
-SHARED_FIELD(CMD_INFO_MBYTE_EN, 11u, 1u)
-SHARED_FIELD(CMD_INFO_DUMMY_SIZE, 12u, 3u) /* limited to bits, ignore in QEMU */
-SHARED_FIELD(CMD_INFO_DUMMY_EN, 15u, 1u) /* only use this bit for dummy cfg */
-SHARED_FIELD(CMD_INFO_PAYLOAD_EN, 16u, 4u)
-SHARED_FIELD(CMD_INFO_PAYLOAD_DIR, 20u, 1u) /* not used in Flash mode (guess) */
-SHARED_FIELD(CMD_INFO_PAYLOAD_SWAP_EN, 21u, 1u) /* not used in Flash mode */
-SHARED_FIELD(CMD_INFO_UPLOAD, 24u, 1u)
-SHARED_FIELD(CMD_INFO_BUSY, 25u, 1u)
-SHARED_FIELD(CMD_INFO_VALID, 31u, 1u)
-REG32(CMD_INFO_1, 0x94u) /* ReadStatus2 */
-REG32(CMD_INFO_2, 0x98u) /* ReadStatus3 */
-REG32(CMD_INFO_3, 0x9cu) /* ReadJedecId */
-REG32(CMD_INFO_4, 0xa0u) /* ReadSfdp */
-REG32(CMD_INFO_5, 0xa4u) /* Read */
-REG32(CMD_INFO_6, 0xa8u) /* FastRead */
-REG32(CMD_INFO_7, 0xacu) /* FastReadDual */
-REG32(CMD_INFO_8, 0xb0u) /* FastReadQuad */
-REG32(CMD_INFO_9, 0xb4u) /* FastReadDualIO */
-REG32(CMD_INFO_10, 0xb8u) /* FastReadQuadIO */
-REG32(CMD_INFO_11, 0xbcu)
-REG32(CMD_INFO_12, 0xc0u)
-REG32(CMD_INFO_13, 0xc4u)
-REG32(CMD_INFO_14, 0xc8u)
-REG32(CMD_INFO_15, 0xccu)
-REG32(CMD_INFO_16, 0xd0u)
-REG32(CMD_INFO_17, 0xd4u)
-REG32(CMD_INFO_18, 0xd8u)
-REG32(CMD_INFO_19, 0xdcu)
-REG32(CMD_INFO_20, 0xe0u)
-REG32(CMD_INFO_21, 0xe4u)
-REG32(CMD_INFO_22, 0xe8u)
-REG32(CMD_INFO_23, 0xecu)
-REG32(CMD_INFO_EN4B, 0xf0u)
-REG32(CMD_INFO_EX4B, 0xf4u)
-REG32(CMD_INFO_WREN, 0xf8u)
-REG32(CMD_INFO_WRDI, 0xfcu)
+    FIELD(CFG, TX_ORDER, 2u, 1u)
+    FIELD(CFG, RX_ORDER, 3u, 1u)
+    FIELD(CFG, MAILBOX_EN, 24u, 1u)
+REG32(STATUS, 0x18u)
+    FIELD(STATUS, CSB, 5u, 1u)
+    FIELD(STATUS, TPM_CSB, 6u, 1u)
+REG32(INTERCEPT_EN, 0x1cu)
+    FIELD(INTERCEPT_EN, STATUS, 0u, 1u)
+    FIELD(INTERCEPT_EN, JEDEC, 1u, 1u)
+    FIELD(INTERCEPT_EN, SFDP, 2u, 1u)
+    FIELD(INTERCEPT_EN, MBX, 3u, 1u)
+REG32(ADDR_MODE, 0x20u)
+    FIELD(ADDR_MODE, ADDR_4B_EN, 0u, 1u)
+    FIELD(ADDR_MODE, PENDING, 31u, 1u)
+REG32(LAST_READ_ADDR, 0x24u)
+REG32(FLASH_STATUS, 0x28u)
+    FIELD(FLASH_STATUS, BUSY, 0u, 1u)
+    FIELD(FLASH_STATUS, WEL, 1u, 1u)
+    FIELD(FLASH_STATUS, BP0, 2u, 1u)
+    FIELD(FLASH_STATUS, BP1, 3u, 1u)
+    FIELD(FLASH_STATUS, BP2, 4u, 1u)
+    FIELD(FLASH_STATUS, TB, 5u, 1u) /* beware actual bits depend on emulated dev. */
+    FIELD(FLASH_STATUS, SEC, 6u, 1u)
+    FIELD(FLASH_STATUS, SRP0, 7u, 1u)
+    FIELD(FLASH_STATUS, SRP1, 8u, 1u)
+    FIELD(FLASH_STATUS, QE, 9u, 1u)
+    FIELD(FLASH_STATUS, LB1, 11u, 1u)
+    FIELD(FLASH_STATUS, LB2, 12u, 1u)
+    FIELD(FLASH_STATUS, LB3, 13u, 1u)
+    FIELD(FLASH_STATUS, CMP, 14u, 1u)
+    FIELD(FLASH_STATUS, SUS, 15u, 1u)
+    FIELD(FLASH_STATUS, WPS, 18u, 1u)
+    FIELD(FLASH_STATUS, DRV0, 21u, 1u)
+    FIELD(FLASH_STATUS, DRV1, 22u, 1u)
+    FIELD(FLASH_STATUS, HOLD_NRST, 23u, 1u)
+REG32(JEDEC_CC, 0x2cu)
+    FIELD(JEDEC_CC, CC, 0u, 8u)
+    FIELD(JEDEC_CC, NUM_CC, 8u, 8u)
+REG32(JEDEC_ID, 0x30u)
+    FIELD(JEDEC_ID, ID, 0u, 16u)
+    FIELD(JEDEC_ID, MF, 16u, 8u)
+REG32(READ_THRESHOLD, 0x34u)
+    FIELD(READ_THRESHOLD, THRESHOLD, 0u, 10u)
+REG32(MAILBOX_ADDR, 0x38u)
+    FIELD(MAILBOX_ADDR, LOWER, 0u, 9u)
+    FIELD(MAILBOX_ADDR, UPPER, 10u, 22u)
+REG32(UPLOAD_STATUS, 0x3cu)
+    FIELD(UPLOAD_STATUS, CMDFIFO_DEPTH, 0u, 5u)
+    FIELD(UPLOAD_STATUS, CMDFIFO_NOTEMPTY, 7u, 1u)
+    FIELD(UPLOAD_STATUS, ADDRFIFO_DEPTH, 8u, 5u)
+    FIELD(UPLOAD_STATUS, ADDRFIFO_NOTEMPTY, 15u, 1u)
+REG32(UPLOAD_STATUS2, 0x40u)
+    FIELD(UPLOAD_STATUS2, PAYLOAD_DEPTH, 0u, 9u)
+    FIELD(UPLOAD_STATUS2, PAYLOAD_START_IDX, 16u, 8u)
+REG32(UPLOAD_CMDFIFO, 0x44u)
+    FIELD(UPLOAD_CMDFIFO, DATA, 0u, 8u)
+    FIELD(UPLOAD_CMDFIFO, BUSY, 13u, 1u)
+    FIELD(UPLOAD_CMDFIFO, WEL, 14u, 1u)
+    FIELD(UPLOAD_CMDFIFO, ADDR4B_MODE, 15u, 1u)
+REG32(UPLOAD_ADDRFIFO, 0x48u)
+REG32(CMD_FILTER_0, 0x4cu)
+REG32(CMD_FILTER_1, 0x50u)
+REG32(CMD_FILTER_2, 0x54u)
+REG32(CMD_FILTER_3, 0x58u)
+REG32(CMD_FILTER_4, 0x5cu)
+REG32(CMD_FILTER_5, 0x60u)
+REG32(CMD_FILTER_6, 0x64u)
+REG32(CMD_FILTER_7, 0x68u)
+REG32(ADDR_SWAP_MASK, 0x6cu)
+REG32(ADDR_SWAP_DATA, 0x70u)
+REG32(PAYLOAD_SWAP_MASK, 0x74u)
+REG32(PAYLOAD_SWAP_DATA, 0x78u)
+REG32(CMD_INFO_0, 0x7cu) /* ReadStatus1 */
+    SHARED_FIELD(CMD_INFO_OPCODE, 0u, 8u)
+    SHARED_FIELD(CMD_INFO_ADDR_MODE, 8u, 2u)
+    SHARED_FIELD(CMD_INFO_ADDR_SWAP_EN, 10u, 1u) /* not used in Flash mode */
+    SHARED_FIELD(CMD_INFO_MBYTE_EN, 11u, 1u)
+    SHARED_FIELD(CMD_INFO_DUMMY_SIZE, 12u, 3u) /* limited to bits, ignore in QEMU */
+    SHARED_FIELD(CMD_INFO_DUMMY_EN, 15u, 1u) /* only use this bit for dummy cfg */
+    SHARED_FIELD(CMD_INFO_PAYLOAD_EN, 16u, 4u)
+    SHARED_FIELD(CMD_INFO_PAYLOAD_DIR, 20u, 1u) /* not used in Flash mode (guess) */
+    SHARED_FIELD(CMD_INFO_PAYLOAD_SWAP_EN, 21u, 1u) /* not used in Flash mode */
+    SHARED_FIELD(CMD_INFO_READ_PIPELINE_MODE, 22u, 2u)
+    SHARED_FIELD(CMD_INFO_UPLOAD, 24u, 1u)
+    SHARED_FIELD(CMD_INFO_BUSY, 25u, 1u)
+    SHARED_FIELD(CMD_INFO_VALID, 31u, 1u)
+REG32(CMD_INFO_1, 0x80u) /* ReadStatus2 */
+REG32(CMD_INFO_2, 0x84u) /* ReadStatus3 */
+REG32(CMD_INFO_3, 0x88u) /* ReadJedecId */
+REG32(CMD_INFO_4, 0x8cu) /* ReadSfdp */
+REG32(CMD_INFO_5, 0x90u) /* Read */
+REG32(CMD_INFO_6, 0x94u) /* FastRead */
+REG32(CMD_INFO_7, 0x98u) /* FastReadDual */
+REG32(CMD_INFO_8, 0x9cu) /* FastReadQuad */
+REG32(CMD_INFO_9, 0xa0u) /* FastReadDualIO */
+REG32(CMD_INFO_10, 0xa4u) /* FastReadQuadIO */
+REG32(CMD_INFO_11, 0xa8u)
+REG32(CMD_INFO_12, 0xacu)
+REG32(CMD_INFO_13, 0xb0u)
+REG32(CMD_INFO_14, 0xb4u)
+REG32(CMD_INFO_15, 0xb8u)
+REG32(CMD_INFO_16, 0xbcu)
+REG32(CMD_INFO_17, 0xc0u)
+REG32(CMD_INFO_18, 0xc4u)
+REG32(CMD_INFO_19, 0xc8u)
+REG32(CMD_INFO_20, 0xccu)
+REG32(CMD_INFO_21, 0xd0u)
+REG32(CMD_INFO_22, 0xd4u)
+REG32(CMD_INFO_23, 0xd8u)
+REG32(CMD_INFO_EN4B, 0xdcu)
+REG32(CMD_INFO_EX4B, 0xe0u)
+REG32(CMD_INFO_WREN, 0xe4u)
+REG32(CMD_INFO_WRDI, 0xe8u)
+/* clang-format on */
 
 /* TPM registers */
+/* clang-format off */
 REG32(TPM_CAP, 0x00u)
-FIELD(TPM_CAP, REV, 0u, 8u)
-FIELD(TPM_CAP, LOCALITY, 8u, 1u)
-FIELD(TPM_CAP, MAX_WR_SIZE, 16u, 3u)
-FIELD(TPM_CAP, MAX_RD_SIZE, 20u, 3u)
+    FIELD(TPM_CAP, REV, 0u, 8u)
+    FIELD(TPM_CAP, LOCALITY, 8u, 1u)
+    FIELD(TPM_CAP, MAX_WR_SIZE, 16u, 3u)
+    FIELD(TPM_CAP, MAX_RD_SIZE, 20u, 3u)
 REG32(TPM_CFG, 0x04u)
-FIELD(TPM_CFG, EN, 0u, 1u)
-FIELD(TPM_CFG, TPM_MODE, 1u, 1u)
-FIELD(TPM_CFG, HW_REG_DIS, 2u, 1u)
-FIELD(TPM_CFG, TPM_REG_CHK_DIS, 3u, 1u)
-FIELD(TPM_CFG, INVALID_LOCALITY, 4u, 1u)
+    FIELD(TPM_CFG, EN, 0u, 1u)
+    FIELD(TPM_CFG, TPM_MODE, 1u, 1u)
+    FIELD(TPM_CFG, HW_REG_DIS, 2u, 1u)
+    FIELD(TPM_CFG, TPM_REG_CHK_DIS, 3u, 1u)
+    FIELD(TPM_CFG, INVALID_LOCALITY, 4u, 1u)
 REG32(TPM_STATUS, 0x08u)
-FIELD(TPM_STATUS, CMDADDR_NOTEMPTY, 0u, 1u)
-FIELD(TPM_STATUS, WRFIFO_DEPTH, 16u, 7u)
+    FIELD(TPM_STATUS, CMDADDR_NOTEMPTY, 0u, 1u)
+    FIELD(TPM_STATUS, WRFIFO_DEPTH, 16u, 7u)
 REG32(TPM_ACCESS_0, 0x0cu)
-FIELD(TPM_ACCESS_0, ACCESS_0, 0u, 8u)
-FIELD(TPM_ACCESS_0, ACCESS_1, 8u, 8u)
-FIELD(TPM_ACCESS_0, ACCESS_2, 16u, 8u)
-FIELD(TPM_ACCESS_0, ACCESS_3, 24u, 8u)
+    FIELD(TPM_ACCESS_0, ACCESS_0, 0u, 8u)
+    FIELD(TPM_ACCESS_0, ACCESS_1, 8u, 8u)
+    FIELD(TPM_ACCESS_0, ACCESS_2, 16u, 8u)
+    FIELD(TPM_ACCESS_0, ACCESS_3, 24u, 8u)
 REG32(TPM_ACCESS_1, 0x10u)
-FIELD(TPM_ACCESS_1, ACCESS_4, 0u, 8u)
+    FIELD(TPM_ACCESS_1, ACCESS_4, 0u, 8u)
 REG32(TPM_STS, 0x14u)
 REG32(TPM_INTF_CAPABILITY, 0x18u)
 REG32(TPM_INT_ENABLE, 0x1cu)
 REG32(TPM_INT_VECTOR, 0x20u)
-FIELD(TPM_INT_VECTOR, INT_VECTOR, 0u, 8u)
+    FIELD(TPM_INT_VECTOR, INT_VECTOR, 0u, 8u)
 REG32(TPM_INT_STATUS, 0x24u)
 REG32(TPM_DID_VID, 0x28u)
-FIELD(TPM_DID_VID, VID, 0u, 16u)
-FIELD(TPM_DID_VID, DID, 16u, 16u)
+    FIELD(TPM_DID_VID, VID, 0u, 16u)
+    FIELD(TPM_DID_VID, DID, 16u, 16u)
 REG32(TPM_RID, 0x2cu)
-FIELD(TPM_RID, RID, 0u, 8u)
+    FIELD(TPM_RID, RID, 0u, 8u)
 REG32(TPM_CMD_ADDR, 0x30u)
-FIELD(TPM_CMD_ADDR, ADDR, 0u, 24u)
-FIELD(TPM_CMD_ADDR, CMD, 24u, 8u)
+    FIELD(TPM_CMD_ADDR, ADDR, 0u, 24u)
+    FIELD(TPM_CMD_ADDR, CMD, 24u, 8u)
 REG32(TPM_READ_FIFO, 0x34u)
 REG32(TPM_WRITE_FIFO, 0x38u)
-FIELD(TPM_WRITE_FIFO, VALUE, 0u, 8u)
+    FIELD(TPM_WRITE_FIFO, VALUE, 0u, 8u)
+/* clang-format on */
 
 #define SPI_BUS_PROTO_VER   0
 #define SPI_BUS_HEADER_SIZE (2u * sizeof(uint32_t))
@@ -330,20 +308,7 @@ static_assert(SPI_SRAM_END_OFFSET == 0xe80u, "Invalid SRAM definition");
     (SPI_SRAM_END_OFFSET - SPI_SRAM_PAYLOAD_OFFSET)
 #define INGRESS_BUFFER_SIZE_WORDS (INGRESS_BUFFER_SIZE_BYTES / sizeof(uint32_t))
 
-#define GENERIC_BUFFER_SIZE    (2u * SPI_SRAM_READ_SIZE)
 #define FLASH_READ_BUFFER_SIZE (2u * SPI_SRAM_READ_SIZE)
-
-#define FIFO_PHASE_BIT 12u
-static_assert((1u << FIFO_PHASE_BIT) >= GENERIC_BUFFER_SIZE,
-              "Invalid phase bit");
-#define FIFO_PTR_MASK     ((1u << FIFO_PHASE_BIT) - 1u)
-#define FIFO_PTR(_ptr_)   ((_ptr_) & FIFO_PTR_MASK)
-#define FIFO_PHASE(_ptr_) ((bool)((_ptr_) >> (FIFO_PHASE_BIT)))
-#define FIFO_MAKE_PTR(_phase_, _ptr_) \
-    ((((unsigned)(bool)(_phase_)) << FIFO_PHASE_BIT) | FIFO_PTR(_ptr_))
-
-#define RXFIFO_LEN sizeof(uint32_t)
-#define TXFIFO_LEN sizeof(uint32_t)
 
 #define SPI_DEFAULT_TX_VALUE  0xffu
 #define SPI_FLASH_BUFFER_SIZE 256u
@@ -398,7 +363,7 @@ static_assert(PARAM_NUM_CMD_INFO ==
               "Invalid command info definitions");
 
 typedef enum {
-    CTRL_MODE_FW,
+    CTRL_MODE_DISABLED,
     CTRL_MODE_FLASH,
     CTRL_MODE_PASSTHROUGH,
     CTRL_MODE_INVALID,
@@ -413,7 +378,6 @@ typedef enum {
 
 typedef enum {
     SPI_BUS_IDLE,
-    SPI_BUS_GENERIC,
     SPI_BUS_FLASH,
     SPI_BUS_DISCARD,
     SPI_BUS_ERROR,
@@ -463,14 +427,6 @@ typedef struct {
 } SpiFifo;
 
 typedef struct {
-    SpiFifo rxf; /* DPRAM input */
-    SpiFifo txf; /* DPRAM output */
-    Fifo8 rx_fifo; /* Input comm port */
-    Fifo8 tx_fifo; /* Output comm port */
-    QEMUTimer *rx_timer; /* RX input timeout for filling in SRAM */
-} SpiDeviceGeneric;
-
-typedef struct {
     OtSpiBusState state;
     unsigned byte_count; /* Count of SPI payload to receive */
     Fifo8 chr_fifo; /* QEMU protocol input FIFO */
@@ -494,7 +450,6 @@ struct OtSPIDeviceState {
 
     SpiDeviceBus bus;
     SpiDeviceFlash flash;
-    SpiDeviceGeneric generic;
 
     uint32_t *spi_regs; /* Registers */
     uint32_t *tpm_regs; /* Registers */
@@ -503,7 +458,6 @@ struct OtSPIDeviceState {
     /* Properties */
     CharBackend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
-    bool dpsram; /* support for deprecated DPSRAM and generic mode */
 };
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
@@ -533,14 +487,9 @@ static const char *SPI_REG_NAMES[SPI_REGS_COUNT] = {
     REG_NAME_ENTRY(ALERT_TEST),
     REG_NAME_ENTRY(CONTROL),
     REG_NAME_ENTRY(CFG),
-    REG_NAME_ENTRY(FIFO_LEVEL),
-    REG_NAME_ENTRY(ASYNC_FIFO_LEVEL),
     REG_NAME_ENTRY(STATUS),
-    REG_NAME_ENTRY(RXF_PTR),
-    REG_NAME_ENTRY(TXF_PTR),
-    REG_NAME_ENTRY(RXF_ADDR),
-    REG_NAME_ENTRY(TXF_ADDR),
     REG_NAME_ENTRY(INTERCEPT_EN),
+    REG_NAME_ENTRY(ADDR_MODE),
     REG_NAME_ENTRY(LAST_READ_ADDR),
     REG_NAME_ENTRY(FLASH_STATUS),
     REG_NAME_ENTRY(JEDEC_CC),
@@ -617,8 +566,8 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
 #define ALERT_TEST_MASK   (R_ALERT_TEST_FATAL_FAULT_MASK)
 #define INTR_READBUF_MASK (INTR_READBUF_WATERMARK_MASK | INTR_READBUF_FLIP_MASK)
 #define CONTROL_MASK \
-    (R_CONTROL_ABORT_MASK | R_CONTROL_MODE_MASK | R_CONTROL_RST_TXFIFO_MASK | \
-     R_CONTROL_RST_RXFIFO_MASK | R_CONTROL_SRAM_CLK_EN_MASK)
+    (R_CONTROL_FLASH_STATUS_FIFO_CLR_MASK | \
+     R_CONTROL_FLASH_READ_BUFFER_CLR_MASK | R_CONTROL_MODE_MASK)
 #define CMD_INFO_GEN_MASK \
     (CMD_INFO_OPCODE_MASK | CMD_INFO_ADDR_MODE_MASK | \
      CMD_INFO_ADDR_SWAP_EN_MASK | CMD_INFO_MBYTE_EN_MASK | \
@@ -628,9 +577,7 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
      CMD_INFO_BUSY_MASK | CMD_INFO_VALID_MASK)
 #define CMD_INFO_SPC_MASK (CMD_INFO_OPCODE_MASK | CMD_INFO_VALID_MASK)
 #define CFG_MASK \
-    (R_CFG_CPOL_MASK | R_CFG_CPHA_MASK | R_CFG_TX_ORDER_MASK | \
-     R_CFG_RX_ORDER_MASK | R_CFG_TIMER_V_MASK | R_CFG_ADDR_4B_EN_MASK | \
-     R_CFG_MAILBOX_EN_MASK)
+    (R_CFG_TX_ORDER_MASK | R_CFG_RX_ORDER_MASK | R_CFG_MAILBOX_EN_MASK)
 #define INTERCEPT_EN_MASK \
     (R_INTERCEPT_EN_STATUS_MASK | R_INTERCEPT_EN_JEDEC_MASK | \
      R_INTERCEPT_EN_SFDP_MASK | R_INTERCEPT_EN_MBX_MASK)
@@ -656,7 +603,6 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
 /* clang-format off */
 static const char *BUS_STATE_NAMES[] = {
     STATE_NAME_ENTRY(SPI_BUS_IDLE),
-    STATE_NAME_ENTRY(SPI_BUS_GENERIC),
     STATE_NAME_ENTRY(SPI_BUS_FLASH),
     STATE_NAME_ENTRY(SPI_BUS_DISCARD),
     STATE_NAME_ENTRY(SPI_BUS_ERROR),
@@ -688,18 +634,14 @@ static const char *FLASH_STATE_NAMES[] = {
 #define IRQ_NAME_ENTRY(_st_) [INTR_##_st_##_SHIFT] = stringify(_st_)
 /* clang-format off */
 static const char *IRQ_NAMES[] = {
-    IRQ_NAME_ENTRY(GENERIC_RX_FULL),
-    IRQ_NAME_ENTRY(GENERIC_RX_WATERMARK),
-    IRQ_NAME_ENTRY(GENERIC_TX_WATERMARK),
-    IRQ_NAME_ENTRY(GENERIC_RX_ERROR),
-    IRQ_NAME_ENTRY(GENERIC_RX_OVERFLOW),
-    IRQ_NAME_ENTRY(GENERIC_TX_UNDERFLOW),
     IRQ_NAME_ENTRY(UPLOAD_CMDFIFO_NOT_EMPTY),
     IRQ_NAME_ENTRY(UPLOAD_PAYLOAD_NOT_EMPTY),
     IRQ_NAME_ENTRY(UPLOAD_PAYLOAD_OVERFLOW),
     IRQ_NAME_ENTRY(READBUF_WATERMARK),
     IRQ_NAME_ENTRY(READBUF_FLIP),
     IRQ_NAME_ENTRY(TPM_HEADER_NOT_EMPTY),
+    IRQ_NAME_ENTRY(TPM_RDFIFO_CMD_END),
+    IRQ_NAME_ENTRY(TPM_RDFIFO_DROP)
 };
 /* clang-format on */
 #undef IRQ_NAME_ENTRY
@@ -713,157 +655,6 @@ static const char *IRQ_NAMES[] = {
     ot_spi_device_bus_change_state_line(_b_, SPI_BUS_##_sst_, __LINE__)
 #define FLASH_CHANGE_STATE(_f_, _sst_) \
     ot_spi_device_flash_change_state_line(_f_, SPI_FLASH_##_sst_, __LINE__)
-
-static void spi_fifo_init(SpiFifo *f, OtSPIDeviceState *s, bool tx)
-{
-    f->buf = s->sram;
-    f->ptr = &s->spi_regs[tx ? R_TXF_PTR : R_RXF_PTR];
-    f->addr = &s->spi_regs[tx ? R_TXF_ADDR : R_RXF_ADDR];
-}
-
-static unsigned spi_fifo_count_to_word(const SpiFifo *f)
-{
-    unsigned wptr = (*f->ptr) >> 16u;
-    unsigned bytes = (wptr & (sizeof(uint32_t) - 1u));
-
-    return (unsigned)(sizeof(uint32_t) - bytes);
-}
-
-static void spi_fifo_push(SpiFifo *f, uint8_t data)
-{
-    unsigned wptr = (*f->ptr) >> 16u;
-    unsigned base = (*f->addr) & UINT16_MAX;
-    unsigned lim = (*f->addr) >> 16u;
-    unsigned max = lim - base;
-    unsigned woff = FIFO_PTR(wptr);
-    bool phase = FIFO_PHASE(wptr);
-    ((uint8_t *)f->buf)[base + woff] = data;
-    woff += sizeof(uint8_t);
-    if (WORD_ALIGN(woff) > max) {
-        trace_ot_spi_device_gen_phase(__func__, woff, lim, phase);
-        woff = 0;
-        phase = !phase;
-    }
-    *f->ptr &= UINT16_MAX;
-    *f->ptr |= FIFO_MAKE_PTR(phase, woff) << 16u;
-}
-
-static void spi_fifo_push_w(SpiFifo *f, uint32_t data)
-{
-    unsigned wptr = (*f->ptr) >> 16u;
-    unsigned base = (*f->addr) & UINT16_MAX;
-    unsigned lim = (*f->addr) >> 16u;
-    unsigned max = lim - base;
-    unsigned woff = FIFO_PTR(wptr);
-    g_assert(!(woff & 0x3u));
-    bool phase = FIFO_PHASE(wptr);
-    f->buf[(base + woff) >> 2u] = data;
-    woff += sizeof(uint32_t);
-    if (WORD_ALIGN(woff) > max) {
-        trace_ot_spi_device_gen_phase(__func__, woff, lim, phase);
-        woff = 0;
-        phase = !phase;
-    }
-    *f->ptr &= UINT16_MAX;
-    *f->ptr |= FIFO_MAKE_PTR(phase, woff) << 16u;
-}
-
-static uint8_t spi_fifo_pop(SpiFifo *f)
-{
-    unsigned rptr = (*f->ptr) & UINT16_MAX;
-    unsigned base = (*f->addr) & UINT16_MAX;
-    unsigned lim = (*f->addr) >> 16u;
-    unsigned max = lim - base;
-    unsigned roff = FIFO_PTR(rptr);
-    bool phase = FIFO_PHASE(rptr);
-    uint8_t data = ((uint8_t *)f->buf)[base + roff];
-    roff += sizeof(uint8_t);
-    if (WORD_ALIGN(roff) > max) {
-        trace_ot_spi_device_gen_phase(__func__, roff, lim, phase);
-        roff = 0;
-        phase = !phase;
-    }
-    *f->ptr &= UINT16_MAX << 16u;
-    *f->ptr |= FIFO_MAKE_PTR(phase, roff);
-    return data;
-}
-
-static void spi_fifo_reset(SpiFifo *f)
-{
-    unsigned base = (*f->addr) & UINT16_MAX;
-    unsigned ptr = FIFO_MAKE_PTR(false, base);
-    *f->ptr = ptr | (ptr << 16u);
-}
-
-static unsigned spi_fifo_capacity(const SpiFifo *f)
-{
-    unsigned lim = (*f->addr) >> 16u;
-    unsigned base = (*f->addr) & UINT16_MAX;
-
-    return lim + sizeof(uint32_t) - base;
-}
-
-static unsigned spi_fifo_num_free(const SpiFifo *f)
-{
-    unsigned wptr = (*f->ptr) >> 16u;
-    unsigned rptr = (*f->ptr) & UINT16_MAX;
-    unsigned woff = FIFO_PTR(wptr);
-    unsigned roff = FIFO_PTR(rptr);
-    bool wph = FIFO_PHASE(wptr);
-    bool rph = FIFO_PHASE(rptr);
-    if (wph == rph) {
-        roff += spi_fifo_capacity(f);
-    }
-    int count = (int)roff - (int)woff;
-    g_assert(count >= 0);
-    return (unsigned)count;
-}
-
-static unsigned spi_fifo_num_used(const SpiFifo *f)
-{
-    unsigned wptr = (*f->ptr) >> 16u;
-    unsigned rptr = (*f->ptr) & UINT16_MAX;
-    unsigned woff = FIFO_PTR(wptr);
-    unsigned roff = FIFO_PTR(rptr);
-    bool wph = FIFO_PHASE(wptr);
-    bool rph = FIFO_PHASE(rptr);
-    if (wph != rph) {
-        woff += spi_fifo_capacity(f);
-    }
-    int count = (int)woff - (int)roff;
-    g_assert(count >= 0);
-    return (unsigned)count;
-}
-
-static bool spi_fifo_is_empty(const SpiFifo *f)
-{
-    return spi_fifo_num_used(f) == 0;
-}
-
-static bool spi_fifo_is_full(const SpiFifo *f)
-{
-    return spi_fifo_num_free(f) == 0;
-}
-
-static unsigned ot_spi_device_rxf_threshold(const OtSPIDeviceState *s)
-{
-    return (unsigned)FIELD_EX32(s->spi_regs[R_FIFO_LEVEL], FIFO_LEVEL, RXLVL);
-}
-
-static unsigned ot_spi_device_txf_threshold(const OtSPIDeviceState *s)
-{
-    return (unsigned)FIELD_EX32(s->spi_regs[R_FIFO_LEVEL], FIFO_LEVEL, TXLVL);
-}
-
-static bool ot_spi_device_is_rx_fifo_in_reset(const OtSPIDeviceState *s)
-{
-    return (bool)(s->spi_regs[R_CONTROL] & R_CONTROL_RST_RXFIFO_MASK);
-}
-
-static bool ot_spi_device_is_tx_fifo_in_reset(const OtSPIDeviceState *s)
-{
-    return (bool)(s->spi_regs[R_CONTROL] & R_CONTROL_RST_TXFIFO_MASK);
-}
 
 static bool ot_spi_device_is_cs_active(const OtSPIDeviceState *s)
 {
@@ -927,47 +718,18 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     f->type = SPI_FLASH_CMD_NONE;
     g_assert(s->sram);
     f->payload = &((uint8_t *)s->sram)[SPI_SRAM_PAYLOAD_OFFSET];
-    if (!s->dpsram) {
-        f->payload += SPI_SRAM_INGRESS_OFFSET;
-    }
+    f->payload += SPI_SRAM_INGRESS_OFFSET;
     memset(f->buffer, 0, SPI_FLASH_BUFFER_SIZE);
-
-    if (s->dpsram) {
-        SpiDeviceGeneric *g = &s->generic;
-        timer_del(g->rx_timer);
-        fifo8_reset(&g->rx_fifo);
-        fifo8_reset(&g->tx_fifo);
-    }
 
     memset(s->sram, 0, SRAM_SIZE);
 }
 
 static uint32_t ot_spi_device_get_status(const OtSPIDeviceState *s)
 {
-    /*
-     * "Current version does not implement abort_done logic. It is tied to 1
-     *  always."
-     */
-    uint32_t status = R_STATUS_ABORT_DONE_MASK;
+    uint32_t status = 0u;
 
     if (ot_spi_device_is_cs_active(s)) {
         status |= R_STATUS_CSB_MASK;
-    }
-
-    if (s->dpsram) {
-        const SpiDeviceGeneric *g = &s->generic;
-        if (spi_fifo_is_empty(&g->txf)) {
-            status |= R_STATUS_TXF_EMPTY_MASK;
-        }
-        if (spi_fifo_is_full(&g->txf)) {
-            status |= R_STATUS_TXF_FULL_MASK;
-        }
-        if (spi_fifo_is_empty(&g->rxf)) {
-            status |= R_STATUS_RXF_EMPTY_MASK;
-        }
-        if (spi_fifo_is_full(&g->rxf)) {
-            status |= R_STATUS_RXF_FULL_MASK;
-        }
     }
 
     return status;
@@ -1001,7 +763,7 @@ static OtSpiDeviceMode ot_spi_device_get_mode(const OtSPIDeviceState *s)
 
 static bool ot_spi_device_is_addr4b_en(const OtSPIDeviceState *s)
 {
-    return (bool)(s->spi_regs[R_CFG] & R_CFG_ADDR_4B_EN_MASK);
+    return (bool)(s->spi_regs[R_ADDR_MODE] & R_ADDR_MODE_ADDR_4B_EN_MASK);
 }
 
 static bool ot_spi_device_is_mailbox_en(const OtSPIDeviceState *s)
@@ -1211,9 +973,9 @@ static void ot_spi_device_flash_decode_addr4_enable(OtSPIDeviceState *s)
     trace_ot_spi_device_flash_exec(enable ? "EN4B" : "EX4B");
 
     if (enable) {
-        s->spi_regs[R_CFG] |= R_CFG_ADDR_4B_EN_MASK;
+        s->spi_regs[R_ADDR_MODE] |= R_ADDR_MODE_ADDR_4B_EN_MASK;
     } else {
-        s->spi_regs[R_CFG] &= ~R_CFG_ADDR_4B_EN_MASK;
+        s->spi_regs[R_ADDR_MODE] &= ~R_ADDR_MODE_ADDR_4B_EN_MASK;
     }
     FLASH_CHANGE_STATE(f, DONE);
 }
@@ -1682,13 +1444,8 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_ENABLE:
     case R_CONTROL:
     case R_CFG:
-    case R_FIFO_LEVEL:
-    case R_ASYNC_FIFO_LEVEL:
-    case R_RXF_PTR:
-    case R_TXF_PTR:
-    case R_RXF_ADDR:
-    case R_TXF_ADDR:
     case R_INTERCEPT_EN:
+    case R_ADDR_MODE:
     case R_LAST_READ_ADDR:
     case R_FLASH_STATUS:
     case R_JEDEC_CC:
@@ -1840,44 +1597,18 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         }
         s->spi_regs[reg] = val32;
         switch (ot_spi_device_get_mode(s)) {
-        case CTRL_MODE_FW:
-            if (!s->dpsram) {
-                qemu_log_mask(LOG_UNIMP, "%s: generic mode disabled\n",
-                              __func__);
-            }
-            break;
         case CTRL_MODE_FLASH:
             break;
+        case CTRL_MODE_DISABLED:
         case CTRL_MODE_PASSTHROUGH:
         default:
             qemu_log_mask(LOG_UNIMP, "%s: unsupported mode\n", __func__);
             break;
         }
-        if (val32 & R_CONTROL_ABORT_MASK) {
-            /* however, TXFIFO is unlikely to block */
-            qemu_log_mask(LOG_UNIMP, "%s: abort unsupported\n", __func__);
-            break;
-        }
-        if (val32 & R_CONTROL_RST_RXFIFO_MASK) {
-            fifo8_reset(&s->generic.rx_fifo);
-        }
-        if (val32 & R_CONTROL_RST_TXFIFO_MASK) {
-            fifo8_reset(&s->generic.tx_fifo);
-        }
         break;
     case R_CFG:
         val32 &= CFG_MASK;
         s->spi_regs[reg] = val32;
-        break;
-    case R_RXF_PTR:
-        s->spi_regs[reg] &= R_RXF_PTR_WPTR_MASK;
-        val32 &= R_RXF_PTR_RPTR_MASK;
-        s->spi_regs[reg] |= val32;
-        break;
-    case R_TXF_PTR:
-        s->spi_regs[reg] &= R_RXF_PTR_RPTR_MASK;
-        val32 &= R_TXF_PTR_WPTR_MASK;
-        s->spi_regs[reg] |= val32;
         break;
     case R_INTERCEPT_EN:
         val32 &= INTERCEPT_EN_MASK;
@@ -1899,22 +1630,6 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         val32 &= R_READ_THRESHOLD_THRESHOLD_MASK;
         s->spi_regs[reg] = val32;
         break;
-    case R_RXF_ADDR:
-    case R_TXF_ADDR:
-        val32 &= 0xfffcfffcu;
-        if ((val32 >> 16u) >= (val32 & UINT16_MAX)) {
-            s->spi_regs[reg] = val32;
-        } else {
-            /*
-             * not sure about the HW behavior, but easier to discard here rather
-             * than testing each time a FIFO is used
-             */
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: invalid limit/base for %s, ignoring\n", __func__,
-                          SPI_REG_NAME(reg));
-        }
-        break;
-    case R_FIFO_LEVEL:
     case R_LAST_READ_ADDR:
     case R_MAILBOX_ADDR:
     case R_CMD_FILTER_0:
@@ -1965,7 +1680,6 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         val32 &= CMD_INFO_SPC_MASK;
         s->spi_regs[reg] = val32;
         break;
-    case R_ASYNC_FIFO_LEVEL:
     case R_STATUS:
     case R_UPLOAD_STATUS:
     case R_UPLOAD_STATUS2:
@@ -2083,50 +1797,26 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
 
     hwaddr last = addr + size - 1u;
 
-    if (s->dpsram) {
-        if (last >= SRAM_SIZE) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: bad buffer offset 0x%" HWADDR_PRIx "\n",
-                          __func__, addr);
-            return MEMTX_DECODE_ERROR;
-        }
-
-        if (last >= SPI_SRAM_SFDP_OFFSET + SPI_SRAM_SFDP_SIZE) {
-            if (last < SPI_SRAM_ADDR_OFFSET) {
-                /* command FIFO */
-                val32 = ((const uint32_t *)s->flash.cmd_fifo.data)[addr >> 2u];
-            } else if (last < SPI_SRAM_ADDR_END) {
-                /* address FIFO */
-                val32 = s->flash.address_fifo.data[addr >> 2u];
-            } else {
-                val32 = s->sram[addr >> 2u];
-            }
-        } else {
-            val32 = s->sram[addr >> 2u];
-        }
+    if (last < SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: cannot read egress buffer 0x%" HWADDR_PRIx "\n",
+                      __func__, addr);
+        return MEMTX_DECODE_ERROR;
+    }
+    if (last < SPI_SRAM_CMD_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
+        /* payload buffer */
+        val32 = s->sram[addr >> 2u];
+    } else if (last < SPI_SRAM_ADDR_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
+        /* command FIFO */
+        val32 = ((const uint32_t *)s->flash.cmd_fifo.data)[addr >> 2u];
+    } else if (last < SPI_SRAM_ADDR_END + SPI_SRAM_INGRESS_OFFSET) {
+        /* address FIFO */
+        val32 = s->flash.address_fifo.data[addr >> 2u];
     } else {
-        if (last < SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: cannot read egress buffer 0x%" HWADDR_PRIx "\n",
-                          __func__, addr);
-            return MEMTX_DECODE_ERROR;
-        }
-        if (last < SPI_SRAM_CMD_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
-            /* payload buffer */
-            val32 = s->sram[addr >> 2u];
-        } else if (last < SPI_SRAM_ADDR_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
-            /* command FIFO */
-            val32 = ((const uint32_t *)s->flash.cmd_fifo.data)[addr >> 2u];
-        } else if (last < SPI_SRAM_ADDR_END + SPI_SRAM_INGRESS_OFFSET) {
-            /* address FIFO */
-            val32 = s->flash.address_fifo.data[addr >> 2u];
-        } else {
-            /* TPM or not used area */
-            qemu_log_mask(LOG_UNIMP,
-                          "%s: TPM not supported 0x%" HWADDR_PRIx "\n",
-                          __func__, addr);
-            val32 = 0;
-        }
+        /* TPM or not used area */
+        qemu_log_mask(LOG_UNIMP, "%s: TPM not supported 0x%" HWADDR_PRIx "\n",
+                      __func__, addr);
+        val32 = 0;
     }
 
     // TODO: check which buffers can only be accessed as 32-bit locations
@@ -2155,25 +1845,13 @@ static MemTxResult ot_spi_device_buf_write_with_attrs(
 
     hwaddr last = addr + size - 1u;
 
-    if (s->dpsram) {
-        if (last >= SRAM_SIZE) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: bad buffer offset 0x%" HWADDR_PRIx "\n",
-                          __func__, addr);
-            return MEMTX_DECODE_ERROR;
-        }
-
-        s->sram[addr >> 2u] = val32;
-    } else {
-        if (last >= SPI_SRAM_PAYLOAD_OFFSET) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: cannot write ingress buffer 0x%" HWADDR_PRIx
-                          "\n",
-                          __func__, addr);
-            return MEMTX_DECODE_ERROR;
-        }
-        s->sram[addr >> 2u] = val32;
+    if (last >= SPI_SRAM_PAYLOAD_OFFSET) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: cannot write ingress buffer 0x%" HWADDR_PRIx "\n",
+                      __func__, addr);
+        return MEMTX_DECODE_ERROR;
     }
+    s->sram[addr >> 2u] = val32;
 
     return MEMTX_OK;
 }
@@ -2206,9 +1884,9 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
     bus->rev_rx = (bool)(mode & R_CFG_RX_ORDER_MASK);
     bus->rev_tx = (bool)(mode & R_CFG_TX_ORDER_MASK);
-    /* if phase or polarity does not match, corrupt data */
+    /* if phase or polarity is not mode 0, corrupt data */
     uint8_t comm = mode ^ (uint8_t)s->spi_regs[R_CFG];
-    bus->mode = (comm & (R_CFG_CPOL_MASK | R_CFG_CPHA_MASK)) ? 0xFF : 0x00;
+    bus->mode = (comm != 0) ? 0xFF : 0x00;
 
     trace_ot_spi_device_chr_cs_assert(bus->byte_count, bus->release,
                                       bus->rev_rx ? 'l' : 'm',
@@ -2221,12 +1899,10 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
     }
 
     switch (ot_spi_device_get_mode(s)) {
-    case CTRL_MODE_FW:
-        BUS_CHANGE_STATE(bus, GENERIC);
-        break;
     case CTRL_MODE_FLASH:
         BUS_CHANGE_STATE(bus, FLASH);
         break;
+    case CTRL_MODE_DISABLED:
     case CTRL_MODE_PASSTHROUGH:
     default:
         BUS_CHANGE_STATE(bus, DISCARD);
@@ -2274,151 +1950,6 @@ static void ot_spi_device_chr_recv_flash(OtSPIDeviceState *s,
     }
 }
 
-static void ot_spi_device_chr_send_generic(OtSPIDeviceState *s, unsigned count)
-{
-    if (ot_spi_device_is_tx_fifo_in_reset(s)) {
-        uint8_t buf[] = { 0xff };
-        trace_ot_spi_device_gen_fifo_error("TXF in reset");
-        while (count--) {
-            qemu_chr_fe_write(&s->chr, buf, sizeof(buf));
-        }
-        return;
-    }
-
-    SpiDeviceGeneric *g = &s->generic;
-
-    while (count) {
-        uint8_t buf[TXFIFO_LEN];
-        unsigned len = 0;
-        while (len < TXFIFO_LEN && len < count) {
-            if (fifo8_is_empty(&g->tx_fifo)) {
-                break;
-            }
-            buf[len++] = fifo8_pop(&g->tx_fifo);
-        }
-        if (len && qemu_chr_fe_backend_connected(&s->chr)) {
-            qemu_chr_fe_write(&s->chr, buf, (int)len);
-        }
-        count -= len;
-        g_assert(fifo8_is_empty(&g->tx_fifo));
-        unsigned rem = count;
-        while (rem && !fifo8_is_full(&g->tx_fifo)) {
-            if (!spi_fifo_is_empty(&g->txf)) {
-                fifo8_push(&g->tx_fifo, spi_fifo_pop(&g->txf));
-                trace_ot_spi_device_gen_update_fifo("txf", __LINE__,
-                                                    *g->txf.ptr);
-            } else {
-                trace_ot_spi_device_gen_fifo_error("TXF underflow");
-                fifo8_push(&g->tx_fifo, 0xFF); /* "lingering data" */
-            }
-            rem--;
-        }
-    }
-
-    if (spi_fifo_num_used(&g->txf) < ot_spi_device_txf_threshold(s)) {
-        s->spi_regs[R_INTR_STATE] |= INTR_GENERIC_TX_WATERMARK_MASK;
-        ot_spi_device_update_irqs(s);
-    }
-}
-
-static void ot_spi_device_chr_recv_generic(OtSPIDeviceState *s,
-                                           const uint8_t *buf, unsigned size)
-{
-    SpiDeviceGeneric *g = &s->generic;
-    SpiDeviceBus *bus = &s->bus;
-
-    unsigned count = size;
-
-    timer_del(g->rx_timer);
-    unsigned bcount = spi_fifo_count_to_word(&g->rxf);
-    g_assert(bcount <= fifo8_num_free(&g->rx_fifo));
-    bool rx_ignore = ot_spi_device_is_rx_fifo_in_reset(s);
-    /* cpol, cpha, bit order not handled in generic mode, as it is deprecated */
-    while (bcount && count) {
-        if (!rx_ignore) {
-            fifo8_push(&g->rx_fifo, *buf);
-        }
-        buf++;
-        count--;
-        bcount--;
-    }
-    if (!bcount) {
-        while (!fifo8_is_empty(&g->rx_fifo)) {
-            g_assert(!spi_fifo_is_full(&g->rxf));
-            if (!rx_ignore) {
-                spi_fifo_push(&g->rxf, fifo8_pop(&g->rx_fifo));
-                trace_ot_spi_device_gen_update_fifo("rxf", __LINE__,
-                                                    *g->rxf.ptr);
-            }
-        }
-    }
-    while (count >= sizeof(uint32_t)) {
-        /* bypass RXFIFO */
-        uint32_t word = ldl_le_p(buf);
-        buf += sizeof(word);
-        count -= sizeof(word);
-        g_assert(spi_fifo_num_free(&g->rxf) >= sizeof(word));
-        if (!rx_ignore) {
-            spi_fifo_push_w(&g->rxf, word);
-            trace_ot_spi_device_gen_update_fifo("rxf", __LINE__, *g->rxf.ptr);
-        }
-    }
-    while (count) {
-        g_assert(!fifo8_is_full(&g->rx_fifo));
-        if (!rx_ignore) {
-            fifo8_push(&g->rx_fifo, *buf++);
-            trace_ot_spi_device_gen_update_fifo("rxf", __LINE__, *g->rxf.ptr);
-        }
-        count--;
-    }
-    if (!fifo8_is_empty(&g->rx_fifo) && bus->byte_count) {
-        uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-        /* todo: use R_CFG_TIMER_V field to change the timeout */
-        timer_mod(g->rx_timer, (int64_t)(now + SPI_BUS_TIMEOUT_NS));
-    }
-
-    if (spi_fifo_num_used(&g->rxf) > ot_spi_device_rxf_threshold(s)) {
-        s->spi_regs[R_INTR_STATE] |= INTR_GENERIC_RX_WATERMARK_MASK;
-    }
-
-    if (spi_fifo_is_full(&g->rxf)) {
-        s->spi_regs[R_INTR_STATE] |= INTR_GENERIC_RX_FULL_MASK;
-    }
-
-    ot_spi_device_update_irqs(s);
-
-    unsigned tx_size;
-    if ((unsigned)size <= bus->byte_count) {
-        tx_size = size;
-        bus->byte_count -= size;
-    } else {
-        trace_ot_spi_device_chr_error("packet overflow");
-        tx_size = bus->byte_count;
-        bus->byte_count = 0;
-    }
-
-    ot_spi_device_chr_send_generic(s, tx_size);
-}
-
-static void ot_spi_device_recv_generic_timeout(void *opaque)
-{
-    OtSPIDeviceState *s = opaque;
-    SpiDeviceGeneric *g = &s->generic;
-    SpiDeviceBus *bus = &s->bus;
-
-    trace_ot_spi_device_gen_rx_timeout(fifo8_num_used(&g->rx_fifo));
-
-    bool rx_ignore = ot_spi_device_is_rx_fifo_in_reset(s);
-    while (!fifo8_is_empty(&g->rx_fifo)) {
-        uint8_t byte = fifo8_pop(&g->rx_fifo);
-        bus->byte_count -= sizeof(uint8_t);
-        if (!rx_ignore) {
-            spi_fifo_push(&g->rxf, byte);
-            trace_ot_spi_device_gen_update_fifo("rxf", __LINE__, *g->rxf.ptr);
-        }
-    }
-}
-
 static int ot_spi_device_chr_can_receive(void *opaque)
 {
     OtSPIDeviceState *s = opaque;
@@ -2428,9 +1959,6 @@ static int ot_spi_device_chr_can_receive(void *opaque)
     switch (bus->state) {
     case SPI_BUS_IDLE:
         length = fifo8_num_free(&bus->chr_fifo);
-        break;
-    case SPI_BUS_GENERIC:
-        length = fifo8_num_free(&s->generic.rx_fifo);
         break;
     case SPI_BUS_FLASH:
         length = timer_pending(s->flash.irq_timer) ? 0 : 1u;
@@ -2464,11 +1992,6 @@ static void ot_spi_device_chr_receive(void *opaque, const uint8_t *buf,
         }
         if (fifo8_is_full(&bus->chr_fifo)) {
             ot_spi_device_chr_handle_header(s);
-        }
-        break;
-    case SPI_BUS_GENERIC:
-        if (s->dpsram) {
-            ot_spi_device_chr_recv_generic(s, buf, (unsigned)size);
         }
         break;
     case SPI_BUS_FLASH:
@@ -2535,11 +2058,6 @@ static int ot_spi_device_chr_be_change(void *opaque)
                              &ot_spi_device_chr_event_hander,
                              &ot_spi_device_chr_be_change, s, NULL, true);
 
-    if (s->dpsram) {
-        SpiDeviceGeneric *g = &s->generic;
-        fifo8_reset(&g->rx_fifo);
-        fifo8_reset(&g->tx_fifo);
-    }
 
     fifo8_reset(&bus->chr_fifo);
 
@@ -2557,7 +2075,6 @@ static int ot_spi_device_chr_be_change(void *opaque)
 
 static Property ot_spi_device_properties[] = {
     DEFINE_PROP_CHR("chardev", OtSPIDeviceState, chr),
-    DEFINE_PROP_BOOL("dpsram", OtSPIDeviceState, dpsram, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2589,7 +2106,6 @@ static void ot_spi_device_reset(DeviceState *dev)
 {
     OtSPIDeviceState *s = OT_SPI_DEVICE(dev);
     SpiDeviceFlash *f = &s->flash;
-    SpiDeviceGeneric *g = &s->generic;
     SpiDeviceBus *bus = &s->bus;
 
     ot_spi_device_clear_modes(s);
@@ -2598,20 +2114,14 @@ static void ot_spi_device_reset(DeviceState *dev)
     memset(s->tpm_regs, 0, TPM_REGS_SIZE);
 
     fifo8_reset(&bus->chr_fifo);
-    spi_fifo_reset(&g->rxf);
-    spi_fifo_reset(&g->txf);
     /* not sure if the following FIFOs should be reset on clear_modes instead */
     fifo8_reset(&f->cmd_fifo);
     ot_fifo32_reset(&f->address_fifo);
 
     ot_spi_device_release_cs(s);
     f->watermark = false;
-    s->spi_regs[R_CONTROL] = 0x80000010u;
-    s->spi_regs[R_CFG] = 0x7f00u;
-    s->spi_regs[R_FIFO_LEVEL] = 0x80u;
-    s->spi_regs[R_STATUS] = 0x7au;
-    s->spi_regs[R_RXF_ADDR] = 0x1fc0000u;
-    s->spi_regs[R_TXF_ADDR] = 0x3fc0200u;
+    s->spi_regs[R_CONTROL] = 0x10u;
+    s->spi_regs[R_STATUS] = 0x60u;
     s->spi_regs[R_JEDEC_CC] = 0x7fu;
     for (unsigned ix = 0; ix < PARAM_NUM_CMD_INFO; ix++) {
         s->spi_regs[R_CMD_INFO_0 + ix] = 0x7000u;
@@ -2637,7 +2147,6 @@ static void ot_spi_device_realize(DeviceState *dev, Error **errp)
 static void ot_spi_device_init(Object *obj)
 {
     OtSPIDeviceState *s = OT_SPI_DEVICE(obj);
-    SpiDeviceGeneric *g = &s->generic;
     SpiDeviceFlash *f = &s->flash;
     SpiDeviceBus *bus = &s->bus;
 
@@ -2661,10 +2170,6 @@ static void ot_spi_device_init(Object *obj)
     s->tpm_regs = g_new0(uint32_t, TPM_REGS_COUNT);
     s->sram = g_new(uint32_t, SRAM_SIZE / sizeof(uint32_t));
 
-    spi_fifo_init(&g->rxf, s, false);
-    spi_fifo_init(&g->txf, s, true);
-    fifo8_create(&g->rx_fifo, RXFIFO_LEN);
-    fifo8_create(&g->tx_fifo, TXFIFO_LEN);
     fifo8_create(&bus->chr_fifo, SPI_BUS_HEADER_SIZE);
     fifo8_create(&f->cmd_fifo, SPI_SRAM_CMD_SIZE / sizeof(uint32_t));
     ot_fifo32_create(&f->address_fifo, SPI_SRAM_ADDR_SIZE / sizeof(uint32_t));
@@ -2686,8 +2191,6 @@ static void ot_spi_device_init(Object *obj)
      */
     f->irq_timer =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_device_flash_resume_read, s);
-    g->rx_timer =
-        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_device_recv_generic_timeout, s);
 }
 
 static void ot_spi_device_class_init(ObjectClass *klass, void *data)
