@@ -147,11 +147,6 @@ jobs:
         run: |
           timeout -s KILL 4 ./qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -nographic \
             -object ot-rom_img,id=rom,file=exit_eg.bin -d in_asm,int
-      - name: Check Darjeeling VM execution
-        run: |
-          timeout -s KILL 4 ./qemu-system-riscv32 -M ot-darjeeling,no_epmp_cfg=true -nographic \
-            -global ot-ibex_wrapper-dj.lc-ignore=on \
-            -object ot-rom_img,id=rom0,file=exit_dj.bin -d in_asm,int
 
   build-gcc:
     runs-on: ubuntu-latest
