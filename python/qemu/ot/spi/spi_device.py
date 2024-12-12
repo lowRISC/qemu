@@ -164,17 +164,19 @@ class SpiDevice:
                 raise TimeoutError('Flash stuck to busy')
             sleep(pace)
 
-    def read_jedec_id(self) -> bytes:
+    def read_jedec_id(self) -> tuple[int, bytes]:
         """Read out the flash device JEDEC ID."""
         jedec = bytearray()
         self.transmit(self.COMMANDS['READ_JEDEC_ID'], release=False)
+        page = 0
         while True:
             manuf = self.transmit(out_len=1, release=False)[0]
             if manuf != 0x7f:
                 jedec.append(manuf)
                 break
+            page += 1
         jedec.extend(self.transmit(out_len=2))
-        return jedec
+        return page, jedec
 
     def read_sfdp(self, address: int = 0) -> bytes:
         """Read out the flash device SFTP descriptor."""
