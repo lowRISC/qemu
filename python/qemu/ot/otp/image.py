@@ -360,24 +360,7 @@ class OtpImage:
            :param partition: the partition to empty, either specified as an
                              index or as the partition name
         """
-        part = None
-        partix = None
-        if isinstance(partition, int):
-            try:
-                part = self._partitions[partition]
-                partix = partition
-            except IndexError:
-                pass
-        elif isinstance(partition, str):
-            partname = partition.lower()
-            try:
-                partix, part = {(i, p) for i, p in enumerate(self._partitions)
-                                if p.__class__.__name__[:-4].lower() ==
-                                partname}.pop()
-            except KeyError:
-                pass
-        if not part:
-            raise ValueError(f"Unknown partition '{partition}'")
+        partix, part = self._retrieve_partition(partition)
         part.empty()
         if not part.is_empty:
             raise RuntimeError(f"Unable to empty partition '{partition}'")
@@ -388,6 +371,14 @@ class OtpImage:
         offset = self._part_offsets[partix]
         self._data[offset:offset+length] = data
         self._ecc[offset // 2:(offset+length)//2] = bytes(length//2)
+
+    def erase_field(self, partition: Union[int, str], field: str) -> None:
+        """Erase (reset) the content of a field within a partition.
+
+           :param field: the name of the field to erase
+        """
+        part = self._retrieve_partition(partition)[1]
+        part.erase_field(field)
 
     @staticmethod
     def bit_parity(data: int) -> int:
@@ -679,3 +670,25 @@ class OtpImage:
                 if off < end:
                     return part
         return None
+
+    def _retrieve_partition(self, partition: Union[int, str]) \
+            -> tuple[int, OtpPartition]:
+        part = None
+        partix = None
+        if isinstance(partition, int):
+            try:
+                part = self._partitions[partition]
+                partix = partition
+            except IndexError:
+                pass
+        elif isinstance(partition, str):
+            partname = partition.lower()
+            try:
+                partix, part = {(i, p) for i, p in enumerate(self._partitions)
+                                if p.__class__.__name__[:-4].lower() ==
+                                partname}.pop()
+            except KeyError:
+                pass
+        if not part or partix is None:
+            raise ValueError(f"Unknown partition '{partition}'")
+        return partix, part

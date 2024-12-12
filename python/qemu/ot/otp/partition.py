@@ -201,6 +201,26 @@ class OtpPartition:
         if self.has_digest:
             self._digest_bytes = bytes(self.DIGEST_SIZE)
 
+    def erase_field(self, field: str) -> None:
+        """Erase (reset) the content of a field.
+
+           :param field: the name of the field to erase
+        """
+        is_digest = self.has_digest and field.upper() == 'DIGEST'
+        if not is_digest and field not in self.items:
+            raise ValueError(f"No such field: '{field}'")
+        offset = 0
+        itsize = 0
+        for itname, itdef in self.items.items():
+            itsize = itdef['size']
+            if itname == field:
+                break
+            offset += itsize
+        end = offset + itsize
+        self._log.info('Erasing 0x%x..0x%x from %s', offset, end, self.name)
+        self._data = b''.join((self._data[:offset], bytes(itsize),
+                               self._data[end:]))
+
 
 class OtpLifecycleExtension(OtpLifecycle, OtpPartitionDecoder):
     """Decoder for Lifecyle bytes sequences.

@@ -79,6 +79,8 @@ def main():
                               default=[],
                               help='reset the content of a whole partition, '
                                    'including its digest if any')
+        commands.add_argument('--erase', action='append', metavar='PART:FIELD',
+                              help='clear out an OTP field')
         commands.add_argument('--clear-bit', action='append', default=[],
                               help='clear a bit at specified location')
         commands.add_argument('--set-bit', action='append',  default=[],
@@ -103,7 +105,7 @@ def main():
 
         if not (args.vmem or args.raw):
             if any((args.show, args.digest, args.ecc_recover, args.clear_bit,
-                    args.set_bit, args.toggle_bit)):
+                    args.set_bit, args.toggle_bit, args.erase)):
                 argparser.error('At least one raw or vmem file is required')
 
         if not args.vmem and args.kind:
@@ -145,6 +147,8 @@ def main():
                 argparser.error('Cannot verify OTP digests without an OTP map')
             if args.empty:
                 argparser.error('Cannot empty OTP partition without an OTP map')
+            if args.erase:
+                argparser.error('Cannot erase an OTP field without an OTP map')
         else:
             otpmap = OtpMap()
             otpmap.load(args.otp_map)
@@ -203,6 +207,15 @@ def main():
             if args.empty:
                 for part in args.empty:
                     otp.empty_partition(part)
+            for field_desc in args.erase or []:
+                try:
+                    part, field = field_desc.split(':')
+                    if not isinstance(part, str):
+                        raise ValueError()
+                except ValueError:
+                    argparser.error('Invalid field specifier, should follow '
+                                    '<PART>:<FIELD> syntax')
+                otp.erase_field(part, field)
             if args.config:
                 otp.load_config(args.config)
             if args.iv:
