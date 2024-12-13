@@ -9,7 +9,8 @@
 from binascii import hexlify, unhexlify, Error as hexerror
 from io import BytesIO
 from logging import getLogger
-from typing import BinaryIO, Optional, TextIO
+from re import IGNORECASE, match
+from typing import BinaryIO, Optional, Sequence, TextIO
 
 from .lifecycle import OtpLifecycle
 
@@ -145,7 +146,8 @@ class OtpPartition:
         self._decoder = decoder
 
     def decode(self, base: Optional[int], decode: bool = True, wide: int = 0,
-               ofp: Optional[TextIO] = None) -> None:
+               ofp: Optional[TextIO] = None,
+               filters = Optional[Sequence[str]]) -> None:
         """Decode the content of the partition."""
         buf = BytesIO(self._data)
         if ofp:
@@ -155,6 +157,12 @@ class OtpPartition:
             emit = self._log.info
         pname = self.name
         offset = 0
+        soff = 0
+        if filters:
+            fre = '|'.join(f.replace('*', '.*') for f in filters)
+            filter_re = f'^({fre})$'
+        else:
+            filter_re = r'.*'
         for itname, itdef in self.items.items():
             itsize = itdef['size']
             itvalue = buf.read(itsize)
@@ -164,6 +172,8 @@ class OtpPartition:
                 name = f'{pname}:{itname[len(pname)+1:]}'
             else:
                 name = f'{pname}:{itname}'
+            if not match(filter_re, itname, IGNORECASE):
+                continue
             if itsize > 8:
                 rvalue = bytes(reversed(itvalue))
                 sval = hexlify(rvalue).decode()
@@ -172,12 +182,16 @@ class OtpPartition:
                     if dval is not None:
                         emit('%-48s %s (decoded) %s', name, soff, dval)
                         continue
+                ssize = f'{{{itsize}}}'
                 if not sum(itvalue) and wide < 2:
-                    emit('%-48s %s {%d} 0...', name, soff, itsize)
+                    if decode:
+                        emit('%-48s %s %5s (empty)', name, soff, ssize)
+                    else:
+                        emit('%-48s %s %5s 0...', name, soff, ssize)
                 else:
                     if not wide and itsize > self.MAX_DATA_WIDTH:
                         sval = f'{sval[:self.MAX_DATA_WIDTH*2]}...'
-                    emit('%-48s %s {%d} %s', name, soff, itsize, sval)
+                    emit('%-48s %s %5s %s', name, soff, ssize, sval)
             else:
                 ival = int.from_bytes(itvalue, 'little')
                 if decode:
@@ -192,8 +206,13 @@ class OtpPartition:
                         continue
                 emit('%-48s %s %x', name, soff, ival)
         if self._digest_bytes is not None:
-            emit('%-48s %s %s', f'{pname}:DIGEST', soff,
-                 hexlify(self._digest_bytes).decode())
+            if match(filter_re, 'DIGEST', IGNORECASE):
+                if not sum(self._digest_bytes) and decode:
+                    val = '(empty)'
+                else:
+                    val = hexlify(self._digest_bytes).decode()
+                ssize = f'{{{len(self._digest_bytes)}}}'
+                emit('%-48s %s %5s %s', f'{pname}:DIGEST', soff, ssize, val)
 
     def empty(self) -> None:
         """Empty the partition, including its digest if any."""

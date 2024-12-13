@@ -311,17 +311,47 @@ class OtpImage:
         return not any(r is False for r in results.values())
 
     def decode(self, decode: bool = True, wide: int = 0,
-               ofp: Optional[TextIO] = None) -> None:
-        """Decode the content of the image, one partition at a time."""
+               ofp: Optional[TextIO] = None, decode_version: bool = True,
+               field_filters: Optional[list[str]] = None) -> None:
+        """Decode the content of the image, one partition at a time.
+
+           :param decode: whether to attempt to decode value whose encoding/
+                    meaning is known
+           :param wide: whether to use compact, truncated long value or emit
+                    the whole value, possibly generating very long lines
+           :param decode_version: whether to decode and report the version
+           :param field_filters: optional filter to select which partitions/
+                    fields to report as a list of <part>:<field> strings, joker
+                    char '*' is supported.
+        """
         version = self.version
-        if version:
+        if version and decode_version:
             print(f'OTP image v{version}')
             if version > 1:
                 print(f' * present iv       {self._digest_iv:016x}')
                 print(f' * present constant {self._digest_constant:032x}')
+        part_filters: dict[str, str] = {}
+        partnames = {p.name for p in self._partitions}
+        for filt in field_filters or []:
+            parts = filt.split(':')
+            if len(parts) > 2:
+                raise ValueError(f"Invalid filter '{filt}'")
+            part_re = f'^{parts[0].replace("*", ".*")}$'
+            field = parts[1] if len(parts) > 1 else '*'
+            for partname in partnames:
+                if not re.match(part_re, partname, re.IGNORECASE):
+                    continue
+                if not partname in part_filters:
+                    part_filters[partname] = set()
+                if field == '*':
+                    # any field would match, discard any existing one
+                    part_filters[partname].clear()
+                part_filters[partname].add(field)
         for part in self._partitions:
+            if part_filters and part.name not in part_filters:
+                continue
             base = self._get_partition_bounds(part)[0]
-            part.decode(base, decode, wide, ofp)
+            part.decode(base, decode, wide, ofp, part_filters.get(part.name))
 
     def clear_bits(self, bitdefs: Sequence[tuple[int, int]]) -> None:
         """Clear one or more bits.

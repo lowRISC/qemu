@@ -40,8 +40,9 @@ def main():
         files.add_argument('-l', '--lifecycle', type=FileType('rt'),
                            metavar='SV',
                            help='input lifecycle system verilog file')
-        files.add_argument('-o', '--output', metavar='C', type=FileType('wt'),
-                           help='output filename for C file generation')
+        files.add_argument('-o', '--output', metavar='FILE',
+                           type=FileType('wt'),
+                           help='output filename (default to stdout)')
         files.add_argument('-r', '--raw',
                            help='QEMU OTP raw image file')
         params = argparser.add_argument_group(title='Parameters')
@@ -65,6 +66,11 @@ def main():
         params.add_argument('-n', '--no-decode', action='store_true',
                             default=False,
                             help='do not attempt to decode OTP fields')
+        params.add_argument('-f', '--filter', action='append',
+                              metavar='PART:FIELD',
+                              help='filter which OTP fields are shown')
+        params.add_argument('--no-version', action='store_true',
+                              help='do not report the OTP image version')
         commands = argparser.add_argument_group(title='Commands')
         commands.add_argument('-s', '--show', action='store_true',
                               help='show the OTP content')
@@ -120,6 +126,9 @@ def main():
                 argparser.error('No RAW file specified for update')
             if args.vmem:
                 argparser.error('RAW update mutually exclusive with VMEM')
+
+        if args.filter and not args.show:
+            argparser.error('Filter only apply to the show command')
 
         bit_actions = ('clear', 'set', 'toggle')
         alter_bits: list[list[tuple[int, int]]] = []
@@ -225,7 +234,8 @@ def main():
             if lcext:
                 otp.load_lifecycle(lcext)
             if args.show:
-                otp.decode(not args.no_decode, args.wide, sys.stdout)
+                otp.decode(not args.no_decode, args.wide, output,
+                           not args.no_version, args.filter)
             if args.digest:
                 if not otp.has_present_constants:
                     if args.raw and otp.version == 1:

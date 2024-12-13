@@ -6,11 +6,12 @@ controller virtual device.
 ## Usage
 
 ````text
-usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o C] [-r RAW]
+usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
                   [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG] [-c INT] [-i INT]
-                  [-w] [-n] [-s] [-E] [-D] [-U] [--empty PARTITION]
-                  [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
-                  [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT] [--fix-ecc]
+                  [-w] [-n] [-f PART:FIELD] [--no-version] [-s] [-E] [-D] [-U]
+                  [--empty PARTITION] [--erase PART:FIELD]
+                  [--clear-bit CLEAR_BIT] [--set-bit SET_BIT]
+                  [--toggle-bit TOGGLE_BIT] [--fix-ecc]
                   [-G {LCVAL,LCTPL,PARTS,REGS}] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
@@ -22,7 +23,7 @@ Files:
   -j, --otp-map HJSON   input OTP controller memory map file
   -m, --vmem VMEM       input VMEM file
   -l, --lifecycle SV    input lifecycle system verilog file
-  -o, --output C        output filename for C file generation
+  -o, --output FILE     output filename (default to stdout)
   -r, --raw RAW         QEMU OTP raw image file
 
 Parameters:
@@ -34,6 +35,9 @@ Parameters:
   -i, --iv INT          initialization vector for Present scrambler
   -w, --wide            use wide output, non-abbreviated content
   -n, --no-decode       do not attempt to decode OTP fields
+  -f, --filter PART:FIELD
+                        filter which OTP fields are shown
+  --no-version          do not report the OTP image version
 
 Commands:
   -s, --show            show the OTP content
@@ -107,6 +111,9 @@ Fuse RAW images only use the v1 type.
 * `-e` specify how many bits are used in the VMEM file to store ECC information. Note that ECC
   information is not stored in the QEMU RAW file for now.
 
+* `-f` select which partition(s) and partition field(s) should be shown when option `-s` is used.
+  When not specified, all partitions and fields are reported.
+
 * `-i` specify the initialization vector for the Present scrambler used for partition digests.
   This value is "usually" found within the `hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv` OT file,
   from the last entry of `RndCnstDigestIV` array, _i.e._ item 0. It is used along with option
@@ -153,15 +160,20 @@ Fuse RAW images only use the v1 type.
   contain long sequence of bytes. If repeated, the empty long fields are also printed in full, as
   a sequence of empty bytes.
 
+* `--clear-bit` clears the specified bit in the OTP data. This flag may be repeated. This option is
+  only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
+  a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
+
 * `--empty` reset a whole parition, including its digest if any and ECC bits. This option is only
   intended for test purposes. This flag may be repeated. Partition(s) can be specified either by
   their index or their name.
 
 * `--erase` reset a specific field within a partition. The flag may be repeated.
 
-* `--clear-bit` clears the specified bit in the OTP data. This flag may be repeated. This option is
-  only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
-  a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
+* `--no-version` disable OTP image version reporting when `-s` is used.
+
+* `--fix-ecc` may be used to rebuild the ECC values for all slots that have been modified using the
+  ECC modification operations, and any detected error.
 
 * `--set-bit` sets the specified bit in the OTP data. This flag may be repeated. This option is
    only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
@@ -170,9 +182,6 @@ Fuse RAW images only use the v1 type.
 * `--toggle-bit` toggles the specified bit in the OTP data. This flag may be repeated. This option
   is only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
   a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
-
-* `--fix-ecc` may be used to rebuild the ECC values for all slots that have been modified using the
-  ECC modification operations, and any detected error.
 
 All modification features can only be performed on RAW image, VMEM images are never modified. To
 modify RAW file content, either a VMEM file is required in addition to the RAW file as the data
