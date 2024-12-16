@@ -242,12 +242,14 @@ class SpiDevice:
         # self.transmit(self.COMMANDS['RESET1'])
         self.transmit(self.COMMANDS['RESET2'])
 
-    def read(self, address: int, length: int, fast: bool = False) -> bytes:
+    def read(self, address: int, length: int, fast: bool = False,
+             release: bool = True) -> bytes:
         """Read out from the flash device.
 
            :param address: the address of the first byte to read
            :param length: how many bytes to read
            :param fast: whether to use the fast SPI read command
+           :param release: whether to release /CS line
         """
         if fast:
             cmd = self.COMMANDS['FAST_READ']
@@ -262,7 +264,21 @@ class SpiDevice:
             addr = addr[1:]
         if dummy:
             addr.append(0)
-        return self.transmit(cmd, addr, length)
+        return self.transmit(cmd, addr, length, release)
+
+    def read_cont(self, length: int, release: bool = True) -> bytes:
+        """Continue a read transation.
+
+           :param length: how many bytes to read
+           :param release: whether to release /CS line
+        """
+        return self.transmit(None, None, length, release)
+
+    def release(self) -> None:
+        """Release /CS line."""
+        data = self._build_cs_header(0, True)
+        self._log.debug('/CS')
+        self._socket.send(data)
 
     @staticmethod
     def rev8(num: int) -> int:
