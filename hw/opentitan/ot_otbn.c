@@ -523,10 +523,9 @@ static void ot_otbn_update_checksum(OtOTBNState *s, bool doi, uint32_t addr,
 {
     uint8_t buf[6];
 
-    /* BE or LE? */
-    stw_be_p(&buf[0], addr >> 2U);
-    buf[0] |= doi ? 0x80u : 0x00u;
-    stl_be_p(&buf[2], value);
+    stw_le_p(&buf[4], addr >> 2U);
+    buf[5] |= doi ? 0x80u : 0x00u;
+    stl_le_p(&buf[0], value);
 
     s->load_checksum = crc32(s->load_checksum, buf, sizeof(buf));
 }
