@@ -111,29 +111,11 @@ class SpiDevice:
            :param out_len: the count of meaningful bytes to receive
            :param release: whether to release /CS line (to manage transactions)
         """
-        if isinstance(in_payload, int):
-            in_payload = bytes([0xff] * in_payload)
-        elif in_payload is not None:
-            assert isinstance(in_payload, (bytes, bytearray))
-        else:
-            in_payload = bytes()
-        assert isinstance(out_len, int) and 0 <= out_len <= 0xffff
-        if cmd is not None:
-            assert 0 <= cmd <= 0xff
-            tx_payload = b''.join((bytes([cmd]), in_payload, bytes(out_len)))
-        else:
-            tx_payload = b''.join((in_payload, bytes(out_len)))
-        if self._rev_tx:
-            tx_payload = bytes(SpiDevice.rev8(x) for x in tx_payload)
-        rx_payload = self._exchange(tx_payload, release)
-        if self._rev_rx:
-            rx_payload = bytes(SpiDevice.rev8(x) for x in rx_payload)
-        assert len(rx_payload) == len(tx_payload)
-        return rx_payload[-out_len:]
+        return self._transmit(cmd, in_payload, out_len, release)
 
     def read_status_register(self) -> int:
         """Read out the flash status register."""
-        resp = self.transmit(self.COMMANDS['READ_STATUS'], out_len=1)
+        resp = self._transmit(self.COMMANDS['READ_STATUS'], out_len=1)
         return resp[0]
 
     def is_busy(self, sreg: Optional[int] = None) -> bool:
@@ -148,7 +130,7 @@ class SpiDevice:
             sreg = self.read_status_register()
         return bool(sreg & self.WEL)
 
-    def wait_idle(self, timeout: float = 1.0, pace: float = 0.0005):
+    def wait_idle(self, timeout: float = 1.0, pace: float = 0.0005) -> None:
         """Wait for the flash device to become idle.
 
            :param timeout: raise a TimeoutError if flash does not become
@@ -325,6 +307,29 @@ class SpiDevice:
                        size)
         self._log.debug('Header: %s', hexlify(header).decode())
         return header
+
+    def _transmit(self, cmd: Optional[int] = None,
+                 in_payload: Optional[bytes | bytearray | int] = None,
+                 out_len: int = 0, release: bool = True) -> bytes:
+        if isinstance(in_payload, int):
+            in_payload = bytes([0xff] * in_payload)
+        elif in_payload is not None:
+            assert isinstance(in_payload, (bytes, bytearray))
+        else:
+            in_payload = bytes()
+        assert isinstance(out_len, int) and 0 <= out_len <= 0xffff
+        if cmd is not None:
+            assert 0 <= cmd <= 0xff
+            tx_payload = b''.join((bytes([cmd]), in_payload, bytes(out_len)))
+        else:
+            tx_payload = b''.join((in_payload, bytes(out_len)))
+        if self._rev_tx:
+            tx_payload = bytes(SpiDevice.rev8(x) for x in tx_payload)
+        rx_payload = self._exchange(tx_payload, release)
+        if self._rev_rx:
+            rx_payload = bytes(SpiDevice.rev8(x) for x in rx_payload)
+        assert len(rx_payload) == len(tx_payload)
+        return rx_payload[-out_len:]
 
     def _send(self, buf: bytes, release: bool = True):
         data = b''.join((self._build_cs_header(len(buf), release), buf))
