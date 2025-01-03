@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, Rivos, Inc.
+# Copyright (c) 2023-2025, Rivos, Inc.
 # All rights reserved.
 
 """SPI device proxy.
@@ -13,7 +13,7 @@ from socket import (create_connection, socket, IPPROTO_TCP, TCP_NODELAY,
                     SHUT_RDWR, timeout as LegacyTimeoutError)
 from struct import calcsize as scalc, pack as spack
 from time import sleep, time as now
-from typing import Optional
+from typing import Optional, Union
 
 
 class SpiDevice:
@@ -94,15 +94,18 @@ class SpiDevice:
         self._socket.settimeout(None)
         self._socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
 
-    def quit(self) -> None:
+    def disconnect(self) -> None:
         """Close the communication socket."""
         if self._socket:
             self._socket.shutdown(SHUT_RDWR)
             self._socket.close()
             self._socket = None
 
+    quit = disconnect
+    """Old API."""
+
     def transmit(self, cmd: Optional[int] = None,
-                 in_payload: Optional[bytes | bytearray | int] = None,
+                 in_payload: Union[bytes, bytearray, int, None] = None,
                  out_len: int = 0, release: bool = True) -> bytes:
         """SPI data transfer.
 
@@ -137,13 +140,13 @@ class SpiDevice:
                            available after this delay
            :param pace: delay between each flash device poll request.
         """
-        timeout += now()
+        expire = timeout + now()
         while True:
             status = self.read_status_register()
             if not status & self.BUSY:
                 break
-            if now() > timeout:
-                raise TimeoutError('Flash stuck to busy')
+            if now() > expire:
+                raise TimeoutError(f'Busy bit stuck for {timeout:.1f}s')
             sleep(pace)
 
     def read_jedec_id(self) -> tuple[int, bytes]:
@@ -309,8 +312,8 @@ class SpiDevice:
         return header
 
     def _transmit(self, cmd: Optional[int] = None,
-                 in_payload: Optional[bytes | bytearray | int] = None,
-                 out_len: int = 0, release: bool = True) -> bytes:
+                  in_payload: Union[bytes, bytearray, int, None] = None,
+                  out_len: int = 0, release: bool = True) -> bytes:
         if isinstance(in_payload, int):
             in_payload = bytes([0xff] * in_payload)
         elif in_payload is not None:
