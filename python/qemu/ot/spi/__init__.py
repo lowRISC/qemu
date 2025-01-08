@@ -3,4 +3,4 @@
 
 """SPI device tools."""
 
-from .spi_device import SpiDevice  # noqa: F401
+from .spi_device import JedecId, SpiDevice  # noqa: F401
