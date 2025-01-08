@@ -13,7 +13,18 @@ from socket import (create_connection, socket, IPPROTO_TCP, TCP_NODELAY,
                     SHUT_RDWR, timeout as LegacyTimeoutError)
 from struct import calcsize as scalc, pack as spack
 from time import sleep, time as now
-from typing import Optional, Union
+from typing import NamedTuple, Optional, Union
+
+
+class JedecId(NamedTuple):
+    """JEDEC identifier.
+
+       See JEDEC Standard Manufacturer’s Identification Code (JEP106BK.pdf)
+    """
+    bank: int
+    """Which page/bank the manufacturer code belongs to."""
+    jedec: bytes
+    """JEDEC device identifier. First byte is the manufacturer code."""
 
 
 class SpiDevice:
@@ -70,7 +81,7 @@ class SpiDevice:
     """Supported *25 SPI data flash device commands."""
 
     def __init__(self):
-        self._log = getLogger('spidev')
+        self._log = getLogger('spidev.dev')
         self._socket: Optional[socket] = None
         self._mode = 0
         self._4ben = False
@@ -149,7 +160,7 @@ class SpiDevice:
                 raise TimeoutError(f'Busy bit stuck for {timeout:.1f}s')
             sleep(pace)
 
-    def read_jedec_id(self) -> tuple[int, bytes]:
+    def read_jedec_id(self) -> JedecId:
         """Read out the flash device JEDEC ID."""
         jedec = bytearray()
         self.transmit(self.COMMANDS['READ_JEDEC_ID'], release=False)
@@ -161,7 +172,7 @@ class SpiDevice:
                 break
             page += 1
         jedec.extend(self.transmit(out_len=2))
-        return page, jedec
+        return JedecId(page, bytes(jedec))
 
     def read_sfdp(self, address: int = 0) -> bytes:
         """Read out the flash device SFTP descriptor."""
