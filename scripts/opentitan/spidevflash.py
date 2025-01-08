@@ -78,7 +78,7 @@ class SpiDeviceFlasher:
         # to handle requests
         timeout = now() + 3.0
         while now() < timeout:
-            jedec = set(self._spidev.read_jedec_id())
+            jedec = set(self._spidev.read_jedec_id().jedec)
             if len(jedec) > 1 or jedec.pop() not in (0x00, 0xff):
                 return
         raise RuntimeError('Remote SPI device not ready')
