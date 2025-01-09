@@ -5,7 +5,7 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-# Copyright (c) 2024 Rivos, Inc.
+# Copyright (c) 2024-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 from argparse import ArgumentParser, FileType
@@ -14,6 +14,7 @@ from os import linesep
 from os.path import dirname, join as joinpath, normpath
 from time import sleep, time as now
 from traceback import format_exc
+from typing import Optional
 import sys
 
 QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
@@ -35,9 +36,30 @@ class SpiDeviceFlasher:
         self._log = getLogger('spidev.flash')
         self._spidev = SpiDevice()
 
-    def connect(self, host: str, port: int):
-        """Connect to the remote SPI device and wait for sync."""
-        self._spidev.connect(host, port)
+    def connect(self, host: str, port: Optional[int], retry_count: int = 1,
+                sync_time: Optional[float] = None):
+        """Connect to the remote SPI device and wait for sync.
+
+           :param host: a hostname or a connection string
+           :param port: a TCP port, should be None if a connection string is
+                        defined
+           :param retry_count: how many attempts should be made at most to
+                               coonnect to the remote peer (once per second)
+           :param sync_time: max allowed synchronization time once a connection
+                             is established to receive a valid JEDEC ID.
+
+           Supported connection string format:
+            - tcp:<host>:<port>
+            - unix:<path>
+        """
+        while True:
+            try:
+                self._spidev.connect(host, port)
+                break
+            except TimeoutError:
+                retry_count -= 1
+                if not retry_count:
+                    raise
         self._wait_for_remote()
 
     def disconnect(self):
@@ -95,12 +117,14 @@ def main():
                                help='Binary file to flash')
         argparser.add_argument('-a', '--address', type=HexInt.parse,
                                default='0',
-                               help='Address in the SPI flash (default to 0)')
+                               help='Address in the SPI flash (default: 0)')
+        argparser.add_argument('-S', '--socket',
+                               help='connection string')
+        argparser.add_argument('-R', '--retry-count', type=int, default=1,
+                               help='connection retry count (default: 1)')
         argparser.add_argument('-r', '--host',
-                               default='127.0.0.1',
                                help='remote host name (default: localhost)')
         argparser.add_argument('-p', '--port', type=int,
-                               default=SpiDeviceFlasher.DEFAULT_PORT,
                                help=f'remote host TCP port (defaults to '
                                     f'{SpiDeviceFlasher.DEFAULT_PORT})')
         argparser.add_argument('-v', '--verbose', action='count',
@@ -113,7 +137,15 @@ def main():
         configure_loggers(args.verbose, 'spidev')
 
         flasher = SpiDeviceFlasher()
-        flasher.connect(args.host, args.port)
+        if args.socket:
+            if any((args.host, args.port)):
+                argparser.error('Connection string is mutually exclusive '
+                                'with host and port')
+            flasher.connect(args.socket, None, retry_count=args.retry_count)
+        else:
+            flasher.connect(args.host or 'localhost',
+                            args.port or SpiDeviceFlasher.DEFAULT_PORT,
+                            retry_count=args.retry_count)
         data = args.file.read()
         args.file.close()
         flasher.program(data, args.address)

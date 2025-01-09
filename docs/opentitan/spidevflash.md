@@ -5,33 +5,43 @@
 ## Usage
 
 ````text
-usage: spidevflash.py [-h] -f FILE [-a ADDRESS] [-r HOST] [-p PORT] [-v] [-d]
+usage: spidevflash.py [-h] -f FILE [-a ADDRESS] [-S SOCKET] [-R RETRY_COUNT]
+                      [-r HOST] [-p PORT] [-v] [-d]
 
 SPI device flasher tool.
 
 options:
   -h, --help            show this help message and exit
-  -f FILE, --file FILE  Binary file to flash
-  -a ADDRESS, --address ADDRESS
-                        Address in the SPI flash (default to 0)
-  -r HOST, --host HOST  remote host name (default: localhost)
-  -p PORT, --port PORT  remote host TCP port (defaults to 8004)
+  -f, --file FILE       Binary file to flash
+  -a, --address ADDRESS
+                        Address in the SPI flash (default: 0)
+  -S, --socket SOCKET   connection string
+  -R, --retry-count RETRY_COUNT
+                        connection retry count (default: 1)
+  -r, --host HOST       remote host name (default: localhost)
+  -p, --port PORT       remote host TCP port (defaults to 8004)
   -v, --verbose         increase verbosity
   -d, --debug           enable debug mode
 ````
 
 ### Arguments
 
-* `-a` specify an alernative start address
+* `-a` specify an alernative start address'
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
-* `-f` specify the binary file to upload
+* `-f` specify the binary file to upload'
 
-* `-p` specify an alternative port for the TCP connection on the QEMU instance
+* `-p` specify an alternative port for the TCP connection on the QEMU instance. Mutually exclusive
+  with `-S`.
 
-* `-r` specify the name or address of the remote host running the QEMU instance
+* `-R` specify the number of connection attempts before giving up.
 
+* `-r` specify the name or address of the remote host running the QEMU instance. Mutually exclusive
+  with `-S`.
+
+* `-S` specify a connection string to the remote host running the QEMU instance, _e.g._
+  `tcp:localhost:8004` or `unix:/tmp/socket`. Mutually exclusive with `-r` and `-p`.
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
 ### Examples
