@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """OpenTitan QEMU unit test sequencer.
@@ -229,6 +229,9 @@ class QEMUWrapper:
                 - trigger, a string to match on the QEMU virtual comm port
                            output to trigger the context execution. It may be
                            defined as a regular expression.
+                - validate, a string to match on the QEMU virtual comm port
+                           output to early exit. It may be defined as a regular
+                           expression.
                 - start_delay, the delay to wait before starting the execution
                            of the context once QEMU command has been started.
            :return: a 3-uple of exit code, execution time, and last guest error
@@ -237,23 +240,25 @@ class QEMUWrapper:
         # OT's UART0 is redirected to a TCP stream that can be accessed through
         # self._device. The VM pauses till the TCP socket is connected
         xre = re.compile(self.EXIT_ON)
+        sync_event = None
         if tdef.trigger:
             sync_event = Event()
-            if tdef.trigger.startswith("r'") and tdef.trigger.endswith("'"):
+        match_pattern = tdef.trigger or tdef.validate
+        if match_pattern:
+            if match_pattern.startswith("r'") and match_pattern.endswith("'"):
                 try:
-                    tmo = re.compile(tdef.trigger[2:-1].encode())
+                    tmo = re.compile(match_pattern[2:-1].encode())
                 except re.error as exc:
-                    raise ValueError('Invalid trigger regex: {exc}') from exc
+                    raise ValueError('Invalid regex: {exc}') from exc
 
                 def trig_match(bline):
                     return tmo.match(bline)
             else:
-                btrigger = tdef.trigger.encode()
+                btrigger = match_pattern.encode()
 
                 def trig_match(bline):
                     return bline.find(btrigger) >= 0
         else:
-            sync_event = None
             trig_match = None
         ret = None
         proc = None
@@ -401,10 +406,15 @@ class QEMUWrapper:
                         if trig_match and trig_match(line):
                             # reset timeout from this event
                             abstimeout = float(tdef.timeout) + now()
-                            log.info('Trigger pattern detected, resuming for '
-                                     '%.0f secs', tdef.timeout)
-                            sync_event.set()
                             trig_match = None
+                            if sync_event:
+                                log.info('Trigger pattern detected, resuming '
+                                         'for %.0f secs', tdef.timeout)
+                                sync_event.set()
+                            else:
+                                log.info('Validation pattern detected, exiting')
+                                ret = 0
+                                break
                         xmo = xre.search(line)
                         if xmo:
                             xend = now()
@@ -1573,6 +1583,10 @@ class QEMUExecuter:
                 from exc
         start_delay *= args.timeout_factor
         trigger = getattr(args, 'trigger', '')
+        validate = getattr(args, 'validate', '')
+        if trigger and validate:
+            raise ValueError(f"{getattr(args, 'exec', '?')}: 'trigger' and "
+                             f"'validate' are mutually exclusive")
         vcp_args, vcp_map = self._build_qemu_vcp_args(args)
         qemu_args.extend(vcp_args)
         qemu_args.extend(args.global_opts or [])
@@ -1580,7 +1594,7 @@ class QEMUExecuter:
             qemu_args.extend((str(o) for o in opts))
         return EasyDict(command=qemu_args, vcp_map=vcp_map,
                         tmpfiles=temp_files, start_delay=start_delay,
-                        trigger=trigger)
+                        trigger=trigger, validate=validate)
 
     def _build_qemu_test_command(self, filename: str) -> EasyDict[str, Any]:
         test_name = self.get_test_radix(filename)
