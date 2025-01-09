@@ -14,23 +14,30 @@ from os import linesep
 from os.path import dirname, join as joinpath, normpath
 from time import sleep, time as now
 from traceback import format_exc
-from typing import Optional
+from typing import Optional, Union
 import sys
 
 QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
                        'python', 'qemu')
 sys.path.append(QEMU_PYPATH)
 
-from ot.spi import SpiDevice
+from ot.spi import JedecId, SpiDevice
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt
 
 
 class SpiDeviceFlasher:
-    "Simple SPI device flasher, using OT protocol."
+    """Simple SPI device flasher, using OT protocol.
+    """
+
+    DEFAULT_SYNC_TIME = 5.0
+    """Default synchronization max time."""
 
     DEFAULT_PORT = 8004
     """Default TCP port for SPI device."""
+
+    JEDEC_MANUFACTURER = (12, 0xef)
+    """Expected JEDEC manufacturer."""
 
     def __init__(self):
         self._log = getLogger('spidev.flash')
@@ -60,49 +67,57 @@ class SpiDeviceFlasher:
                 retry_count -= 1
                 if not retry_count:
                     raise
-        self._wait_for_remote()
+        duration = now()
+        self._log.info('Synchronizing')
+        jedec_id = self._synchronize(sync_time or self.DEFAULT_SYNC_TIME)
+        if (jedec_id.bank, jedec_id.jedec[0]) != self.JEDEC_MANUFACTURER:
+            raise ValueError(f'Unexpected manufacurer '
+                             f'{jedec_id.bank}:{jedec_id.jedec[0]}')
+        duration = now() - duration
+        self._log.info('Synchronization completed in %.0f ms', duration * 1000)
 
     def disconnect(self):
         """Disconnect from the remote host."""
         self._spidev.power_down()
 
-    def program(self, data: memoryview, offset: int = 0):
+    def program(self, data: Union[bytes, bytearray], offset: int = 0):
         """Programm a buffer into the remote flash device."""
         start = now()
         total = 0
         page_size = 256
         page_count = (len(data) + page_size - 1) // page_size
-        log = getLogger('spidev')
-        log.info('\nRead SFTP')
-        self._spidev.read_sfdp()
-        log.info('\nChip erase')
+        self._log.info('Chip erase')
         self._spidev.enable_write()
         self._spidev.chip_erase()
-        self._spidev.wait_idle()
+        self._spidev.wait_idle(timeout=self.DEFAULT_SYNC_TIME, pace=0.1)
+        self._log.info('Upload file')
         for pos in range(0, len(data), page_size):
             page = data[pos:pos+page_size]
-            log.debug('Program page @ 0x%06x %d/%d, %d bytes',
-                      pos + offset, pos//page_size, page_count, len(page))
+            self._log.debug('Program page @ 0x%06x %d/%d, %d bytes',
+                            pos + offset, pos//page_size, page_count, len(page))
             self._spidev.enable_write()
             self._spidev.page_program(pos + offset, page)
-            sleep(0.003)
-            self._spidev.wait_idle(pace=0.001)  # bootrom is slow :-)
+            self._spidev.wait_idle(timeout=self.DEFAULT_SYNC_TIME,
+                                   pace=0.01)
             total += len(page)
         delta = now() - start
         msg = f'{delta:.1f}s to send {total/1024:.1f}KB: ' \
               f'{total/(1024*delta):.1f}KB/s'
-        log.info('%s', msg)
+        self._log.info('%s', msg)
         self._spidev.reset()
 
-    def _wait_for_remote(self):
+    def _synchronize(self, timeout: float) -> JedecId:
+        """Wait for remote peer to be ready."""
         # use JEDEC ID presence as a sycnhronisation token
         # remote SPI device firware should set JEDEC ID when it is full ready
         # to handle requests
-        timeout = now() + 3.0
-        while now() < timeout:
-            jedec = set(self._spidev.read_jedec_id().jedec)
+        expire = now() + timeout
+        while now() < expire:
+            jedec_id = self._spidev.read_jedec_id()
+            jedec = set(jedec_id.jedec)
             if len(jedec) > 1 or jedec.pop() not in (0x00, 0xff):
-                return
+                return jedec_id
+            sleep(0.1)
         raise RuntimeError('Remote SPI device not ready')
 
 
@@ -122,11 +137,18 @@ def main():
                                help='connection string')
         argparser.add_argument('-R', '--retry-count', type=int, default=1,
                                help='connection retry count (default: 1)')
+        argparser.add_argument('-T', '--sync-time', type=float,
+                               default=SpiDeviceFlasher.DEFAULT_SYNC_TIME,
+                               help=f'synchronization max time (default: '
+                                    f'{SpiDeviceFlasher.DEFAULT_SYNC_TIME:.1f}'
+                                    f's)')
         argparser.add_argument('-r', '--host',
                                help='remote host name (default: localhost)')
         argparser.add_argument('-p', '--port', type=int,
-                               help=f'remote host TCP port (defaults to '
+                               help=f'remote host TCP port (default: '
                                     f'{SpiDeviceFlasher.DEFAULT_PORT})')
+        argparser.add_argument('--log-udp', type=int, metavar='UDP_PORT',
+                               help='Log to a local UDP logger')
         argparser.add_argument('-v', '--verbose', action='count',
                                help='increase verbosity')
         argparser.add_argument('-d', '--debug', action='store_true',
@@ -134,18 +156,21 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        configure_loggers(args.verbose, 'spidev')
+        configure_loggers(args.verbose, 'spidev', -1, 'spidev.dev',
+                          udplog=args.log_udp)
 
         flasher = SpiDeviceFlasher()
         if args.socket:
             if any((args.host, args.port)):
                 argparser.error('Connection string is mutually exclusive '
                                 'with host and port')
-            flasher.connect(args.socket, None, retry_count=args.retry_count)
+            flasher.connect(args.socket, None, retry_count=args.retry_count,
+                            sync_time=args.sync_time)
         else:
             flasher.connect(args.host or 'localhost',
                             args.port or SpiDeviceFlasher.DEFAULT_PORT,
-                            retry_count=args.retry_count)
+                            retry_count=args.retry_count,
+                            sync_time=args.sync_time)
         data = args.file.read()
         args.file.close()
         flasher.program(data, args.address)
