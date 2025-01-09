@@ -9,8 +9,8 @@
 from binascii import hexlify
 from logging import getLogger
 from select import POLLIN, poll as spoll
-from socket import (create_connection, socket, IPPROTO_TCP, TCP_NODELAY,
-                    SHUT_RDWR, timeout as LegacyTimeoutError)
+from socket import (AF_UNIX, IPPROTO_TCP, TCP_NODELAY, SHUT_RDWR, SOCK_STREAM,
+                    create_connection, socket, timeout as LegacyTimeoutError)
 from struct import calcsize as scalc, pack as spack
 from time import sleep, time as now
 from typing import NamedTuple, Optional, Union
@@ -32,6 +32,10 @@ class SpiDevice:
 
     TIMEOUT = 2.0
     """Default allowed timeout to complete an exchange with the remote target.
+    """
+
+    CONN_TIMEOUT = 1.0
+    """Maximum time to connect to the remote peer.
     """
 
     POLL_TIMEOUT = 0.05
@@ -88,22 +92,46 @@ class SpiDevice:
         self._rev_rx = False
         self._rev_tx = False
 
-    def connect(self, host: str, port: int) -> None:
-        """Open a TCP connection to the remote host.
+    def connect(self, host: str, port: Optional[int] = None) -> None:
+        """Open a connection to the remote host.
 
-           @param host the host name
-           @paran port the TCP port
+           @param host the host name or the connection string
+           @param port the TCP port
         """
         if self._socket:
             raise RuntimeError('Cannot open multiple comm port at once')
-        try:
-            self._socket = create_connection((host, port), timeout=self.TIMEOUT)
-        except OSError:
-            self._log.fatal('Cannot connect to %s:%d', host, port)
-            raise
-        # use poll
-        self._socket.settimeout(None)
-        self._socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        if port is not None:
+            try:
+                self._socket = create_connection((host, port),
+                                                 timeout=self.CONN_TIMEOUT)
+                self._socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+            except OSError:
+                self._log.fatal('Cannot connect to %s:%d', host, port)
+                raise
+        else:
+            sock_args = host.split(':')
+            try:
+                if sock_args[0] == 'tcp':
+                    try:
+                        host, port = sock_args[1:]
+                    except ValueError as exc:
+                        raise ValueError('TCP port not specified') from exc
+                    self._socket = create_connection((host, int(port)),
+                                                     timeout=self.TIMEOUT)
+                    self._socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+                elif sock_args[0] == 'unix':
+                    self._socket = socket(AF_UNIX, SOCK_STREAM)
+                    self._socket.settimeout(self.CONN_TIMEOUT)
+                    self._socket.connect(sock_args[1])
+                else:
+                    raise ValueError(f'Unsupported connection string: {host}')
+            except OSError:
+                if port:
+                    self._log.fatal('Cannot connect to %s:%d', host, port)
+                else:
+                    self._log.fatal('Cannot connect to %s', host)
+                raise
+        self._socket.settimeout(None)  # use poll
 
     def disconnect(self) -> None:
         """Close the communication socket."""
