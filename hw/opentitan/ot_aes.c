@@ -754,6 +754,28 @@ static void ot_aes_finalize(OtAESState *s, enum OtAESMode mode)
     c->do_full = false;
 }
 
+static void ot_aes_compute_ctr_iv(OtAESState *s, uint8_t *iv)
+{
+    OtAESContext *c = s->ctx;
+    uint8_t liv[OT_AES_IV_SIZE];
+
+    unsigned long length = OT_AES_IV_SIZE;
+    ctr_getiv(liv, &length, &c->ctr);
+
+    g_assert(c->ctr.mode == CTR_COUNTER_BIG_ENDIAN);
+    g_assert(c->ctr.ctrlen == 0);
+
+    unsigned ix = OT_AES_IV_SIZE - 1u;
+    do {
+        liv[ix] = liv[ix] + 0x1u;
+        if (liv[ix] != 0) {
+            break;
+        }
+    } while (ix--);
+
+    memcpy(iv, liv, sizeof(liv));
+}
+
 static void ot_aes_pop(OtAESState *s)
 {
     OtAESRegisters *r = s->regs;
@@ -854,7 +876,7 @@ static void ot_aes_process(OtAESState *s)
             memcpy(c->iv, c->ofb.IV, sizeof(c->iv));
             break;
         case AES_CTR:
-            memcpy(c->iv, c->ctr.ctr, sizeof(c->iv));
+            ot_aes_compute_ctr_iv(s, (uint8_t *)&c->iv[0]);
             break;
         default:
             break;
