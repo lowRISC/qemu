@@ -122,7 +122,7 @@ REG32(STATUS, 0x84u)
 
 #define OT_AES_DATA_SIZE (PARAM_NUM_REGS_DATA * sizeof(uint32_t))
 #define OT_AES_KEY_SIZE  (PARAM_NUM_REGS_KEY * sizeof(uint32_t))
-#define OT_AES_IV_SIZE   (PARAM_NUM_REGS_KEY * sizeof(uint32_t))
+#define OT_AES_IV_SIZE   (PARAM_NUM_REGS_IV * sizeof(uint32_t))
 
 /* arbitrary value long enough to give back execution to vCPU */
 #define OT_AES_RETARD_DELAY_NS 10000u /* 10 us */
