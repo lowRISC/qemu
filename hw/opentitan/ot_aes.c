@@ -1009,7 +1009,7 @@ static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
     case R_IV_1:
     case R_IV_2:
     case R_IV_3:
-        val32 = r->keyshare[reg - R_IV_0];
+        val32 = r->iv[reg - R_IV_0];
         break;
     case R_DATA_OUT_0:
     case R_DATA_OUT_1:
