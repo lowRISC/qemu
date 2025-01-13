@@ -2,7 +2,7 @@
 #------------------------------------------------------------------------------
 # QEMU OpenTitan CI
 #
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache License 2.0
 #------------------------------------------------------------------------------
 
@@ -10,16 +10,16 @@ name: Build & Test QEMU OT
 on: [pull_request]
 jobs:
   build-clang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Install deps
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
           sudo apt-get update &&
           sudo apt-get install -y git make pkg-config clang-18 cmake ninja-build python3 rust-all \
-            libpixman-1-dev
+            libpixman-1-dev libglib2.0-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Configure
@@ -65,13 +65,13 @@ jobs:
           retention-days: 1
 
   format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Install tools
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
           sudo apt-get update &&
           sudo apt-get install -y clang-format-18
       - name: Check out QEMU
@@ -97,16 +97,16 @@ jobs:
             scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
 
   lint-clang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-clang
     steps:
       - name: Install tools
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
           sudo apt-get update &&
-          sudo apt-get install -y clang-tidy-18
+          sudo apt-get install -y clang-tidy-18 libglib2.0-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Download QEMU source artifacts
@@ -122,13 +122,13 @@ jobs:
           scripts/opentitan/ot-tidy.sh --ci -p build-clang
 
   test-clang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-clang
     steps:
       - name: Install tools
         run: |
           sudo apt-get update &&
-          sudo apt-get install -y libpixman-1-0
+          sudo apt-get install -y libpixman-1-0 libglib2.0-dev
       - name: Download QEMU binary artifacts
         uses: actions/download-artifact@v3
         with:
@@ -154,16 +154,16 @@ jobs:
             -object ot-rom_img,id=rom0,file=exit_dj.bin -d in_asm,int
 
   build-gcc:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Install tools
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
           sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
           sudo apt-get update &&
           sudo apt-get install -y git make pkg-config gcc cmake ninja-build python3 rust-all \
-            libpixman-1-dev
+            libpixman-1-dev libglib2.0-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Configure
