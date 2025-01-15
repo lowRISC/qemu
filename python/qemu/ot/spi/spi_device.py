@@ -101,6 +101,8 @@ class SpiDevice:
         if self._socket:
             raise RuntimeError('Cannot open multiple comm port at once')
         if port is not None:
+            if not isinstance(port, int):
+                raise ValueError('Invalid port type')
             try:
                 self._socket = create_connection((host, port),
                                                  timeout=self.CONN_TIMEOUT)
@@ -113,10 +115,11 @@ class SpiDevice:
             try:
                 if sock_args[0] == 'tcp':
                     try:
-                        host, port = sock_args[1:]
+                        host, sport = sock_args[1:]
+                        port = int(sport)
                     except ValueError as exc:
                         raise ValueError('TCP port not specified') from exc
-                    self._socket = create_connection((host, int(port)),
+                    self._socket = create_connection((host, port),
                                                      timeout=self.TIMEOUT)
                     self._socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
                 elif sock_args[0] == 'unix':
