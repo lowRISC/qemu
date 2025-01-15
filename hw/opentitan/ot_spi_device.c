@@ -349,7 +349,7 @@ static_assert((1u << FIFO_PHASE_BIT) >= GENERIC_BUFFER_SIZE,
 #define RXFIFO_LEN sizeof(uint32_t)
 #define TXFIFO_LEN sizeof(uint32_t)
 
-#define SPI_DEFAULT_TX_VALUE  0xffu
+#define SPI_DEFAULT_TX_VALUE  ((uint8_t)0xffu)
 #define SPI_FLASH_BUFFER_SIZE 256u
 
 typedef enum {
@@ -2243,7 +2243,7 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
 static void ot_spi_device_chr_send_discard(OtSPIDeviceState *s, unsigned count)
 {
-    const uint8_t buf[1u] = { (uint8_t)0xffu };
+    const uint8_t buf[1u] = { SPI_DEFAULT_TX_VALUE };
 
     while (count--) {
         if (qemu_chr_fe_backend_connected(&s->chr)) {
@@ -2284,7 +2284,7 @@ static void ot_spi_device_chr_recv_flash(OtSPIDeviceState *s,
 static void ot_spi_device_chr_send_generic(OtSPIDeviceState *s, unsigned count)
 {
     if (ot_spi_device_is_tx_fifo_in_reset(s)) {
-        uint8_t buf[] = { 0xff };
+        uint8_t buf[] = { SPI_DEFAULT_TX_VALUE };
         trace_ot_spi_device_gen_fifo_error("TXF in reset");
         while (count--) {
             qemu_chr_fe_write(&s->chr, buf, sizeof(buf));
