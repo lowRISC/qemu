@@ -142,6 +142,8 @@ def main():
                                help=f'synchronization max time (default: '
                                     f'{SpiDeviceFlasher.DEFAULT_SYNC_TIME:.1f}'
                                     f's)')
+        argparser.add_argument('-t', '--terminate', action='store_true',
+                               help='terminate QEMU VM on completion')
         argparser.add_argument('-r', '--host',
                                help='remote host name (default: localhost)')
         argparser.add_argument('-p', '--port', type=int,
@@ -174,7 +176,8 @@ def main():
         data = args.file.read()
         args.file.close()
         flasher.program(data, args.address)
-        flasher.disconnect()
+        if args.terminate:
+            flasher.disconnect()
 
         sys.exit(0)
     # pylint: disable=broad-except
