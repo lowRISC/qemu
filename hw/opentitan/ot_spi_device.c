@@ -890,8 +890,9 @@ static void ot_spi_device_flash_change_state_line(
     SpiDeviceFlash *f, OtSpiFlashState state, int line)
 {
     if (f->state != state) {
-        trace_ot_spi_device_flash_change_state(line, FLASH_STATE_NAME(state),
-                                               state);
+        trace_ot_spi_device_flash_change_state(line, FLASH_STATE_NAME(f->state),
+                                               f->state,
+                                               FLASH_STATE_NAME(state), state);
         f->state = state;
     }
 }
@@ -1628,6 +1629,7 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
             break;
         case SPI_FLASH_CMD_NONE:
             /* this command cannot be processed, discard all remaining bytes */
+            trace_ot_spi_device_flash_unknown_command(rx);
             FLASH_CHANGE_STATE(f, ERROR);
             BUS_CHANGE_STATE(&s->bus, DISCARD);
             break;
