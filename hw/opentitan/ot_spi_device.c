@@ -2579,6 +2579,8 @@ static void ot_spi_device_reset(DeviceState *dev)
     SpiDeviceGeneric *g = &s->generic;
     SpiDeviceBus *bus = &s->bus;
 
+    trace_ot_spi_device_reset("enter");
+
     ot_spi_device_clear_modes(s);
 
     memset(s->spi_regs, 0, SPI_REGS_SIZE);
@@ -2609,6 +2611,8 @@ static void ot_spi_device_reset(DeviceState *dev)
 
     ot_spi_device_update_irqs(s);
     ot_spi_device_update_alerts(s);
+
+    trace_ot_spi_device_reset("exit");
 }
 
 static void ot_spi_device_realize(DeviceState *dev, Error **errp)
