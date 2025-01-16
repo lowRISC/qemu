@@ -1029,10 +1029,12 @@ static bool ot_spi_device_is_hw_read_command(const OtSPIDeviceState *s)
     }
 }
 
-static void ot_spi_device_release_cs(OtSPIDeviceState *s)
+static void ot_spi_device_release(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
     SpiDeviceBus *bus = &s->bus;
+
+    trace_ot_spi_device_release();
 
     BUS_CHANGE_STATE(bus, IDLE);
     bus->byte_count = 0;
@@ -2469,7 +2471,7 @@ static void ot_spi_device_chr_receive(void *opaque, const uint8_t *buf,
 
     if (!bus->byte_count) {
         if (bus->release) {
-            ot_spi_device_release_cs(s);
+            ot_spi_device_release(s);
         } else {
             BUS_CHANGE_STATE(bus, IDLE);
         }
@@ -2489,11 +2491,11 @@ static void ot_spi_device_chr_event_hander(void *opaque, QEMUChrEvent event)
             return;
         }
 
-        ot_spi_device_release_cs(s);
+        ot_spi_device_release(s);
     }
 
     if (event == CHR_EVENT_CLOSED) {
-        ot_spi_device_release_cs(s);
+        ot_spi_device_release(s);
     }
 }
 
@@ -2527,7 +2529,7 @@ static int ot_spi_device_chr_be_change(void *opaque)
 
     fifo8_reset(&bus->chr_fifo);
 
-    ot_spi_device_release_cs(s);
+    ot_spi_device_release(s);
 
     if (s->watch_tag > 0) {
         g_source_remove(s->watch_tag);
@@ -2588,7 +2590,7 @@ static void ot_spi_device_reset(DeviceState *dev)
     fifo8_reset(&f->cmd_fifo);
     ot_fifo32_reset(&f->address_fifo);
 
-    ot_spi_device_release_cs(s);
+    ot_spi_device_release(s);
     f->watermark = false;
     f->new_cmd = false;
     s->spi_regs[R_CONTROL] = 0x80000010u;
