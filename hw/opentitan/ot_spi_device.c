@@ -2196,13 +2196,13 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
     uint8_t comm = mode ^ (uint8_t)s->spi_regs[R_CFG];
     bus->mode = (comm & (R_CFG_CPOL_MASK | R_CFG_CPHA_MASK)) ? 0xFF : 0x00;
 
-    trace_ot_spi_device_chr_cs_assert(bus->byte_count, bus->release,
-                                      bus->rev_rx ? 'l' : 'm',
-                                      bus->rev_tx ? 'l' : 'm',
-                                      bus->mode ? "mismatch" : "ok");
+    trace_ot_spi_device_chr_handle_packet(bus->byte_count, bus->release,
+                                          bus->rev_rx ? 'l' : 'm',
+                                          bus->rev_tx ? 'l' : 'm',
+                                          bus->mode ? "mismatch" : "ok");
 
     if (!bus->byte_count) {
-        /* no payload, stay in IDLE */
+        /* no payload, stay in IDLE (handle_header is only called from IDLE) */
         return;
     }
 
@@ -2449,6 +2449,7 @@ static void ot_spi_device_chr_receive(void *opaque, const uint8_t *buf,
             fifo8_push(&bus->chr_fifo, *buf++);
         }
         if (fifo8_is_full(&bus->chr_fifo)) {
+            /* a full header has been received, it can be decoded */
             ot_spi_device_chr_handle_header(s);
         }
         break;

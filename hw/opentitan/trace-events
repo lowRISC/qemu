@@ -433,7 +433,7 @@ ot_socdbg_ctrl_update(const char *id, unsigned policy, bool valid) "%s: debug po
 ot_spi_device_buf_read_out(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%03x, sz=%u, val=0x%08x, pc=0x%x"
 ot_spi_device_buf_write_in(uint32_t addr, unsigned size, uint32_t val, uint32_t pc) "addr=0x%03x, sz=%u,  val=0x%08x, pc=0x%x"
 ot_spi_device_bus_change_state(int line, const char *state, int stateval) "@%d: %s [%d]"
-ot_spi_device_chr_cs_assert(unsigned count, bool release, char rx, char tx, const char *st) "0x%x bytes, /cs: %u, rx: %csb, tx: %csb, mode:%s"
+ot_spi_device_chr_handle_packet(unsigned count, unsigned eot, char rx, char tx, const char *st) "0x%x bytes, eot: %u, rx: %csb, tx: %csb, mode:%s"
 ot_spi_device_chr_error(const char *err) "%s"
 ot_spi_device_flash_byte_unexpected(uint8_t rx) "unexpected byte 0x%02x after completed command"
 ot_spi_device_flash_change_state(int line, const char *prev, int preval, const char *next, int nextval) "@%d: %s[%d] -> %s[%d]"
