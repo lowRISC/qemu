@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SPI Device controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -364,25 +364,10 @@ typedef enum {
     READ_QUAD,
     READ_DUAL_IO,
     READ_QUAD_IO,
+    HW_COMMAND_COUNT
 } SpiDeviceHwCommand;
 
-static const uint8_t SPI_DEVICE_HW_COMMANDS[] = {
-    /* clang-format off */
-    [READ_STATUS1] = 0x05u,
-    [READ_STATUS2] = 0x35u,
-    [READ_STATUS3] = 0x15u,
-    [READ_JEDEC] = 0x9fu,
-    [READ_SFDP] = 0x5au,
-    [READ_NORMAL] = 0x03u,
-    [READ_FAST] = 0x0bu,
-    [READ_DUAL] = 0x3bu,
-    [READ_QUAD] = 0x6bu,
-    [READ_DUAL_IO] = 0xbbu,
-    [READ_QUAD_IO] = 0xebu,
-    /* clang-format on */
-};
-
-#define SPI_DEVICE_CMD_HW_STA_COUNT ARRAY_SIZE(SPI_DEVICE_HW_COMMANDS)
+#define SPI_DEVICE_CMD_HW_STA_COUNT ((unsigned)HW_COMMAND_COUNT)
 #define SPI_DEVICE_CMD_HW_STA_FIRST 0
 #define SPI_DEVICE_CMD_HW_STA_LAST  (SPI_DEVICE_CMD_HW_STA_COUNT - 1u)
 #define SPI_DEVICE_CMD_HW_CFG_FIRST (R_CMD_INFO_EN4B - R_CMD_INFO_0)
@@ -1123,34 +1108,24 @@ static void ot_spi_device_flash_decode_command(OtSPIDeviceState *s, uint8_t cmd)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    /* search command slot in HW-handling commands (static group) */
     if (f->state == SPI_FLASH_IDLE) {
-        for (unsigned ix = 0; ix < SPI_DEVICE_CMD_HW_STA_COUNT; ix++) {
-            if (cmd == SPI_DEVICE_HW_COMMANDS[ix]) {
-                f->type = SPI_FLASH_CMD_HW_STA;
-                f->slot = ix;
-                f->cmd_info = SHARED_FIELD_DP32(s->spi_regs[R_CMD_INFO_0 + ix],
-                                                CMD_INFO_OPCODE, cmd);
-                trace_ot_spi_device_flash_new_command("HW", cmd, f->slot);
-                break;
-            }
-        }
-    }
-
-    /* search command in other slots */
-    if (f->state == SPI_FLASH_IDLE) {
-        for (unsigned ix = SPI_DEVICE_CMD_HW_STA_COUNT;
+        for (unsigned ix = 0;
              ix < PARAM_NUM_CMD_INFO + SPI_DEVICE_CMD_HW_CFG_COUNT; ix++) {
             uint32_t val32 = s->spi_regs[R_CMD_INFO_0 + ix];
-            if (cmd == SHARED_FIELD_EX32(val32, CMD_INFO_OPCODE)) {
+            if (cmd == (uint8_t)SHARED_FIELD_EX32(val32, CMD_INFO_OPCODE)) {
                 if (SHARED_FIELD_EX32(val32, CMD_INFO_VALID)) {
-                    f->type = ix < PARAM_NUM_CMD_INFO ? SPI_FLASH_CMD_SW :
-                                                        SPI_FLASH_CMD_HW_CFG;
+                    f->type =
+                        ix < SPI_DEVICE_CMD_HW_STA_COUNT ?
+                            SPI_FLASH_CMD_HW_STA :
+                            (ix < PARAM_NUM_CMD_INFO ? SPI_FLASH_CMD_SW :
+                                                       SPI_FLASH_CMD_HW_CFG);
                     f->slot = ix;
                     f->cmd_info = val32;
                     trace_ot_spi_device_flash_new_command(
-                        f->type == SPI_FLASH_CMD_SW ? "SW" : "HW_CFG", cmd,
-                        f->slot);
+                        f->type == SPI_FLASH_CMD_HW_STA ?
+                            "HW" :
+                            (f->type == SPI_FLASH_CMD_SW ? "SW" : "HW_CFG"),
+                        cmd, f->slot);
                     break;
                 }
                 trace_ot_spi_device_flash_disabled_slot(cmd, ix);
@@ -1285,24 +1260,24 @@ static void ot_spi_device_flash_decode_hw_static_command(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    switch (COMMAND_OPCODE(f->cmd_info)) {
-    case 0x05u: /* READ_STATUS_1 */
-    case 0x35u: /* READ_STATUS_2 */
-    case 0x15u: /* READ_STATUS_3 */
+    switch ((int)f->slot) {
+    case READ_STATUS1:
+    case READ_STATUS2:
+    case READ_STATUS3:
         ot_spi_device_flash_decode_read_status(s);
         break;
-    case 0x9fu: /* READ_JEDEC    */
+    case READ_JEDEC:
         ot_spi_device_flash_decode_read_jedec(s);
         break;
-    case 0x5au: /* READ_SFDP     */
+    case READ_SFDP:
         ot_spi_device_flash_decode_read_sfdp(s);
         break;
-    case 0x03u: /* READ_NORMAL */
-    case 0x0bu: /* READ_FAST   */
-    case 0x3bu: /* READ_DUAL   */
-    case 0x6bu: /* READ_QUAD   */
-    case 0xbbu: /* READ_DUALIO */
-    case 0xebu: /* READ_QUADIO */
+    case READ_NORMAL:
+    case READ_FAST:
+    case READ_DUAL:
+    case READ_QUAD:
+    case READ_DUAL_IO:
+    case READ_QUAD_IO:
         ot_spi_device_flash_decode_read_data(s);
         break;
     default:
