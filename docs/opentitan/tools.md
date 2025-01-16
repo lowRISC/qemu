@@ -2,6 +2,17 @@
 
 All the OpenTitan tools and associated files are stored in the `scripts/opentitan` directory.
 
+## Installation
+
+Most tools are implemented in Python language. They require Python 3.10 or newer.
+
+It is recommended to install Python dependencies using a [virtual environment](https://virtualenv.pypa.io).
+
+To install Python dependencies, use:
+```sh
+pip3 install -r scripts/opentitan/requirements.txt
+```
+
 ## Execution wrapper
 
 Launching a QEMU VM with the right option switches may rapidly become complex due to the number
