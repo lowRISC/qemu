@@ -491,6 +491,7 @@ struct OtSPIDeviceState {
     uint32_t *sram; /* SRAM (DPRAM on EG, E/I on DJ) */
 
     /* Properties */
+    char *ot_id;
     CharBackend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
     bool dpsram; /* support for deprecated DPSRAM and generic mode */
@@ -699,10 +700,10 @@ static const char *IRQ_NAMES[] = {
 
 #define WORD_ALIGN(_x_) ((_x_) & ~0x3u)
 
-#define BUS_CHANGE_STATE(_b_, _sst_) \
-    ot_spi_device_bus_change_state_line(_b_, SPI_BUS_##_sst_, __LINE__)
-#define FLASH_CHANGE_STATE(_f_, _sst_) \
-    ot_spi_device_flash_change_state_line(_f_, SPI_FLASH_##_sst_, __LINE__)
+#define BUS_CHANGE_STATE(_s_, _sst_) \
+    ot_spi_device_bus_change_state_line(_s_, SPI_BUS_##_sst_, __LINE__)
+#define FLASH_CHANGE_STATE(_s_, _sst_) \
+    ot_spi_device_flash_change_state_line(_s_, SPI_FLASH_##_sst_, __LINE__)
 
 static void spi_fifo_init(SpiFifo *f, OtSPIDeviceState *s, bool tx)
 {
@@ -719,7 +720,7 @@ static unsigned spi_fifo_count_to_word(const SpiFifo *f)
     return (unsigned)(sizeof(uint32_t) - bytes);
 }
 
-static void spi_fifo_push(SpiFifo *f, uint8_t data)
+static void spi_fifo_push(OtSPIDeviceState *s, SpiFifo *f, uint8_t data)
 {
     unsigned wptr = (*f->ptr) >> 16u;
     unsigned base = (*f->addr) & UINT16_MAX;
@@ -730,7 +731,7 @@ static void spi_fifo_push(SpiFifo *f, uint8_t data)
     ((uint8_t *)f->buf)[base + woff] = data;
     woff += sizeof(uint8_t);
     if (WORD_ALIGN(woff) > max) {
-        trace_ot_spi_device_gen_phase(__func__, woff, lim, phase);
+        trace_ot_spi_device_gen_phase(s->ot_id, __func__, woff, lim, phase);
         woff = 0;
         phase = !phase;
     }
@@ -738,7 +739,7 @@ static void spi_fifo_push(SpiFifo *f, uint8_t data)
     *f->ptr |= FIFO_MAKE_PTR(phase, woff) << 16u;
 }
 
-static void spi_fifo_push_w(SpiFifo *f, uint32_t data)
+static void spi_fifo_push_w(OtSPIDeviceState *s, SpiFifo *f, uint32_t data)
 {
     unsigned wptr = (*f->ptr) >> 16u;
     unsigned base = (*f->addr) & UINT16_MAX;
@@ -750,7 +751,7 @@ static void spi_fifo_push_w(SpiFifo *f, uint32_t data)
     f->buf[(base + woff) >> 2u] = data;
     woff += sizeof(uint32_t);
     if (WORD_ALIGN(woff) > max) {
-        trace_ot_spi_device_gen_phase(__func__, woff, lim, phase);
+        trace_ot_spi_device_gen_phase(s->ot_id, __func__, woff, lim, phase);
         woff = 0;
         phase = !phase;
     }
@@ -758,7 +759,7 @@ static void spi_fifo_push_w(SpiFifo *f, uint32_t data)
     *f->ptr |= FIFO_MAKE_PTR(phase, woff) << 16u;
 }
 
-static uint8_t spi_fifo_pop(SpiFifo *f)
+static uint8_t spi_fifo_pop(OtSPIDeviceState *s, SpiFifo *f)
 {
     unsigned rptr = (*f->ptr) & UINT16_MAX;
     unsigned base = (*f->addr) & UINT16_MAX;
@@ -769,7 +770,7 @@ static uint8_t spi_fifo_pop(SpiFifo *f)
     uint8_t data = ((uint8_t *)f->buf)[base + roff];
     roff += sizeof(uint8_t);
     if (WORD_ALIGN(roff) > max) {
-        trace_ot_spi_device_gen_phase(__func__, roff, lim, phase);
+        trace_ot_spi_device_gen_phase(s->ot_id, __func__, roff, lim, phase);
         roff = 0;
         phase = !phase;
     }
@@ -861,24 +862,25 @@ static bool ot_spi_device_is_cs_active(const OtSPIDeviceState *s)
     return bus->state != SPI_BUS_IDLE && bus->state != SPI_BUS_ERROR;
 }
 
-static void ot_spi_device_bus_change_state_line(SpiDeviceBus *b,
+static void ot_spi_device_bus_change_state_line(OtSPIDeviceState *s,
                                                 OtSpiBusState state, int line)
 {
-    if (b->state != state) {
-        trace_ot_spi_device_bus_change_state(line, BUS_STATE_NAME(state),
-                                             state);
-        b->state = state;
+    if (s->bus.state != state) {
+        trace_ot_spi_device_bus_change_state(s->ot_id, line,
+                                             BUS_STATE_NAME(state), state);
+        s->bus.state = state;
     }
 }
 
 static void ot_spi_device_flash_change_state_line(
-    SpiDeviceFlash *f, OtSpiFlashState state, int line)
+    OtSPIDeviceState *s, OtSpiFlashState state, int line)
 {
-    if (f->state != state) {
-        trace_ot_spi_device_flash_change_state(line, FLASH_STATE_NAME(f->state),
-                                               f->state,
+    if (s->flash.state != state) {
+        trace_ot_spi_device_flash_change_state(s->ot_id, line,
+                                               FLASH_STATE_NAME(s->flash.state),
+                                               s->flash.state,
                                                FLASH_STATE_NAME(state), state);
-        f->state = state;
+        s->flash.state = state;
     }
 }
 
@@ -910,7 +912,7 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     SpiDeviceFlash *f = &s->flash;
 
     timer_del(f->irq_timer);
-    FLASH_CHANGE_STATE(f, IDLE);
+    FLASH_CHANGE_STATE(s, IDLE);
     f->address = 0;
     f->cmd_info = UINT32_MAX;
     f->pos = 0;
@@ -970,7 +972,7 @@ static void ot_spi_device_update_irqs(OtSPIDeviceState *s)
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         bool level = (bool)((levels >> ix) & 0x1u);
         if (level != (bool)ibex_irq_get_level(&s->irqs[ix])) {
-            trace_ot_spi_device_set_irq(IRQ_NAME(ix), ix, level);
+            trace_ot_spi_device_set_irq(s->ot_id, IRQ_NAME(ix), ix, level);
         }
         ibex_irq_set(&s->irqs[ix], (int)level);
     }
@@ -1034,9 +1036,9 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
     SpiDeviceFlash *f = &s->flash;
     SpiDeviceBus *bus = &s->bus;
 
-    trace_ot_spi_device_release();
+    trace_ot_spi_device_release(s->ot_id);
 
-    BUS_CHANGE_STATE(bus, IDLE);
+    BUS_CHANGE_STATE(s, IDLE);
     bus->byte_count = 0;
 
     bool update_irq = false;
@@ -1058,7 +1060,7 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
                 len = SPI_SRAM_PAYLOAD_SIZE;
                 s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_PAYLOAD_OVERFLOW_MASK;
                 update_irq = true;
-                trace_ot_spi_device_flash_overflow("payload");
+                trace_ot_spi_device_flash_overflow(s->ot_id, "payload");
             } else {
                 pos = 0;
                 len = f->pos;
@@ -1068,7 +1070,7 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
             s->spi_regs[R_UPLOAD_STATUS2] =
                 FIELD_DP32(s->spi_regs[R_UPLOAD_STATUS2], UPLOAD_STATUS2,
                            PAYLOAD_DEPTH, len);
-            trace_ot_spi_device_flash_payload(f->pos, pos, len);
+            trace_ot_spi_device_flash_payload(s->ot_id, f->pos, pos, len);
         }
         /*
          * "shows the last address accessed by the host system."
@@ -1077,10 +1079,10 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
          */
         if (ot_spi_device_is_hw_read_command(s) &&
             !ot_spi_device_is_mailbox_match(s, f->address)) {
-            trace_ot_spi_device_update_last_read_addr(f->address);
+            trace_ot_spi_device_update_last_read_addr(s->ot_id, f->address);
             s->spi_regs[R_LAST_READ_ADDR] = f->address;
         }
-        FLASH_CHANGE_STATE(f, IDLE);
+        FLASH_CHANGE_STATE(s, IDLE);
         break;
     case CTRL_MODE_PASSTHROUGH:
         s->spi_regs[R_LAST_READ_ADDR] = f->address;
@@ -1102,7 +1104,8 @@ static void ot_spi_device_flash_pace_spibus(OtSPIDeviceState *s)
 
     timer_del(f->irq_timer);
     uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-    trace_ot_spi_device_flash_pace("set", timer_pending(f->irq_timer));
+    trace_ot_spi_device_flash_pace(s->ot_id, "set",
+                                   timer_pending(f->irq_timer));
     timer_mod(f->irq_timer, (int64_t)(now + SPI_BUS_FLASH_READ_DELAY_NS));
 }
 
@@ -1124,19 +1127,20 @@ static void ot_spi_device_flash_decode_command(OtSPIDeviceState *s, uint8_t cmd)
                     f->slot = ix;
                     f->cmd_info = val32;
                     trace_ot_spi_device_flash_new_command(
+                        s->ot_id,
                         f->type == SPI_FLASH_CMD_HW_STA ?
                             "HW" :
                             (f->type == SPI_FLASH_CMD_SW ? "SW" : "HW_CFG"),
                         cmd, f->slot);
                     break;
                 }
-                trace_ot_spi_device_flash_disabled_slot(cmd, ix);
+                trace_ot_spi_device_flash_disabled_slot(s->ot_id, cmd, ix);
             }
         }
     }
 
     if (f->type == SPI_FLASH_CMD_NONE) {
-        trace_ot_spi_device_flash_ignored_command("unmanaged", cmd);
+        trace_ot_spi_device_flash_ignored_command(s->ot_id, "unmanaged", cmd);
         return;
     }
 
@@ -1151,7 +1155,8 @@ static void ot_spi_device_flash_decode_command(OtSPIDeviceState *s, uint8_t cmd)
         if (set_busy) {
             s->spi_regs[R_FLASH_STATUS] |= R_FLASH_STATUS_BUSY_MASK;
         }
-        trace_ot_spi_device_flash_upload(f->slot, f->cmd_info, set_busy);
+        trace_ot_spi_device_flash_upload(s->ot_id, f->slot, f->cmd_info,
+                                         set_busy);
         fifo8_push(&f->cmd_fifo, COMMAND_OPCODE(f->cmd_info));
         f->new_cmd = true;
     }
@@ -1172,7 +1177,7 @@ static void ot_spi_device_flash_decode_read_jedec(OtSPIDeviceState *s)
     memset(&f->buffer[f->len], (int)SPI_DEFAULT_TX_VALUE,
            SPI_FLASH_BUFFER_SIZE - f->len);
     f->src = f->buffer;
-    FLASH_CHANGE_STATE(f, BUFFER);
+    FLASH_CHANGE_STATE(s, BUFFER);
 }
 
 static void ot_spi_device_flash_decode_write_enable(OtSPIDeviceState *s)
@@ -1180,13 +1185,13 @@ static void ot_spi_device_flash_decode_write_enable(OtSPIDeviceState *s)
     SpiDeviceFlash *f = &s->flash;
 
     bool enable = f->slot == FLASH_SLOT(WREN);
-    trace_ot_spi_device_flash_exec(enable ? "WREN" : "WRDI");
+    trace_ot_spi_device_flash_exec(s->ot_id, enable ? "WREN" : "WRDI");
     if (enable) {
         s->spi_regs[R_FLASH_STATUS] |= R_FLASH_STATUS_WEL_MASK;
     } else {
         s->spi_regs[R_FLASH_STATUS] &= ~R_FLASH_STATUS_WEL_MASK;
     }
-    FLASH_CHANGE_STATE(f, DONE);
+    FLASH_CHANGE_STATE(s, DONE);
 }
 
 static void ot_spi_device_flash_decode_addr4_enable(OtSPIDeviceState *s)
@@ -1194,14 +1199,14 @@ static void ot_spi_device_flash_decode_addr4_enable(OtSPIDeviceState *s)
     SpiDeviceFlash *f = &s->flash;
 
     bool enable = f->slot == FLASH_SLOT(EN4B);
-    trace_ot_spi_device_flash_exec(enable ? "EN4B" : "EX4B");
+    trace_ot_spi_device_flash_exec(s->ot_id, enable ? "EN4B" : "EX4B");
 
     if (enable) {
         s->spi_regs[R_CFG] |= R_CFG_ADDR_4B_EN_MASK;
     } else {
         s->spi_regs[R_CFG] &= ~R_CFG_ADDR_4B_EN_MASK;
     }
-    FLASH_CHANGE_STATE(f, DONE);
+    FLASH_CHANGE_STATE(s, DONE);
 }
 
 static void ot_spi_device_flash_decode_read_status(OtSPIDeviceState *s)
@@ -1216,9 +1221,9 @@ static void ot_spi_device_flash_decode_read_status(OtSPIDeviceState *s)
     f->src = f->buffer;
     f->loop = true;
 
-    trace_ot_spi_device_flash_read_status(f->slot, f->buffer[0]);
+    trace_ot_spi_device_flash_read_status(s->ot_id, f->slot, f->buffer[0]);
 
-    FLASH_CHANGE_STATE(f, BUFFER);
+    FLASH_CHANGE_STATE(s, BUFFER);
 }
 
 static void ot_spi_device_flash_decode_read_sfdp(OtSPIDeviceState *s)
@@ -1226,7 +1231,7 @@ static void ot_spi_device_flash_decode_read_sfdp(OtSPIDeviceState *s)
     SpiDeviceFlash *f = &s->flash;
 
     f->src = f->buffer;
-    FLASH_CHANGE_STATE(f, COLLECT);
+    FLASH_CHANGE_STATE(s, COLLECT);
     f->loop = true;
     f->len = 4; /* 3-byte address + 1 dummy byte */
 }
@@ -1254,7 +1259,7 @@ static void ot_spi_device_flash_decode_read_data(OtSPIDeviceState *s)
 
     f->src = f->buffer;
     f->watermark = false;
-    FLASH_CHANGE_STATE(f, COLLECT);
+    FLASH_CHANGE_STATE(s, COLLECT);
     f->len = dummy + (ot_spi_device_is_addr4b_en(s) ? 4u : 3u);
 }
 
@@ -1297,7 +1302,7 @@ static void ot_spi_device_flash_exec_read_sfdp(OtSPIDeviceState *s)
     f->len = SPI_SRAM_SFDP_SIZE;
     f->src = &((uint8_t *)s->sram)[SPI_SRAM_SFDP_OFFSET];
     f->loop = true;
-    FLASH_CHANGE_STATE(f, BUFFER);
+    FLASH_CHANGE_STATE(s, BUFFER);
 }
 
 static void ot_spi_device_flash_exec_read_data(OtSPIDeviceState *s)
@@ -1309,10 +1314,10 @@ static void ot_spi_device_flash_exec_read_data(OtSPIDeviceState *s)
         address >>= 8u;
     }
 
-    trace_ot_spi_device_flash_set_read_addr((uint32_t)address);
+    trace_ot_spi_device_flash_set_read_addr(s->ot_id, (uint32_t)address);
 
     f->address = address;
-    FLASH_CHANGE_STATE(f, READ);
+    FLASH_CHANGE_STATE(s, READ);
 
     f->src = (uint8_t *)s->sram;
     f->loop = true;
@@ -1388,7 +1393,7 @@ static uint8_t ot_spi_device_flash_read_buffer(OtSPIDeviceState *s)
         if (f->loop) {
             f->pos = 0;
         } else {
-            FLASH_CHANGE_STATE(f, DONE);
+            FLASH_CHANGE_STATE(s, DONE);
         }
     }
 
@@ -1435,7 +1440,8 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
         /* "when the host access above or equal to the threshold" */
         if (lowaddr >= threshold) {
             if (!f->watermark) {
-                trace_ot_spi_device_flash_read_threshold(f->address, threshold);
+                trace_ot_spi_device_flash_read_threshold(s->ot_id, f->address,
+                                                         threshold);
                 s->spi_regs[R_INTR_STATE] |= INTR_READBUF_WATERMARK_MASK;
                 pace_spibus = true;
                 ot_spi_device_update_irqs(s);
@@ -1455,7 +1461,7 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
     if (flip) {
         f->watermark = false;
         s->spi_regs[R_INTR_STATE] |= INTR_READBUF_FLIP_MASK;
-        trace_ot_spi_device_flash_cross_buffer("run", f->address);
+        trace_ot_spi_device_flash_cross_buffer(s->ot_id, "run", f->address);
         pace_spibus = true;
         ot_spi_device_update_irqs(s);
     }
@@ -1475,7 +1481,7 @@ static void ot_spi_device_flash_init_payload(OtSPIDeviceState *s)
     f->len = SPI_SRAM_PAYLOAD_SIZE;
     s->spi_regs[R_UPLOAD_STATUS2] = 0;
     g_assert(f->payload);
-    FLASH_CHANGE_STATE(f, UP_PAYLOAD);
+    FLASH_CHANGE_STATE(s, UP_PAYLOAD);
 }
 
 static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
@@ -1505,10 +1511,10 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
     f->pos = 0;
     if (addr_count != 0) {
         f->len = addr_count;
-        FLASH_CHANGE_STATE(f, UP_ADDR);
+        FLASH_CHANGE_STATE(s, UP_ADDR);
     } else if (f->cmd_info & CMD_INFO_DUMMY_EN_MASK) {
         f->len = 1u;
-        FLASH_CHANGE_STATE(f, UP_DUMMY);
+        FLASH_CHANGE_STATE(s, UP_DUMMY);
     } else if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
         ot_spi_device_flash_init_payload(s);
     } else {
@@ -1532,7 +1538,7 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
                 f->address >>= 8u;
             }
             if (!ot_fifo32_is_full(&f->address_fifo)) {
-                trace_ot_spi_device_flash_push_address(f->address);
+                trace_ot_spi_device_flash_push_address(s->ot_id, f->address);
                 ot_fifo32_push(&f->address_fifo, f->address);
             } else {
                 /* waiting for answer from OT team here */
@@ -1540,11 +1546,11 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
             }
             if (f->cmd_info & CMD_INFO_DUMMY_EN_MASK) {
                 f->len = 1u;
-                FLASH_CHANGE_STATE(f, UP_DUMMY);
+                FLASH_CHANGE_STATE(s, UP_DUMMY);
             } else if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
                 ot_spi_device_flash_init_payload(s);
             } else {
-                FLASH_CHANGE_STATE(f, DONE);
+                FLASH_CHANGE_STATE(s, DONE);
             }
         }
         break;
@@ -1554,7 +1560,7 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
         if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
             ot_spi_device_flash_init_payload(s);
         } else {
-            FLASH_CHANGE_STATE(f, DONE);
+            FLASH_CHANGE_STATE(s, DONE);
         }
         break;
     case SPI_FLASH_UP_PAYLOAD:
@@ -1562,11 +1568,11 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
         f->pos++;
         break;
     case SPI_FLASH_DONE:
-        FLASH_CHANGE_STATE(f, ERROR);
+        FLASH_CHANGE_STATE(s, ERROR);
     /* fallthrough */
     case SPI_FLASH_ERROR:
-        trace_ot_spi_device_flash_byte_unexpected(rx);
-        BUS_CHANGE_STATE(&s->bus, DISCARD);
+        trace_ot_spi_device_flash_byte_unexpected(s->ot_id, rx);
+        BUS_CHANGE_STATE(s, DISCARD);
         break;
     case SPI_FLASH_COLLECT:
     case SPI_FLASH_BUFFER:
@@ -1606,9 +1612,9 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
             break;
         case SPI_FLASH_CMD_NONE:
             /* this command cannot be processed, discard all remaining bytes */
-            trace_ot_spi_device_flash_unknown_command(rx);
-            FLASH_CHANGE_STATE(f, ERROR);
-            BUS_CHANGE_STATE(&s->bus, DISCARD);
+            trace_ot_spi_device_flash_unknown_command(s->ot_id, rx);
+            FLASH_CHANGE_STATE(s, ERROR);
+            BUS_CHANGE_STATE(s, DISCARD);
             break;
         default:
             g_assert_not_reached();
@@ -1631,7 +1637,7 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
         ot_spi_device_flash_exec_sw_command(s, rx);
         break;
     case SPI_FLASH_DONE:
-        FLASH_CHANGE_STATE(f, ERROR);
+        FLASH_CHANGE_STATE(s, ERROR);
         break;
     case SPI_FLASH_ERROR:
         break;
@@ -1648,7 +1654,7 @@ static void ot_spi_device_flash_resume_read(void *opaque)
 {
     OtSPIDeviceState *s = opaque;
 
-    trace_ot_spi_device_flash_pace("release",
+    trace_ot_spi_device_flash_pace(s->ot_id, "release",
                                    timer_pending(s->flash.irq_timer));
     qemu_chr_fe_accept_input(&s->chr);
 }
@@ -1770,8 +1776,8 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
 
     if (reg != R_INTR_STATE || val32 != 0) {
         uint32_t pc = ibex_get_current_pc();
-        trace_ot_spi_device_io_spi_read_out((uint32_t)addr, SPI_REG_NAME(reg),
-                                            val32, pc);
+        trace_ot_spi_device_io_spi_read_out(s->ot_id, (uint32_t)addr,
+                                            SPI_REG_NAME(reg), val32, pc);
     }
 
     return (uint64_t)val32;
@@ -1787,8 +1793,8 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_io_spi_write_in((uint32_t)addr, SPI_REG_NAME(reg),
-                                        val32, pc);
+    trace_ot_spi_device_io_spi_write_in(s->ot_id, (uint32_t)addr,
+                                        SPI_REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_INTR_STATE:
@@ -1797,7 +1803,7 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         ot_spi_device_update_irqs(s);
         if (!ot_spi_device_flash_is_readbuf_irq(s)) {
             /* no need to trigger the timer if readbuf IRQs have been cleared */
-            trace_ot_spi_device_flash_pace("clear",
+            trace_ot_spi_device_flash_pace(s->ot_id, "clear",
                                            timer_pending(s->flash.irq_timer));
             timer_del(s->flash.irq_timer);
             qemu_chr_fe_accept_input(&s->chr);
@@ -2010,8 +2016,8 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_io_tpm_read_out((uint32_t)addr, TPM_REG_NAME(reg),
-                                        val32, pc);
+    trace_ot_spi_device_io_tpm_read_out(s->ot_id, (uint32_t)addr,
+                                        TPM_REG_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
 };
@@ -2026,8 +2032,8 @@ static void ot_spi_device_tpm_regs_write(void *opaque, hwaddr addr,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_io_tpm_write_in((uint32_t)addr, TPM_REG_NAME(reg),
-                                        val32, pc);
+    trace_ot_spi_device_io_tpm_write_in(s->ot_id, (uint32_t)addr,
+                                        TPM_REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_TPM_CFG:
@@ -2122,7 +2128,7 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
     val32 >>= addr_offset << 3u;
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_buf_read_out((uint32_t)addr, size, val32, pc);
+    trace_ot_spi_device_buf_read_out(s->ot_id, (uint32_t)addr, size, val32, pc);
 
     *val64 = (uint64_t)val32;
 
@@ -2137,7 +2143,7 @@ static MemTxResult ot_spi_device_buf_write_with_attrs(
 
     uint32_t val32 = (uint32_t)val64;
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_buf_write_in((uint32_t)addr, size, val32, pc);
+    trace_ot_spi_device_buf_write_in(s->ot_id, (uint32_t)addr, size, val32, pc);
 
     hwaddr last = addr + size - 1u;
 
@@ -2173,15 +2179,15 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
         fifo8_pop_bufptr(&bus->chr_fifo, SPI_BUS_HEADER_SIZE, &size);
 
     if (size != SPI_BUS_HEADER_SIZE) {
-        trace_ot_spi_device_chr_error("invalid header size");
-        BUS_CHANGE_STATE(bus, ERROR);
+        trace_ot_spi_device_chr_error(s->ot_id, "invalid header size");
+        BUS_CHANGE_STATE(s, ERROR);
         return;
     }
 
     if (hdr[0] != '/' || hdr[1u] != 'C' || hdr[2u] != 'S' ||
         hdr[3u] != SPI_BUS_PROTO_VER) {
-        trace_ot_spi_device_chr_error("invalid header");
-        BUS_CHANGE_STATE(bus, ERROR);
+        trace_ot_spi_device_chr_error(s->ot_id, "invalid header");
+        BUS_CHANGE_STATE(s, ERROR);
         return;
     }
 
@@ -2196,8 +2202,8 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
     uint8_t comm = mode ^ (uint8_t)s->spi_regs[R_CFG];
     bus->mode = (comm & (R_CFG_CPOL_MASK | R_CFG_CPHA_MASK)) ? 0xFF : 0x00;
 
-    trace_ot_spi_device_chr_handle_packet(bus->byte_count, bus->release,
-                                          bus->rev_rx ? 'l' : 'm',
+    trace_ot_spi_device_chr_handle_packet(s->ot_id, bus->byte_count,
+                                          bus->release, bus->rev_rx ? 'l' : 'm',
                                           bus->rev_tx ? 'l' : 'm',
                                           bus->mode ? "mismatch" : "ok");
 
@@ -2208,14 +2214,14 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
     switch (ot_spi_device_get_mode(s)) {
     case CTRL_MODE_FW:
-        BUS_CHANGE_STATE(bus, GENERIC);
+        BUS_CHANGE_STATE(s, GENERIC);
         break;
     case CTRL_MODE_FLASH:
-        BUS_CHANGE_STATE(bus, FLASH);
+        BUS_CHANGE_STATE(s, FLASH);
         break;
     case CTRL_MODE_PASSTHROUGH:
     default:
-        BUS_CHANGE_STATE(bus, DISCARD);
+        BUS_CHANGE_STATE(s, DISCARD);
         break;
     }
 }
@@ -2264,7 +2270,7 @@ static void ot_spi_device_chr_send_generic(OtSPIDeviceState *s, unsigned count)
 {
     if (ot_spi_device_is_tx_fifo_in_reset(s)) {
         uint8_t buf[] = { SPI_DEFAULT_TX_VALUE };
-        trace_ot_spi_device_gen_fifo_error("TXF in reset");
+        trace_ot_spi_device_gen_fifo_error(s->ot_id, "TXF in reset");
         while (count--) {
             qemu_chr_fe_write(&s->chr, buf, sizeof(buf));
         }
@@ -2290,11 +2296,11 @@ static void ot_spi_device_chr_send_generic(OtSPIDeviceState *s, unsigned count)
         unsigned rem = count;
         while (rem && !fifo8_is_full(&g->tx_fifo)) {
             if (!spi_fifo_is_empty(&g->txf)) {
-                fifo8_push(&g->tx_fifo, spi_fifo_pop(&g->txf));
-                trace_ot_spi_device_gen_update_fifo("txf", __LINE__,
+                fifo8_push(&g->tx_fifo, spi_fifo_pop(s, &g->txf));
+                trace_ot_spi_device_gen_update_fifo(s->ot_id, "txf", __LINE__,
                                                     *g->txf.ptr);
             } else {
-                trace_ot_spi_device_gen_fifo_error("TXF underflow");
+                trace_ot_spi_device_gen_fifo_error(s->ot_id, "TXF underflow");
                 fifo8_push(&g->tx_fifo, 0xFF); /* "lingering data" */
             }
             rem--;
@@ -2332,8 +2338,8 @@ static void ot_spi_device_chr_recv_generic(OtSPIDeviceState *s,
         while (!fifo8_is_empty(&g->rx_fifo)) {
             g_assert(!spi_fifo_is_full(&g->rxf));
             if (!rx_ignore) {
-                spi_fifo_push(&g->rxf, fifo8_pop(&g->rx_fifo));
-                trace_ot_spi_device_gen_update_fifo("rxf", __LINE__,
+                spi_fifo_push(s, &g->rxf, fifo8_pop(&g->rx_fifo));
+                trace_ot_spi_device_gen_update_fifo(s->ot_id, "rxf", __LINE__,
                                                     *g->rxf.ptr);
             }
         }
@@ -2345,15 +2351,17 @@ static void ot_spi_device_chr_recv_generic(OtSPIDeviceState *s,
         count -= sizeof(word);
         g_assert(spi_fifo_num_free(&g->rxf) >= sizeof(word));
         if (!rx_ignore) {
-            spi_fifo_push_w(&g->rxf, word);
-            trace_ot_spi_device_gen_update_fifo("rxf", __LINE__, *g->rxf.ptr);
+            spi_fifo_push_w(s, &g->rxf, word);
+            trace_ot_spi_device_gen_update_fifo(s->ot_id, "rxf", __LINE__,
+                                                *g->rxf.ptr);
         }
     }
     while (count) {
         g_assert(!fifo8_is_full(&g->rx_fifo));
         if (!rx_ignore) {
             fifo8_push(&g->rx_fifo, *buf++);
-            trace_ot_spi_device_gen_update_fifo("rxf", __LINE__, *g->rxf.ptr);
+            trace_ot_spi_device_gen_update_fifo(s->ot_id, "rxf", __LINE__,
+                                                *g->rxf.ptr);
         }
         count--;
     }
@@ -2378,7 +2386,7 @@ static void ot_spi_device_chr_recv_generic(OtSPIDeviceState *s,
         tx_size = size;
         bus->byte_count -= size;
     } else {
-        trace_ot_spi_device_chr_error("packet overflow");
+        trace_ot_spi_device_chr_error(s->ot_id, "packet overflow");
         tx_size = bus->byte_count;
         bus->byte_count = 0;
     }
@@ -2392,15 +2400,16 @@ static void ot_spi_device_recv_generic_timeout(void *opaque)
     SpiDeviceGeneric *g = &s->generic;
     SpiDeviceBus *bus = &s->bus;
 
-    trace_ot_spi_device_gen_rx_timeout(fifo8_num_used(&g->rx_fifo));
+    trace_ot_spi_device_gen_rx_timeout(s->ot_id, fifo8_num_used(&g->rx_fifo));
 
     bool rx_ignore = ot_spi_device_is_rx_fifo_in_reset(s);
     while (!fifo8_is_empty(&g->rx_fifo)) {
         uint8_t byte = fifo8_pop(&g->rx_fifo);
         bus->byte_count -= sizeof(uint8_t);
         if (!rx_ignore) {
-            spi_fifo_push(&g->rxf, byte);
-            trace_ot_spi_device_gen_update_fifo("rxf", __LINE__, *g->rxf.ptr);
+            spi_fifo_push(s, &g->rxf, byte);
+            trace_ot_spi_device_gen_update_fifo(s->ot_id, "rxf", __LINE__,
+                                                *g->rxf.ptr);
         }
     }
 }
@@ -2474,7 +2483,7 @@ static void ot_spi_device_chr_receive(void *opaque, const uint8_t *buf,
         if (bus->release) {
             ot_spi_device_release(s);
         } else {
-            BUS_CHANGE_STATE(bus, IDLE);
+            BUS_CHANGE_STATE(s, IDLE);
         }
     }
 }
@@ -2543,6 +2552,7 @@ static int ot_spi_device_chr_be_change(void *opaque)
 }
 
 static Property ot_spi_device_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtSPIDeviceState, ot_id),
     DEFINE_PROP_CHR("chardev", OtSPIDeviceState, chr),
     DEFINE_PROP_BOOL("dpsram", OtSPIDeviceState, dpsram, false),
     DEFINE_PROP_END_OF_LIST(),
@@ -2579,7 +2589,7 @@ static void ot_spi_device_reset(DeviceState *dev)
     SpiDeviceGeneric *g = &s->generic;
     SpiDeviceBus *bus = &s->bus;
 
-    trace_ot_spi_device_reset("enter");
+    trace_ot_spi_device_reset(s->ot_id, "enter");
 
     ot_spi_device_clear_modes(s);
 
@@ -2612,13 +2622,18 @@ static void ot_spi_device_reset(DeviceState *dev)
     ot_spi_device_update_irqs(s);
     ot_spi_device_update_alerts(s);
 
-    trace_ot_spi_device_reset("exit");
+    trace_ot_spi_device_reset(s->ot_id, "exit");
 }
 
 static void ot_spi_device_realize(DeviceState *dev, Error **errp)
 {
     OtSPIDeviceState *s = OT_SPI_DEVICE(dev);
     (void)errp;
+
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
 
     qemu_chr_fe_set_handlers(&s->chr, &ot_spi_device_chr_can_receive,
                              &ot_spi_device_chr_receive,
