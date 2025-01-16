@@ -41,7 +41,7 @@ jobs:
           scripts/opentitan/swexit.py -t earlgrey -b 0x80 -o build-clang/exit_eg.bin
           scripts/opentitan/swexit.py -t darjeeling -b 0x80 -o build-clang/exit_dj.bin
       - name: Upload QEMU binary artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: qemu-bin
           path: |
@@ -58,7 +58,7 @@ jobs:
             build-clang/trace/*.h \
             build-clang/compile_commands.json
       - name: Upload QEMU source artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: qemu-src
           path: qemu-src-artifact.tar.gz
@@ -88,7 +88,7 @@ jobs:
           sudo apt-get update &&
           sudo apt-get install -y python3-pip
           # ubuntu "latest" is too old to require --break-system-packages ...
-          pip3 install pylint
+          pip3 install pylint==3.3.3
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Lint Python code
@@ -110,7 +110,7 @@ jobs:
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Download QEMU source artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: qemu-src
       - name: Unpack source artifacts
@@ -130,7 +130,7 @@ jobs:
           sudo apt-get update &&
           sudo apt-get install -y libpixman-1-0 libglib2.0-dev
       - name: Download QEMU binary artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: qemu-bin
       - name: Check machine availability
