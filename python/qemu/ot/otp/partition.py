@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """OTP partitions.
@@ -10,7 +10,7 @@ from binascii import hexlify, unhexlify, Error as hexerror
 from io import BytesIO
 from logging import getLogger
 from re import IGNORECASE, match
-from typing import BinaryIO, Optional, Sequence, TextIO
+from typing import BinaryIO, NamedTuple, Optional, Sequence, TextIO, Union
 
 from .lifecycle import OtpLifecycle
 
@@ -27,6 +27,26 @@ class OtpPartitionDecoder:
     def decode(self, category: str, seq: str) -> Optional[str | int]:
         """Decode a value (if possible)."""
         raise NotImplementedError('abstract base class')
+
+
+class OtpPartitionItemProp(NamedTuple):
+    """Item/field properties."""
+
+    name: str
+    """Name of the item."""
+
+    offset: int
+    """Offset of the first data byte of the item within the partition."""
+
+    size: int
+    """Length in bytes of the item within the partition."""
+
+    end: int
+    """Offset past the last data byte in the partition, i.e. offset+length."""
+
+    mubi8: bool = False
+    """Whether the field is a known 8-bit boolean value (which differs
+       from hardened boolean values and other complex boolean types)."""
 
 
 class OtpPartition:
@@ -147,7 +167,7 @@ class OtpPartition:
 
     def decode(self, base: Optional[int], decode: bool = True, wide: int = 0,
                ofp: Optional[TextIO] = None,
-               filters = Optional[Sequence[str]]) -> None:
+               filters: Optional[Sequence[str]] = None) -> None:
         """Decode the content of the partition."""
         buf = BytesIO(self._data)
         if ofp:
@@ -220,25 +240,86 @@ class OtpPartition:
         if self.has_digest:
             self._digest_bytes = bytes(self.DIGEST_SIZE)
 
+    def change_field(self, field: str,
+                     value: Union[bytes, bytearray, bool, int, str]) -> None:
+        """Change the content of a field.
+
+           :param field: the name of the field to erase
+           :param value: the new value of the field
+
+           Valid value types depend on the field.
+        """
+        prop = self._retrieve_properties(field)
+        if isinstance(value, str):
+            value = value.encode('utf8')
+        elif isinstance(value, bytearray):
+            value = bytes(value)
+        if isinstance(value, bytes):
+            size = len(value)
+            if size > prop.size:
+                raise ValueError(f'{self.name}:{field} value cannot fit in '
+                                 f'partition field')
+            if size < prop.size:
+                # pad value with NUL bytes
+                value = b''.join((value, bytes(prop.size-size)))
+        elif isinstance(value, bool):
+            if not prop.mubi8:
+                bool_type = 'hardened'
+                bool_size = 4
+            else:
+                bool_type = 'mubi8'
+                bool_size = 1
+            if prop.size != bool_size:
+                raise ValueError(f'{self.name}:{field} does not expect a '
+                                 f'boolean value')
+            bool_map = getattr(OtpMap, f'{bool_type.upper()}_BOOLEANS')
+            ivalue = {v: k for k, v in bool_map.items()}[value]
+            value = ivalue.to_bytes(length=bool_size, byteorder='little')
+        elif isinstance(value, int):
+            try:
+                value = value.to_bytes(length=prop.size, byteorder='little')
+            except ValueError as exc:
+                raise ValueError(f'{self.name}:{field} cannot encode {value}') \
+                    from exc
+        self._log.info('Updating 0x%x..0x%x from %s', prop.offset, prop.end,
+                       self.name)
+        self._data = b''.join((self._data[:prop.offset], value,
+                               self._data[prop.end:]))
+
     def erase_field(self, field: str) -> None:
         """Erase (reset) the content of a field.
 
            :param field: the name of the field to erase
         """
+        prop = self._retrieve_properties(field)
+        self._log.info('Erasing 0x%x..0x%x from %s', prop.offset, prop.end,
+                       self.name)
+        self._data = b''.join((self._data[:prop.offset], bytes(prop.size),
+                               self._data[prop.end:]))
+
+    def _retrieve_properties(self, field: str) -> tuple[int, int]:
         is_digest = self.has_digest and field.upper() == 'DIGEST'
-        if not is_digest and field not in self.items:
-            raise ValueError(f"No such field: '{field}'")
+        if not is_digest:
+            if field not in self.items:
+                # for some reason, some partitions are defined with their own
+                # partition name as a prefix for their field name, some other
+                # are not; try to workaround these inconsistent definitions
+                search_field = f'{self.name}_{field}'
+                if search_field not in self.items:
+                    raise ValueError(f"No such field: '{field}'")
+            else:
+                search_field = field
         offset = 0
         itsize = 0
+        mubi8 = False
         for itname, itdef in self.items.items():
             itsize = itdef['size']
-            if itname == field:
+            if itname == search_field:
+                mubi8 = itsize == 1 and itdef.get('ismubi', False)
                 break
             offset += itsize
         end = offset + itsize
-        self._log.info('Erasing 0x%x..0x%x from %s', offset, end, self.name)
-        self._data = b''.join((self._data[:offset], bytes(itsize),
-                               self._data[end:]))
+        return OtpPartitionItemProp(field, offset, itsize, end, mubi8)
 
 
 class OtpLifecycleExtension(OtpLifecycle, OtpPartitionDecoder):
