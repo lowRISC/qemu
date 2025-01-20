@@ -9,10 +9,10 @@ controller virtual device.
 usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
                   [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG] [-c INT] [-i INT]
                   [-w] [-n] [-f PART:FIELD] [--no-version] [-s] [-E] [-D] [-U]
-                  [--empty PARTITION] [--erase PART:FIELD]
-                  [--clear-bit CLEAR_BIT] [--set-bit SET_BIT]
-                  [--toggle-bit TOGGLE_BIT] [--fix-ecc]
-                  [-G {LCVAL,LCTPL,PARTS,REGS}] [-v] [-d]
+                  [-G {LCVAL,LCTPL,PARTS,REGS}] [-F]
+                  [--change PART:FIELD=VALUE] [--empty PARTITION]
+                  [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
+                  [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -44,6 +44,11 @@ Commands:
   -E, --ecc-recover     attempt to recover errors with ECC
   -D, --digest          check the OTP HW partition digest
   -U, --update          update RAW file after ECC recovery or bit changes
+  -G, --generate {LCVAL,LCTPL,PARTS,REGS}
+                        generate C code, see doc for options
+  -F, --fix-ecc         rebuild ECC
+  --change PART:FIELD=VALUE
+                        change the content of an OTP field
   --empty PARTITION     reset the content of a whole partition, including its
                         digest if any
   --erase PART:FIELD    clear out an OTP field
@@ -52,9 +57,6 @@ Commands:
   --set-bit SET_BIT     set a bit at specified location
   --toggle-bit TOGGLE_BIT
                         toggle a bit at specified location
-  --fix-ecc             rebuild ECC
-  -G, --generate {LCVAL,LCTPL,PARTS,REGS}
-                        generate C code, see doc for options
 
 Extras:
   -v, --verbose         increase verbosity
@@ -111,6 +113,9 @@ Fuse RAW images only use the v1 type.
 * `-e` specify how many bits are used in the VMEM file to store ECC information. Note that ECC
   information is not stored in the QEMU RAW file for now.
 
+* `-F` may be used to rebuild the ECC values for all slots that have been modified using any
+  modification operation, and any detected error.
+
 * `-f` select which partition(s) and partition field(s) should be shown when option `-s` is used.
   When not specified, all partitions and fields are reported.
 
@@ -164,16 +169,28 @@ Fuse RAW images only use the v1 type.
   only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
   a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
 
-* `--empty` reset a whole parition, including its digest if any and ECC bits. This option is only
+* `--change` updates the value of a field in the specified partition. The flag may be repeated.
+  Note that changing the partition content without specifying the `-F` flag may result into a
+  corrupted partition. `otptool.py` accepts the following value syntax:
+
+  - `"string"` or `'string'`: an arbitrary string, which is automatically encoded into UTF8 raw
+    bytes. Note that the shell may interpret the single or double quote characters, so it may be
+    required to use `'part:field="string"'` as the argument to bypass any shell replacement,
+  - `true`, `false`, `on`, `off`, `enabled`, `disabled` as a boolean specifier. The boolean value is
+    encoded according to the OTP map into an hardened boolean or a MUBI value,
+  - an hexadecimal value starting with with `0x`
+  - a string of hexadecimal nibbles, _e.g._ `01020304abcdef`, which is converted into raw bytes
+
+  If the partition field is larger than the specified value, the value is left-extended with NUL
+  bytes. Values larger than the partition field length are rejected.
+
+* `--empty` reset a whole partition, including its digest if any and ECC bits. This option is only
   intended for test purposes. This flag may be repeated. Partition(s) can be specified either by
   their index or their name.
 
 * `--erase` reset a specific field within a partition. The flag may be repeated.
 
 * `--no-version` disable OTP image version reporting when `-s` is used.
-
-* `--fix-ecc` may be used to rebuild the ECC values for all slots that have been modified using the
-  ECC modification operations, and any detected error.
 
 * `--set-bit` sets the specified bit in the OTP data. This flag may be repeated. This option is
    only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
@@ -205,7 +222,7 @@ If the bit is larger than the data slot, it indicates the location with the ECC 
 fuses are organized as 16-bit slots wtih 6-bit ECC, bit 0 to 15 indicates a bit into the data slot,
 while bit 16 to 21 indicates an ECC bit.
 
-It is possible to tell the script to rebuild the ECC value for the modified bits, using `--fix-ecc`.
+It is possible to tell the script to rebuild the ECC value for the modified bits, using `-F`.
 The default behavior is to not automatically update the ECC value, as the primary usage for these
 bit modification operations is to test the error detection and correction feature.
 

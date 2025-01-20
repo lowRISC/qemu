@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """QEMU OT tool to manage OTP files.
@@ -9,7 +9,9 @@
 """
 
 from argparse import ArgumentParser, FileType
+from binascii import unhexlify
 from os.path import basename, dirname, join as joinpath, normpath
+from re import match as re_match
 from traceback import format_exc
 from typing import Optional
 import sys
@@ -21,7 +23,7 @@ sys.path.append(QEMU_PYPATH)
 from ot.otp import (OtpImage, OtpLifecycleExtension, OtpMap,
                     OTPPartitionDesc, OTPRegisterDef)
 from ot.util.log import configure_loggers
-from ot.util.misc import HexInt
+from ot.util.misc import HexInt, to_bool
 
 
 def main():
@@ -67,10 +69,10 @@ def main():
                             default=False,
                             help='do not attempt to decode OTP fields')
         params.add_argument('-f', '--filter', action='append',
-                              metavar='PART:FIELD',
-                              help='filter which OTP fields are shown')
+                            metavar='PART:FIELD',
+                            help='filter which OTP fields are shown')
         params.add_argument('--no-version', action='store_true',
-                              help='do not report the OTP image version')
+                            help='do not report the OTP image version')
         commands = argparser.add_argument_group(title='Commands')
         commands.add_argument('-s', '--show', action='store_true',
                               help='show the OTP content')
@@ -81,11 +83,19 @@ def main():
         commands.add_argument('-U', '--update', action='store_true',
                               help='update RAW file after ECC recovery or bit '
                                    'changes')
+        commands.add_argument('-G', '--generate', choices=genfmts,
+                              help='generate C code, see doc for options')
+        commands.add_argument('-F', '--fix-ecc', action='store_true',
+                              help='rebuild ECC')
+        commands.add_argument('--change', action='append',
+                              metavar='PART:FIELD=VALUE', default=[],
+                              help='change the content of an OTP field')
         commands.add_argument('--empty', metavar='PARTITION', action='append',
                               default=[],
                               help='reset the content of a whole partition, '
                                    'including its digest if any')
         commands.add_argument('--erase', action='append', metavar='PART:FIELD',
+                              default=[],
                               help='clear out an OTP field')
         commands.add_argument('--clear-bit', action='append', default=[],
                               help='clear a bit at specified location')
@@ -93,10 +103,6 @@ def main():
                               help='set a bit at specified location')
         commands.add_argument('--toggle-bit', action='append',  default=[],
                               help='toggle a bit at specified location')
-        commands.add_argument('--fix-ecc', action='store_true',
-                              help='rebuild ECC')
-        commands.add_argument('-G', '--generate', choices=genfmts,
-                              help='generate C code, see doc for options')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -105,21 +111,19 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        configure_loggers(args.verbose, 'otptool', 'otp')
+        log = configure_loggers(args.verbose, 'otptool', 'otp')[0]
 
         otp = OtpImage(args.ecc)
 
+        check_update = False
+
         if not (args.vmem or args.raw):
             if any((args.show, args.digest, args.ecc_recover, args.clear_bit,
-                    args.set_bit, args.toggle_bit, args.erase)):
+                    args.set_bit, args.toggle_bit, args.change, args.erase)):
                 argparser.error('At least one raw or vmem file is required')
 
         if not args.vmem and args.kind:
             argparser.error('VMEM kind only applies for VMEM input files')
-
-        if args.fix_ecc and not (args.raw and (args.vmem or args.update)):
-            argparser.error('Can only fix ECC when RAW file is generated or '
-                            'updated')
 
         if args.update:
             if not args.raw:
@@ -156,6 +160,8 @@ def main():
                 argparser.error('Cannot verify OTP digests without an OTP map')
             if args.empty:
                 argparser.error('Cannot empty OTP partition without an OTP map')
+            if args.change:
+                argparser.error('Cannot change an OTP field without an OTP map')
             if args.erase:
                 argparser.error('Cannot erase an OTP field without an OTP map')
         else:
@@ -216,7 +222,7 @@ def main():
             if args.empty:
                 for part in args.empty:
                     otp.empty_partition(part)
-            for field_desc in args.erase or []:
+            for field_desc in args.erase:
                 try:
                     part, field = field_desc.split(':')
                     if not isinstance(part, str):
@@ -225,6 +231,40 @@ def main():
                     argparser.error('Invalid field specifier, should follow '
                                     '<PART>:<FIELD> syntax')
                 otp.erase_field(part, field)
+                check_update = True
+            for chg_desc in args.change:
+                try:
+                    fdesc, value = chg_desc.split('=')
+                except ValueError:
+                    argparser.error('Invalid change specifier, should follow '
+                                    '<PART>:<FIELD>=<VALUE> syntax')
+                try:
+                    part, field = fdesc.split(':')
+                    if not isinstance(part, str):
+                        raise ValueError()
+                except ValueError:
+                    argparser.error('Invalid field specifier, should follow '
+                                    '<PART>:<FIELD> syntax')
+                smo = re_match(r'^(?P<quote>[\"\'])(?P<value>.*)(?P=quote)$',
+                               value)
+                if smo:
+                    # single- or double- quoted string value
+                    value = smo.group('value')
+                else:
+                    if value.startswith('0x'):
+                        value = HexInt.parse(value)
+                    else:
+                        try:
+                            value = to_bool(value, permissive=False)
+                        except ValueError:
+                            pass
+                    if isinstance(value, str):
+                        try:
+                            value = bytes(reversed(unhexlify(value)))
+                        except ValueError:
+                            argparser.error(f'Unknown value type: {value}')
+                otp.change_field(part, field, value)
+                check_update = True
             if args.config:
                 otp.load_config(args.config)
             if args.iv:
@@ -247,18 +287,27 @@ def main():
                     argparser.error(f'Present scrambler constants are required '
                                     f'to verify the partition digest{msg}')
                 otp.verify(True)
+
+            for pos, bitact in enumerate(bit_actions):
+                if alter_bits[pos]:
+                    getattr(otp, f'{bitact}_bits')(alter_bits[pos])
+                check_update = True
+
+            if args.fix_ecc:
+                otp.fix_ecc()
+                check_update = True
+
             if args.raw and (args.vmem or args.update):
-                for pos, bitact in enumerate(bit_actions):
-                    if alter_bits[pos]:
-                        getattr(otp, f'{bitact}_bits')(alter_bits[pos])
                 if not args.update and any(alter_bits):
                     otp.verify_ecc(False)
-                if args.fix_ecc:
-                    otp.fix_ecc()
                 # when both RAW and VMEM are selected, QEMU RAW image file
                 # should be generated
                 with open(args.raw, 'wb') as rfp:
                     otp.save_raw(rfp)
+
+            if args.raw and not args.vmem:
+                if not args.update and check_update:
+                    log.warning('OTP content modified, image file not updated')
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)

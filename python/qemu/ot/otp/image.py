@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """OTP QEMU image.
@@ -60,6 +60,7 @@ class OtpImage:
         self._log = getLogger('otp.img')
         self._header: dict[str, Any] = {}
         self._magic = b''
+        self._changed = False
         self._data = bytearray()
         self._ecc = bytearray()
         if ecc_bits is None:
@@ -88,6 +89,14 @@ class OtpImage:
         """Report whether the current image contains OpenTitan OTP data."""
         return self._magic == b'vOTP'
 
+    @property
+    def changed(self) -> bool:
+        """Report whether the content of the partition (data or ecc) has been
+           modified since it has been loaded or since the last time it has been
+           saved.
+        """
+        return self._changed
+
     @classproperty
     def vmem_kinds(cls) -> list[str]:
         """Reports the supported content kinds of VMEM files."""
@@ -114,6 +123,7 @@ class OtpImage:
         if header['version'] > 1:
             self._digest_iv = header['digiv']
             self._digest_constant = header['digfc']
+        self._changed = False
 
     def save_raw(self, rfp: BinaryIO) -> None:
         """Save OTP image as a QEMU 'RAW' image stream."""
@@ -124,6 +134,7 @@ class OtpImage:
         self._pad(rfp)
         rfp.write(self._ecc)
         self._pad(rfp, 4096)
+        self._changed = False
 
     def load_vmem(self, vfp: TextIO, vmem_kind: Optional[str] = None,
                   swap: bool = True):
@@ -201,6 +212,7 @@ class OtpImage:
         if not vkind:
             raise ValueError('Unable to detect VMEM find, please specify')
         self._magic = f'v{vkind[:3].upper()}'.encode()
+        self._changed = False
 
     def load_lifecycle(self, lcext: OtpLifecycleExtension) -> None:
         """Load lifecyle values."""
@@ -394,21 +406,36 @@ class OtpImage:
         part.empty()
         if not part.is_empty:
             raise RuntimeError(f"Unable to empty partition '{partition}'")
-        content = BytesIO()
-        part.save(content)
-        data = content.getvalue()
-        length = len(data)
-        offset = self._part_offsets[partix]
-        self._data[offset:offset+length] = data
-        self._ecc[offset // 2:(offset+length)//2] = bytes(length//2)
+        start, end = self._reload(partix, False)
+        self._ecc[start // 2:end // 2] = bytes((end-start) // 2)
+
+    def change_field(self, partition: Union[int, str], field: str,
+                     value: Union[bytes, bytearray, bool, int, str]) -> None:
+        """Change the content of a field within a partition.
+
+           :param partition: the name or the index of the partition to erase
+           :param field: the name of the field to erase
+           :param value: the new value of the field
+
+           Valid value types depend on the actual partition's field.
+
+           ECC is not automatically updated
+        """
+        partix, part = self._retrieve_partition(partition)
+        part.change_field(field, value)
+        self._reload(partix, True)
 
     def erase_field(self, partition: Union[int, str], field: str) -> None:
         """Erase (reset) the content of a field within a partition.
 
+           :param partition: the name or the index of the partition to erase
            :param field: the name of the field to erase
+
+           ECC is not automatically updated
         """
-        part = self._retrieve_partition(partition)[1]
+        partix, part = self._retrieve_partition(partition)
         part.erase_field(field)
+        self._reload(partix, True)
 
     @staticmethod
     def bit_parity(data: int) -> int:
@@ -475,6 +502,7 @@ class OtpImage:
                 if recover:
                     self._data[off:off+granule] = fchunk.to_bytes(granule,
                                                                   'little')
+                    self._changed = True
                     updated_parts.add(partition)
                 err_cnt += 1
             elif err < 0:
@@ -524,6 +552,7 @@ class OtpImage:
             self._log.info('New ECC @ 0x%04x: 0x%x -> 0x%x', off, old_ecc,
                            new_ecc)
             self._ecc[eccoff] = new_ecc
+            self._changed = True
         self._dirty_offsets.clear()
         return dirty_len
 
@@ -663,6 +692,7 @@ class OtpImage:
                     self._ecc[eccoff] = ecc.to_bytes(ecclen, 'little')
                     ecc = int.from_bytes(self._ecc[eccoff:eccoff+ecclen],
                                          'little')
+                self._changed = True
             else:  # Data bit
                 chunk = int.from_bytes(self._data[off:off+granule], 'little')
                 bitval = 1 << bit
@@ -677,6 +707,7 @@ class OtpImage:
                                bit, off, old, chunk)
                 self._data[off:off+granule] = chunk.to_bytes(granule, 'little')
                 self._dirty_offsets.append(off)
+                self._changed = True
 
     def _get_partition_bounds(self, partref: Union[str, OtpPartition]) \
             -> Optional[tuple[int, int]]:
@@ -722,3 +753,20 @@ class OtpImage:
         if not part or partix is None:
             raise ValueError(f"Unknown partition '{partition}'")
         return partix, part
+
+    def _reload(self, partix: int, flag_dirty: bool = True) -> tuple[int, int]:
+        partition = self._partitions[partix]
+        content = BytesIO()
+        partition.save(content)
+        data = content.getvalue()
+        length = len(data)
+        start = self._part_offsets[partix]
+        granule = self._ecc_granule
+        if flag_dirty:
+            for offset in range(0, length, granule):
+                if self._data[start+offset:start+offset+granule] != \
+                        data[offset:offset+2]:
+                    self._dirty_offsets.append(start+offset)
+        self._data[start:start+length] = data
+        self._changed = True
+        return (start, start+length)
