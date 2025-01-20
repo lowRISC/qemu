@@ -1,4 +1,4 @@
-# Copyright (c) 2024 Rivos, Inc.
+# Copyright (c) 2024-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """Miscellaneous helpers.
@@ -16,6 +16,13 @@ try:
     from collections.abc import Buffer
 except ImportError:
     Buffer = [bytes | bytearray | memoryview]
+
+
+_TRUE_BOOLEANS = ['on', 'high', 'true', 'enable', 'enabled', 'yes', '1']
+"""String values evaluated as true boolean values"""
+
+_FALSE_BOOLEANS = ['off', 'low', 'false', 'disable', 'disabled', 'no', '0']
+"""String values evaluated as false boolean values"""
 
 
 class classproperty(property):
@@ -142,3 +149,36 @@ def camel_to_snake_case(camel: str) -> str:
     """Convert CamelString string into snake_case lower string."""
     pattern = r'(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])'
     return re.sub(pattern, '_', camel).lower()
+
+
+def to_bool(value, permissive=True, prohibit_int=False):
+    """Parse a string and convert it into a boolean value if possible.
+
+       Input value may be:
+       - a string with an integer value, if `prohibit_int` is not set
+       - a boolean value
+       - a string with a common boolean definition
+
+       :param value: the value to parse and convert
+       :type value: str or int or bool
+       :param bool permissive: default to the False value if parsing fails
+       :param bool prohibit_int: prohibit an integral type as the input value
+       :rtype: bool
+       :raise ValueError: if the input value cannot be converted into an bool
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if not prohibit_int:
+            if permissive:
+                return bool(value)
+            if value in (0, 1):
+                return bool(value)
+        raise ValueError(f"Invalid boolean value: '{value}'")
+    if value.lower() in _TRUE_BOOLEANS:
+        return True
+    if permissive or (value.lower() in _FALSE_BOOLEANS):
+        return False
+    raise ValueError(f"Invalid boolean value: '{value}")
