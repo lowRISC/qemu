@@ -712,7 +712,7 @@ class OtpImage:
             except IndexError:
                 pass
         elif isinstance(partition, str):
-            partname = partition.lower()
+            partname = partition.lower().replace('_', '')
             try:
                 partix, part = {(i, p) for i, p in enumerate(self._partitions)
                                 if p.__class__.__name__[:-4].lower() ==
