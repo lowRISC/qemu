@@ -380,8 +380,9 @@ static void ot_ibex_wrapper_eg_update_remap(OtIbexWrapperEgState *s, bool doi,
         }
         /* enable */
         uint32_t map_size = (-src_match_i & (src_match_i + 1u)) << 1u;
-        uint32_t src_base = src_match_i & ~(map_size - 1u);
-        uint32_t dst_base = remap_addr_i;
+        uint32_t map_mask = ~(map_size - 1u);
+        uint32_t src_base = src_match_i & map_mask;
+        uint32_t dst_base = remap_addr_i & map_mask;
 
         ot_ibex_wrapper_eg_remapper_destroy(s, slot);
         ot_ibex_wrapper_eg_remapper_create(s, slot, (hwaddr)dst_base,
