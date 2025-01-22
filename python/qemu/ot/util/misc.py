@@ -11,12 +11,6 @@ from sys import stdout
 from typing import Any, Iterable, Optional, TextIO, Union
 import re
 
-try:
-    # only available from Python 3.12+
-    from collections.abc import Buffer
-except ImportError:
-    Buffer = [bytes | bytearray | memoryview]
-
 
 _TRUE_BOOLEANS = ['on', 'high', 'true', 'enable', 'enabled', 'yes', '1']
 """String values evaluated as true boolean values"""
@@ -116,24 +110,20 @@ def group(lst, count):
     return list(zip(*[lst[i::count] for i in range(count)]))
 
 
-def dump_buffer(buffer: Buffer, addr: int = 0, file: Optional[TextIO] = None) \
-        -> None:
+def dump_buffer(buffer: Union[bytes, bytearray, BytesIO], addr: int = 0,
+                file: Optional[TextIO] = None) -> None:
     """Dump a binary buffer, same format as hexdump -C."""
     if isinstance(buffer, BytesIO):
-        view = buffer.getbuffer()
-    elif isinstance(buffer, memoryview):
-        view = buffer.getbuffer()
-    else:
-        view = buffer
-    size = len(view)
+        buffer = buffer.getbuffer()
+    size = len(buffer)
     if not file:
         file = stdout
     for pos in range(0, size, 16):
-        chunks = view[pos:pos+8], view[pos+8:pos+16]
+        chunks = buffer[pos:pos+8], buffer[pos+8:pos+16]
         buf = '  '.join(' '.join(f'{x:02x}' for x in c) for c in chunks)
         if len(buf) < 48:
             buf = f'{buf}{" " * (48 - len(buf))}'
-        chunk = view[pos:pos+16]
+        chunk = buffer[pos:pos+16]
         text = ''.join(chr(c) if 0x20 <= c < 0x7f else '.' for c in chunk)
         if len(text) < 16:
             text = f'{text}{" " * (16-len(text))}'
