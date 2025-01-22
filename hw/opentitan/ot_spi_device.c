@@ -447,7 +447,7 @@ struct OtSPIDeviceState {
         MemoryRegion buf;
     } mmio;
     IbexIRQ irqs[PARAM_NUM_IRQS];
-    IbexIRQ alerts[PARAM_NUM_ALERTS];
+    qemu_irq alerts[PARAM_NUM_ALERTS];
 
     SpiDeviceBus bus;
     SpiDeviceFlash flash;
@@ -753,7 +753,7 @@ static void ot_spi_device_update_alerts(OtSPIDeviceState *s)
     uint32_t level = s->spi_regs[R_ALERT_TEST];
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        qemu_set_irq(s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -2185,7 +2185,8 @@ static void ot_spi_device_init(Object *obj)
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
 
     /*

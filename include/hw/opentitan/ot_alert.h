@@ -37,5 +37,6 @@ OBJECT_DECLARE_TYPE(OtAlertState, OtAlertStateClass, OT_ALERT)
 
 #define OT_DEVICE_ALERT   TYPE_OT_ALERT "-sig"
 #define OT_ALERT_ESCALATE TYPE_OT_ALERT "-esc"
+#define OT_ALERT_NMI      TYPE_OT_ALERT "-nmi"
 
 #endif /* HW_OPENTITAN_OT_ALERT_H */

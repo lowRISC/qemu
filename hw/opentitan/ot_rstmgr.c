@@ -148,7 +148,7 @@ struct OtRstMgrState {
     MemoryRegion mmio;
     IbexIRQ soc_reset;
     IbexIRQ sw_reset;
-    IbexIRQ alerts[PARAM_NUM_ALERTS];
+    qemu_irq alerts[PARAM_NUM_ALERTS];
     QEMUBH *bus_reset_bh;
     CPUState *cpu;
 
@@ -209,7 +209,7 @@ static void ot_rstmgr_update_alerts(OtRstMgrState *s)
     uint32_t level = s->regs[R_ALERT_TEST];
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        qemu_set_irq(s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -556,7 +556,8 @@ static void ot_rstmgr_init(Object *obj)
 
     ibex_qdev_init_irq(obj, &s->soc_reset, OT_RSTMGR_SOC_RST);
     ibex_qdev_init_irq(obj, &s->sw_reset, OT_RSTMGR_SW_RST);
-    ibex_qdev_init_irqs(obj, s->alerts, OT_DEVICE_ALERT, PARAM_NUM_ALERTS);
+    qdev_init_gpio_out_named(DEVICE(obj), s->alerts, OT_DEVICE_ALERT,
+                             PARAM_NUM_ALERTS);
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_rstmgr_reset_req,
                             OT_RSTMGR_RST_REQ, 1);

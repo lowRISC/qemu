@@ -645,7 +645,7 @@ struct OtFlashState {
     } mmio;
     QEMUTimer *op_delay; /* simulated long lasting operation */
     IbexIRQ irqs[PARAM_NUM_IRQS];
-    IbexIRQ alerts[PARAM_NUM_ALERTS];
+    qemu_irq alerts[PARAM_NUM_ALERTS];
 
     uint32_t *regs;
     uint32_t *csrs;
@@ -677,7 +677,7 @@ static void ot_flash_update_alerts(OtFlashState *s)
     uint32_t level = s->regs[R_ALERT_TEST];
 
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        qemu_set_irq(s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -1827,7 +1827,8 @@ static void ot_flash_init(Object *obj)
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
     s->op_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_op_signal, s);
 }

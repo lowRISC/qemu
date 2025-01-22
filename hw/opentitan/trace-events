@@ -228,6 +228,7 @@ ot_i2c_update_irqs(const char *id, uint32_t active, uint32_t mask, uint32_t eff)
 # ot_ibex_wrapper.c
 
 ot_ibex_wrapper_cpu_enable(const char *id, const char *ch, bool level) "%s: %s:%u"
+ot_ibex_wrapper_nmi_recv(const char *id, const char *ch, bool level) "%s: %s:%u"
 ot_ibex_wrapper_error(const char *id, const char *func, int line, const char *msg) "%s: %s:%d %s"
 ot_ibex_wrapper_escalate_rx(const char *id, bool level) "%s: %u"
 ot_ibex_wrapper_exit(const char *id, const char *msg, int val) "%s: %s (%d)"

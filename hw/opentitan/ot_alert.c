@@ -220,6 +220,7 @@ struct OtAlertState {
     MemoryRegion mmio;
     IbexIRQ *irqs;
     IbexIRQ *esc_txs;
+    IbexIRQ nmi_alert;
     OtAlertScheduler *schedulers;
 
     OtAlertRegs regs; /* not ordered by register index */
@@ -571,6 +572,7 @@ static void ot_alert_clear_alert(OtAlertState *s, unsigned nclass)
             trace_ot_alert_escalation(s->ot_id, ACLASS(nclass), ix, "release");
         }
         ibex_irq_set(esc_tx, 0);
+        ibex_irq_set(&s->nmi_alert, 0u);
     }
     /*
      * "Software can clear CLASSn_ACCUM_CNT with a write to CLASSA_CLR_SHADOWED"
@@ -740,6 +742,10 @@ static void ot_alert_signal_tx(void *opaque, int n, int level)
     bool alert_en = ot_shadow_reg_peek(&alerts->en_shadowed[alert]);
 
     trace_ot_alert_signal_tx(s->ot_id, alert, (bool)level, alert_en);
+
+    if (alert_en && level) {
+        ibex_irq_set(&s->nmi_alert, 1u);
+    }
 
     if (!alert_en || !level) {
         /* releasing the alert does not clear it */
@@ -1034,6 +1040,7 @@ static void ot_alert_realize(DeviceState *dev, Error **errp)
     s->esc_txs = g_new0(IbexIRQ, PARAM_N_ESC_SEV);
     ibex_qdev_init_irqs(OBJECT(dev), s->esc_txs, OT_ALERT_ESCALATE,
                         PARAM_N_ESC_SEV);
+    ibex_qdev_init_irq(OBJECT(dev), &s->nmi_alert, OT_ALERT_NMI);
 
     qdev_init_gpio_in_named(dev, &ot_alert_signal_tx, OT_DEVICE_ALERT,
                             s->n_alerts);

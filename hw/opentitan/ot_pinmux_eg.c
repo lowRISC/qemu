@@ -194,7 +194,7 @@ struct OtPinmuxEgState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
-    IbexIRQ alert;
+    qemu_irq alert;
     IbexIRQ *dios;
     IbexIRQ *mios;
 
@@ -319,7 +319,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
         if (val32) {
-            ibex_irq_set(&s->alert, (int)val32);
+            qemu_set_irq(s->alert, (int)val32);
         }
         break;
     case CASE_RANGE(MIO_PERIPH_INSEL_REGWEN, PARAM_N_MIO_PERIPH_IN):
@@ -523,7 +523,7 @@ static void ot_pinmux_eg_reset(DeviceState *dev)
         regs->wkup_detector_regwen[ix] = 0x1u;
     }
 
-    ibex_irq_set(&s->alert, 0);
+    qemu_set_irq(s->alert, 0);
 }
 
 static void ot_pinmux_eg_init(Object *obj)
@@ -535,7 +535,7 @@ static void ot_pinmux_eg_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regs = g_new0(OtPinmuxEgStateRegs, 1u);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     s->dios = g_new(IbexIRQ, PARAM_N_DIO_PADS);
     s->mios = g_new(IbexIRQ, PARAM_N_MIO_PADS);

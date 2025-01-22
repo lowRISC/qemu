@@ -190,7 +190,7 @@ struct OtClkMgrState {
     SysBusDevice parent_obj;
     MemoryRegion mmio;
     IbexIRQ hints[OT_CLKMGR_HINT_COUNT];
-    IbexIRQ alerts[PARAM_NUM_ALERTS];
+    qemu_irq alerts[PARAM_NUM_ALERTS];
 
     uint32_t clock_states; /* bit set: active, reset: clock is idle */
     uint32_t regs[REGS_COUNT]; /* shadowed slots are not used */
@@ -210,7 +210,7 @@ static void ot_clkmgr_update_alerts(OtClkMgrState *s)
 {
     bool recov = (bool)(s->regs[R_RECOV_ERR_CODE] &
                         R_RECOV_ERR_CODE_SHADOW_UPDATE_ERR_MASK);
-    ibex_irq_set(&s->alerts[ALERT_RECOVERABLE], recov);
+    qemu_set_irq(s->alerts[ALERT_RECOVERABLE], recov);
 }
 
 static void ot_clkmgr_clock_hint(void *opaque, int irq, int level)
@@ -320,7 +320,7 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
         for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-            ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
+            qemu_set_irq(s->alerts[ix], (int)((val32 >> ix) & 0x1u));
         }
         break;
     case R_EXTCLK_CTRL_REGWEN:
@@ -565,7 +565,7 @@ static void ot_clkmgr_reset(DeviceState *dev)
     ot_shadow_reg_init(&s->sdw_regs.usb_meas_ctrl, 0x1ccfau);
 
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
+        qemu_set_irq(s->alerts[ix], 0);
     }
 }
 
@@ -578,7 +578,8 @@ static void ot_clkmgr_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_clkmgr_clock_hint, OT_CLKMGR_HINT,

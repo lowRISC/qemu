@@ -237,7 +237,7 @@ enum OtAESMode {
 struct OtAESState {
     SysBusDevice parent_obj;
     MemoryRegion mmio;
-    IbexIRQ alerts[PARAM_NUM_ALERTS];
+    qemu_irq alerts[PARAM_NUM_ALERTS];
     IbexIRQ clkmgr;
     QEMUBH *process_bh;
     QEMUTimer *retard_timer; /* only used with disabled fast-mode */
@@ -328,7 +328,7 @@ static void ot_aes_update_alert(OtAESState *s)
 {
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         bool level = (bool)(s->regs->status & (1u << ix));
-        ibex_irq_set(&s->alerts[ix], (int)level);
+        qemu_set_irq(s->alerts[ix], (int)level);
     }
 }
 
@@ -1269,7 +1269,7 @@ static void ot_aes_reset(DeviceState *dev)
     ot_aes_load_reseed_rate(s);
 
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
+        qemu_set_irq(s->alerts[ix], 0);
     }
 
     trace_ot_aes_reseed("reset");
@@ -1294,7 +1294,8 @@ static void ot_aes_init(Object *obj)
     }
 
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
 
     ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);

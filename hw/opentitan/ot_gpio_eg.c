@@ -112,7 +112,7 @@ struct OtGpioEgState {
 
     IbexIRQ *irqs;
     IbexIRQ *gpos;
-    IbexIRQ alert;
+    qemu_irq alert;
 
     MemoryRegion mmio;
 
@@ -407,7 +407,7 @@ static void ot_gpio_eg_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        qemu_set_irq(s->alert, (int)(bool)val32);
         break;
     case R_DIRECT_OUT:
         s->regs[reg] = val32;
@@ -729,7 +729,7 @@ static void ot_gpio_eg_reset(DeviceState *dev)
     s->regs[R_DIRECT_OE] = s->reset_oe;
 
     ot_gpio_eg_update_irqs(s);
-    ibex_irq_set(&s->alert, 0);
+    qemu_set_irq(s->alert, 0);
 
     ot_gpio_eg_init_backend(s);
     ot_gpio_eg_update_data_out(s);
@@ -766,7 +766,7 @@ static void ot_gpio_eg_init(Object *obj)
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
     ibex_qdev_init_irqs_default(obj, s->gpos, OT_GPIO_OUT, PARAM_NUM_IO, -1);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_eg_in_change, OT_GPIO_IN,
                             PARAM_NUM_IO);

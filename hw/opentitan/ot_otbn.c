@@ -148,7 +148,7 @@ struct OtOTBNState {
     MemoryRegion dmem;
 
     IbexIRQ irq_done;
-    IbexIRQ alerts[ALERT_COUNT];
+    qemu_irq alerts[ALERT_COUNT];
     IbexIRQ clkmgr;
 
     QEMUBH *proxy_completion_bh;
@@ -194,7 +194,7 @@ static void ot_otbn_update_alert(OtOTBNState *s)
         if (ix == ALERT_FATAL) {
             level |= (bool)s->fatal_alert_cause;
         }
-        ibex_irq_set(&s->alerts[ix], level);
+        qemu_set_irq(s->alerts[ix], level);
     }
 }
 
@@ -634,7 +634,7 @@ static void ot_otbn_reset(DeviceState *dev)
     s->last_cmd = OT_OTBN_CMD_NONE;
     ibex_irq_set(&s->irq_done, 0);
     for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
+        qemu_set_irq(s->alerts[ix], 0);
     }
 
     for (unsigned rix = 0; rix < (unsigned)OT_OTBN_RND_COUNT; rix++) {
@@ -677,7 +677,8 @@ static void ot_otbn_init(Object *obj)
     memory_region_add_subregion(&s->mmio, OT_OTBN_DMEM_BASE, &s->dmem);
 
     ibex_sysbus_init_irq(obj, &s->irq_done);
-    ibex_qdev_init_irqs(obj, s->alerts, OT_DEVICE_ALERT, ALERT_COUNT);
+    qdev_init_gpio_out_named(DEVICE(obj), s->alerts, OT_DEVICE_ALERT,
+                             ALERT_COUNT);
     ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
 
     for (unsigned rix = 0; rix < (unsigned)OT_OTBN_RND_COUNT; rix++) {

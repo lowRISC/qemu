@@ -116,7 +116,7 @@ struct OtSramCtrlState {
 
     MemoryRegion mmio; /* SRAM controller registers */
     OtSramCtrlMem *mem; /* SRAM memory */
-    IbexIRQ alert;
+    qemu_irq alert;
     QEMUBH *switch_mr_bh; /* switch memory region */
     QEMUTimer *init_timer; /* SRAM initialization timer */
 
@@ -395,7 +395,7 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_ERROR_MASK;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        qemu_set_irq(s->alert, (int)(bool)val32);
         break;
     case R_EXEC_REGWEN:
         val32 &= R_EXEC_REGWEN_EN_MASK;
@@ -679,7 +679,7 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
     }
     s->cfg_ifetch = 0u; /* not used for now */
 
-    ibex_irq_set(&s->alert, (int)(bool)s->regs[R_ALERT_TEST]);
+    qemu_set_irq(s->alert, (int)(bool)s->regs[R_ALERT_TEST]);
 
     int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     ot_prng_reseed(s->prng, (uint32_t)now);
@@ -790,7 +790,7 @@ static void ot_sram_ctrl_init(Object *obj)
                           TYPE_OT_SRAM_CTRL ".regs", REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     s->mem = g_new0(OtSramCtrlMem, 1u);
     s->switch_mr_bh = qemu_bh_new(&ot_sram_ctrl_mem_switch_to_ram_fn, s);

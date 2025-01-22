@@ -139,7 +139,7 @@ struct OtRomCtrlState {
     MemoryRegion mmio;
     IbexIRQ pwrmgr_good;
     IbexIRQ pwrmgr_done;
-    IbexIRQ alert;
+    qemu_irq alert;
 
     uint32_t regs[REGS_COUNT];
 
@@ -933,7 +933,7 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_ERROR_MASK;
         s->regs[reg] = val32;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        qemu_set_irq(s->alert, (int)(bool)val32);
         break;
     case R_FATAL_ALERT_CAUSE:
     case R_DIGEST_0:
@@ -1194,7 +1194,7 @@ static void ot_rom_ctrl_init(Object *obj)
                           TYPE_OT_ROM_CTRL ".regs", REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     fifo8_create(&s->hash_fifo, OT_KMAC_APP_MSG_BYTES);
 }

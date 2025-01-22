@@ -379,7 +379,7 @@ struct OtKMACState {
     MemoryRegion state_mmio;
     MemoryRegion msgfifo_mmio;
     IbexIRQ irqs[3u];
-    IbexIRQ alerts[KMAC_PARAM_NUM_ALERTS];
+    qemu_irq alerts[KMAC_PARAM_NUM_ALERTS];
 
     uint32_t *regs;
     OtShadowReg cfg;
@@ -467,7 +467,7 @@ static void ot_kmac_update_alert(OtKMACState *s)
     }
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        qemu_set_irq(s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -1618,7 +1618,8 @@ static void ot_kmac_init(Object *obj)
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
 
     memory_region_init(&s->mmio, OBJECT(s), TYPE_OT_KMAC, OT_KMAC_WHOLE_SIZE);

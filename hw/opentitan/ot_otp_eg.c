@@ -472,7 +472,7 @@ struct OtOTPEgState {
         } sub;
     } mmio;
     IbexIRQ irqs[NUM_IRQS];
-    IbexIRQ alerts[NUM_ALERTS];
+    qemu_irq alerts[NUM_ALERTS];
 
     QEMUTimer *dai_delay; /**< Simulate delayed access completion */
 
@@ -528,7 +528,7 @@ static void ot_otp_eg_update_alerts(OtOTPEgState *s)
     uint32_t level = s->regs[R_ALERT_TEST];
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        qemu_set_irq(s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -1385,7 +1385,8 @@ static void ot_otp_eg_init(Object *obj)
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
 
     s->hw_cfg = g_new0(OtOTPHWCfg, 1u);

@@ -85,7 +85,7 @@ struct OtTimerState {
     MemoryRegion mmio;
     IbexIRQ m_timer_irq;
     IbexIRQ irq;
-    IbexIRQ alert;
+    qemu_irq alert;
     QEMUTimer *timer;
 
     uint32_t regs[REGS_COUNT];
@@ -147,7 +147,7 @@ static inline bool ot_timer_is_active(OtTimerState *s)
 static void ot_timer_update_alert(OtTimerState *s)
 {
     bool level = (bool)(s->regs[R_ALERT_TEST] & R_ALERT_TEST_FATAL_FAULT_MASK);
-    ibex_irq_set(&s->alert, level);
+    qemu_set_irq(s->alert, level);
 }
 
 static void ot_timer_update_irqs(OtTimerState *s)
@@ -390,7 +390,7 @@ static void ot_timer_init(Object *obj)
 
     ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->m_timer_irq, NULL);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     memory_region_init_io(&s->mmio, obj, &ot_timer_ops, s, TYPE_OT_TIMER,
                           REGS_SIZE);

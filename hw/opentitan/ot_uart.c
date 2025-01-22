@@ -147,7 +147,7 @@ struct OtUARTState {
     SysBusDevice parent_obj;
     MemoryRegion mmio;
     IbexIRQ irqs[OT_UART_IRQ_NUM];
-    IbexIRQ alert;
+    qemu_irq alert;
 
     uint32_t regs[REGS_COUNT];
 
@@ -486,8 +486,7 @@ static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        s->regs[reg] = val32;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        qemu_set_irq(s->alert, (int)(bool)val32);
         break;
     case R_CTRL:
         if (val32 & ~CTRL_SUP_MASK) {
@@ -605,7 +604,7 @@ static void ot_uart_reset(DeviceState *dev)
     ot_uart_reset_rx_fifo(s);
 
     ot_uart_update_irqs(s);
-    ibex_irq_set(&s->alert, 0);
+    qemu_set_irq(s->alert, 0);
 }
 
 static void ot_uart_init(Object *obj)
@@ -615,7 +614,7 @@ static void ot_uart_init(Object *obj)
     for (unsigned index = 0; index < OT_UART_IRQ_NUM; index++) {
         ibex_sysbus_init_irq(obj, &s->irqs[index]);
     }
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     memory_region_init_io(&s->mmio, obj, &ot_uart_ops, s, TYPE_OT_UART,
                           REGS_SIZE);

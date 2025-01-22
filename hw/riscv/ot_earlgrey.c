@@ -212,6 +212,14 @@ static const uint32_t ot_eg_pmp_addrs[] = {
 #define OT_EG_SOC_GPIO_SYSBUS_IRQ(_irq_, _target_, _num_) \
     IBEX_GPIO_SYSBUS_IRQ(_irq_, OT_EG_SOC_DEV_##_target_, _num_)
 
+#define OT_EG_SOC_GPIO_ALERT(_snum_, _tnum_) \
+    OT_EG_SOC_SIGNAL(OT_DEVICE_ALERT, _snum_, ALERT_HANDLER, OT_DEVICE_ALERT, \
+                     _tnum_)
+
+#define OT_EG_SOC_GPIO_ESCALATE(_snum_, _tgt_, _tnum_) \
+    OT_EG_SOC_SIGNAL(OT_ALERT_ESCALATE, _snum_, _tgt_, OT_ALERT_ESCALATE, \
+                     _tnum_)
+
 #define OT_EG_SOC_DEVLINK(_pname_, _target_) \
     IBEX_DEVLINK(_pname_, OT_EG_SOC_DEV_##_target_)
 
@@ -340,7 +348,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 6),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 7),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 9)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 9),
+            OT_EG_SOC_GPIO_ALERT(0, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -362,7 +371,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 15),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 16),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 17),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 18)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 18),
+            OT_EG_SOC_GPIO_ALERT(0, 1)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -384,7 +394,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 24),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 25),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 26),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 27)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 27),
+            OT_EG_SOC_GPIO_ALERT(0, 2)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -406,7 +417,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 33),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 34),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 35),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 36)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 36),
+            OT_EG_SOC_GPIO_ALERT(0, 3)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -449,7 +461,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(28, PLIC, 65),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 66),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 67),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 68)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 68),
+            OT_EG_SOC_GPIO_ALERT(0, 4)
         )
     },
     [OT_EG_SOC_DEV_SPI_DEVICE] = {
@@ -466,7 +479,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 73),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 74),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 75),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 76)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 76),
+            OT_EG_SOC_GPIO_ALERT(0, 5)
         ),
     },
     [OT_EG_SOC_DEV_I2C0] = {
@@ -520,7 +534,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO(0, HART, IRQ_M_TIMER),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 124)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 124),
+            OT_EG_SOC_GPIO_ALERT(0, 10)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
@@ -534,7 +549,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 125),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 126)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 126),
+            OT_EG_SOC_GPIO_ALERT(0, 11),
+            OT_EG_SOC_GPIO_ALERT(1, 12),
+            OT_EG_SOC_GPIO_ALERT(2, 13),
+            OT_EG_SOC_GPIO_ALERT(3, 14),
+            OT_EG_SOC_GPIO_ALERT(4, 15)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0),
@@ -573,7 +593,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40140000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_RSP(OT_PWRMGR_LC, PWRMGR)
+            OT_EG_SOC_RSP(OT_PWRMGR_LC, PWRMGR),
+            OT_EG_SOC_GPIO_ALERT(0, 16),
+            OT_EG_SOC_GPIO_ALERT(1, 17),
+            OT_EG_SOC_GPIO_ALERT(2, 18)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
@@ -613,7 +636,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 128),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 129),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 130)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 130),
+            OT_EG_SOC_GPIO_ESCALATE(0, IBEX_WRAPPER, 0),
+            OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 0),
+            OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 1),
+            OT_EG_SOC_GPIO_ESCALATE(3, PWRMGR, 0),
+            OT_EG_SOC_SIGNAL(OT_ALERT_NMI, 0, IBEX_WRAPPER, \
+                             OT_IBEX_WRAPPER_NMI, OT_IBEX_NMI_ALERT)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
@@ -633,7 +662,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 131),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132),
+            OT_EG_SOC_GPIO_ALERT(0, 19)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("bus-num", 0)
@@ -646,7 +676,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 133),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 134)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 134),
+            OT_EG_SOC_GPIO_ALERT(0, 20)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("bus-num", 1)
@@ -678,7 +709,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_IBEX_WRAPPER_CPU_EN,
                              OT_IBEX_PWRMGR_CPU_EN),
             OT_EG_SOC_SIGNAL(OT_PWRMGR_RST_REQ, 0, RSTMGR,
-                             OT_RSTMGR_RST_REQ, 0)
+                             OT_RSTMGR_RST_REQ, 0),
+            OT_EG_SOC_GPIO_ALERT(0, 22)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("num-rom", 1u),
@@ -692,7 +724,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_SIGNAL(OT_RSTMGR_SW_RST, 0, PWRMGR, \
-                                   OT_PWRMGR_SW_RST, 0)
+                                   OT_PWRMGR_SW_RST, 0),
+            OT_EG_SOC_GPIO_ALERT(0, 23),
+            OT_EG_SOC_GPIO_ALERT(1, 24)
         ),
     },
     [OT_EG_SOC_DEV_CLKMGR] = {
@@ -700,6 +734,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { .base = 0x40420000u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_ALERT(0, 25),
+            OT_EG_SOC_GPIO_ALERT(1, 26)
+        )
     },
     [OT_EG_SOC_DEV_SYSRST_CTRL] = {
         .type = TYPE_UNIMPLEMENTED_DEVICE,
@@ -739,6 +777,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { .base = 0x40460000u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_ALERT(0, 30)
+        )
     },
     [OT_EG_SOC_DEV_AON_TIMER] = {
         .type = TYPE_OT_AON_TIMER,
@@ -751,7 +792,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR, \
                              OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
-                             OT_PWRMGR_RST, OT_EG_RESET_AON_TIMER)
+                             OT_PWRMGR_RST, OT_EG_RESET_AON_TIMER),
+            OT_EG_SOC_SIGNAL(OT_AON_TIMER_BARK, 0, IBEX_WRAPPER, \
+                             OT_IBEX_WRAPPER_NMI, OT_IBEX_NMI_WDOG),
+            OT_EG_SOC_GPIO_ALERT(0, 31)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_EG_AON_CLK_HZ)
@@ -768,12 +812,19 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { .base = 0x40490000u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_ALERT(0, 32),
+            OT_EG_SOC_GPIO_ALERT(1, 33)
+        )
     },
     [OT_EG_SOC_DEV_SRAM_RET_CTRL] = {
         .type = TYPE_OT_SRAM_CTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40500000u },
             { .base = 0x40600000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_ALERT(0, 34)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
@@ -797,7 +848,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 162),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 163),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 164),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 165)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 165),
+            OT_EG_SOC_GPIO_ALERT(0, 35),
+            OT_EG_SOC_GPIO_ALERT(1, 36),
+            OT_EG_SOC_GPIO_ALERT(2, 37),
+            OT_EG_SOC_GPIO_ALERT(3, 38),
+            OT_EG_SOC_GPIO_ALERT(4, 39)
         ),
     },
     [OT_EG_SOC_DEV_AES] = {
@@ -806,7 +862,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41100000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES)
+            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES),
+            OT_EG_SOC_GPIO_ALERT(0, 42),
+            OT_EG_SOC_GPIO_ALERT(1, 43)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
@@ -824,7 +882,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 166),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 167),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 168),
-            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
+            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC),
+            OT_EG_SOC_GPIO_ALERT(0, 44)
         ),
     },
     [OT_EG_SOC_DEV_KMAC] = {
@@ -835,7 +894,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 169),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 170),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 171)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 171),
+            OT_EG_SOC_GPIO_ALERT(0, 45),
+            OT_EG_SOC_GPIO_ALERT(1, 46)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
@@ -852,7 +913,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 172),
-            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
+            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN),
+            OT_EG_SOC_GPIO_ALERT(0, 47),
+            OT_EG_SOC_GPIO_ALERT(1, 48)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn-u", EDN0),
@@ -884,7 +947,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 174),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 175),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 176),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 177)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 177),
+            OT_EG_SOC_GPIO_ALERT(0, 51),
+            OT_EG_SOC_GPIO_ALERT(1, 52)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("random_src", ENTROPY_SRC),
@@ -900,7 +965,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 178),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 179),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 180),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 181)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 181),
+            OT_EG_SOC_GPIO_ALERT(0, 53),
+            OT_EG_SOC_GPIO_ALERT(1, 54)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("ast", AST),
@@ -914,7 +981,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 182),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 183)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 183),
+            OT_EG_SOC_GPIO_ALERT(0, 55),
+            OT_EG_SOC_GPIO_ALERT(1, 56)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("csrng", CSRNG)
@@ -930,7 +999,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 184),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 185)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 185),
+            OT_EG_SOC_GPIO_ALERT(0, 57),
+            OT_EG_SOC_GPIO_ALERT(1, 58)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("csrng", CSRNG)
@@ -944,6 +1015,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { .base = 0x411c0000u },
             { .base = 0x10000000u }
+        ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_ALERT(0, 59)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
@@ -964,7 +1038,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR, \
                                    OT_PWRMGR_ROM_GOOD, 0),
             OT_EG_SOC_SIGNAL(OT_ROM_CTRL_DONE, 0, PWRMGR, \
-                                   OT_PWRMGR_ROM_DONE, 0)
+                                   OT_PWRMGR_ROM_DONE, 0),
+            OT_EG_SOC_GPIO_ALERT(0, 60)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("kmac", KMAC)
@@ -983,6 +1058,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { .base = 0x411f0000u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO(0, HART, IRQ_NMI),
+            OT_EG_SOC_GPIO_ALERT(0, 61),
+            OT_EG_SOC_GPIO_ALERT(1, 62),
+            OT_EG_SOC_GPIO_ALERT(2, 63),
+            OT_EG_SOC_GPIO_ALERT(3, 64)
+        ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
@@ -1000,7 +1082,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 0),
             OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 1),
             OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 2),
-            OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 3)
+            OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 3),
+            OT_EG_SOC_GPIO_ALERT(0, 40)
         ),
     },
     [OT_EG_SOC_DEV_PLIC] = {
@@ -1032,7 +1115,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x2c000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO(0, HART, IRQ_M_SOFT)
+            OT_EG_SOC_GPIO(0, HART, IRQ_M_SOFT),
+            OT_EG_SOC_GPIO_ALERT(0, 41)
         ),
     },
     /* clang-format on */
@@ -1134,6 +1218,11 @@ static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
     qdev_prop_set_array(dev, "pmp_addr", pmp_addr);
 
     qdev_prop_set_uint64(dev, "mseccfg", (uint64_t)OT_EG_MSECCFG);
+
+    /* NMIs are defined in Ibex to all have a mcause of 31 */
+    RISCVCPU *cpu = RISCV_CPU(dev);
+    CPURISCVState *env = &cpu->env;
+    env->nmi_cause = 31u;
 }
 
 static void ot_eg_soc_otp_ctrl_configure(

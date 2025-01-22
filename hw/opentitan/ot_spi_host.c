@@ -322,7 +322,7 @@ struct OtSPIHostState {
     QEMUTimer *fsm_delay; /**< Simulate delayed SPI transfer completion */
 
     IbexIRQ irqs[2u]; /**< System bus IRQs */
-    IbexIRQ alert; /**< OpenTitan alert */
+    qemu_irq alert; /**< OpenTitan alert */
     uint32_t events; /**< Active events */
     uint32_t last_events; /**< Last detected events */
 
@@ -690,7 +690,7 @@ static void ot_spi_host_update_alert(OtSPIHostState *s)
      * register in QEMU
      */
     bool alert = (bool)s->regs[R_ALERT_TEST];
-    ibex_irq_set(&s->alert, alert);
+    qemu_set_irq(s->alert, alert);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -733,7 +733,7 @@ static void ot_spi_host_reset(OtSPIHostState *s)
     for (unsigned ix = 0u; ix < ARRAY_SIZE(s->irqs); ix++) {
         ibex_irq_set(&s->irqs[ix], 0);
     }
-    ibex_irq_set(&s->alert, 0);
+    qemu_set_irq(s->alert, 0);
 
     ot_spi_host_update_regs(s);
     ot_spi_host_update_alert(s);
@@ -1288,7 +1288,7 @@ static void ot_spi_host_instance_init(Object *obj)
 
     ibex_qdev_init_irqs(obj, &s->irqs[0u], SYSBUS_DEVICE_GPIO_IRQ,
                         ARRAY_SIZE(s->irqs));
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
     s->config_opts = g_new0(uint32_t, (size_t)s->num_cs);

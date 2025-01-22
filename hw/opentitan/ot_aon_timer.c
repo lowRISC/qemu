@@ -47,21 +47,23 @@ REG32(ALERT_TEST, 0x00u)
 REG32(WKUP_CTRL, 0x04u)
     FIELD(WKUP_CTRL, ENABLE, 0u, 1u)
     FIELD(WKUP_CTRL, PRESCALER, 1u, 12u)
-REG32(WKUP_THOLD, 0x08)
-REG32(WKUP_COUNT, 0x0cu)
-REG32(WDOG_REGWEN, 0x10u)
+REG32(WKUP_THOLD_HI, 0x08u)
+REG32(WKUP_THOLD_LO, 0x0cu)
+REG32(WKUP_COUNT_HI, 0x10u)
+REG32(WKUP_COUNT_LO, 0x14u)
+REG32(WDOG_REGWEN, 0x18u)
     FIELD(WDOG_REGWEN, REGWEN, 0u, 1u)
-REG32(WDOG_CTRL, 0x14u)
+REG32(WDOG_CTRL, 0x1cu)
     FIELD(WDOG_CTRL, ENABLE, 0u, 1u)
-    FIELD(WDOG_CTRL, PAUSE_IN_SLEEP, 0u, 1u)
-REG32(WDOG_BARK_THOLD, 0x18u)
-REG32(WDOG_BITE_THOLD, 0x1cu)
-REG32(WDOG_COUNT, 0x20u)
-REG32(INTR_STATE, 0x24u)
+    FIELD(WDOG_CTRL, PAUSE_IN_SLEEP, 1u, 1u)
+REG32(WDOG_BARK_THOLD, 0x20u)
+REG32(WDOG_BITE_THOLD, 0x24u)
+REG32(WDOG_COUNT, 0x28u)
+REG32(INTR_STATE, 0x2cu)
     SHARED_FIELD(INTR_WKUP_TIMER_EXPIRED, 0u, 1u)
     SHARED_FIELD(INTR_WDOG_TIMER_BARK, 1u, 1u)
-REG32(INTR_TEST, 0x28u)
-REG32(WKUP_CAUSE, 0x2cu)
+REG32(INTR_TEST, 0x30u)
+REG32(WKUP_CAUSE, 0x34u)
     FIELD(WKUP_CAUSE, CAUSE, 0u, 1u)
 /* clang-format on */
 
@@ -80,8 +82,10 @@ static const char REG_NAMES[REGS_COUNT][20u] = {
     /* clang-format off */
     REG_NAME_ENTRY(ALERT_TEST),
     REG_NAME_ENTRY(WKUP_CTRL),
-    REG_NAME_ENTRY(WKUP_THOLD),
-    REG_NAME_ENTRY(WKUP_COUNT),
+    REG_NAME_ENTRY(WKUP_THOLD_HI),
+    REG_NAME_ENTRY(WKUP_THOLD_LO),
+    REG_NAME_ENTRY(WKUP_COUNT_HI),
+    REG_NAME_ENTRY(WKUP_COUNT_LO),
     REG_NAME_ENTRY(WDOG_REGWEN),
     REG_NAME_ENTRY(WDOG_CTRL),
     REG_NAME_ENTRY(WDOG_BARK_THOLD),
@@ -104,7 +108,7 @@ struct OtAonTimerState {
     IbexIRQ nmi_bark;
     IbexIRQ pwrmgr_wkup;
     IbexIRQ pwrmgr_bite;
-    IbexIRQ alert;
+    qemu_irq alert;
 
     QEMUTimer *wkup_timer;
     QEMUTimer *wdog_timer;
@@ -119,28 +123,30 @@ struct OtAonTimerState {
     uint32_t pclk;
 };
 
-static uint32_t
+static uint64_t
 ot_aon_timer_ns_to_ticks(OtAonTimerState *s, uint32_t prescaler, int64_t ns)
 {
     uint64_t ticks = muldiv64((uint64_t)ns, s->pclk, NANOSECONDS_PER_SECOND);
-    return (uint32_t)(ticks / (prescaler + 1u));
+    return ticks / (prescaler + 1u);
 }
 
 static int64_t
-ot_aon_timer_ticks_to_ns(OtAonTimerState *s, uint32_t prescaler, uint32_t ticks)
+ot_aon_timer_ticks_to_ns(OtAonTimerState *s, uint32_t prescaler, uint64_t ticks)
 {
-    uint64_t ns = muldiv64((uint64_t)ticks * (prescaler + 1u),
-                           NANOSECONDS_PER_SECOND, s->pclk);
+    uint64_t ns =
+        muldiv64(ticks * (prescaler + 1u), NANOSECONDS_PER_SECOND, s->pclk);
     if (ns > INT64_MAX) {
         return INT64_MAX;
     }
     return (int64_t)ns;
 }
 
-static uint32_t ot_aon_timer_get_wkup_count(OtAonTimerState *s, uint64_t now)
+static uint64_t ot_aon_timer_get_wkup_count(OtAonTimerState *s, uint64_t now)
 {
     uint32_t prescaler = FIELD_EX32(s->regs[R_WKUP_CTRL], WKUP_CTRL, PRESCALER);
-    return s->regs[R_WKUP_COUNT] +
+    uint64_t wkup_count =
+        ((uint64_t)s->regs[R_WKUP_COUNT_HI] << 32u) | s->regs[R_WKUP_COUNT_LO];
+    return wkup_count +
            ot_aon_timer_ns_to_ticks(s, prescaler,
                                     (int64_t)(now - s->wkup_origin_ns));
 }
@@ -148,7 +154,9 @@ static uint32_t ot_aon_timer_get_wkup_count(OtAonTimerState *s, uint64_t now)
 static uint32_t ot_aon_timer_get_wdog_count(OtAonTimerState *s, uint64_t now)
 {
     return s->regs[R_WDOG_COUNT] +
-           ot_aon_timer_ns_to_ticks(s, 0u, (int64_t)(now - s->wdog_origin_ns));
+           (uint32_t)
+               ot_aon_timer_ns_to_ticks(s, 0u,
+                                        (int64_t)(now - s->wdog_origin_ns));
 }
 
 static int64_t ot_aon_timer_compute_next_timeout(OtAonTimerState *s,
@@ -185,19 +193,18 @@ static inline bool ot_aon_timer_wdog_register_write_enabled(OtAonTimerState *s)
 static void ot_aon_timer_update_alert(OtAonTimerState *s)
 {
     bool level = s->regs[R_ALERT_TEST] & R_ALERT_TEST_FATAL_FAULT_MASK;
-    ibex_irq_set(&s->alert, level);
+    qemu_set_irq(s->alert, level);
 }
 
 static void ot_aon_timer_update_irqs(OtAonTimerState *s)
 {
     bool wkup = (bool)(s->regs[R_INTR_STATE] & INTR_WKUP_TIMER_EXPIRED_MASK);
     bool bark = (bool)(s->regs[R_INTR_STATE] & INTR_WDOG_TIMER_BARK_MASK);
-
     trace_ot_aon_timer_irqs(s->ot_id, wkup, bark, s->wdog_bite);
 
     ibex_irq_set(&s->irq_wkup, wkup);
-    ibex_irq_set(&s->irq_bark, bark);
     ibex_irq_set(&s->nmi_bark, bark);
+    ibex_irq_set(&s->irq_bark, bark);
     ibex_irq_set(&s->pwrmgr_wkup, wkup);
     ibex_irq_set(&s->pwrmgr_bite, s->wdog_bite);
 }
@@ -218,8 +225,9 @@ static void ot_aon_timer_rearm_wkup(OtAonTimerState *s, bool reset_origin)
         return;
     }
 
-    uint32_t count = ot_aon_timer_get_wkup_count(s, now);
-    uint32_t threshold = s->regs[R_WKUP_THOLD];
+    uint64_t count = ot_aon_timer_get_wkup_count(s, now);
+    uint64_t threshold =
+        ((uint64_t)s->regs[R_WKUP_THOLD_HI] << 32u) | s->regs[R_WKUP_THOLD_LO];
 
     if (count >= threshold) {
         s->regs[R_INTR_STATE] |= INTR_WKUP_TIMER_EXPIRED_MASK;
@@ -309,7 +317,8 @@ static uint64_t ot_aon_timer_read(void *opaque, hwaddr addr, unsigned size)
     hwaddr reg = R32_OFF(addr);
     switch (reg) {
     case R_WKUP_CTRL:
-    case R_WKUP_THOLD:
+    case R_WKUP_THOLD_HI:
+    case R_WKUP_THOLD_LO:
     case R_WDOG_REGWEN:
     case R_WDOG_CTRL:
     case R_WDOG_BARK_THOLD:
@@ -318,11 +327,18 @@ static uint64_t ot_aon_timer_read(void *opaque, hwaddr addr, unsigned size)
     case R_WKUP_CAUSE:
         val32 = s->regs[reg];
         break;
-    case R_WKUP_COUNT: {
+    case R_WKUP_COUNT_HI: {
         uint64_t now = ot_aon_timer_is_wkup_enabled(s) ?
                            qemu_clock_get_ns(OT_VIRTUAL_CLOCK) :
                            s->wkup_origin_ns;
-        val32 = ot_aon_timer_get_wkup_count(s, now);
+        val32 = (uint32_t)(ot_aon_timer_get_wkup_count(s, now) >> 32u);
+        break;
+    }
+    case R_WKUP_COUNT_LO: {
+        uint64_t now = ot_aon_timer_is_wkup_enabled(s) ?
+                           qemu_clock_get_ns(OT_VIRTUAL_CLOCK) :
+                           s->wkup_origin_ns;
+        val32 = (uint32_t)ot_aon_timer_get_wkup_count(s, now);
         break;
     }
     case R_WDOG_COUNT: {
@@ -384,19 +400,23 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
                 /* stop timer */
                 timer_del(s->wkup_timer);
                 /* save current count */
-                uint32_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-                s->regs[R_WKUP_COUNT] = ot_aon_timer_get_wkup_count(s, now);
+                int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+                uint64_t count = ot_aon_timer_get_wkup_count(s, now);
+                s->regs[R_WKUP_COUNT_HI] = (uint32_t)(count >> 32u);
+                s->regs[R_WKUP_COUNT_LO] = (uint32_t)count;
                 s->wkup_origin_ns = now;
             }
         }
         break;
     }
-    case R_WKUP_THOLD:
-        s->regs[R_WKUP_THOLD] = val32;
+    case R_WKUP_THOLD_HI:
+    case R_WKUP_THOLD_LO:
+        s->regs[reg] = val32;
         ot_aon_timer_rearm_wkup(s, false);
         break;
-    case R_WKUP_COUNT:
-        s->regs[R_WKUP_COUNT] = val32;
+    case R_WKUP_COUNT_HI:
+    case R_WKUP_COUNT_LO:
+        s->regs[reg] = val32;
         ot_aon_timer_rearm_wkup(s, true);
         break;
     case R_WDOG_REGWEN:
@@ -525,7 +545,7 @@ static void ot_aon_timer_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->nmi_bark, OT_AON_TIMER_BARK);
     ibex_qdev_init_irq(obj, &s->pwrmgr_wkup, OT_AON_TIMER_WKUP);
     ibex_qdev_init_irq(obj, &s->pwrmgr_bite, OT_AON_TIMER_BITE);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     memory_region_init_io(&s->mmio, obj, &ot_aon_timer_ops, s,
                           TYPE_OT_AON_TIMER, REGS_SIZE);

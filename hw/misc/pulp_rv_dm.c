@@ -133,7 +133,7 @@ struct PulpRVDMState {
     MemoryRegion rom; /* ROM */
 
     qemu_irq *ack_out;
-    IbexIRQ alert;
+    qemu_irq alert;
 
     uint32_t dmflag_regs[PULP_RV_DM_DMFLAG_SIZE / sizeof(uint32_t)];
 
@@ -259,7 +259,7 @@ static void pulp_rv_dm_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (R32_OFF(addr)) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        qemu_set_irq(s->alert, (int)(bool)val32);
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
@@ -477,7 +477,7 @@ static void pulp_rv_dm_reset(DeviceState *dev)
 {
     PulpRVDMState *s = PULP_RV_DM(dev);
 
-    ibex_irq_set(&s->alert, false);
+    qemu_set_irq(s->alert, false);
 
     memset(memory_region_get_ram_ptr(&s->prog), 0, PULP_RV_DM_PROG_SIZE);
     memset(s->dmflag_regs, 0, sizeof(s->dmflag_regs));
@@ -524,7 +524,7 @@ static void pulp_rv_dm_init(Object *obj)
 
     pulp_rv_dm_load_rom(s);
 
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 }
 
 static void pulp_rv_dm_class_init(ObjectClass *klass, void *data)

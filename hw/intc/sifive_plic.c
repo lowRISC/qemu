@@ -361,12 +361,29 @@ static void parse_hart_config(SiFivePLICState *plic)
 
 static void sifive_plic_irq_request(void *opaque, int irq, int level)
 {
-    SiFivePLICState *s = opaque;
+    SiFivePLICState *plic = opaque;
 
-    assert(irq < s->num_sources);
+    assert(irq < plic->num_sources);
 
-    sifive_plic_set_pending(s, irq, level > 0);
-    sifive_plic_update(s);
+    /*
+     * In OpenTitan (or more generally when we have a system with support for
+     * NMIs), we only want to clear a pending IRQ at the PLIC when it has
+     * been claimed. Normally this is not a problem - the IRQ will cause
+     * software to acknowledge the pending IRQ at the peripheral, which will
+     * propagate to the PLIC, which has already been serviced. But with NMIs,
+     * we have the case where (a) a peripheral generates an NMI and IRQ, (b)
+     * the NMI handler disables the IRQ at the peripheral, as part of
+     * acknowleding the NMI, (c) this would cause the PLIC to de-assert the
+     * IRQ, but since we haven't claimed it yet we still want it to call our
+     * ISR handler as normal after the NMI handler exits. So, we should only
+     * de-assert a pending IRQ when it is claimed.
+     */
+    bool is_claimed = (plic->claimed[irq >> 5] & (1u << (irq & 31)));
+    bool is_pending = (plic->pending[irq >> 5] & (1u << (irq & 31)));
+    if (level || (!is_pending || is_claimed)) {
+        sifive_plic_set_pending(plic, irq, level > 0);
+    }
+    sifive_plic_update(plic);
 }
 
 static void sifive_plic_realize(DeviceState *dev, Error **errp)

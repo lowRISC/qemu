@@ -504,6 +504,18 @@ bool riscv_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
         if (unlikely(env->debug_dm &&
                      (env->debugger || get_field(env->dcsr, DCSR_STEP)))) {
             return false;
+        } else if (unlikely(env->pending_nmi && !env->processing_nmi)) {
+            /*
+             * NMIs are handled in the same way as machine traps, but have an
+             * implementation-defined cause, and must be signalled via
+             * additional flags, since they are implementation-specific, and
+             * not visible through the mip register.
+             */
+            cs->exception_index = RISCV_EXCP_INT_FLAG | env->nmi_cause;
+            env->pending_nmi = false;
+            env->processing_nmi = true;
+            riscv_cpu_do_interrupt(cs);
+            return true;
         }
         int interruptno = riscv_cpu_local_irq_pending(env);
         if (interruptno >= 0) {
@@ -653,7 +665,7 @@ void riscv_cpu_interrupt(CPURISCVState *env)
 
     vstip = env->vstime_irq ? MIP_VSTIP : 0;
 
-    if (env->mip | vsgein | vstip | irqf) {
+    if (env->mip | vsgein | vstip | irqf | env->pending_nmi) {
         cpu_interrupt(cs, CPU_INTERRUPT_HARD);
     } else {
         cpu_reset_interrupt(cs, CPU_INTERRUPT_HARD);

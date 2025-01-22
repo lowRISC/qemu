@@ -448,6 +448,13 @@ struct CPUArchState {
     uint64_t dmexcpvec; /* Address of exception handler */
 
     /*
+     * NMI support
+     */
+    bool pending_nmi; /* True if an NMI is pending, and must be handled */
+    bool processing_nmi; /* True if currently in an NMI handler */
+    unsigned nmi_cause; /* Reason for entering NMI */
+
+    /*
      * CSRs for PointerMasking extension
      */
     target_ulong mmte;

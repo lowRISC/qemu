@@ -58,7 +58,7 @@ struct OtPlicExtState {
 
     MemoryRegion mmio;
     IbexIRQ irq;
-    IbexIRQ alert;
+    qemu_irq alert;
 
     uint32_t regs[REGS_COUNT];
 
@@ -127,7 +127,7 @@ static void ot_plic_ext_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
         s->regs[reg] = val32;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        qemu_set_irq(s->alert, (int)(bool)val32);
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -155,7 +155,7 @@ static void ot_plic_ext_reset(DeviceState *dev)
     OtPlicExtState *s = OT_PLIC_EXT(dev);
 
     ibex_irq_set(&s->irq, 0);
-    ibex_irq_set(&s->alert, 0);
+    qemu_set_irq(s->alert, 0);
 }
 
 static void ot_plic_ext_realize(DeviceState *dev, Error **errp)
@@ -179,7 +179,7 @@ static void ot_plic_ext_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     ibex_qdev_init_irq(obj, &s->irq, NULL);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 }
 
 static void ot_plic_ext_class_init(ObjectClass *klass, void *data)

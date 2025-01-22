@@ -954,7 +954,9 @@ bool riscv_cpu_has_work(CPUState *cs)
     return riscv_cpu_all_pending(env) != 0 ||
         riscv_cpu_sirq_pending(env) != RISCV_EXCP_NONE ||
         riscv_cpu_vsirq_pending(env) != RISCV_EXCP_NONE ||
-        env->debug_cs;
+        env->debug_cs ||
+        env->pending_nmi ||
+        env->processing_nmi;
 #else
     return true;
 #endif
@@ -1402,6 +1404,11 @@ static void riscv_cpu_set_irq(void *opaque, int irq, int level)
                 riscv_cpu_update_mip(env, 1 << irq,
                                      BOOL_TO_MASK(level | env->software_seip));
             }
+            break;
+        case IRQ_NMI:
+            /* NMIs do not need to update mip */
+            env->pending_nmi = true;
+            riscv_cpu_interrupt(env);
             break;
         default:
             /* Handle platform / custom local interrupts */

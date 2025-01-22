@@ -235,13 +235,13 @@ struct OtPwrMgrState {
     QEMUTimer *cdc_sync;
     QEMUBH *fsm_tick_bh;
     IbexIRQ irq; /* wake from low power */
-    IbexIRQ alert;
     IbexIRQ strap;
     IbexIRQ cpu_enable;
     IbexIRQ pwr_lc_req;
     IbexIRQ pwr_otp_req;
     IbexIRQ reset_req;
     IbexIRQ boot_st;
+    qemu_irq alert;
 
     OtPwrMgrFastState f_state;
     OtPwrMgrSlowState s_state;
@@ -831,8 +831,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        s->regs[reg] = val32;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        qemu_set_irq(s->alert, (int)(bool)val32);
         break;
     case R_CONTROL:
         /* TODO: clear LOW_POWER_HINT on next WFI? */
@@ -958,9 +957,9 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     ibex_irq_set(&s->cpu_enable, 0);
     ibex_irq_set(&s->pwr_otp_req, 0);
     ibex_irq_set(&s->pwr_lc_req, 0);
-    ibex_irq_set(&s->alert, 0);
     ibex_irq_set(&s->reset_req, 0);
     ibex_irq_set(&s->boot_st, s->boot_status.i32);
+    qemu_set_irq(s->alert, 0);
 }
 
 static void ot_pwrmgr_reset_exit(Object *obj, ResetType type)
@@ -1009,13 +1008,14 @@ static void ot_pwrmgr_init(Object *obj)
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
     ibex_sysbus_init_irq(obj, &s->irq);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
     ibex_qdev_init_irq(obj, &s->pwr_lc_req, OT_PWRMGR_LC_REQ);
     ibex_qdev_init_irq(obj, &s->pwr_otp_req, OT_PWRMGR_OTP_REQ);
     ibex_qdev_init_irq(obj, &s->cpu_enable, OT_PWRMGR_CPU_EN);
     ibex_qdev_init_irq(obj, &s->strap, OT_PWRMGR_STRAP);
     ibex_qdev_init_irq(obj, &s->reset_req, OT_PWRMGR_RST_REQ);
     ibex_qdev_init_irq(obj, &s->boot_st, OT_PWRMGR_BOOT_STATUS);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     s->cdc_sync = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_pwrmgr_cdc_sync, s);
 

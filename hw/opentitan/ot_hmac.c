@@ -274,7 +274,7 @@ struct OtHMACState {
     MemoryRegion fifo_mmio;
 
     IbexIRQ irqs[PARAM_NUM_IRQS];
-    IbexIRQ alert;
+    qemu_irq alert;
     IbexIRQ clkmgr;
 
     OtHMACRegisters *regs;
@@ -401,7 +401,7 @@ static void ot_hmac_update_irqs(OtHMACState *s)
 static void ot_hmac_update_alert(OtHMACState *s)
 {
     bool level = s->regs->alert_test & R_ALERT_TEST_FATAL_FAULT_MASK;
-    ibex_irq_set(&s->alert, level);
+    qemu_set_irq(s->alert, level);
 }
 
 static void ot_hmac_report_error(OtHMACState *s, uint32_t error)
@@ -1206,7 +1206,7 @@ static void ot_hmac_init(Object *obj)
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
     ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
 
     memory_region_init(&s->mmio, OBJECT(s), TYPE_OT_HMAC, OT_HMAC_WHOLE_SIZE);

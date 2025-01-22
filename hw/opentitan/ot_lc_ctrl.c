@@ -368,7 +368,7 @@ struct OtLcCtrlState {
     MemoryRegion dmi_mmio;
     QEMUBH *pwc_lc_bh;
     QEMUBH *escalate_bh;
-    IbexIRQ alerts[NUM_ALERTS];
+    qemu_irq alerts[NUM_ALERTS];
     IbexIRQ broadcasts[OT_LC_BROADCAST_COUNT];
     IbexIRQ pwc_lc_rsp;
     IbexIRQ socdbg_tx;
@@ -718,7 +718,7 @@ static void ot_lc_ctrl_update_alerts(OtLcCtrlState *s)
     uint32_t level = s->regs[R_ALERT_TEST];
 
     for (unsigned ix = 0; ix < NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        qemu_set_irq(s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -2216,7 +2216,8 @@ static void ot_lc_ctrl_init(Object *obj)
     s->hashed_tokens = g_new0(OtOTPTokenValue, LC_TK_COUNT);
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->broadcasts); ix++) {
