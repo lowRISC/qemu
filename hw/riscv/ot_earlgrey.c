@@ -353,6 +353,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "u0"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
@@ -376,6 +377,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 1)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "u1"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
@@ -399,6 +401,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 2)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "u2"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
@@ -422,6 +425,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 3)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "u3"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
