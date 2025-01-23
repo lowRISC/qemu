@@ -2,6 +2,7 @@
  * QEMU OpenTitan UART device
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -156,6 +157,7 @@ struct OtUARTState {
     uint32_t tx_watermark_level;
     guint watch_tag;
 
+    char *ot_id;
     uint32_t pclk;
     CharBackend chr;
 };
@@ -180,7 +182,7 @@ static void ot_uart_update_irqs(OtUARTState *s)
 {
     uint32_t state_masked = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
-    trace_ot_uart_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
+    trace_ot_uart_irqs(s->ot_id, s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
                        state_masked);
 
     for (int index = 0; index < OT_UART_IRQ_NUM; index++) {
@@ -451,7 +453,7 @@ static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_uart_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_uart_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
 }
@@ -466,7 +468,7 @@ static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_uart_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_uart_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_INTR_STATE:
@@ -557,6 +559,7 @@ static const MemoryRegionOps ot_uart_ops = {
 };
 
 static Property ot_uart_properties[] = {
+    DEFINE_PROP_STRING("ot_id", OtUARTState, ot_id),
     DEFINE_PROP_CHR("chardev", OtUARTState, chr),
     DEFINE_PROP_UINT32("pclk", OtUARTState, pclk, 0u),
     DEFINE_PROP_END_OF_LIST(),
@@ -579,18 +582,6 @@ static int ot_uart_be_change(void *opaque)
     return 0;
 }
 
-static void ot_uart_realize(DeviceState *dev, Error **errp)
-{
-    OtUARTState *s = OT_UART(dev);
-    (void)errp;
-
-    fifo8_create(&s->tx_fifo, OT_UART_TX_FIFO_SIZE);
-    fifo8_create(&s->rx_fifo, OT_UART_RX_FIFO_SIZE);
-
-    qemu_chr_fe_set_handlers(&s->chr, ot_uart_can_receive, ot_uart_receive,
-                             NULL, ot_uart_be_change, s, NULL, true);
-}
-
 static void ot_uart_reset(DeviceState *dev)
 {
     OtUARTState *s = OT_UART(dev);
@@ -606,6 +597,23 @@ static void ot_uart_reset(DeviceState *dev)
 
     ot_uart_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
+}
+
+static void ot_uart_realize(DeviceState *dev, Error **errp)
+{
+    OtUARTState *s = OT_UART(dev);
+    (void)errp;
+
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
+
+    fifo8_create(&s->tx_fifo, OT_UART_TX_FIFO_SIZE);
+    fifo8_create(&s->rx_fifo, OT_UART_RX_FIFO_SIZE);
+
+    qemu_chr_fe_set_handlers(&s->chr, ot_uart_can_receive, ot_uart_receive,
+                             NULL, ot_uart_be_change, s, NULL, true);
 }
 
 static void ot_uart_init(Object *obj)
