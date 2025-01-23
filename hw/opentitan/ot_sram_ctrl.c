@@ -2,6 +2,7 @@
  * QEMU OpenTitan SRAM controller
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -60,6 +61,8 @@ REG32(STATUS, 0x4u)
     FIELD(STATUS, SCR_KEY_VALID, 3u, 1u)
     FIELD(STATUS, SCR_KEY_SEED_VALID, 4u, 1u)
     FIELD(STATUS, INIT_DONE, 5u, 1u)
+    FIELD(STATUS, READBACK_ERROR, 6u, 1u)
+    FIELD(STATUS, SRAM_ALERT, 7u, 1u)
 REG32(EXEC_REGWEN, 0x8u)
     FIELD(EXEC_REGWEN, EN, 0u, 1u)
 REG32(EXEC, 0xcu)
@@ -72,7 +75,7 @@ REG32(CTRL, 0x14u)
 REG32(SCR_KEY_ROTATED, 0x18u)
     FIELD(SCR_KEY_ROTATED, SUCCESS, 0u, 4u)
 REG32(READBACK_REGWEN, 0x1cu)
-    FIELD(READBACK_REGWEN, READBACK_REGWEN, 0u, 1u)
+    FIELD(READBACK_REGWEN, EN, 0u, 1u)
 REG32(READBACK, 0x20u)
     FIELD(READBACK, EN, 0u, 4u)
 
@@ -270,7 +273,7 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
 
     /*
      * Note: in order to keep the implementation simple, the full OT HW behavior
-     *       is not reproced here (with CPU cycle delays to obtain the key, etc.
+     *       is not reproduced here (with CPU cycle delays to get the key, etc.)
      *       Tke key retrieval is therefore synchronous, which does not
      *       precisely emulate the HW.
      *       Moreover the scrambling is highly simplified, as for now there is
@@ -357,6 +360,8 @@ static uint64_t ot_sram_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_CTRL_REGWEN:
     case R_CTRL:
     case R_SCR_KEY_ROTATED:
+    case R_READBACK_REGWEN:
+    case R_READBACK:
         val32 = s->regs[reg];
         break;
     case R_ALERT_TEST:
@@ -446,6 +451,21 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         /* this register has been deprecated on Darjeeling */
         qemu_log_mask(LOG_UNIMP, "%s: %s R_SCR_KEY_ROTATED\n", __func__,
                       s->ot_id);
+        break;
+    case R_READBACK_REGWEN:
+        val32 &= R_READBACK_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
+    case R_READBACK:
+        if (s->regs[R_READBACK_REGWEN]) {
+            val32 &= R_READBACK_EN_MASK;
+            s->regs[reg] = val32;
+            /* readback feature is a no-op in QEMU */
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s R_READBACK_REGWEN protected w/ REGWEN\n",
+                          __func__, s->ot_id);
+        }
         break;
     case R_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR,
