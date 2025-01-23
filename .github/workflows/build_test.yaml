@@ -121,6 +121,15 @@ jobs:
         run: |
           scripts/opentitan/ot-tidy.sh --ci -p build-clang
 
+  lint-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Don't shallow clone, we need to see all commits.
+      - name: Lint commits
+        run: ./scripts/opentitan/lint-commits.sh "origin/${{ github.base_ref }}"
+
   test-clang:
     runs-on: ubuntu-24.04
     needs: build-clang
