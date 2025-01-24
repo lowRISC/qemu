@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2024 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """OpenTitan QEMU configuration file generator.
@@ -11,7 +12,7 @@
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from logging import getLogger
-from os.path import dirname, isdir, isfile, join as joinpath, normpath
+from os.path import abspath, dirname, isdir, isfile, join as joinpath, normpath
 from traceback import format_exc
 from typing import Optional
 import re
@@ -52,12 +53,19 @@ class OtConfiguration:
         self._roms: dict[Optional[int], dict[str, str]] = {}
         self._otp: dict[str, str] = {}
         self._lc: dict[str, str] = {}
+        self._top_name: Optional[str] = None
+
+    @property
+    def top_name(self) -> Optional[str]:
+        """Return the name of the top as defined in a configuration file."""
+        return self._top_name
 
     def load_top_config(self, toppath: str) -> None:
         """Load data from HJSON top configuration file."""
         assert not _HJSON_ERROR
         with open(toppath, 'rt') as tfp:
             cfg = hjload(tfp)
+        self._top_name = cfg.get('name')
         for module in cfg.get('module') or []:
             modtype = module.get('type')
             if modtype == 'rom_ctrl':
@@ -223,17 +231,20 @@ class OtConfiguration:
 def main():
     """Main routine"""
     debug = True
-    default_top = 'Darjeeling'
+    top_map = {
+        'darjeeling': 'dj',
+        'earlgrey': 'eg',
+    }
     try:
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         files = argparser.add_argument_group(title='Files')
-        files.add_argument('opentitan', nargs=1, metavar='TOPDIR',
-                           help='OpenTitan top directory')
+        files.add_argument('opentitan', nargs='?', metavar='OTDIR',
+                           help='OpenTitan root directory')
+        files.add_argument('-T', '--top', choices=top_map.keys(),
+                           help='OpenTitan top name')
         files.add_argument('-o', '--out', metavar='CFG',
                            help='Filename of the config file to generate')
-        files.add_argument('-T', '--top', default=default_top,
-                           help=f'OpenTitan Top name (default: {default_top})')
         files.add_argument('-c', '--otpconst', metavar='SV',
                            help='OTP Constant SV file (default: auto)')
         files.add_argument('-l', '--lifecycle', metavar='SV',
@@ -254,29 +265,60 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        configure_loggers(args.verbose, 'cfggen', 'otp')
+        log = configure_loggers(args.verbose, 'cfggen', 'otp')[0]
 
         if _HJSON_ERROR:
             argparser.error('Missing HJSON module: {_HJSON_ERROR}')
 
-        topdir = args.opentitan[0]
-        if not isdir(topdir):
-            argparser.error('Invalid OpenTitan top directory')
-        ot_dir = normpath(topdir)
-        top = f'top_{args.top.lower()}'
-        if args.top.lower() != default_top.lower():
-            var = ''.join(w[0]
-                          for w in camel_to_snake_case(args.top).split('_'))
-        else:
-            var = 'dj'
+        cfg = OtConfiguration()
 
-        if not args.topcfg:
-            cfgpath = joinpath(ot_dir, f'hw/{top}/data/autogen/{top}.gen.hjson')
+        topcfg = args.topcfg
+        ot_dir = args.opentitan
+        if not topcfg:
+            if not args.opentitan:
+                argparser.error('OTDIR is required is no top file is specified')
+            if not isdir(ot_dir):
+                argparser.error('Invalid OpenTitan root directory')
+            ot_dir = abspath(ot_dir)
+            if not args.top:
+                argparser.error('Top name is required if no top file is '
+                                'specified')
+            top = f'top_{args.top}'
+            topvar = top_map[args.top]
+            topcfg = joinpath(ot_dir, f'hw/{top}/data/autogen/{top}.gen.hjson')
+            if not isfile(topcfg):
+                argparser.error(f"No such file '{topcfg}'")
+            log.info("Top config: '%s'", topcfg)
+            cfg.load_top_config(topcfg)
         else:
-            cfgpath = args.topcfg
-        if not isfile(cfgpath):
-            argparser.error(f"No such file '{cfgpath}'")
-
+            if not isfile(topcfg):
+                argparser.error(f'No such top file: {topcfg}')
+            cfg.load_top_config(topcfg)
+            ltop = cfg.top_name
+            if not ltop:
+                argparser.error('Unknown top name')
+            log.info("Top: '%s'", cfg.top_name)
+            ltop = ltop.lower()
+            topvar = {k.lower(): v for k, v in top_map.items()}.get(ltop)
+            if not topvar:
+                argparser.error(f'Unsupported top name: {cfg.top_name}')
+            top = f'top_{ltop}'
+            if not ot_dir:
+                check_dir = f'hw/{top}/data'
+                cur_dir = dirname(topcfg)
+                while cur_dir:
+                    check_path = joinpath(cur_dir, check_dir)
+                    if isdir(check_path):
+                        ot_dir = cur_dir
+                        break
+                    cur_dir = dirname(cur_dir)
+                if not ot_dir:
+                    argparser.error('Cannot find OT root directory')
+            elif not isdir(ot_dir):
+                argparser.error('Invalid OpenTitan root directory')
+            ot_dir = abspath(ot_dir)
+            log.info("OT directory: '%s'", ot_dir)
+        log.info("Variant: '%s'", topvar)
         if not args.lifecycle:
             lcpath = joinpath(ot_dir, 'hw/ip/lc_ctrl/rtl/lc_ctrl_state_pkg.sv')
         else:
@@ -293,10 +335,9 @@ def main():
             argparser.error(f"No such file '{ocpath}'")
 
         cfg = OtConfiguration()
-        cfg.load_top_config(cfgpath)
         cfg.load_lifecycle(lcpath)
         cfg.load_otp_constants(ocpath)
-        cfg.save(var, args.socid, args.count, args.out)
+        cfg.save(topvar, args.socid, args.count, args.out)
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)
