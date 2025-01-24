@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2022 Western Digital
  * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Wilfred Mallawa <wilfred.mallawa@wdc.com>
@@ -101,20 +102,20 @@ REG32(STATUS, 0x14u)
     FIELD(STATUS, ACTIVE, 30u, 1u)
     FIELD(STATUS, READY, 31u, 1u)
 REG32(CONFIGOPTS, 0x18u)
-    FIELD(CONFIGOPTS, CLKDIV_0, 0u, 16u)
-    FIELD(CONFIGOPTS, CSNIDLE_0, 16u, 4u)
-    FIELD(CONFIGOPTS, CSNTRAIL_0, 20u, 4u)
-    FIELD(CONFIGOPTS, CSNLEAD_0, 24u, 4u)
-    FIELD(CONFIGOPTS, FULLCYC_0, 29u, 1u)
-    FIELD(CONFIGOPTS, CPHA_0, 30u, 1u)
-    FIELD(CONFIGOPTS, CPOL_0, 31u, 1u)
+    FIELD(CONFIGOPTS, CLKDIV, 0u, 16u)
+    FIELD(CONFIGOPTS, CSNIDLE, 16u, 4u)
+    FIELD(CONFIGOPTS, CSNTRAIL, 20u, 4u)
+    FIELD(CONFIGOPTS, CSNLEAD, 24u, 4u)
+    FIELD(CONFIGOPTS, FULLCYC, 29u, 1u)
+    FIELD(CONFIGOPTS, CPHA, 30u, 1u)
+    FIELD(CONFIGOPTS, CPOL, 31u, 1u)
 REG32(CSID, 0x1cu)
     FIELD(CSID, CSID, 0u, 32u)
 REG32(COMMAND, 0x20u)
-    FIELD(COMMAND, LEN, 0u, 9u)
-    FIELD(COMMAND, CSAAT, 9u, 1u)
-    FIELD(COMMAND, SPEED, 10u, 2u)
-    FIELD(COMMAND, DIRECTION, 12u, 2u)
+    FIELD(COMMAND, CSAAT, 0u, 1u)
+    FIELD(COMMAND, SPEED, 1u, 2u)
+    FIELD(COMMAND, DIRECTION, 3u, 2u)
+    FIELD(COMMAND, LEN, 5u, 20u)
 REG32(RXDATA, 0x24u)
 REG32(TXDATA, 0x28u)
 REG32(ERROR_ENABLE, 0x2cu)
@@ -170,13 +171,13 @@ REG32(EVENT_ENABLE, 0x34u)
      R_ERROR_STATUS_ACCESSINVAL_MASK)
 
 #define R_CONFIGOPTS_MASK \
-    (R_CONFIGOPTS_CLKDIV_0_MASK    | \
-     R_CONFIGOPTS_CSNIDLE_0_MASK   | \
-     R_CONFIGOPTS_CSNTRAIL_0_MASK  | \
-     R_CONFIGOPTS_CSNLEAD_0_MASK   | \
-     R_CONFIGOPTS_FULLCYC_0_MASK   | \
-     R_CONFIGOPTS_CPHA_0_MASK      | \
-     R_CONFIGOPTS_CPOL_0_MASK)
+    (R_CONFIGOPTS_CLKDIV_MASK   | \
+     R_CONFIGOPTS_CSNIDLE_MASK  | \
+     R_CONFIGOPTS_CSNTRAIL_MASK | \
+     R_CONFIGOPTS_CSNLEAD_MASK  | \
+     R_CONFIGOPTS_FULLCYC_MASK  | \
+     R_CONFIGOPTS_CPHA_MASK     | \
+     R_CONFIGOPTS_CPOL_MASK)
 
 #define R_EVENT_ENABLE_MASK \
     (R_EVENT_ENABLE_RXFULL_MASK  | \
@@ -376,19 +377,14 @@ enum CmdState {
 };
 
 /**
- * Command FIFO stores commands alongs with SPI device configuration.
- * To fit into 64-bit word, limit supported CS lines down to 256 rather than 4G,
- * and use "int8_t" for command state.
+ * Command FIFO stores commands along with SPI device configuration.
  */
 typedef struct {
     uint32_t opts; /* configopts */
-    uint16_t command; /* command[15:0] */
+    uint32_t command; /* command */
     uint8_t csid; /* csid[7:0] */
     int8_t state; /* enum CmdState */
 } CmdFifoSlot;
-
-static_assert(sizeof(TxFifoSlot) == sizeof(uint64_t),
-              "Invalid CmdFifoSlot size");
 
 struct CmdFifo {
     CmdFifoSlot *data;
@@ -473,20 +469,23 @@ static void cmdfifo_create(CmdFifo *fifo, uint32_t capacity)
     fifo->num = 0u;
 }
 
-static void cmdfifo_push(CmdFifo *fifo, CmdFifoSlot cmd)
+static void cmdfifo_push(CmdFifo *fifo, const CmdFifoSlot *cmd)
 {
     g_assert(fifo->num < fifo->capacity);
-    fifo->data[(fifo->head + fifo->num) % fifo->capacity] = cmd;
+    memcpy(&fifo->data[(fifo->head + fifo->num) % fifo->capacity], cmd,
+           sizeof(*cmd));
     fifo->num++;
 }
 
-static CmdFifoSlot cmdfifo_pop(CmdFifo *fifo)
+static void cmdfifo_pop(CmdFifo *fifo, CmdFifoSlot *cmd)
 {
     g_assert(fifo->num > 0u);
-    CmdFifoSlot ret = fifo->data[fifo->head++];
+    if (cmd) {
+        memcpy(cmd, &fifo->data[fifo->head], sizeof(*cmd));
+    }
+    fifo->head++;
     fifo->head %= fifo->capacity;
     fifo->num--;
-    return ret;
 }
 
 static CmdFifoSlot *cmdfifo_peek(CmdFifo *fifo)
@@ -762,7 +761,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         goto post;
     }
 
-    uint32_t command = (uint32_t)headcmd->command;
+    uint32_t command = headcmd->command;
     bool read = ot_spi_host_is_rx(command);
     bool write = ot_spi_host_is_tx(command);
     unsigned speed = FIELD_EX32(command, COMMAND, SPEED);
@@ -842,7 +841,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         cmd_state = CMD_EXECUTED;
     }
 
-    headcmd->command = (uint16_t)command;
+    headcmd->command = command;
     headcmd->state = cmd_state;
 
 post:
@@ -874,7 +873,7 @@ static void ot_spi_host_post_fsm(void *opaque)
     trace_ot_spi_host_fsm(s->ot_id, "post");
 
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
-    uint32_t command = (uint32_t)headcmd->command;
+    uint32_t command = headcmd->command;
     bool retire = headcmd->state == CMD_EXECUTED;
 
     ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
@@ -899,7 +898,7 @@ static void ot_spi_host_post_fsm(void *opaque)
         }
 
         /* retire command */
-        cmdfifo_pop(s->cmd_fifo);
+        cmdfifo_pop(s->cmd_fifo, NULL);
 
         /* "the command is complete when STATUS.ACTIVE goes low." */
         s->fsm.active = false;
@@ -1159,17 +1158,17 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             error = true;
         }
 
-        uint16_t csid = (uint16_t)s->regs[R_CSID];
+        uint8_t csid = (uint8_t)s->regs[R_CSID];
         CmdFifoSlot slot = {
             .opts = s->config_opts[csid],
-            .command = (uint16_t)val32, /* only b15..b0 are meaningful */
+            .command = val32,
             .csid = csid,
             .state = CMD_SCHEDULED,
         };
 
         bool activate = cmdfifo_is_empty(s->cmd_fifo) && !s->fsm.rx_stall &&
                         !s->fsm.tx_stall && !error;
-        cmdfifo_push(s->cmd_fifo, slot);
+        cmdfifo_push(s->cmd_fifo, &slot);
         ot_spi_host_update_event(s); /* track ready */
         if (activate) {
             ot_spi_host_step_fsm(s, "cmd");
