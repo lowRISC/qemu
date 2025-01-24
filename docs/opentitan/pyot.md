@@ -7,10 +7,10 @@
 ````text
 usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT] [-N LOG]
                [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
-               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON] [-e]
-               [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF]
-               [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z] [-R]
-               [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
+               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON]
+               [-e BUS] [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM]
+               [-r ELF] [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z]
+               [-R] [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
                [--log-udp UDP_PORT] [--debug LOGGER] [--info LOGGER]
                [--warn LOGGER]
 
@@ -47,7 +47,8 @@ Virtual machine:
 Files:
   -b, --boot file       bootloader 0 file
   -c, --config HJSON    path to HJSON configuration file
-  -e, --embedded-flash  generate an embedded flash image file
+  -e, --embedded-flash BUS
+                        generate an eflash image file for MTD bus
   -f, --flash RAW       SPI flash image file
   -g, --otcfg file      configuration options for OpenTitan devices
   -K, --keep-tmp        Do not automatically remove temporary files and dirs
@@ -132,8 +133,8 @@ This tool may be used in two ways, which can be combined:
   the `-f` option.
 * `-c` / `--config` specify a HJSON configuration file, see the [Configuration](#Configurationfile)
   section for details.
-* `-e` / `embedded-flash` generate an embedded flash image file, default is to provide ROM and
-  application files as device options
+* `-e` / `embedded-flash` generate an embedded flash image file for the specified MTD bus. The
+  default is to provide ROM and application files as device options.
 * `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
    generated with the [`flashgen.py`](flashgen.md) tool. Alternatively, see the `-x` option.
 * `-g` / `--otcfg` specify a configuration file with OpenTitan configuration options, such as
