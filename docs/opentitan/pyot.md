@@ -7,10 +7,10 @@
 ````text
 usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT] [-N LOG]
                [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
-               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON] [-e]
-               [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM] [-r ELF]
-               [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z] [-R]
-               [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
+               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON]
+               [-e BUS] [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM]
+               [-r ELF] [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z]
+               [-R] [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
                [--debug LOGGER] [--info LOGGER] [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
@@ -19,62 +19,55 @@ options:
   -h, --help            show this help message and exit
 
 Virtual machine:
-  -D DELAY, --start-delay DELAY
+  -D, --start-delay DELAY
                         QEMU start up delay before initial comm
-  -i ICOUNT, --icount ICOUNT
-                        virtual instruction counter with 2^ICOUNT clock ticks
+  -i, --icount ICOUNT   virtual instruction counter with 2^ICOUNT clock ticks
                         per inst. or 'auto'
-  -L LOG_FILE, --log_file LOG_FILE
+  -L, --log_file LOG_FILE
                         log file for trace and log messages
-  -M VARIANT, --variant VARIANT
+  -M, --variant VARIANT
                         machine variant (machine specific)
-  -N LOG, --log LOG     log message types
-  -m MACHINE, --machine MACHINE
+  -N, --log LOG         log message types
+  -m, --machine MACHINE
                         virtual machine (default to ot-earlgrey)
-  -Q OPTS, --opts OPTS  QEMU verbatim option (can be repeated)
-  -q QEMU, --qemu QEMU  path to qemu application (default: build/qemu-system-
+  -Q, --opts OPTS       QEMU verbatim option (can be repeated)
+  -q, --qemu QEMU       path to qemu application (default: build/qemu-system-
                         riscv32)
-  -P VCP, --vcp VCP     serial port devices (default: use serial0)
-  -p DEVICE, --device DEVICE
-                        serial port device name / template name (default to
+  -P, --vcp VCP         serial port devices (default: use serial0)
+  -p, --device DEVICE   serial port device name / template name (default to
                         localhost:8000)
-  -t TRACE, --trace TRACE
-                        trace event definition file
-  -S FIRST_SOC, --first-soc FIRST_SOC
+  -t, --trace TRACE     trace event definition file
+  -S, --first-soc FIRST_SOC
                         Identifier of the first SoC, if any
   -s, --singlestep      enable "single stepping" QEMU execution mode
   -U, --muxserial       enable multiple virtual UARTs to be muxed into same
                         host output channel
 
 Files:
-  -b file, --boot file  bootloader 0 file
-  -c HJSON, --config HJSON
-                        path to HJSON configuration file
-  -e, --embedded-flash  generate an embedded flash image file
-  -f RAW, --flash RAW   SPI flash image file
-  -g file, --otcfg file
-                        configuration options for OpenTitan devices
+  -b, --boot file       bootloader 0 file
+  -c, --config HJSON    path to HJSON configuration file
+  -e, --embedded-flash BUS
+                        generate an eflash image file for MTD bus
+  -f, --flash RAW       SPI flash image file
+  -g, --otcfg file      configuration options for OpenTitan devices
   -K, --keep-tmp        Do not automatically remove temporary files and dirs
                         on exit
-  -l file, --loader file
-                        ROM trampoline to execute, if any
-  -O RAW, --otp-raw RAW
-                        OTP image file
-  -o VMEM, --otp VMEM   OTP VMEM file
-  -r ELF, --rom ELF     ROM file (can be repeated, in load order)
-  -w CSV, --result CSV  path to output result file
-  -x file, --exec file  application to load
+  -l, --loader file     ROM trampoline to execute, if any
+  -O, --otp-raw RAW     OTP image file
+  -o, --otp VMEM        OTP VMEM file
+  -r, --rom ELF         ROM file (can be repeated, in load order)
+  -w, --result CSV      path to output result file
+  -x, --exec file       application to load
   -X, --rom-exec        load application as ROM image (default: as kernel)
 
 Execution:
-  -F TEST, --filter TEST
-                        run tests with matching filter, prefix with "!" to
+  -F, --filter TEST     run tests with matching filter, prefix with "!" to
                         exclude matching tests
-  -k SECONDS, --timeout SECONDS
+  -k, --timeout SECONDS
                         exit after the specified seconds (default: 60 secs)
   -z, --list            show a list of tests to execute and exit
   -R, --summary         show a result summary
-  -T FACTOR, --timeout-factor FACTOR
+  -T, --timeout-factor FACTOR
                         timeout factor
   -Z, --zero            do not error if no test can be executed
 
@@ -138,8 +131,8 @@ This tool may be used in two ways, which can be combined:
   the `-f` option.
 * `-c` / `--config` specify a HJSON configuration file, see the [Configuration](#Configurationfile)
   section for details.
-* `-e` / `embedded-flash` generate an embedded flash image file, default is to provide ROM and
-  application files as device options
+* `-e` / `embedded-flash` generate an embedded flash image file for the specified MTD bus. The
+  default is to provide ROM and application files as device options.
 * `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
    generated with the [`flashgen.py`](flashgen.md) tool. Alternatively, see the `-x` option.
 * `-g` / `--otcfg` specify a configuration file with OpenTitan configuration options, such as

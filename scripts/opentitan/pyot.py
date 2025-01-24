@@ -1412,9 +1412,10 @@ class QEMUExecuter:
             xtype = self.guess_test_type(exec_path)
             if xtype == 'spiflash':
                 fw_args.extend(('-drive',
-                                f'if=mtd,bus=0,format=raw,file={exec_path}'))
+                                f'if=mtd,id=spiflash,bus=0,format=raw,'
+                                f'file={exec_path}'))
             elif xtype == 'bin':
-                if not args.embedded_flash:
+                if args.embedded_flash is None:
                     raise ValueError(f'{xtype} test type not supported without '
                                      f'embedded-flash option')
             else:
@@ -1521,18 +1522,22 @@ class QEMUExecuter:
                 raise ValueError('Flash file argument is mutually exclusive '
                                  'with bootloader or rom extension')
             flash_path = self.abspath(args.flash)
-            qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_path},'
-                                        f'format=raw'))
+            if args.embedded_flash is None:
+                raise ValueError('Embedded flash bus not defined')
+            qemu_args.extend(('-drive', f'if=mtd,id=eflash,'
+                                        f'bus={args.embedded_flash},'
+                                        f'file={flash_path},format=raw'))
         elif any((args.exec, args.boot)):
             if args.exec and not isfile(args.exec):
                 raise ValueError(f'No such exec file: {args.exec}')
             if args.boot and not isfile(args.boot):
                 raise ValueError(f'No such bootloader file: {args.boot}')
-            if args.embedded_flash:
+            if args.embedded_flash is not None:
                 flash_file = self._qfm.create_eflash_image(args.exec, args.boot)
                 temp_files['flash'].add(flash_file)
-                qemu_args.extend(('-drive', f'if=mtd,bus=1,file={flash_file},'
-                                 f'format=raw'))
+                qemu_args.extend(('-drive', f'if=mtd,id=eflash,'
+                                            f'bus={args.embedded_flash},'
+                                            f'file={flash_file},format=raw'))
         if args.log_file:
             qemu_args.extend(('-D', self.abspath(args.log_file)))
         if args.trace:
@@ -1804,9 +1809,8 @@ def main():
         files.add_argument('-c', '--config', metavar='HJSON',
                            type=FileType('rt', encoding='utf-8'),
                            help='path to HJSON configuration file')
-        files.add_argument('-e', '--embedded-flash', action='store_const',
-                           const=True,
-                           help='generate an embedded flash image file')
+        files.add_argument('-e', '--embedded-flash', metavar='BUS', type=int,
+                           help='generate an eflash image file for MTD bus')
         files.add_argument('-f', '--flash', metavar='RAW',
                            help='SPI flash image file')
         files.add_argument('-g', '--otcfg', metavar='file',
