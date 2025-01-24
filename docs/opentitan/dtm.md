@@ -7,8 +7,8 @@ Module to access the Ibex core.
 
 ````text
 usage: dtm.py [-h] [-S SOCKET] [-t] [-l IR_LENGTH] [-b BASE] [-I] [-c CSR]
-              [-C CSR_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}] [-s SIZE]
-              [-f FILE] [-e ELF] [-F] [-v] [-d]
+              [-C CSR_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}]
+              [-s SIZE] [-f FILE] [-D DATA] [-e ELF] [-F] [-v] [-d]
 
 Debug Transport Module tiny demo
 
@@ -16,19 +16,19 @@ options:
   -h, --help            show this help message and exit
 
 Virtual machine:
-  -S SOCKET, --socket SOCKET
-                        unix:path/to/socket or tcp:host:port (default tcp:localhost:3335)
+  -S, --socket SOCKET   unix:path/to/socket or tcp:host:port (default
+                        tcp:localhost:3335)
   -t, --terminate       terminate QEMU when done
 
 DMI:
-  -l IR_LENGTH, --ir-length IR_LENGTH
+  -l, --ir-length IR_LENGTH
                         bit length of the IR register (default: 5)
-  -b BASE, --base BASE  define DMI base address (default: 0x0)
+  -b, --base BASE       define DMI base address (default: 0x0)
 
 Info:
   -I, --info            report JTAG ID code and DTM configuration
-  -c CSR, --csr CSR     read CSR value from hart
-  -C CSR_CHECK, --csr-check CSR_CHECK
+  -c, --csr CSR         read CSR value from hart
+  -C, --csr-check CSR_CHECK
                         check CSR value matches
 
 Actions:
@@ -36,13 +36,14 @@ Actions:
   -X, --no-exec         does not resume hart execution
 
 Memory:
-  -a ADDRESS, --address ADDRESS
+  -a, --address ADDRESS
                         address of the first byte to access
-  -m {read,write}, --mem {read,write}
+  -m, --mem {read,write}
                         access memory using System Bus
-  -s SIZE, --size SIZE  size in bytes of memory to access
-  -f FILE, --file FILE  file to read/write data for memory access
-  -e ELF, --elf ELF     load ELF file into memory
+  -s, --size SIZE       size in bytes of memory to access
+  -f, --file FILE       file to read/write data for memory access
+  -D, --data DATA       data to write using memory access
+  -e, --elf ELF         load ELF file into memory
   -F, --fast-mode       do not check system bus status while transfering
 
 Extras:
@@ -61,6 +62,10 @@ Extras:
 
 * `-c` read and report a CSR from the Ibex core.
 
+* `-D` data to write, useful with `--mem` option in write mode. Mutually exclusive with `--file`.
+  Data may be specifed as an decimal or hexadecimal integer, limited to 32-bit integers. It is also
+  possible to use `:` followed with a string of hexadecimal nibbles (without 0x prefix).
+
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
 * `-e` specify an ELF32 application file to upload into memory. See also the `--exec` option.
@@ -68,6 +73,9 @@ Extras:
 * `-F` assume System Bus can cope with received data pace. This feature increases transfer data
   rate by bypassing SB status check. However it  may cause the transfer to fail in case System Bus
   becomes busy while data are transfered.
+
+* `-f` specify the file to read from or write to when option `--mem` is used. Mutually exclusive
+  with option `--data`.
 
 * `-I` report the JTAG ID code and the DTM configuration.
 
@@ -92,7 +100,7 @@ Extras:
 
 * `-s` specify the number of bytes to read from or write to memory. Useful with the `--mem` option.
   See also the `--address` option. This option may be omitted for the `write` memory operation, in
-  which case the size of the specified file is used. Note that only sizes multiple of 4-byte are
+  which case the size of the specified file is used. Note that only sizes multiple of 4 bytes are
   supported for now.
 
 * `-t` send QEMU a request for termination when this script exits.
@@ -138,4 +146,11 @@ option:
   ````sh
   ./scripts/opentitan/dtm.py -m write -a 0x1000_0000 -f file.dat -X
 
+  ````
+
+* Write a 32-bit integer into memory
+  ````sh
+  ./scripts/opentitan/dtm.py -m write -a 0x1000_0000 -D 0x1234abcd
+  # or
+  ./scripts/opentitan/dtm.py -m write -a 0x1000_0000 -D :1234abcd
   ````

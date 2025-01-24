@@ -9,6 +9,7 @@
 """
 
 from argparse import ArgumentParser, Namespace, FileType
+from binascii import unhexlify
 from io import BytesIO
 from os import linesep
 from os.path import dirname, join as joinpath, normpath
@@ -111,6 +112,8 @@ def main():
                          help='size in bytes of memory to access')
         mem.add_argument('-f', '--file',
                          help='file to read/write data for memory access')
+        mem.add_argument('-D', '--data',
+                         help='data to write using memory access')
         mem.add_argument('-e', '--elf', type=FileType('rb'),
                          help='load ELF file into memory')
         mem.add_argument('-F', '--fast-mode', default=False,
@@ -214,10 +217,20 @@ def main():
             if args.mem:
                 if args.address is None:
                     argparser.error('no address specified for memory operation')
-                if args.mem == 'write' and not args.file:
-                    argparser.error('no file specified for mem write operation')
-                if args.mem == 'read' and not args.size:
-                    argparser.error('no size specified for mem read operation')
+                if args.mem == 'write':
+                    if not any((args.data, args.file)):
+                        argparser.error('no file nor data specified for mem '
+                                        'write operation')
+                    if all((args.data, args.file)):
+                        argparser.error('file and data options are mutually '
+                                        'exclusive')
+                if args.mem == 'read':
+                    if not args.size:
+                        argparser.error('no size specified for mem read '
+                                        'operation')
+                    if args.data:
+                        argparser.error('data option not supported for mem read'
+                                        ' operation')
                 if not rvdm:
                     rvdm = DebugModule(dtm, args.base)
                     rvdm.initialize()
@@ -226,6 +239,23 @@ def main():
                     with open(args.file, mode) as mfp:
                         rvdm.memory_copy(mfp, args.mem, args.address,
                                          args.size, no_check=args.fast_mode)
+                elif args.data:
+                    try:
+                        if args.data.startswith(':'):
+                            bvalue = unhexlify(args.data[1:])
+                        else:
+                            bvalue = int(args.data, 0).to_bytes(args.size or 4,
+                                                                'little')
+                    except ValueError as exc:
+                        raise ValueError(f'Invalid value: {exc}') from exc
+                    bpadlen = len(bvalue) % 4
+                    if bpadlen:
+                        bvalue = b''.join((bvalue, bytes(4 - bpadlen)))
+                    if args.size and args.size != len(bvalue):
+                        raise ValueError('Invalid size')
+                    mfp = BytesIO(bvalue)
+                    rvdm.memory_copy(mfp, args.mem, args.address,
+                                     len(bvalue), no_check=args.fast_mode)
                 else:
                     mfp = BytesIO()
                     rvdm.memory_copy(mfp, args.mem, args.address, args.size,

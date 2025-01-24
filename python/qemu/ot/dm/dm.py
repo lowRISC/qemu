@@ -319,7 +319,7 @@ class DebugModule:
                        on the selected operation
            :param mop: the operation to perform (read, write)
            :param addr: start address
-           :param size: count of bytes to write
+           :param size: count of bytes to read or write
            :param no_check: assume remote peer always accepts incoming data:
                             SBCS status is not checked during transfer if this
                             option is set.
