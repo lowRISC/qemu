@@ -11,9 +11,9 @@ the QEMU binary.
 ## Usage
 
 ````text
-usage: cfggen.py [-h] [-o CFG] [-T TOP] [-c SV] [-l SV] [-t HJSON] [-s SOCID]
-                 [-C COUNT] [-v] [-d]
-                 TOPDIR
+usage: cfggen.py [-h] [-T {darjeeling,earlgrey}] [-o CFG] [-c SV] [-l SV]
+                 [-t HJSON] [-s SOCID] [-C COUNT] [-v] [-d]
+                 [OTDIR]
 
 OpenTitan QEMU configuration file generator.
 
@@ -21,32 +21,28 @@ options:
   -h, --help            show this help message and exit
 
 Files:
-  TOPDIR                OpenTitan top directory
-  -o CFG, --out CFG     Filename of the config file to generate
-  -T TOP, --top TOP     OpenTitan Top name (default: darjeeling)
-  -c SV, --otpconst SV  OTP Constant SV file (default: auto)
-  -l SV, --lifecycle SV
-                        LifeCycle SV file (default: auto)
-  -t HJSON, --topcfg HJSON
-                        OpenTitan top HJSON config file (default: auto)
+  OTDIR                 OpenTitan root directory
+  -T, --top {darjeeling,earlgrey}
+                        OpenTitan top name
+  -o, --out CFG         Filename of the config file to generate
+  -c, --otpconst SV     OTP Constant SV file (default: auto)
+  -l, --lifecycle SV    LifeCycle SV file (default: auto)
+  -t, --topcfg HJSON    OpenTitan top HJSON config file (default: auto)
 
 Modifiers:
-  -s SOCID, --socid SOCID
-                        SoC identifier, if any
-  -C COUNT, --count COUNT
-                        SoC count (default: 1)
+  -s, --socid SOCID     SoC identifier, if any
+  -C, --count COUNT     SoC count (default: 1)
 
 Extras:
   -v, --verbose         increase verbosity
   -d, --debug           enable debug mode
 ````
 
-
 ### Arguments
 
-`TOPDIR` is a required positional argument which should point to the top-level directory of the
-OpenTitan repository to analyze. It is used to generate the path towards the required files to
-parse, each of which can be overidden with options `-c`, `-l` and `-t`.
+`OTDIR` is a required positional argument which should point to the root directory of the OpenTitan
+repository to analyze. It is used to generate the path towards the required files to parse, each of
+which can be overidden with options `-c`, `-l` and `-t`.
 
 * `-C` specify how many SoCs are used on the platform
 
@@ -61,10 +57,10 @@ parse, each of which can be overidden with options `-c`, `-l` and `-t`.
 
 * `-s` specify a SoC identifier for OT platforms with mulitple SoCs
 
-* `-T` specify the OpenTitan _top_ name, such as `Darjeeling`, `EarlGrey`, ... This option is
-  case-insensitive.
+* `-T` specify the OpenTitan _top_ name, such as `darjeeling`, `earlgrey`, ... This option is
+  mandatory if `-t` is not specified. An OTDIR root directory should be specified with this option.
 
-* `-t` alternative path to the `top_<top>.gen.hjson` file
+* `-t` path to the `top_<top>.gen.hjson` file. This option is mandatory is `-T` is not specified.
 
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
@@ -72,5 +68,10 @@ parse, each of which can be overidden with options `-c`, `-l` and `-t`.
 ### Examples
 
 ````sh
-./scripts/opentitan/cfggen.py ../opentitan-integrated -o opentitan.cfg
+./scripts/opentitan/cfggen.py ../opentitan -T earlgrey -o opentitan.cfg
+````
+
+````sh
+./scripts/opentitan/cfggen.py -o opentitan.cfg \
+    -t ../opentitan/hw/top_earlgrey/data/autogen/top_earlgrey.gen.hjson
 ````
