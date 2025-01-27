@@ -27,7 +27,9 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qlist.h"
+#include "qom/object.h"
 #include "exec/address-spaces.h"
+#include "hw/block/flash.h"
 #include "hw/boards.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/jtag/tap_ctrl.h"
@@ -153,6 +155,26 @@ enum OtEgResetRequest {
     OT_EG_RESET_AON_TIMER,
     OT_EG_RESET_SENSOR_CTRL,
     OT_EG_RESET_COUNT
+};
+
+/* Data flash buses */
+enum OtEgMtdBus {
+    OT_EG_MTD_SPI0,
+    OT_EG_MTD_SPI1,
+    OT_EG_MTD_SPI_COUNT,
+    OT_EG_MTD_EFLASH = OT_EG_MTD_SPI_COUNT,
+};
+
+/* "Parallel" flash buses */
+enum OtEgPflashBus {
+    OT_EG_PFLASH_OTP,
+};
+
+enum OtEGBoardDevice {
+    OT_EG_BOARD_DEV_SOC,
+    OT_EG_BOARD_DEV_FLASH0,
+    OT_EG_BOARD_DEV_FLASH1,
+    OT_EG_BOARD_DEV_COUNT,
 };
 
 /* EarlGrey/CW310 Peripheral clock is 6 MHz */
@@ -655,6 +677,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 19)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0)
         ),
     },
@@ -669,6 +692,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 20)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "spi1"),
             IBEX_DEV_UINT_PROP("bus-num", 1)
         ),
     },
@@ -1108,12 +1132,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     /* clang-format on */
 };
 
-enum OtEGBoardDevice {
-    OT_EG_BOARD_DEV_SOC,
-    OT_EG_BOARD_DEV_FLASH,
-    OT_EG_BOARD_DEV_COUNT,
-};
-
 /* ------------------------------------------------------------------------ */
 /* Type definitions */
 /* ------------------------------------------------------------------------ */
@@ -1133,7 +1151,8 @@ struct OtEGSoCState {
 struct OtEGBoardState {
     DeviceState parent_obj;
 
-    DeviceState **devices;
+    /* optional SPI data flash (type of device) */
+    char *spiflash[OT_EG_MTD_SPI_COUNT];
 };
 
 struct OtEGMachineState {
@@ -1168,7 +1187,7 @@ static void ot_eg_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
 static void ot_eg_soc_flash_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
-    DriveInfo *dinfo = drive_get(IF_MTD, 1, 0);
+    DriveInfo *dinfo = drive_get(IF_MTD, OT_EG_MTD_EFLASH, 0);
     (void)def;
     (void)parent;
 
@@ -1209,7 +1228,7 @@ static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
 static void ot_eg_soc_otp_ctrl_configure(
     DeviceState *dev, const IbexDeviceDef *def, DeviceState *parent)
 {
-    DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
+    DriveInfo *dinfo = drive_get(IF_PFLASH, OT_EG_PFLASH_OTP, 0);
     (void)def;
     (void)parent;
 
@@ -1387,39 +1406,100 @@ type_init(ot_eg_soc_register_types);
 /* Board */
 /* ------------------------------------------------------------------------ */
 
+static void ot_eg_board_set_spiflash0(Object *obj, const char *value,
+                                      Error **errp)
+{
+    OtEGBoardState *board = RISCV_OT_EG_BOARD(obj);
+    (void)errp;
+
+    g_free(board->spiflash[OT_EG_MTD_SPI0]);
+    board->spiflash[OT_EG_MTD_SPI0] = g_strdup(value);
+}
+
+static void ot_eg_board_set_spiflash1(Object *obj, const char *value,
+                                      Error **errp)
+{
+    OtEGBoardState *board = RISCV_OT_EG_BOARD(obj);
+    (void)errp;
+
+    g_free(board->spiflash[OT_EG_MTD_SPI1]);
+    board->spiflash[OT_EG_MTD_SPI1] = g_strdup(value);
+}
+
 static void ot_eg_board_realize(DeviceState *dev, Error **errp)
 {
     OtEGBoardState *board = RISCV_OT_EG_BOARD(dev);
 
-    DeviceState *soc = board->devices[OT_EG_BOARD_DEV_SOC];
+    DeviceState *soc = qdev_new(TYPE_RISCV_OT_EG_SOC);
+
     object_property_add_child(OBJECT(board), "soc", OBJECT(soc));
     sysbus_realize_and_unref(SYS_BUS_DEVICE(soc), &error_fatal);
 
-    DeviceState *spihost =
-        RISCV_OT_EG_SOC(soc)->devices[OT_EG_SOC_DEV_SPI_HOST0];
-    DeviceState *flash = board->devices[OT_EG_BOARD_DEV_FLASH];
-    BusState *spibus = qdev_get_child_bus(spihost, "spi0");
-    g_assert(spibus);
+    for (unsigned fix = 0; fix < OT_EG_MTD_SPI_COUNT; fix++) {
+        const char *flash_type = board->spiflash[OT_EG_MTD_SPI0 + fix];
+        /*
+         * skip this flash slot if no device type has been defined on the QEMU
+         * command line
+         */
+        if (!flash_type) {
+            continue;
+        }
 
-    DriveInfo *dinfo = drive_get(IF_MTD, 0, 0);
-    if (dinfo) {
-        qdev_prop_set_drive_err(DEVICE(flash), "drive",
-                                blk_by_legacy_dinfo(dinfo), &error_fatal);
+        /* qdev_new aborts if the specified device is not supported */
+        DeviceState *flash = qdev_new(flash_type);
+
+        if (!object_dynamic_cast(OBJECT(flash), TYPE_M25P80)) {
+            error_setg(errp, "%s is not a SPI dataflash device", flash_type);
+        }
+
+        /*
+         * retrieve the SPI host controller bus. Although each SPI host only
+         * has one SPI bus, each bus name in QEMU needs to be unique. The SPI
+         * host controller uses its bus-num property as a suffix for naming its
+         * bus
+         */
+        DeviceState *spihost =
+            RISCV_OT_EG_SOC(soc)->devices[OT_EG_SOC_DEV_SPI_HOST0 + fix];
+        char *busname = g_strdup_printf("spi%u", fix);
+        BusState *spibus = qdev_get_child_bus(spihost, busname);
+        g_assert(spibus);
+
+        /*
+         * if a "drive" property for this bus/unit pair is defined on the QEMU
+         * command line, assigned it to the flash device
+         */
+        DriveInfo *dinfo = drive_get(IF_MTD, (int)fix, 0);
+        if (dinfo) {
+            qdev_prop_set_drive_err(DEVICE(flash), "drive",
+                                    blk_by_legacy_dinfo(dinfo), &error_fatal);
+        }
+
+        /* the flash device is a child of the board */
+        char *flashname = g_strdup_printf("dataflash%u", fix);
+        object_property_add_child(OBJECT(board), flashname, OBJECT(flash));
+        /* connect it as a peripheral of the SPI host controller bus */
+        ssi_realize_and_unref(flash, SSI_BUS(spibus), errp);
+
+        /*
+         * finally, connect the first CS line of the SPI controller to control
+         * to select this SPI flash device
+         */
+        qemu_irq cs = qdev_get_gpio_in_named(flash, SSI_GPIO_CS, 0);
+        qdev_connect_gpio_out_named(spihost, SSI_GPIO_CS, 0, cs);
+
+        g_free(flashname);
+        g_free(busname);
     }
-    object_property_add_child(OBJECT(board), "dataflash", OBJECT(flash));
-    ssi_realize_and_unref(flash, SSI_BUS(spibus), errp);
-
-    qemu_irq cs = qdev_get_gpio_in_named(flash, SSI_GPIO_CS, 0);
-    qdev_connect_gpio_out_named(spihost, SSI_GPIO_CS, 0, cs);
 }
 
 static void ot_eg_board_init(Object *obj)
 {
-    OtEGBoardState *s = RISCV_OT_EG_BOARD(obj);
-
-    s->devices = g_new0(DeviceState *, OT_EG_BOARD_DEV_COUNT);
-    s->devices[OT_EG_BOARD_DEV_SOC] = qdev_new(TYPE_RISCV_OT_EG_SOC);
-    s->devices[OT_EG_BOARD_DEV_FLASH] = qdev_new("is25wp128");
+    object_property_add_str(obj, "spiflash0", NULL, &ot_eg_board_set_spiflash0);
+    object_property_set_description(obj, "spiflash0",
+                                    "SPI dataflash on SPI0 bus");
+    object_property_add_str(obj, "spiflash1", NULL, &ot_eg_board_set_spiflash1);
+    object_property_set_description(obj, "spiflash1",
+                                    "SPI dataflash on SPI1 bus");
 }
 
 static void ot_eg_board_class_init(ObjectClass *oc, void *data)

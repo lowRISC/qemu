@@ -96,7 +96,7 @@ See the section "Useful execution options" for documentation about the `no_epmp_
 qemu-system-riscv32 -M ot-earlgrey -display none -serial mon:stdio \
   -object ot-rom_img,id=rom,file=rom_with_fake_keys_fpga_cw310.elf \
   -drive if=pflash,file=otp-rma.raw,format=raw \
-  -drive if=mtd,bus=1,file=flash.raw,format=raw
+  -drive if=mtd,bus=2,file=flash.raw,format=raw
 ````
 
 where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the signed binary file of the
@@ -145,14 +145,14 @@ See [`tools.md`](tools.md)
  * `-display none` can be used to prevent QEMU to open a semi-graphical windows as the default
    console, and use the current shell instead.
 
-### Flash
+### Embedded Flash
 
-* `-drive if=mtd,bus=1,file=<filename>,format=raw` should be used to specify a path to a QEMU RAW
-  image file used as the OpenTitan internal flash controller image. This _RAW_ file should have
-  been generated with the [`flashgen.py`](flashgen.md) tool.
+* `-drive if=mtd,id=eflash,bus=2,file=<filename>,format=raw` should be used to specify a path to a
+  QEMU RAW image file used as the OpenTitan internal flash controller image. This _RAW_ file should
+  have been generated with the [`flashgen.py`](flashgen.md) tool.
 
-  Note: for now, bus 1 is assigned to the internal controller with the embedded flash storage. See
-  also SPI Host section.
+  Note: MTD bus 2 is assigned to the internal controller with the embedded flash storage. See also
+  the SPI Host section.
 
 ### OTBN
 
@@ -168,17 +168,21 @@ See [`tools.md`](tools.md)
 
 ### SPI Host
 
+* `-global ot-earlgrey-board.spiflash<bus>=<flash_type>` should be used to instanciate a SPI
+  dataflash device of the specified type to the first device (/CS0) of the specified bus.
+  Any SPI dataflash device supported by QEMU can be used. To list the supported devices, use
+  `grep -F 'INFO("' hw/block/m25p80.c | cut -d'"' -f2`
+
 * `-drive if=mtd,bus=0,file=<filename>,format=raw` should be used to specify a path to a QEMU RAW
-  image file used as the ISSP IS25WP128 SPI data flash backend file. This _RAW_ file should have
-  been created with the qemu-img tool. There is no dedicated tool to populate this image file for
-  now.
+  image file used as the SPI data flash backend file. This _RAW_ file should have been created with
+  the qemu-img tool. There is no dedicated tool to populate this image file for now.
 
   ````sh
   qemu-img create -f raw spi.raw 16M
   ````
 
-  For now, bus 0 is assigned to the SPI Host controller with an external flash storage. See also
-  Flash controller section.
+  MTD bus 0 is assigned to the SPI0 Host controller and MTD bus 1 is assigned to the SPI1 Host
+  controller. See also Embedded Flash controller section.
 
 ### UART
 
