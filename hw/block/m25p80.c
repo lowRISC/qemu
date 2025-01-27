@@ -397,6 +397,7 @@ typedef enum {
     DPP = 0xa2,
     QPP = 0x32,
     QPP_4 = 0x34,
+    PP_4 = 0x38,
     RDID_90 = 0x90,
     RDID_AB = 0xab,
     AAI_WP = 0xad,
@@ -751,6 +752,7 @@ static void complete_collecting_data(Flash *s)
     case PP:
     case PP4:
     case PP4_4:
+    case PP_4:
         s->state = STATE_PAGE_PROGRAM;
         break;
     case AAI_WP:
@@ -1150,6 +1152,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case ERASE4_SECTOR:
     case PP:
     case PP4:
+    case PP_4:
     case DIE_ERASE:
     case RDID_90:
     case RDID_AB:
