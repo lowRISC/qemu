@@ -162,7 +162,7 @@ class ColorLogFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, *self._formatter_args)
         return formatter.format(record)
 
-    def add_logger_colors(self, logname: str, color: Union[int | str]) -> None:
+    def add_logger_colors(self, logname: str, color: Union[int, str]) -> None:
         """Assign a color to the message of a specific logger."""
         if not self._use_ansi:
             return
@@ -282,7 +282,7 @@ class RemoteLogService:
             self._server.serve_forever()
 
 
-def configure_loggers(level: int, *lognames: list[Union[str,  int, Color]],
+def configure_loggers(level: int, *lognames: list[Union[str, int, Color]],
                       **kwargs) -> list[logging.Logger]:
     """Configure loggers.
 

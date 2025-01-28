@@ -10,7 +10,7 @@ from binascii import unhexlify
 from enum import IntEnum
 from logging import getLogger
 from time import sleep, time as now
-from typing import Optional
+from typing import Optional, Union
 
 from .dm import DebugModule
 from ..bitfield import BitField
@@ -166,7 +166,7 @@ class OTPController:
         return partition.secret or (partition.digest_offset == offset & ~0b111)
 
     def read_partition_item(self, partname: str, itemname: str) \
-            -> [int | bytes]:
+            -> Union[int, bytes]:
         pname = partname.upper()
         try:
             part = self._partitions[pname]
@@ -205,7 +205,7 @@ class OTPController:
         return bytes(buffer)
 
     def write_partition_item(self, partname: str, itemname: str,
-                             value: [int | bytes | bytearray | str]) -> None:
+                             value: Union[int, bytes, bytearray, str]) -> None:
         pname = partname.upper()
         try:
             part = self._partitions[pname]

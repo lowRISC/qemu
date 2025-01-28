@@ -9,7 +9,7 @@
 from binascii import Error as BinasciiError, hexlify, unhexlify
 from logging import getLogger
 from struct import pack as spack, unpack as sunpack
-from typing import NamedTuple
+from typing import NamedTuple, Union
 
 from . import LifeCycleError
 from ..dtm import DebugTransportModule
@@ -188,7 +188,7 @@ class LifeCycleController:
         return token
 
     @transition_token.setter
-    def transition_token(self, token: [bytes | bytearray | str | None]) -> None:
+    def transition_token(self, token: Union[bytes, bytearray, str, None]) -> None:
         """Define the transition token as a 16-byte token.
 
            :param token: if None, use an empty zeroed token,
@@ -221,7 +221,7 @@ class LifeCycleController:
         return starget, target
 
     @transition_target.setter
-    def transition_target(self, target: [str | int]) -> None:
+    def transition_target(self, target: Union[str, int]) -> None:
         """Define the transition token as a 16-byte token."""
         if isinstance(target, str):
             itarget = self._encode_state(target)
@@ -245,7 +245,7 @@ class LifeCycleController:
         return self._read_reg('otp_vendor_test_status')
 
     @property
-    def lc_state(self) -> [str | int]:
+    def lc_state(self) -> Union[str, int]:
         """Report the current state."""
         istate = self._read_reg('lc_state')
         tix = self._check_state(istate)

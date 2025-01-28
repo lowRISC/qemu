@@ -24,7 +24,7 @@ except ImportError:
 class OtpPartitionDecoder:
     """Custom partition value decoder."""
 
-    def decode(self, category: str, seq: str) -> Optional[str | int]:
+    def decode(self, category: str, seq: str) -> Union[str, int, None]:
         """Decode a value (if possible)."""
         raise NotImplementedError('abstract base class')
 
@@ -326,7 +326,7 @@ class OtpLifecycleExtension(OtpLifecycle, OtpPartitionDecoder):
     """Decoder for Lifecyle bytes sequences.
     """
 
-    def decode(self, category: str, seq: str) -> Optional[str | int]:
+    def decode(self, category: str, seq: str) -> Union[str, int, None]:
         try:
             iseq = hexlify(bytes(reversed(unhexlify(seq)))).decode()
         except (ValueError, TypeError, hexerror) as exc:
