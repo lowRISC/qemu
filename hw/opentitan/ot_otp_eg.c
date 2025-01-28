@@ -490,6 +490,15 @@ struct OtOTPEgState {
     OtOtpBeIf *otp_backend;
     OtEDNState *edn;
     uint8_t edn_ep;
+    /*
+     * OTP scrambling property strings (currently unused).
+     * See issue https://github.com/lowRISC/qemu/issues/121.
+     */
+    char *scrmbl_key_xstr;
+    char *digest_const_xstr;
+    char *digest_iv_xstr;
+    char *sram_const_xstr;
+    char *sram_iv_xstr;
 };
 /* clang-format on */
 
@@ -1214,6 +1223,15 @@ static Property ot_otp_eg_properties[] = {
                      OtOtpBeIf *),
     DEFINE_PROP_LINK("edn", OtOTPEgState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtOTPEgState, edn_ep, UINT8_MAX),
+    /*
+     * OTP scrambling property strings (currently unused).
+     * See issue https://github.com/lowRISC/qemu/issues/121.
+     */
+    DEFINE_PROP_STRING("scrmbl_key", OtOTPEgState, scrmbl_key_xstr),
+    DEFINE_PROP_STRING("digest_const", OtOTPEgState, digest_const_xstr),
+    DEFINE_PROP_STRING("digest_iv", OtOTPEgState, digest_iv_xstr),
+    DEFINE_PROP_STRING("sram_const", OtOTPEgState, sram_const_xstr),
+    DEFINE_PROP_STRING("sram_iv", OtOTPEgState, sram_iv_xstr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
