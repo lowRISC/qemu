@@ -10,7 +10,7 @@ from enum import IntEnum
 from io import SEEK_END
 from logging import getLogger
 from time import sleep, time as now
-from typing import Any, BinaryIO, Optional
+from typing import Any, BinaryIO, Optional, Union
 
 from .regs import CSRS, GPRS
 from ..bitfield import BitField
@@ -277,7 +277,7 @@ class DebugModule:
             self._log.error('Status %s', status)
             raise TimeoutError(f'Cannot resume hart {self._hart}')
 
-    def read_csr(self, reg: [str | int]) -> int:
+    def read_csr(self, reg: Union[str, int]) -> int:
         """Read the value of a CSR."""
         ireg = self._get_register_index(reg)
         btf = self.BITFIELDS['COMMAND']
@@ -292,7 +292,7 @@ class DebugModule:
         self._log.info('read %s = %08x', reg, value)
         return value
 
-    def write_csr(self, reg: [str | int], value: int) -> None:
+    def write_csr(self, reg: Union[str, int], value: int) -> None:
         """Write a value to a CSR."""
         ireg = self._get_register_index(reg)
         btf = self.BITFIELDS['COMMAND']
@@ -497,7 +497,7 @@ class DebugModule:
         self._log.debug('read 0x%08x', value)
         return value
 
-    def _get_register_index(self, reg: [str | int]) -> int:
+    def _get_register_index(self, reg: Union[str, int]) -> int:
         if isinstance(reg, str):
             # Not supported: FPR, Vector, etc.
             ireg = CSRS.get(reg.lower())

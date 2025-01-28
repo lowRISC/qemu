@@ -9,7 +9,7 @@
 from binascii import hexlify, unhexlify, Error as hexerror
 from io import BytesIO
 from logging import getLogger
-from typing import BinaryIO, Optional, TextIO
+from typing import BinaryIO, Optional, TextIO, Union
 
 from .lifecycle import OtpLifecycle
 
@@ -23,7 +23,7 @@ except ImportError:
 class OtpPartitionDecoder:
     """Custom partition value decoder."""
 
-    def decode(self, category: str, seq: str) -> Optional[str | int]:
+    def decode(self, category: str, seq: str) -> Optional[Union[str, int]]:
         """Decode a value (if possible)."""
         raise NotImplementedError('abstract base class')
 
@@ -206,7 +206,7 @@ class OtpLifecycleExtension(OtpLifecycle, OtpPartitionDecoder):
     """Decoder for Lifecyle bytes sequences.
     """
 
-    def decode(self, category: str, seq: str) -> Optional[str | int]:
+    def decode(self, category: str, seq: str) -> Optional[Union[str, int]]:
         try:
             iseq = hexlify(bytes(reversed(unhexlify(seq)))).decode()
         except (ValueError, TypeError, hexerror) as exc:

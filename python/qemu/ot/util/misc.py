@@ -8,14 +8,14 @@
 
 from io import BytesIO
 from sys import stdout
-from typing import Any, Iterable, Optional, TextIO
+from typing import Any, Iterable, Optional, TextIO, Union
 import re
 
 try:
     # only available from Python 3.12+
     from collections.abc import Buffer
 except ImportError:
-    Buffer = [bytes | bytearray | memoryview]
+    Buffer = Union[bytes, bytearray, memoryview]
 
 
 class classproperty(property):

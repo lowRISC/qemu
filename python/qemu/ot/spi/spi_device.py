@@ -13,7 +13,7 @@ from socket import (create_connection, socket, IPPROTO_TCP, TCP_NODELAY,
                     SHUT_RDWR, timeout as LegacyTimeoutError)
 from struct import calcsize as scalc, pack as spack
 from time import sleep, time as now
-from typing import Optional
+from typing import Optional, Union
 
 
 class SpiDevice:
@@ -102,7 +102,7 @@ class SpiDevice:
             self._socket = None
 
     def transmit(self, cmd: Optional[int] = None,
-                 in_payload: Optional[bytes | bytearray | int] = None,
+                 in_payload: Optional[Union[bytes, bytearray, int]] = None,
                  out_len: int = 0, release: bool = True) -> bytes:
         """SPI data transfer.
 
