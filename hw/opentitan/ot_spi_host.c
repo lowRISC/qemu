@@ -324,8 +324,6 @@ struct OtSPIHostState {
 
     IbexIRQ irqs[2u]; /**< System bus IRQs */
     IbexIRQ alert; /**< OpenTitan alert */
-    uint32_t events; /**< Active events */
-    uint32_t last_events; /**< Last detected events */
     uint64_t total_transfer; /**< Transfered bytes since reset */
 
     OtSPIHostFsm fsm;
@@ -621,19 +619,9 @@ enum OtSPIHostIrq {
 
 static bool ot_spi_host_update_event(OtSPIHostState *s)
 {
-    /* new events' state */
     uint32_t events = ot_spi_host_build_event_bits(s);
-
-    /* events that have been raised since last call */
-    uint32_t raised_events = events & (s->last_events ^ events);
-    s->last_events = events;
-
-    /* accumulate events */
-    s->events |= raised_events;
-
-    /* mask disabled events to get the spi event state */
-    uint32_t eff_events = s->events & s->regs[R_EVENT_ENABLE];
-    trace_ot_spi_host_events(s->ot_id, events, raised_events, s->events,
+    uint32_t eff_events = events & s->regs[R_EVENT_ENABLE];
+    trace_ot_spi_host_events(s->ot_id, events, events, events,
                              s->regs[R_EVENT_ENABLE], eff_events);
 
     bool event = (bool)eff_events;
@@ -719,9 +707,6 @@ static void ot_spi_host_reset(OtSPIHostState *s)
     fifo8_reset(s->rx_fifo);
     txfifo_reset(s->tx_fifo);
     cmdfifo_reset(s->cmd_fifo);
-
-    s->events = 0u;
-    s->last_events = FIELD_DP32(0u, EVENT_ENABLE, TXEMPTY, 1u);
 
     memset(&s->fsm, 0, sizeof(s->fsm));
 
@@ -1065,13 +1050,8 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     /* Skipping any R/O registers */
     case R_INTR_STATE:
-        /* rw1c register */
-        val32 &= INTR_MASK;
+        val32 &= INTR_ERROR_MASK; /* rw1c bit */
         s->regs[R_INTR_STATE] &= ~val32;
-        if (val32 & INTR_SPI_EVENT_MASK) {
-            /* clear up all signalled events */
-            s->events = 0u;
-        }
         /* this call also regenerates all raised events */
         ot_spi_host_update_regs(s);
         break;
