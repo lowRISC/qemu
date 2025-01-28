@@ -1104,18 +1104,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("backend", OTP_BACKEND)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("edn-ep", 1u),
-            IBEX_DEV_STRING_PROP("scrmbl_key",
-                "cebeb96ffe0eced795f8b2cfe23c1e51"
-                "9e4fa08047a6bcfb811b04f0a479006e"),
-            IBEX_DEV_STRING_PROP("digest_const",
-                "e048b657396b4b83277195fc471e4b26"),
-            IBEX_DEV_STRING_PROP("digest_iv",
-                "4d5a89aa9109294a"),
-            IBEX_DEV_STRING_PROP("sram_const",
-                "63b9485a3856c417cf7a50a9a91ef7f7"),
-            IBEX_DEV_STRING_PROP("sram_iv",
-                "bee3958332f2939b")
+            IBEX_DEV_UINT_PROP("edn-ep", 1u)
         ),
     },
     [OT_DJ_SOC_DEV_OTP_BACKEND] = {
