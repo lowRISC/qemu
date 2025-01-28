@@ -567,20 +567,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 1u)
-            // Scrambling support is yet to be backported from Darjeeling
-            // implementation. Those are the Earlgrey constants defined for
-            // Earlgrey-M2.5.2-RC0:
-            // IBEX_DEV_STRING_PROP("scrmbl_key",
-            //     "605fefe9977b00b6fdc21d577a172d04"
-            //     "7dcf0eebbdd268afd4e2506df1d0603f"),
-            // IBEX_DEV_STRING_PROP("digest_const",
-            //     "30faa0c47e3809585a24109fbc53e920"),
-            // IBEX_DEV_STRING_PROP("digest_iv",
-            //     "af12b341a53780ab"),
-            // IBEX_DEV_STRING_PROP("sram_const",
-            //     "5f2c075769000c39cda36eab93cd263d"),
-            // IBEX_DEV_STRING_PROP("sram_iv",
-            //     "f2dae31d857d1d39")
         ),
     },
     [OT_EG_SOC_DEV_OTP_BACKEND] = {
