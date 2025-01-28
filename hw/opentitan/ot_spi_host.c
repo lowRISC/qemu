@@ -325,6 +325,7 @@ struct OtSPIHostState {
     IbexIRQ irqs[2u]; /**< System bus IRQs */
     IbexIRQ alert; /**< OpenTitan alert */
     uint64_t total_transfer; /**< Transfered bytes since reset */
+    uint16_t last_command_id; /**< Command tracker (for debug purpose) */
 
     OtSPIHostFsm fsm;
     bool on_reset;
@@ -378,6 +379,7 @@ typedef struct {
     uint32_t command; /* command */
     uint8_t csid; /* csid[7:0] */
     int8_t state; /* enum CmdState */
+    uint16_t cmdid; /* for debug/tracking */
 } CmdFifoSlot;
 
 struct CmdFifo {
@@ -723,6 +725,7 @@ static void ot_spi_host_reset(OtSPIHostState *s)
     ot_spi_host_update_alert(s);
 
     s->total_transfer = 0;
+    s->last_command_id = 0;
 }
 
 /**
@@ -731,9 +734,9 @@ static void ot_spi_host_reset(OtSPIHostState *s)
  */
 static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 {
-    trace_ot_spi_host_fsm(s->ot_id, cause);
-
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
+
+    trace_ot_spi_host_fsm(s->ot_id, headcmd->cmdid, cause);
 
     s->fsm.active = true;
     ot_spi_host_update_event(s);
@@ -761,8 +764,9 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
     ot_spi_host_trace_status(s->ot_id, "S>", ot_spi_host_get_status(s));
 
-    trace_ot_spi_host_command(
-        s->ot_id, F_COMMAND_DIRECTION[FIELD_EX32(command, COMMAND, DIRECTION)],
+    trace_ot_spi_host_exec_command(
+        s->ot_id, headcmd->cmdid,
+        F_COMMAND_DIRECTION[FIELD_EX32(command, COMMAND, DIRECTION)],
         F_COMMAND_SPEED[FIELD_EX32(command, COMMAND, SPEED)],
         (uint32_t)headcmd->csid, (bool)FIELD_EX32(command, COMMAND, CSAAT),
         length, s->fsm.transaction);
@@ -851,15 +855,17 @@ static void ot_spi_host_post_fsm(void *opaque)
 {
     OtSPIHostState *s = opaque;
 
-    trace_ot_spi_host_fsm(s->ot_id, "post");
-
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
+    trace_ot_spi_host_fsm(s->ot_id, headcmd->cmdid, "post");
+
     uint32_t command = headcmd->command;
     bool retire = headcmd->state == CMD_EXECUTED;
 
     ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
 
     if (retire) {
+        trace_ot_spi_host_retire_command(s->ot_id, headcmd->cmdid);
+
         if (ot_spi_host_is_rx(command)) {
             /*
              * transfer has been completed, RX FIFO may need padding up to a
@@ -1140,10 +1146,19 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             .command = val32,
             .csid = csid,
             .state = CMD_SCHEDULED,
+            .cmdid = s->last_command_id++,
         };
 
         bool activate = cmdfifo_is_empty(s->cmd_fifo) && !s->fsm.rx_stall &&
                         !s->fsm.tx_stall && !error;
+
+        trace_ot_spi_host_new_command(
+            s->ot_id, slot.cmdid,
+            F_COMMAND_DIRECTION[FIELD_EX32(slot.command, COMMAND, DIRECTION)],
+            F_COMMAND_SPEED[FIELD_EX32(slot.command, COMMAND, SPEED)],
+            (uint32_t)csid, (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
+            FIELD_EX32(slot.command, COMMAND, LEN) + 1u, activate);
+
         cmdfifo_push(s->cmd_fifo, &slot);
         ot_spi_host_update_event(s); /* track ready */
         if (activate) {
