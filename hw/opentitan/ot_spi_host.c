@@ -29,10 +29,6 @@
  *
  * Known limitations:
  *  - BigEndian devices are not supported
- *  - TX FIFO TXWD/TXEMPTY behavior documented in
- *    https://github.com/lowRISC/opentitan/issues/17644 is not emulated: there
- *    is no special case for first write: TXEMPTY is reset whenever one packet
- *    has been pushed and not yet sent over the SPI bus.
  */
 
 #include "qemu/osdep.h"
@@ -339,7 +335,6 @@ struct OtSPIHostState {
     char *ot_id;
     uint32_t bus_num; /**< SPI host port number */
     uint8_t num_cs; /**< Supported CS line count */
-    bool initbug; /**< Whether to ignore first TX request */
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1183,15 +1178,6 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
                       __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     case R_TXDATA: {
-        /*
-         * This is a hardware `feature` where the first word written to TXDATA
-         * after init is omitted entirely
-         */
-        if (s->initbug) {
-            s->initbug = false;
-            return;
-        }
-
         if (txfifo_is_full(s->tx_fifo)) {
             REG_UPDATE(s, ERROR_STATUS, OVERFLOW, 1u);
             ot_spi_host_update_regs(s);
@@ -1262,7 +1248,6 @@ static Property ot_spi_host_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtSPIHostState, ot_id),
     DEFINE_PROP_UINT8("num-cs", OtSPIHostState, num_cs, 1),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0),
-    DEFINE_PROP_BOOL("initbug", OtSPIHostState, initbug, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
