@@ -17,7 +17,7 @@ from socket import (SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR, socket,
                     timeout as LegacyTimeoutError)
 from string import ascii_uppercase
 from traceback import format_exc
-from typing import BinaryIO, Optional, TextIO
+from typing import BinaryIO, Optional, TextIO, Union
 import re
 import sys
 
@@ -461,7 +461,7 @@ class QEMUGDBReplay:
         self._log.info('Reply: "%s"', payload)
         self._send_bytes(payload.encode())
 
-    def _send_bytes(self, payload: [bytes | bytearray]):
+    def _send_bytes(self, payload: Union[bytes, bytearray]):
         """Send a reply to the remote GDB client.
 
            :param payload: the byte sequence to send

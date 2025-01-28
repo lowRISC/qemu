@@ -18,7 +18,7 @@ from os.path import (abspath, basename, dirname, exists, isfile,
                      join as joinpath, normpath)
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from traceback import format_exc
-from typing import Any, BinaryIO, NamedTuple, Optional
+from typing import Any, BinaryIO, NamedTuple, Optional, Union
 import re
 import sys
 
@@ -216,7 +216,7 @@ class FlashGen:
         return sum(cls.INFOS) * cls.BYTES_PER_PAGE
 
     def read_boot_info(self) -> dict[BootLocation,
-                                     dict[str, [int | bytes]]]:
+                                     dict[str, Union[int, bytes]]]:
         size = self._boot_header_size
         fmt = ''.join(self.BOOT_HEADER_FORMAT.values())
         boot_entries = {}
