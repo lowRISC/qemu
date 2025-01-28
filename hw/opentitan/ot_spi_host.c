@@ -58,7 +58,7 @@
 #undef DISCARD_REPEATED_STATUS_TRACES
 
 /* fake delayed completion of HW commands */
-#define FSM_TRIGGER_DELAY_NS 100U /* nanoseconds */
+#define FSM_COMPLETION_DELAY_NS 100U /* nanoseconds */
 
 #define TXFIFO_LEN  288U /* bytes */
 #define RXFIFO_LEN  256U /* bytes */
@@ -333,6 +333,7 @@ struct OtSPIHostState {
 
     /* properties */
     char *ot_id;
+    uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /**< SPI host port number */
     uint8_t num_cs; /**< Supported CS line count */
 };
@@ -842,8 +843,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 post:
     ot_spi_host_update_regs(s);
 
-    timer_mod_anticipate(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
-                                           FSM_TRIGGER_DELAY_NS);
+    timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
+                                (int64_t)s->completion_delay_ns);
 
     ot_spi_host_trace_status(s->ot_id, "S<", ot_spi_host_get_status(s));
 }
@@ -1248,6 +1249,8 @@ static Property ot_spi_host_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtSPIHostState, ot_id),
     DEFINE_PROP_UINT8("num-cs", OtSPIHostState, num_cs, 1),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0),
+    DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
+                       FSM_COMPLETION_DELAY_NS),
     DEFINE_PROP_END_OF_LIST(),
 };
 
