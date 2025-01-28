@@ -1280,9 +1280,10 @@ class QEMUExecuter:
                     self._qfm.cleanup_transient()
                 results[tret] += 1
                 sret = self.RESULT_MAP.get(tret, tret)
-                if targs:
+                try:
+                    targs = exec_info.args
                     icount = self.get_namespace_arg(targs, 'icount')
-                else:
+                except (AttributeError, KeyError):
                     icount = None
                 if csv:
                     csv.writerow(TestResult(test_name, sret, xtime, icount,
