@@ -64,7 +64,7 @@ class OtConfiguration:
         """Load data from HJSON top configuration file."""
         assert not _HJSON_ERROR
         with open(toppath, 'rt') as tfp:
-            cfg = hjload(tfp)
+            cfg = hjload(tfp, object_pairs_hook=dict)
         self._top_name = cfg.get('name')
         for module in cfg.get('module') or []:
             modtype = module.get('type')
@@ -334,7 +334,6 @@ def main():
         if not isfile(lcpath):
             argparser.error(f"No such file '{ocpath}'")
 
-        cfg = OtConfiguration()
         cfg.load_lifecycle(lcpath)
         cfg.load_otp_constants(ocpath)
         cfg.save(topvar, args.socid, args.count, args.out)
