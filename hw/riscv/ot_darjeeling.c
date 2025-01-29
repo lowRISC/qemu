@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Board Compatible with OpenTitan "integrated" Darjeeling platform
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -1431,6 +1431,11 @@ struct OtDjMachineState {
     bool ignore_elf_entry;
 };
 
+struct OtDjMachineClass {
+    MachineClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 /* ------------------------------------------------------------------------ */
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
@@ -1877,19 +1882,35 @@ ot_dj_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
     s->ignore_elf_entry = value;
 }
 
-static void ot_dj_machine_reset_hold(MachineState *mc, ResetType type)
-{
-    (void)mc;
-    (void)type;
-
-    qemu_devices_reset(RESET_TYPE_COLD);
-}
-
 static ResettableState *ot_dj_get_reset_state(Object *obj)
 {
     OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
 
     return &s->reset;
+}
+
+static void ot_dj_reset_hold(Object *obj, ResetType type)
+{
+    (void)obj;
+
+    /*
+     * The way the resettable APIs are implemented does not allow to call the
+     * legacy qemu_devices_reset from the enter phase, where a global static
+     * variable singleton enforces that entering reset is exclusive. However
+     * qemu_devices_reset implements the full enter/hold/exit reset sequence.
+     * This legacy function is therefore invoked from the hold stage of the
+     * machine reset sequence.
+     */
+    qemu_devices_reset(type);
+}
+
+static void ot_dj_machine_reset(MachineState *ms, ResetType reason)
+{
+    OtDjMachineState *s = RISCV_OT_DJ_MACHINE(ms);
+
+    g_assert(reason == RESET_TYPE_COLD);
+
+    resettable_reset(OBJECT(s), reason);
 }
 
 static void ot_dj_machine_instance_init(Object *obj)
@@ -1929,13 +1950,23 @@ static void ot_dj_machine_class_init(ObjectClass *oc, void *data)
     (void)data;
 
     mc->desc = "RISC-V Board compatible with OpenTitan Darjeeling platform";
-    mc->init = ot_dj_machine_init;
+    mc->init = &ot_dj_machine_init;
+    mc->reset = &ot_dj_machine_reset;
     mc->max_cpus = 1u;
     mc->default_cpus = 1u;
-    mc->reset = ot_dj_machine_reset_hold;
+
+    /*
+     * Implement the resettable interface to ensure the proper initialization
+     * sequence.
+     * The hold stage is used to perform most of the device reset sequence.
+     */
     ResettableClass *rc = RESETTABLE_CLASS(oc);
 
     rc->get_state = &ot_dj_get_reset_state;
+
+    OtDjMachineClass *sc = RISCV_OT_DJ_MACHINE_CLASS(oc);
+    resettable_class_set_parent_phases(rc, NULL, &ot_dj_reset_hold, NULL,
+                                       &sc->parent_phases);
 }
 
 static const TypeInfo ot_dj_machine_type_info = {
@@ -1943,6 +1974,7 @@ static const TypeInfo ot_dj_machine_type_info = {
     .parent = TYPE_MACHINE,
     .instance_size = sizeof(OtDjMachineState),
     .instance_init = &ot_dj_machine_instance_init,
+    .class_size = sizeof(OtDjMachineClass),
     .class_init = &ot_dj_machine_class_init,
     .interfaces = (InterfaceInfo[]){ { TYPE_RESETTABLE_INTERFACE }, {} },
 };
