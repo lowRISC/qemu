@@ -1083,6 +1083,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_INIT:
         val32 &= R_INIT_VAL_MASK;
+        s->regs[reg] = val32;
         if (val32) {
             ot_flash_initialize(s);
         }
