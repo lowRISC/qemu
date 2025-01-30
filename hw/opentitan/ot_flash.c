@@ -1060,11 +1060,19 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 
     switch (reg) {
-    case R_INTR_STATE:
-        val32 &= INTR_MASK;
-        s->regs[R_INTR_STATE] &= ~val32; /* RW1C */
+    case R_INTR_STATE: {
+        uint32_t rw1c_mask = INTR_CORR_ERR_MASK | INTR_OP_DONE_MASK;
+        if (val32 & ~rw1c_mask) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Write to R/O field in register 0x%03" HWADDR_PRIx
+                          " (%s)\n",
+                          __func__, addr, REG_NAME(reg));
+        }
+        val32 &= rw1c_mask;
+        s->regs[reg] &= ~val32;
         ot_flash_update_irqs(s);
         break;
+    }
     case R_INTR_ENABLE:
         val32 &= INTR_MASK;
         s->regs[R_INTR_ENABLE] = val32;
