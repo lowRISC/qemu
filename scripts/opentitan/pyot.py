@@ -100,9 +100,11 @@ class ResultFormatter:
 
            :param spacing: add an empty line before and after the table
         """
+        results = [r[:-1] + [shorten(r[-1], width=100)] for r in self._results]
+        if not results:
+            return
         if spacing:
             print('')
-        results = [r[:-1] + [shorten(r[-1], width=100)] for r in self._results]
         widths = [max(len(x) for x in col) for col in zip(*results)]
         self._show_line(widths, '-')
         self._show_row(widths, results[0])
@@ -2038,7 +2040,8 @@ def main():
         for name, val in defaults.items():
             if getattr(args, name) is None:
                 setattr(args, name, val)
-        qfm.set_qemu_bin_dir(dirname(args.qemu))
+        if args.qemu:
+            qfm.set_qemu_bin_dir(dirname(args.qemu))
         qexc = QEMUExecuter(qfm, json, args)
         if args.list:
             for tst in qexc.enumerate_tests():
