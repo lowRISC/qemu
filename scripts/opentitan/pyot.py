@@ -1813,8 +1813,14 @@ def main():
     """Main routine."""
     debug = True
     qemu_dir = normpath(joinpath(dirname(dirname(dirname(normpath(__file__))))))
-    qemu_path = normpath(joinpath(qemu_dir, 'build', 'qemu-system-riscv32'))
-    if not isfile(qemu_path):
+    qemu_paths = [normpath(joinpath(qemu_dir, 'build', 'qemu-system-riscv32'))]
+    if sys.platform == 'darwin':
+        qemu_paths.append(f'{qemu_paths[0]}-unsigned')
+    for qpath in qemu_paths:
+        if isfile(qpath):
+            qemu_path = qpath
+            break
+    else:
         qemu_path = None
     tmp_result: Optional[str] = None
     result_file: Optional[str] = None
@@ -1963,7 +1969,6 @@ def main():
             rlog = RemoteLogService(port=args.log_udp)
             rlog.start()
             qfm.set_udp_log_port(rlog.port)
-
 
         # this is a bit circomvulted, as we need to parse the config filename
         # if any, and load the default values out of the configuration file,
