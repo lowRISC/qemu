@@ -324,6 +324,15 @@ REG32(RD_FIFO, 0x1b4u)
      R_CONTROL_PARTITION_SEL_MASK | \
      R_CONTROL_INFO_SEL_MASK | \
      R_CONTROL_NUM_MASK);
+#define ERR_CODE_MASK \
+    (R_ERR_CODE_OP_ERR_MASK | \
+     R_ERR_CODE_MP_ERR_MASK | \
+     R_ERR_CODE_RD_ERR_MASK | \
+     R_ERR_CODE_PROG_ERR_MASK | \
+     R_ERR_CODE_PROG_WIN_ERR_MASK | \
+     R_ERR_CODE_PROG_TYPE_ERR_MASK | \
+     R_ERR_CODE_UPDATE_ERR_MASK | \
+     R_ERR_CODE_MACRO_ERR_MASK)
 
 REG32(CSR0_REGWEN, 0x0u)
     FIELD(CSR0_REGWEN, FIELD0, 0u, 1u)
@@ -683,7 +692,7 @@ static void ot_flash_update_irqs(OtFlashState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
     trace_ot_flash_irqs(s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE], level);
-    for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
+    for (unsigned ix = 0u; ix < PARAM_NUM_IRQS; ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
 }
@@ -692,7 +701,7 @@ static void ot_flash_update_alerts(OtFlashState *s)
 {
     uint32_t level = s->regs[R_ALERT_TEST];
 
-    for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
+    for (unsigned ix = 0u; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
@@ -1006,7 +1015,7 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
             }
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: Read empty FIFO\n", __func__);
-            val32 = 0;
+            val32 = 0u;
         }
         break;
     case R_CURR_FIFO_LVL:
@@ -1126,7 +1135,12 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_PROG_TYPE_EN:
+        val32 &= R_PROG_TYPE_EN_NORMAL_MASK | R_PROG_TYPE_EN_REPAIR_MASK;
+        s->regs[reg] = val32;
+        break;
     case R_ERASE_SUSPEND:
+        val32 &= R_ERASE_SUSPEND_REQ_MASK;
+        s->regs[reg] = val32;
         break;
     case R_REGION_CFG_REGWEN_0:
     case R_REGION_CFG_REGWEN_1:
@@ -1265,11 +1279,31 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         break;
     case R_MP_BANK_CFG_SHADOWED:
+        val32 &= (R_MP_BANK_CFG_SHADOWED_ERASE_EN_0_MASK |
+                  R_MP_BANK_CFG_SHADOWED_ERASE_EN_1_MASK);
+        s->regs[reg] = val32;
+        break;
     case R_OP_STATUS:
+        val32 &= R_OP_STATUS_DONE_MASK | R_OP_STATUS_ERR_MASK;
+        s->regs[reg] = val32;
+        break;
     case R_ERR_CODE:
+        val32 &= ERR_CODE_MASK;
+        s->regs[reg] &= ~val32; /* RW1C */
+        break;
     case R_ECC_SINGLE_ERR_CNT:
+        val32 &=
+            (R_ECC_SINGLE_ERR_CNT_CNT_0_MASK | R_ECC_SINGLE_ERR_CNT_CNT_1_MASK);
+        s->regs[reg] = val32;
+        break;
     case R_PHY_ALERT_CFG:
+        val32 &=
+            (R_PHY_ALERT_CFG_ALERT_ACK_MASK | R_PHY_ALERT_CFG_ALERT_TRIG_MASK);
+        s->regs[reg] = val32;
+        break;
     case R_SCRATCH:
+        s->regs[reg] = val32;
+        break;
     case R_FIFO_LVL:
         val32 &= FIFO_LVL_PROG_MASK | FIFO_LVL_RD_MASK;
         s->regs[reg] = val32;
@@ -1282,11 +1316,24 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
     case R_PROG_FIFO:
         break;
+    case R_FAULT_STATUS: {
+        uint32_t rw0c_mask = (R_FAULT_STATUS_PHY_RELBL_ERR_MASK |
+                              R_FAULT_STATUS_PHY_STORAGE_ERR_MASK);
+        if (val32 & ~rw0c_mask) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Write to R/O field in register 0x%03" HWADDR_PRIx
+                          " (%s)\n",
+                          __func__, addr, REG_NAME(reg));
+        }
+        val32 &= rw0c_mask;
+        val32 |= ~rw0c_mask;
+        s->regs[reg] &= val32;
+        break;
+    }
     case R_STATUS:
     case R_DEBUG_STATE:
     case R_RD_FIFO:
     case R_STD_FAULT_STATUS:
-    case R_FAULT_STATUS:
     case R_ERR_ADDR:
     case R_ECC_SINGLE_ERR_ADDR_0:
     case R_ECC_SINGLE_ERR_ADDR_1:
