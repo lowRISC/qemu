@@ -288,7 +288,8 @@ static void microchip_pfsoc_soc_realize(DeviceState *dev, Error **errp)
         MICROCHIP_PFSOC_PLIC_ENABLE_STRIDE,
         MICROCHIP_PFSOC_PLIC_CONTEXT_BASE,
         MICROCHIP_PFSOC_PLIC_CONTEXT_STRIDE,
-        memmap[MICROCHIP_PFSOC_PLIC].size);
+        memmap[MICROCHIP_PFSOC_PLIC].size,
+        false);
     g_free(plic_hart_config);
 
     /* DMA */
@@ -613,7 +614,7 @@ static void microchip_icicle_kit_machine_init(MachineState *machine)
 
     /* Load the firmware */
     firmware_end_addr = riscv_find_and_load_firmware(machine, firmware_name,
-                                                     firmware_load_addr, NULL);
+                                                     &firmware_load_addr, NULL);
 
     if (kernel_as_payload) {
         kernel_start_addr = riscv_calc_kernel_start_addr(&s->soc.u_cpus,

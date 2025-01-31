@@ -58,6 +58,7 @@ struct SiFivePLICState {
     uint32_t *pending;
     uint32_t *claimed;
     uint32_t *enable;
+    uint32_t *level;
 
     /* config */
     char *hart_config;
@@ -71,6 +72,7 @@ struct SiFivePLICState {
     uint32_t context_base;
     uint32_t context_stride;
     uint32_t aperture_size;
+    bool edge_triggered;
 
     qemu_irq *m_external_irqs;
     qemu_irq *s_external_irqs;
@@ -82,6 +84,7 @@ DeviceState *sifive_plic_create(hwaddr addr, char *hart_config,
     uint32_t num_priorities, uint32_t priority_base,
     uint32_t pending_base, uint32_t enable_base,
     uint32_t enable_stride, uint32_t context_base,
-    uint32_t context_stride, uint32_t aperture_size);
+    uint32_t context_stride, uint32_t aperture_size,
+    bool edge_triggered);
 
 #endif

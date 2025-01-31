@@ -1821,7 +1821,7 @@ static void ot_dj_board_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     (void)data;
 
-    dc->reset = &ot_dj_board_reset;
+    device_class_set_legacy_reset(dc, &ot_dj_board_reset);
     dc->realize = &ot_dj_board_realize;
 }
 
@@ -1877,18 +1877,12 @@ ot_dj_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
     s->ignore_elf_entry = value;
 }
 
-static void ot_dj_machine_transitional_reset(Object *obj)
+static void ot_dj_machine_reset_hold(MachineState *mc, ResetType type)
 {
-    (void)obj;
+    (void)mc;
+    (void)type;
 
-    qemu_devices_reset(SHUTDOWN_CAUSE_GUEST_RESET);
-}
-
-static ResettableTrFunction ot_dj_get_transitional_reset(Object *obj)
-{
-    (void)obj;
-
-    return ot_dj_machine_transitional_reset;
+    qemu_devices_reset(RESET_TYPE_COLD);
 }
 
 static ResettableState *ot_dj_get_reset_state(Object *obj)
@@ -1938,11 +1932,10 @@ static void ot_dj_machine_class_init(ObjectClass *oc, void *data)
     mc->init = ot_dj_machine_init;
     mc->max_cpus = 1u;
     mc->default_cpus = 1u;
-
+    mc->reset = ot_dj_machine_reset_hold;
     ResettableClass *rc = RESETTABLE_CLASS(oc);
 
     rc->get_state = &ot_dj_get_reset_state;
-    rc->get_transitional_function = &ot_dj_get_transitional_reset;
 }
 
 static const TypeInfo ot_dj_machine_type_info = {

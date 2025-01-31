@@ -645,7 +645,7 @@ static void ot_hmac_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_hmac_reset;
+    device_class_set_legacy_reset(dc, &ot_hmac_reset);
     dc->realize = &ot_hmac_realize;
     device_class_set_props(dc, ot_hmac_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

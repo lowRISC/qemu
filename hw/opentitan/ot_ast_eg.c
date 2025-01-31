@@ -363,7 +363,7 @@ static void ot_ast_eg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_ast_eg_reset;
+    device_class_set_legacy_reset(dc, &ot_ast_eg_reset);
     device_class_set_props(dc, ot_ast_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

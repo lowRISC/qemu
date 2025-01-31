@@ -2628,7 +2628,7 @@ static void riscv_dm_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &riscv_dm_reset;
+    device_class_set_legacy_reset(dc, &riscv_dm_reset);
     dc->realize = &riscv_dm_realize;
     device_class_set_props(dc, riscv_dm_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

@@ -625,7 +625,7 @@ static void ot_uart_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->realize = ot_uart_realize;
-    dc->reset = ot_uart_reset;
+    device_class_set_legacy_reset(dc, ot_uart_reset);
     device_class_set_props(dc, ot_uart_properties);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 }

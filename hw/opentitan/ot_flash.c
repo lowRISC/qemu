@@ -1837,7 +1837,7 @@ static void ot_flash_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_flash_reset;
+    device_class_set_legacy_reset(dc, &ot_flash_reset);
     dc->realize = &ot_flash_realize;
     device_class_set_props(dc, ot_flash_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

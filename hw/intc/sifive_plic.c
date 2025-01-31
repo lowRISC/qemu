@@ -63,6 +63,16 @@ static uint32_t atomic_set_masked(uint32_t *a, uint32_t mask, uint32_t value)
     return old;
 }
 
+static void sifive_plic_set_level(SiFivePLICState *plic, int irq, bool level)
+{
+    atomic_set_masked(&plic->level[irq >> 5], 1 << (irq & 31), -!!level);
+}
+
+static bool sifive_plic_get_level(SiFivePLICState *plic, int irq)
+{
+    return (plic->level[irq >> 5] & (1 << (irq & 31))) != 0;
+}
+
 static void sifive_plic_set_pending(SiFivePLICState *plic, int irq, bool level)
 {
     uint32_t old;
@@ -200,8 +210,13 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
 
     if (addr_between(addr, plic->priority_base, plic->num_sources << 2)) {
         uint32_t irq = (addr - plic->priority_base) >> 2;
-
-        if (((plic->num_priorities + 1) & plic->num_priorities) == 0) {
+        if (irq == 0) {
+            /* IRQ 0 source prioority is reserved */
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Invalid source priority write 0x%"
+                          HWADDR_PRIx "\n", __func__, addr);
+            return;
+        } else if (((plic->num_priorities + 1) & plic->num_priorities) == 0) {
             /*
              * if "num_priorities + 1" is power-of-2, make each register bit of
              * interrupt priority WARL (Write-Any-Read-Legal). Just filter
@@ -289,6 +304,7 @@ static void sifive_plic_reset(DeviceState *dev)
     memset(s->pending, 0, sizeof(uint32_t) * s->bitfield_words);
     memset(s->claimed, 0, sizeof(uint32_t) * s->bitfield_words);
     memset(s->enable, 0, sizeof(uint32_t) * s->num_enables);
+    memset(s->level, 0, sizeof(uint32_t) * s->bitfield_words);
 
     for (i = 0; i < s->num_harts; i++) {
         qemu_set_irq(s->m_external_irqs[i], 0);
@@ -365,7 +381,14 @@ static void sifive_plic_irq_request(void *opaque, int irq, int level)
 
     assert(irq < s->num_sources);
 
-    sifive_plic_set_pending(s, irq, level > 0);
+    if (s->edge_triggered) {
+        if (level && !sifive_plic_get_level(s, irq)) {
+            sifive_plic_set_pending(s, irq, true);
+        }
+    } else {
+        sifive_plic_set_pending(s, irq, level > 0);
+    }
+    sifive_plic_set_level(s, irq, !!level);
     sifive_plic_update(s);
 }
 
@@ -392,6 +415,7 @@ static void sifive_plic_realize(DeviceState *dev, Error **errp)
     s->pending = g_new0(uint32_t, s->bitfield_words);
     s->claimed = g_new0(uint32_t, s->bitfield_words);
     s->enable = g_new0(uint32_t, s->num_enables);
+    s->level = g_new0(uint32_t, s->bitfield_words);
 
     qdev_init_gpio_in(dev, sifive_plic_irq_request, s->num_sources);
 
@@ -453,6 +477,7 @@ static Property sifive_plic_properties[] = {
     DEFINE_PROP_UINT32("context-base", SiFivePLICState, context_base, 0),
     DEFINE_PROP_UINT32("context-stride", SiFivePLICState, context_stride, 0),
     DEFINE_PROP_UINT32("aperture-size", SiFivePLICState, aperture_size, 0),
+    DEFINE_PROP_BOOL("edge-triggered", SiFivePLICState, edge_triggered, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -460,7 +485,7 @@ static void sifive_plic_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = sifive_plic_reset;
+    device_class_set_legacy_reset(dc, sifive_plic_reset);
     device_class_set_props(dc, sifive_plic_properties);
     dc->realize = sifive_plic_realize;
     dc->vmsd = &vmstate_sifive_plic;
@@ -489,7 +514,8 @@ DeviceState *sifive_plic_create(hwaddr addr, char *hart_config,
     uint32_t num_priorities, uint32_t priority_base,
     uint32_t pending_base, uint32_t enable_base,
     uint32_t enable_stride, uint32_t context_base,
-    uint32_t context_stride, uint32_t aperture_size)
+    uint32_t context_stride, uint32_t aperture_size,
+    bool edge_triggered)
 {
     DeviceState *dev = qdev_new(TYPE_SIFIVE_PLIC);
     int i;
@@ -508,6 +534,7 @@ DeviceState *sifive_plic_create(hwaddr addr, char *hart_config,
     qdev_prop_set_uint32(dev, "context-base", context_base);
     qdev_prop_set_uint32(dev, "context-stride", context_stride);
     qdev_prop_set_uint32(dev, "aperture-size", aperture_size);
+    qdev_prop_set_bit(dev, "edge-triggered", edge_triggered);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, addr);
 

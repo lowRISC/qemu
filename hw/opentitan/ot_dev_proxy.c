@@ -1926,7 +1926,7 @@ static void ot_dev_proxy_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_dev_proxy_reset;
+    device_class_set_legacy_reset(dc, &ot_dev_proxy_reset);
     dc->realize = &ot_dev_proxy_realize;
     device_class_set_props(dc, ot_dev_proxy_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

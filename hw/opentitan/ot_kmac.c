@@ -1661,7 +1661,7 @@ static void ot_kmac_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->realize = &ot_kmac_realize;
-    dc->reset = &ot_kmac_reset;
+    device_class_set_legacy_reset(dc, &ot_kmac_reset);
     device_class_set_props(dc, ot_kmac_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

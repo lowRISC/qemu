@@ -200,7 +200,7 @@ static void ibexdemo_gpio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = &ibexdemo_gpio_reset;
+    device_class_set_legacy_reset(dc, &ibexdemo_gpio_reset);
     dc->realize = &ibexdemo_gpio_realize;
     device_class_set_props(dc, ibexdemo_gpio_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

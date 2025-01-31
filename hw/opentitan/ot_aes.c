@@ -1304,7 +1304,7 @@ static void ot_aes_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_aes_reset;
+    device_class_set_legacy_reset(dc, &ot_aes_reset);
     device_class_set_props(dc, ot_aes_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

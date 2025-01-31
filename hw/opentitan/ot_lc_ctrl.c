@@ -2243,7 +2243,7 @@ static void ot_lc_ctrl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_lc_ctrl_reset;
+    device_class_set_legacy_reset(dc, &ot_lc_ctrl_reset);
     dc->realize = &ot_lc_ctrl_realize;
     device_class_set_props(dc, ot_lc_ctrl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

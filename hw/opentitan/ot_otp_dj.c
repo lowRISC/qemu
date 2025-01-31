@@ -3972,7 +3972,7 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
     g_assert(OTP_PART_LIFE_CYCLE_SIZE ==
              OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size);
 
-    dc->reset = &ot_otp_dj_reset;
+    device_class_set_legacy_reset(dc, &ot_otp_dj_reset);
     dc->realize = &ot_otp_dj_realize;
     device_class_set_props(dc, ot_otp_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

@@ -532,7 +532,7 @@ static void pulp_rv_dm_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &pulp_rv_dm_reset;
+    device_class_set_legacy_reset(dc, &pulp_rv_dm_reset);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 

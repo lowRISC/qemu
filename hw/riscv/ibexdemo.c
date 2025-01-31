@@ -409,7 +409,7 @@ static void ibexdemo_soc_class_init(ObjectClass *oc, void *data)
     (void)data;
 
     device_class_set_props(dc, ibexdemo_soc_props);
-    dc->reset = &ibexdemo_soc_reset;
+    device_class_set_legacy_reset(dc, &ibexdemo_soc_reset);
     dc->realize = &ibexdemo_soc_realize;
     dc->user_creatable = false;
 }

@@ -35,7 +35,6 @@
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "hw/sysbus.h"
-#include "hw/char/serial.h"
 #include "hw/misc/unimp.h"
 #include "target/riscv/cpu.h"
 #include "hw/riscv/riscv_hart.h"
@@ -218,7 +217,8 @@ static void sifive_e_soc_realize(DeviceState *dev, Error **errp)
         SIFIVE_E_PLIC_ENABLE_STRIDE,
         SIFIVE_E_PLIC_CONTEXT_BASE,
         SIFIVE_E_PLIC_CONTEXT_STRIDE,
-        memmap[SIFIVE_E_DEV_PLIC].size);
+        memmap[SIFIVE_E_DEV_PLIC].size,
+        false);
     riscv_aclint_swi_create(memmap[SIFIVE_E_DEV_CLINT].base,
         0, ms->smp.cpus, false);
     riscv_aclint_mtimer_create(memmap[SIFIVE_E_DEV_CLINT].base +

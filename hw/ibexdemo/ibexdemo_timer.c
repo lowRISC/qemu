@@ -207,7 +207,7 @@ static void ibexdemo_timer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = ibexdemo_timer_reset;
+    device_class_set_legacy_reset(dc, ibexdemo_timer_reset);
     dc->realize = ibexdemo_timer_realize;
     device_class_set_props(dc, ibexdemo_timer_properties);
 }

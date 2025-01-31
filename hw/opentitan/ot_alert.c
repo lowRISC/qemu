@@ -1154,7 +1154,7 @@ static void ot_alert_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_alert_reset;
+    device_class_set_legacy_reset(dc, &ot_alert_reset);
     dc->realize = &ot_alert_realize;
     device_class_set_props(dc, ot_alert_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

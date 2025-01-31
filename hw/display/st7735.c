@@ -590,7 +590,7 @@ static void st7735_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     SSIPeripheralClass *k = SSI_PERIPHERAL_CLASS(klass);
 
-    dc->reset = &st7735_reset;
+    device_class_set_legacy_reset(dc, &st7735_reset);
     k->realize = &st7735_realize;
     k->transfer = &st7735_transfer;
     k->set_cs = &st7735_set_cs;

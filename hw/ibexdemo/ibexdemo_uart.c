@@ -274,7 +274,7 @@ static void ibexdemo_uart_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = &ibexdemo_uart_reset;
+    device_class_set_legacy_reset(dc, &ibexdemo_uart_reset);
     dc->realize = &ibexdemo_uart_realize;
     device_class_set_props(dc, ibexdemo_uart_properties);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);

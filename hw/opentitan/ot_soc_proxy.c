@@ -271,7 +271,7 @@ static void ot_soc_proxy_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->reset = &ot_soc_proxy_reset;
+    device_class_set_legacy_reset(dc, &ot_soc_proxy_reset);
     device_class_set_props(dc, ot_soc_proxy_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

@@ -128,7 +128,7 @@ static void ibexdemo_spi_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = &ibexdemo_spi_reset;
+    device_class_set_legacy_reset(dc, &ibexdemo_spi_reset);
     dc->realize = &ibexdemo_spi_realize;
     device_class_set_props(dc, ibexdemo_spi_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

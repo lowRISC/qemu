@@ -1015,7 +1015,7 @@ static void ot_i2c_dj_class_init(ObjectClass *klass, void *data)
 
     dc->desc = "OpenTitan I2C Host";
     dc->realize = ot_i2c_dj_realize;
-    dc->reset = ot_i2c_dj_reset;
+    device_class_set_legacy_reset(dc, ot_i2c_dj_reset);
 
     device_class_set_props(dc, ot_i2c_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
