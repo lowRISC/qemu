@@ -6,8 +6,8 @@
 
 ````text
 usage: spidevflash.py [-h] -f FILE [-a ADDRESS] [-S SOCKET] [-R RETRY_COUNT]
-                      [-T SYNC_TIME] [-r HOST] [-p PORT] [--log-udp UDP_PORT]
-                      [-v] [-d]
+                      [-T SYNC_TIME] [--idle DELAY] [-t] [-r HOST] [-p PORT]
+                      [--log-udp UDP_PORT] [-v] [-d]
 
 SPI device flasher tool.
 
@@ -21,6 +21,8 @@ options:
                         connection retry count (default: 1)
   -T, --sync-time SYNC_TIME
                         synchronization max time (default: 5.0s)
+  --idle DELAY          stay idle before establish connection
+  -t, --terminate       terminate QEMU VM on completion
   -r, --host HOST       remote host name (default: localhost)
   -p, --port PORT       remote host TCP port (default: 8004)
   --log-udp UDP_PORT    Log to a local UDP logger
@@ -51,6 +53,9 @@ options:
    the connection has been established
 
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
+
+* `--idle` wait for the specified delay in seconds before attempting a connection to the QEMU SPI
+   device socket
 
 * `--log-udp` specify a UDP port on the local host to redirect log messages,
 

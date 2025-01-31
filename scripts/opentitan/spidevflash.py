@@ -142,6 +142,8 @@ def main():
                                help=f'synchronization max time (default: '
                                     f'{SpiDeviceFlasher.DEFAULT_SYNC_TIME:.1f}'
                                     f's)')
+        argparser.add_argument('--idle', type=float, metavar='DELAY',
+                               help='stay idle before establish connection')
         argparser.add_argument('-t', '--terminate', action='store_true',
                                help='terminate QEMU VM on completion')
         argparser.add_argument('-r', '--host',
@@ -158,8 +160,12 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        configure_loggers(args.verbose, 'spidev', -1, 'spidev.dev',
-                          udplog=args.log_udp)
+        log = configure_loggers(args.verbose, 'spidev', -1, 'spidev.dev',
+                                udplog=args.log_udp)[0]
+
+        if args.idle:
+            log.info('Idling for %.1f seconds', args.idle)
+            sleep(args.idle)
 
         flasher = SpiDeviceFlasher()
         if args.socket:
