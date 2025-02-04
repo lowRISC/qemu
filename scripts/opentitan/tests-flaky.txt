@@ -1,0 +1,5 @@
+//sw/device/silicon_creator/lib/ownership:owner_verify_functest_sim_qemu_rom_with_fake_keys
+//sw/device/silicon_creator/lib/sigverify:mod_exp_ibex_functest_hardcoded_sim_qemu_rom_with_fake_keys
+//sw/device/tests/autogen:alert_test_sim_qemu_rom_with_fake_keys
+//sw/device/tests:edn_auto_mode_sim_qemu_rom_with_fake_keys
+//sw/device/tests:rv_core_ibex_rnd_test_sim_qemu_rom_with_fake_keys
