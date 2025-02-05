@@ -884,8 +884,10 @@ static void ot_spi_host_post_fsm(void *opaque)
         /* retire command */
         cmdfifo_pop(s->cmd_fifo, NULL);
 
-        /* "the command is complete when STATUS.ACTIVE goes low." */
-        s->fsm.active = false;
+        /* release active only if the last pushed command has been retired */
+        if (cmdfifo_is_empty(s->cmd_fifo)) {
+            s->fsm.active = false;
+        }
     }
 
     ot_spi_host_update_regs(s);
