@@ -325,13 +325,14 @@ struct OtSPIHostState {
     IbexIRQ alert; /**< OpenTitan alert */
     uint64_t total_transfer; /**< Transfered bytes since reset */
     uint16_t last_command_id; /**< Command tracker (for debug purpose) */
+    unsigned last_clkdiv; /**< SPI clock tracker (for debug purpose) */
 
     OtSPIHostFsm fsm;
     bool on_reset;
 
     /* properties */
     char *ot_id;
-    uint32_t pclk; /* input peripheral clock */
+    uint32_t pclk; /* input peripheral clock (Hz) */
     uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /**< SPI host port number */
     uint8_t num_cs; /**< Supported CS line count */
@@ -375,6 +376,8 @@ enum CmdState {
  * Command FIFO stores commands along with SPI device configuration.
  */
 typedef struct {
+    int64_t ts;
+    unsigned size;
     uint32_t opts; /* configopts */
     uint32_t command; /* command */
     uint8_t csid; /* csid[7:0] */
@@ -723,6 +726,7 @@ static void ot_spi_host_reset(OtSPIHostState *s)
 
     s->total_transfer = 0;
     s->last_command_id = 0;
+    s->last_clkdiv = UINT32_MAX;
 }
 
 /**
@@ -738,6 +742,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     s->fsm.active = true;
     ot_spi_host_update_event(s);
 
+    unsigned byte_count = 0;
+
     if (headcmd->state == CMD_EXECUTED) {
         goto post;
     }
@@ -746,8 +752,17 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     bool read = ot_spi_host_is_rx(command);
     bool write = ot_spi_host_is_tx(command);
     unsigned speed = FIELD_EX32(command, COMMAND, SPEED);
+    unsigned clkdiv = FIELD_EX32(headcmd->opts, CONFIGOPTS, CLKDIV);
+    if (trace_event_get_state(TRACE_OT_SPI_HOST_CMD_CLOCK)) {
+        if (clkdiv != s->last_clkdiv) {
+            unsigned spiclock = s->pclk / ((clkdiv + 1u) * 2u);
+            trace_ot_spi_host_cmd_clock(s->ot_id, headcmd->cmdid,
+                                        s->completion_delay_ns == 0, spiclock);
+        }
+    }
+    s->last_clkdiv = clkdiv;
     bool multi = speed != 0;
-    uint32_t length = FIELD_EX32(command, COMMAND, LEN) + 1u;
+    unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
     if (!(read || write)) {
         /* dummy mode uses clock cycle count rather than byte count */
         if (length % (1u << (3u - speed))) {
@@ -767,6 +782,10 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         F_COMMAND_SPEED[FIELD_EX32(command, COMMAND, SPEED)],
         (uint32_t)headcmd->csid, (bool)FIELD_EX32(command, COMMAND, CSAAT),
         length, s->fsm.transaction);
+
+    if (headcmd->size == 0) {
+        headcmd->ts = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+    }
 
     while (length && !ot_spi_host_is_on_error(s)) {
         if (write && txfifo_is_empty(s->tx_fifo)) {
@@ -802,6 +821,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         s->total_transfer += 1u;
 
         length--;
+        byte_count++;
     }
 
     int8_t cmd_state;
@@ -829,8 +849,23 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 post:
     ot_spi_host_update_regs(s);
 
-    timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
-                                (int64_t)s->completion_delay_ns);
+    headcmd->size += byte_count;
+
+    int64_t delay;
+    if (headcmd->state == CMD_EXECUTED && byte_count) {
+        if (!s->completion_delay_ns) {
+            unsigned spiclock = s->pclk / ((clkdiv + 1u) * 2u);
+            delay = NANOSECONDS_PER_SECOND / (int64_t)spiclock;
+            delay *= headcmd->size;
+            delay >>= speed;
+        } else {
+            delay = (int64_t)s->completion_delay_ns;
+        }
+        timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + delay);
+    } else if (!timer_pending(s->fsm_delay)) {
+        delay = FSM_COMPLETION_DELAY_NS;
+        timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + delay);
+    }
 
     ot_spi_host_trace_status(s->ot_id, "S<", ot_spi_host_get_status(s));
 }
@@ -857,6 +892,17 @@ static void ot_spi_host_post_fsm(void *opaque)
 
     uint32_t command = headcmd->command;
     bool retire = headcmd->state == CMD_EXECUTED;
+
+    if (retire && trace_event_get_state(TRACE_OT_SPI_HOST_CMD_STAT)) {
+        int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+        int64_t elapsed = now - headcmd->ts;
+        if (headcmd->size) {
+            unsigned speed =
+                (unsigned)((headcmd->size * NANOSECONDS_PER_SECOND) / elapsed);
+            trace_ot_spi_host_cmd_stat(s->ot_id, headcmd->cmdid, headcmd->size,
+                                       speed);
+        }
+    }
 
     ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
 
@@ -1127,6 +1173,7 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         }
 
         CmdFifoSlot slot = {
+            .size = 0,
             .opts = s->regs[R_CONFIGOPTS],
             .command = val32,
             .csid = (uint8_t)s->regs[R_CSID],
@@ -1232,7 +1279,7 @@ static Property ot_spi_host_properties[] = {
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0),
     DEFINE_PROP_UINT32("pclk", OtSPIHostState, pclk, 0),
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
-                       FSM_COMPLETION_DELAY_NS),
+                       0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
