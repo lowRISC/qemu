@@ -178,8 +178,10 @@ enum OtEGBoardDevice {
     OT_EG_BOARD_DEV_COUNT,
 };
 
+/* EarlGrey/CW310 Core clock is 24 MHz */
+#define OT_EG_CORE_CLK_HZ 24000000u
 /* EarlGrey/CW310 Peripheral clock is 6 MHz */
-#define OT_EG_PERIPHERAL_CLK_HZ 6000000u
+#define OT_EG_PERIPHERAL_CLK_HZ ((OT_EG_CORE_CLK_HZ) / 4u)
 
 /* EarlGrey/CW310 AON clock is 250 kHz */
 #define OT_EG_AON_CLK_HZ 250000u
@@ -679,7 +681,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("ot_id", "spi0"),
-            IBEX_DEV_UINT_PROP("bus-num", 0)
+            IBEX_DEV_UINT_PROP("bus-num", 0),
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_CORE_CLK_HZ)
         ),
     },
     [OT_EG_SOC_DEV_SPI_HOST1] = {
@@ -694,7 +697,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("ot_id", "spi1"),
-            IBEX_DEV_UINT_PROP("bus-num", 1)
+            IBEX_DEV_UINT_PROP("bus-num", 1),
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_CORE_CLK_HZ)
         ),
     },
     [OT_EG_SOC_DEV_USBDEV] = {
