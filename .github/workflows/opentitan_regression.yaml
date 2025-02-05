@@ -1,0 +1,60 @@
+#------------------------------------------------------------------------------
+# OpenTitan regression runner
+#
+# Copyright (c) 2025 lowRISC CIC
+# SPDX-License-Identifier: Apache License 2.0
+#------------------------------------------------------------------------------
+
+name: OpenTitan Regression
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      opentitan_ref:
+        description: Branch, tag, or commit ref from OpenTitan to test
+        required: true
+        default: earlgrey_1.0.0
+        type: string
+
+jobs:
+  earlgrey:
+    name: Earlgrey
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout OpenTitan
+        uses: actions/checkout@v5
+        with:
+          repository: lowRISC/opentitan
+          ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
+
+      - name: Prepare OpenTitan environment
+        uses: ./.github/actions/prepare-env
+
+      - name: Checkout QEMU
+        uses: actions/checkout@v5
+        with:
+          path: qemu
+
+      - name: Build QEMU
+        working-directory: qemu
+        run: |
+          ./configure \
+            --target-list=riscv32-softmmu \
+            --without-default-features \
+            --enable-tcg \
+            --disable-tools \
+            --enable-trace-backends=log
+
+          ninja -C build qemu-system-riscv32
+
+      - name: Run OpenTitan regressions
+        run: |
+          ./qemu/scripts/opentitan/run-bazel-tests.sh ./ qemu \
+            | tee test_results.txt
+
+      - name: Upload Bazel test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-test-results
+          path: test_results.txt
