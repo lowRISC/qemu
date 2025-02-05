@@ -331,6 +331,7 @@ struct OtSPIHostState {
 
     /* properties */
     char *ot_id;
+    uint32_t pclk; /* input peripheral clock */
     uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /**< SPI host port number */
     uint8_t num_cs; /**< Supported CS line count */
@@ -1227,6 +1228,7 @@ static Property ot_spi_host_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtSPIHostState, ot_id),
     DEFINE_PROP_UINT8("num-cs", OtSPIHostState, num_cs, 1),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0),
+    DEFINE_PROP_UINT32("pclk", OtSPIHostState, pclk, 0),
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
                        FSM_COMPLETION_DELAY_NS),
     DEFINE_PROP_END_OF_LIST(),
@@ -1258,6 +1260,8 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
 {
     OtSPIHostState *s = OT_SPI_HOST(dev);
     (void)errp;
+
+    g_assert(s->pclk);
 
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 
