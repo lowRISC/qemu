@@ -742,11 +742,13 @@ struct OtFlashState {
     struct {
         OtFlashOperation kind;
         unsigned count;
+        unsigned remaining;
         unsigned address;
         unsigned info_sel;
         bool info_part;
         bool prog_sel;
         bool erase_sel;
+        bool failed;
     } op;
     OtFifo32 rd_fifo;
     OtFifo32 prog_fifo;
@@ -816,7 +818,6 @@ static void ot_flash_update_prog_watermark(OtFlashState *s)
     trace_ot_flash_update_prog_watermark(lvl, prog_watermark_level);
     ot_flash_update_irqs(s);
 }
-
 
 
 static void ot_flash_op_signal(void *opaque)
@@ -908,78 +909,105 @@ static void ot_flash_op_complete(OtFlashState *s)
     ot_flash_update_irqs(s);
 }
 
+static unsigned ot_flash_next_info_address(OtFlashState *s)
+{
+    OtFlashStorage *storage = &s->flash;
+    unsigned bank_size = storage->data_size;
+    unsigned info_partition = s->op.info_sel;
+
+    /* offset the address by the number of processed ops to get next addr */
+    unsigned op_offset = (s->op.count - s->op.remaining) * sizeof(uint32_t);
+    unsigned op_address = s->op.address + op_offset;
+
+    if (info_partition >= storage->info_part_count) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid info partition: %u\n",
+                      __func__, s->op.info_sel);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, op_address);
+        s->op.failed = true;
+        return op_address;
+    }
+
+    /* extract the bank & bank-relative address from the address */
+    unsigned bank = op_address / bank_size;
+    if (bank >= storage->bank_count) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid bank: %d\n", __func__,
+                      bank);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, op_address);
+        s->op.failed = true;
+        return op_address;
+    }
+    unsigned address_in_bank = op_address % bank_size;
+    if (address_in_bank >= storage->info_parts[info_partition].size) {
+        /*
+         * Purposefuly do not check the whole transaction's address width here:
+         * the RTL only errors when it attempts to read an invalid address.
+         */
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: invalid address in partition: %u %u\n", __func__,
+                      op_address, info_partition);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, op_address);
+        s->op.failed = true;
+        return op_address;
+    }
+
+    /* Retrieve the raw backend byte address in the info partitions. */
+    unsigned bank_offset = bank * storage->info_size;
+    unsigned info_part_offset = storage->info_parts[info_partition].offset;
+    unsigned address = address_in_bank + bank_offset + info_part_offset;
+    trace_ot_flash_info_part(s->op.address, s->op.count, s->op.remaining, bank,
+                             info_partition, address);
+    return address;
+}
+
+static unsigned ot_flash_next_data_address(OtFlashState *s)
+{
+    OtFlashStorage *storage = &s->flash;
+    unsigned bank_size = storage->data_size;
+
+    /* offset the address by the number of proessed ops to get next addr */
+    unsigned op_offset = (s->op.count - s->op.remaining) * sizeof(uint32_t);
+    unsigned address = s->op.address + op_offset;
+    unsigned bank = address / bank_size;
+    if (bank >= storage->bank_count) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid bank: %d\n", __func__,
+                      bank);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, address);
+        s->op.failed = true;
+        return address;
+    }
+    trace_ot_flash_data_part(s->op.address, s->op.count, s->op.remaining, bank,
+                             address);
+    return address;
+}
+
 static void ot_flash_op_read(OtFlashState *s)
 {
     if (ot_fifo32_is_full(&s->rd_fifo)) {
         xtrace_ot_flash_error("read while RD FIFO full");
         return;
     }
-    unsigned max_size;
-    unsigned offset;
-    unsigned address;
+
     OtFlashStorage *storage = &s->flash;
-    uint32_t *src;
+    uint32_t *src = s->op.info_part ? storage->info : storage->data;
 
-    if (s->op.info_part) {
-        if (s->op.info_sel >= storage->info_part_count) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid info partition: %u\n",
-                          __func__, s->op.info_sel);
-            ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
-            ot_flash_op_complete(s);
-            return;
+    while (s->op.remaining) {
+        uint32_t word = 0xFFFFFFFFu;
+        if (!s->op.failed) {
+            unsigned address = s->op.info_part ? ot_flash_next_info_address(s) :
+                                                 ot_flash_next_data_address(s);
+            address /= sizeof(uint32_t); /* convert to word address */
+
+            /* For multi-word read access permission errors, return all 1s. */
+            if (!s->op.failed) {
+                word = src[address];
+            }
         }
-        max_size = storage->info_size;
-        /* relative storage offset in the info storage */
-        offset = storage->info_parts[s->op.info_sel].offset;
-        unsigned bank_size = storage->data_size;
-        /* extract the bank from the address */
-        unsigned bank = s->op.address / bank_size;
-        if (bank >= storage->bank_count) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid bank: %d\n", __func__,
-                          bank);
-            ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
-            ot_flash_op_complete(s);
-            return;
-        }
-        /* get the adress relative to the bank */
-        address = s->op.address % bank_size;
-        if (address + s->op.count * sizeof(uint32_t) >=
-            storage->info_parts[s->op.info_sel].size) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: invalid address in partition: %u %u\n", __func__,
-                          address, s->op.info_sel);
-            ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
-            ot_flash_op_complete(s);
-            return;
-        }
-        /* add the bank offset of the first byte of info part */
-        address += bank * storage->info_size;
-        /* add the offset of the partition in the current bank */
-        address += offset;
-        src = storage->info;
-        trace_ot_flash_info_part(s->op.address, bank, s->op.info_sel, address);
-    } else {
-        max_size = storage->data_size;
-        address = s->op.address;
-        src = storage->data;
-    }
 
-    /* sanity check */
-    if (address >= max_size * storage->bank_count) {
-        xtrace_ot_flash_error("read address out of bound");
-        g_assert_not_reached();
-    }
-
-    /* convert to word address */
-    address /= sizeof(uint32_t);
-
-    while (s->op.count) {
-        uint32_t word = src[address++];
-        s->op.count--;
         if (!ot_flash_fifo_in_reset(s)) {
             ot_fifo32_push(&s->rd_fifo, word);
             s->regs[R_STATUS] &= ~R_STATUS_RD_EMPTY_MASK;
             ot_flash_update_rd_watermark(s);
+            s->op.remaining--;
         }
         if (ot_fifo32_is_full(&s->rd_fifo)) {
             s->regs[R_STATUS] |= R_STATUS_RD_FULL_MASK;
@@ -989,7 +1017,11 @@ static void ot_flash_op_read(OtFlashState *s)
         }
     }
 
-    if (!s->op.count) {
+    /*
+     * If we finished the entire read operation (i.e. no early exit as FIFO
+     * is full), mark the operation as completed.
+     */
+    if (!s->op.remaining) {
         ot_flash_op_complete(s);
     }
 }
@@ -998,7 +1030,7 @@ static void ot_flash_op_execute(OtFlashState *s)
 {
     switch (s->op.kind) {
     case OP_READ:
-        trace_ot_flash_op_start(OP_NAME(s->op.kind));
+        trace_ot_flash_op_execute(OP_NAME(s->op.kind));
         ot_flash_op_read(s);
         break;
     default:
@@ -1342,6 +1374,9 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 ot_flash_op_complete(s);
                 return;
             }
+            s->op.failed = false;
+            s->op.remaining = s->op.count;
+            trace_ot_flash_op_start(OP_NAME(s->op.kind));
         }
         ot_flash_op_execute(s);
         break;
