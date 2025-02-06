@@ -686,6 +686,7 @@ enum {
 #define OP_INIT_DURATION_NS     1000000u /* 1 ms */
 #define ELFNAME_SIZE            256u
 #define OT_FLASH_READ_FIFO_SIZE 16u
+#define BUS_PGM_RES             ((REG_BUS_PGM_RES_BYTES) / (OT_TL_UL_D_WIDTH_BYTES))
 
 typedef struct {
     unsigned offset; /* storage offset in bank, relative to first info page */
@@ -945,6 +946,43 @@ static void ot_flash_op_execute(OtFlashState *s)
         xtrace_ot_flash_error("unsupported");
         break;
     }
+}
+
+static bool ot_flash_check_program_resolution(OtFlashState *s)
+{
+    unsigned start_address = s->op.address / sizeof(uint32_t);
+    unsigned end_address = start_address - 1u + s->op.count;
+    unsigned start_window = start_address / BUS_PGM_RES;
+    unsigned end_window = end_address / BUS_PGM_RES;
+    if (start_window != end_window) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: program resolution error for addr=%u, count=%u "
+                      "(start_window=%u, end_window=%u)\n",
+                      __func__, s->op.address, s->op.count, start_window,
+                      end_window);
+        ot_flash_set_error(s, R_ERR_CODE_PROG_WIN_ERR_MASK, s->op.address);
+        ot_flash_op_complete(s);
+        return false;
+    }
+    return true;
+}
+
+static bool ot_flash_check_program_type(OtFlashState *s)
+{
+    uint32_t en_mask;
+    if (s->op.prog_sel == PROG_SEL_NORMAL) {
+        en_mask = R_PROG_TYPE_EN_NORMAL_MASK;
+    } else { /* PROG_SEL_REPAIR */
+        en_mask = R_PROG_TYPE_EN_REPAIR_MASK;
+    }
+    if (!(s->regs[R_PROG_TYPE_EN] & en_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: program type not enabled: %s\n",
+                      __func__, PROGRAM_NAME(s->op.prog_sel));
+        ot_flash_set_error(s, R_ERR_CODE_PROG_TYPE_ERR_MASK, s->op.address);
+        ot_flash_op_complete(s);
+        return false;
+    }
+    return true;
 }
 
 static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -1209,6 +1247,14 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 s->op.info_sel = info_sel;
                 s->op.prog_sel = (bool)prog_sel;
                 s->op.count = num + 1u;
+                /*
+                 * On encountering either a program resolution error or program
+                 * type error, do not start the transaction.
+                 */
+                if (!ot_flash_check_program_resolution(s) ||
+                    !ot_flash_check_program_type(s)) {
+                    return;
+                }
                 xtrace_ot_flash_info("Write to", s->op.address);
                 break;
             case CONTROL_OP_ERASE:

@@ -2,6 +2,7 @@
  * QEMU RISC-V Helpers for OpenTitan EarlGrey
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -34,6 +35,13 @@
 
 /* QEMU virtual timer to use for OpenTitan devices */
 #define OT_VIRTUAL_CLOCK QEMU_CLOCK_VIRTUAL
+
+/* ------------------------------------------------------------------------ */
+/* TL-UL Bus Characteristics */
+/* ------------------------------------------------------------------------ */
+
+#define OT_TL_UL_D_WIDTH_BITS  32u
+#define OT_TL_UL_D_WIDTH_BYTES ((OT_TL_UL_D_WIDTH_BITS) / 8u)
 
 /* ------------------------------------------------------------------------ */
 /* Multi-bit boolean values */
