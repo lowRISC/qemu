@@ -775,6 +775,20 @@ static void ot_flash_update_alerts(OtFlashState *s)
     }
 }
 
+static bool ot_flash_is_backend_writable(const OtFlashState *s)
+{
+    return (s->blk != NULL) && blk_is_writable(s->blk);
+}
+
+static bool ot_flash_write_backend(OtFlashState *s, const void *buffer,
+                                   unsigned offset, size_t size)
+{
+    /* NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange) */
+    return blk_pwrite(s->blk, (int64_t)(intptr_t)offset, (int64_t)size, buffer,
+                      (BdrvRequestFlags)0);
+    /* NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange) */
+}
+
 static bool ot_flash_is_disabled(OtFlashState *s)
 {
     return s->regs[R_DIS] != OT_MULTIBITBOOL4_FALSE;
@@ -1026,12 +1040,98 @@ static void ot_flash_op_read(OtFlashState *s)
     }
 }
 
+static void ot_flash_op_prog(OtFlashState *s)
+{
+    if (ot_fifo32_is_empty(&s->prog_fifo)) {
+        xtrace_ot_flash_error("prog while prog FIFO empty");
+        return;
+    }
+
+    OtFlashStorage *storage = &s->flash;
+    uint32_t *dest = s->op.info_part ? storage->info : storage->data;
+
+    while (s->op.remaining) {
+        if (ot_flash_fifo_in_reset(s)) {
+            continue;
+        }
+        uint32_t word = ot_fifo32_pop(&s->prog_fifo);
+        s->regs[R_STATUS] &= ~R_STATUS_PROG_FULL_MASK;
+        ot_flash_update_prog_watermark(s);
+        bool fifo_empty = ot_fifo32_is_empty(&s->prog_fifo);
+        if (fifo_empty) {
+            s->regs[R_STATUS] |= R_STATUS_PROG_EMPTY_MASK;
+            s->regs[R_INTR_STATE] |= INTR_PROG_EMPTY_MASK;
+            ot_flash_update_irqs(s);
+        }
+
+        /* Must calculate next addr before decrementing the remaining count. */
+        unsigned address = 0u;
+        if (!s->op.failed) {
+            address = s->op.info_part ? ot_flash_next_info_address(s) :
+                                        ot_flash_next_data_address(s);
+            address /= sizeof(uint32_t); /* convert to word address */
+        }
+        s->op.remaining--;
+
+        /*
+         * On encountering a multi-word write error, we must continue to empty
+         * the prog FIFO regardless, hence we retrieve the word to program
+         * before checking for errors.
+         */
+        trace_ot_flash_op_prog(s->op.address, s->op.count, s->op.remaining,
+                               s->op.failed, fifo_empty);
+        if (s->op.failed) {
+            if (!fifo_empty) {
+                continue;
+            }
+            break;
+        }
+
+        /*
+         * Bits cannot be programmed back to 1 once programmed to 0; they must
+         * be erased instead.
+         */
+        g_assert(address <
+                 ((s->op.info_part ? storage->info_size : storage->data_size) *
+                  storage->bank_count));
+        dest[address] &= word;
+        trace_ot_flash_prog_word(s->op.info_part, address, word);
+        if (ot_flash_is_backend_writable(s)) {
+            uintptr_t dest_offset = (uintptr_t)dest - (uintptr_t)storage->data;
+            if (ot_flash_write_backend(s, &dest[address],
+                                       (unsigned)(dest_offset + address),
+                                       sizeof(uint32_t))) {
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "%s: cannot update flash backend\n", __func__);
+                ot_flash_set_error(s, R_ERR_CODE_PROG_ERR_MASK,
+                                   address * sizeof(uint32_t));
+            }
+        }
+
+        if (fifo_empty) {
+            break;
+        }
+    }
+
+    /*
+     * If we finished the entire program operation (i.e. no early exit as FIFO
+     * is empty), mark the operation as completed.
+     */
+    if (!s->op.remaining) {
+        ot_flash_op_complete(s);
+    }
+}
+
 static void ot_flash_op_execute(OtFlashState *s)
 {
     switch (s->op.kind) {
     case OP_READ:
         trace_ot_flash_op_execute(OP_NAME(s->op.kind));
         ot_flash_op_read(s);
+        break;
+    case OP_PROG:
+        trace_ot_flash_op_execute(OP_NAME(s->op.kind));
+        ot_flash_op_prog(s);
         break;
     default:
         xtrace_ot_flash_error("unsupported");
@@ -1897,12 +1997,6 @@ static const char *ot_flash_hexdump(const uint8_t *buf, size_t size)
 
 static void ot_flash_load(OtFlashState *s, Error **errp)
 {
-    /*
-     * Notes:
-     *   1. only support read access to the flash backend
-     *   2. only data partition for now
-     */
-
     OtFlashStorage *flash = &s->flash;
     memset(flash, 0, sizeof(OtFlashStorage));
 
@@ -1925,7 +2019,7 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
             blk_blockalign(s->blk, sizeof(OtFlashBackendHeader));
 
         int rc;
-        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+        /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
         rc = blk_pread(s->blk, 0, sizeof(*header), header, 0);
         if (rc < 0) {
             error_setg(errp, "failed to read the flash header content: %d", rc);
@@ -1979,7 +2073,7 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
         unsigned offset = offsetof(OtFlashBackendHeader, hlength) +
                           sizeof(header->hlength) + header->hlength;
 
-        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+        /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
         rc = blk_pread(s->blk, (int64_t)offset, flash_size, flash->storage, 0);
         if (rc < 0) {
             error_setg(errp, "failed to read the initial flash content: %d",
@@ -1994,10 +2088,10 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
         size_t debug_trailer_size =
             (size_t)(flash->bank_count) * ELFNAME_SIZE * BIN_APP_COUNT;
         uint8_t *elfnames = blk_blockalign(s->blk, debug_trailer_size);
-        // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange)
+        /* NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange) */
         rc = blk_pread(s->blk, (int64_t)offset + flash_size,
                        (int64_t)debug_trailer_size, elfnames, 0);
-        // NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange)
+        /* NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange) */
         if (!rc) {
             const char *elfname = (const char *)elfnames;
             for (unsigned ix = 0; ix < BIN_APP_COUNT; ix++) {

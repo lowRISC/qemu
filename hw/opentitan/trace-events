@@ -190,6 +190,8 @@ ot_flash_set_error(const char *op, uint32_t err_code, uint32_t err_addr) "%s: er
 ot_flash_update_rd_watermark(unsigned val, unsigned watermark) "%u >= %u"
 ot_flash_update_prog_watermark(unsigned val, unsigned watermark) "%u <= %u"
 ot_flash_reset_fifo(const char *name) "%s"
+ot_flash_op_prog(unsigned op_addr, unsigned count, unsigned remaining, bool failed, bool fifo_empty) "op_addr 0x%06x count %u remaining %u failed %u fifo_empty %u"
+ot_flash_prog_word(bool info_part, unsigned word_addr, uint32_t word) "info_part %u word_addr %u word %u"
 
 # ot_gpio.c
 
