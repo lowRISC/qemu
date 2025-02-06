@@ -789,12 +789,12 @@ static bool ot_flash_write_backend(OtFlashState *s, const void *buffer,
     /* NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange) */
 }
 
-static bool ot_flash_is_disabled(OtFlashState *s)
+static bool ot_flash_is_disabled(const OtFlashState *s)
 {
     return s->regs[R_DIS] != OT_MULTIBITBOOL4_FALSE;
 }
 
-static bool ot_flash_regs_is_wr_enabled(OtFlashState *s, unsigned regwen)
+static bool ot_flash_regs_is_wr_enabled(const OtFlashState *s, unsigned regwen)
 {
     return (bool)(s->regs[regwen] & REGWEN_EN_MASK);
 }
@@ -873,7 +873,7 @@ static void ot_flash_initialize(OtFlashState *s)
               qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
 }
 
-static bool ot_flash_fifo_in_reset(OtFlashState *s)
+static bool ot_flash_fifo_in_reset(const OtFlashState *s)
 {
     return (bool)s->regs[R_FIFO_RST];
 }
@@ -921,6 +921,23 @@ static void ot_flash_op_complete(OtFlashState *s)
     trace_ot_flash_op_complete(OP_NAME(s->op.kind), !s->regs[R_ERR_CODE]);
     s->op.kind = OP_NONE;
     ot_flash_update_irqs(s);
+}
+
+static bool ot_flash_can_erase_bank(const OtFlashState *s, unsigned bank)
+{
+    switch (bank) {
+    case 0u:
+        return (bool)FIELD_EX32(s->regs[R_MP_BANK_CFG_SHADOWED],
+                                MP_BANK_CFG_SHADOWED, ERASE_EN_0);
+    case 1u:
+        return (bool)FIELD_EX32(s->regs[R_MP_BANK_CFG_SHADOWED],
+                                MP_BANK_CFG_SHADOWED, ERASE_EN_1);
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: unknown bank %u for bank erase operation", __func__,
+                      bank);
+        return false;
+    }
 }
 
 static unsigned ot_flash_next_info_address(OtFlashState *s)
@@ -1122,6 +1139,127 @@ static void ot_flash_op_prog(OtFlashState *s)
     }
 }
 
+static void ot_flash_op_erase_page(OtFlashState *s, unsigned address)
+{
+    OtFlashStorage *storage = &s->flash;
+    uint32_t *dest = s->op.info_part ? storage->info : storage->data;
+    unsigned page_size = BYTES_PER_PAGE;
+    unsigned page_address = address - (address % page_size);
+    page_address /= sizeof(uint32_t); /* convert to word address */
+
+    g_assert((page_address + page_size) <
+             ((s->op.info_part ? storage->info_size : storage->data_size) *
+              storage->bank_count));
+    memset(&dest[page_address], 0xFFu, page_size);
+    trace_ot_flash_erase(s->op.info_part, page_address, page_size);
+    if (ot_flash_is_backend_writable(s)) {
+        uintptr_t dest_offset = (uintptr_t)dest - (uintptr_t)storage->data;
+        if (ot_flash_write_backend(s, &dest[page_address],
+                                   (unsigned)(dest_offset + page_address),
+                                   page_size)) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot update flash backend\n",
+                          __func__);
+            ot_flash_set_error(s, R_ERR_CODE_PROG_ERR_MASK,
+                               address * sizeof(uint32_t));
+            ot_flash_op_complete(s);
+            return;
+        }
+    }
+
+    ot_flash_op_complete(s);
+}
+
+static void ot_flash_op_erase_bank(OtFlashState *s, unsigned address)
+{
+    OtFlashStorage *storage = &s->flash;
+    unsigned bank_size =
+        s->op.info_part ? storage->info_size : storage->data_size;
+    unsigned bank = address / bank_size;
+
+    if (!ot_flash_can_erase_bank(s, bank)) {
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: cannot erase bank %u when bank-wide erase not enabled\n",
+            __func__, bank);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, address);
+        ot_flash_op_complete(s);
+        return;
+    }
+
+    /*
+        * For bank erase only, if the data partition is selected, just the
+        * data partition is erased. If the info partition is selected, BOTH
+        * the data and info partitions are erased.
+        */
+    unsigned bank_address = address - (address % bank_size);
+    bank_address /= sizeof(uint32_t); /* convert to word address */
+    unsigned data_address, info_address = 0u;
+    if (!s->op.info_part) {
+        data_address = bank_address;
+        g_assert((data_address + bank_size) <=
+                 (storage->data_size * storage->bank_count));
+        memset(&storage->data[data_address], 0xFFu, bank_size);
+        trace_ot_flash_erase(s->op.info_part, data_address, bank_size);
+    } else {
+        info_address = bank_address;
+        g_assert((info_address + bank_size) <=
+                 (storage->info_size * storage->bank_count));
+        memset(&storage->info[info_address], 0xFFu, bank_size);
+        trace_ot_flash_erase(true, info_address, bank_size);
+
+        bank_size = storage->data_size;
+        data_address = bank_size * bank / sizeof(uint32_t);
+        g_assert((data_address + bank_size) <=
+                 (storage->data_size * storage->bank_count));
+        memset(&storage->data[data_address], 0xFFu, bank_size);
+        trace_ot_flash_erase(false, data_address, bank_size);
+    }
+
+    if (ot_flash_is_backend_writable(s)) {
+        int data_write_err =
+            ot_flash_write_backend(s, &storage->data[data_address],
+                                   (unsigned)(data_address),
+                                   storage->data_size);
+        int info_write_err = 0u;
+        if (s->op.info_part) {
+            uintptr_t offset =
+                (uintptr_t)storage->info - (uintptr_t)storage->data;
+            info_write_err =
+                ot_flash_write_backend(s, &storage->info[info_address],
+                                       (unsigned)(offset + info_address),
+                                       storage->info_size);
+        }
+
+        if (data_write_err || info_write_err) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot update flash backend\n",
+                          __func__);
+            ot_flash_set_error(s, R_ERR_CODE_PROG_ERR_MASK,
+                               address * sizeof(uint32_t));
+            ot_flash_op_complete(s);
+            return;
+        }
+    }
+
+    ot_flash_op_complete(s);
+}
+
+static void ot_flash_op_erase(OtFlashState *s)
+{
+    unsigned address = s->op.info_part ? ot_flash_next_info_address(s) :
+                                         ot_flash_next_data_address(s);
+    if (s->op.failed) {
+        ot_flash_op_complete(s);
+        return;
+    }
+
+    /* Try to erase all bits in the page/bank back to 1. */
+    if (s->op.erase_sel == ERASE_SEL_PAGE) {
+        ot_flash_op_erase_page(s, address);
+    } else { /* ERASE_SEL_BANK */
+        ot_flash_op_erase_bank(s, address);
+    }
+}
+
 static void ot_flash_op_execute(OtFlashState *s)
 {
     switch (s->op.kind) {
@@ -1132,6 +1270,10 @@ static void ot_flash_op_execute(OtFlashState *s)
     case OP_PROG:
         trace_ot_flash_op_execute(OP_NAME(s->op.kind));
         ot_flash_op_prog(s);
+        break;
+    case OP_ERASE:
+        trace_ot_flash_op_execute(OP_NAME(s->op.kind));
+        ot_flash_op_erase(s);
         break;
     default:
         xtrace_ot_flash_error("unsupported");
