@@ -689,21 +689,11 @@ static void ot_spi_host_update_alert(OtSPIHostState *s)
 /* State machine and I/O */
 /* ------------------------------------------------------------------------ */
 
-static void ot_spi_host_reset(OtSPIHostState *s)
+static void ot_spi_host_internal_reset(OtSPIHostState *s)
 {
-    trace_ot_spi_host_reset(s->ot_id, "Resetting OpenTitan SPI");
+    trace_ot_spi_host_internal_reset(s->ot_id);
 
     timer_del(s->fsm_delay);
-
-    s->regs[R_INTR_STATE] = 0x00u;
-    s->regs[R_INTR_ENABLE] = 0x00u;
-    s->regs[R_INTR_TEST] = 0x00u;
-    s->regs[R_ALERT_TEST] = 0x00u;
-    s->regs[R_CONTROL] = 0x7fu;
-    s->regs[R_CSID] = 0x00u;
-    s->regs[R_ERROR_ENABLE] = 0x1fu;
-    s->regs[R_ERROR_STATUS] = 0x00u;
-    s->regs[R_EVENT_ENABLE] = 0x00u;
 
     /* rxdata, txdata, and command registers are managed w/ FIFOs */
     fifo8_reset(s->rx_fifo);
@@ -716,17 +706,12 @@ static void ot_spi_host_reset(OtSPIHostState *s)
         ot_spi_host_chip_select(s, csid, false);
     }
 
-    for (unsigned ix = 0u; ix < ARRAY_SIZE(s->irqs); ix++) {
-        ibex_irq_set(&s->irqs[ix], 0);
-    }
-    ibex_irq_set(&s->alert, 0);
-
-    ot_spi_host_update_regs(s);
-    ot_spi_host_update_alert(s);
-
     s->total_transfer = 0;
     s->last_command_id = 0;
     s->last_clkdiv = UINT32_MAX;
+
+    ot_spi_host_update_regs(s);
+    ot_spi_host_update_alert(s);
 }
 
 /**
@@ -1116,7 +1101,7 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_CONTROL_MASK;
         s->regs[R_CONTROL] = val32;
         if (FIELD_EX32(val32, CONTROL, SW_RST)) {
-            ot_spi_host_reset(s);
+            ot_spi_host_internal_reset(s);
         }
         s->fsm.output_en = FIELD_EX32(val32, CONTROL, OUTPUT_EN);
         if (!cmdfifo_is_empty(s->cmd_fifo)) {
@@ -1293,8 +1278,19 @@ static void ot_spi_host_reset_enter(Object *obj, ResetType type)
             g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
 
+    s->regs[R_INTR_STATE] = 0x00u;
+    s->regs[R_INTR_ENABLE] = 0x00u;
+    s->regs[R_INTR_TEST] = 0x00u;
+    s->regs[R_ALERT_TEST] = 0x00u;
+    s->regs[R_CONTROL] = 0x7fu;
+    s->regs[R_CSID] = 0x00u;
+    s->regs[R_ERROR_ENABLE] = 0x1fu;
+    s->regs[R_ERROR_STATUS] = 0x00u;
+    s->regs[R_EVENT_ENABLE] = 0x00u;
+
     s->on_reset = true;
-    ot_spi_host_reset(s);
+
+    ot_spi_host_internal_reset(s);
 }
 
 static void ot_spi_host_reset_exit(Object *obj, ResetType type)
