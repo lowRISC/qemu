@@ -760,21 +760,27 @@ static bool ot_flash_fifo_in_reset(OtFlashState *s)
     return (bool)s->regs[R_FIFO_RST];
 }
 
-static void ot_flash_op_complete(OtFlashState *s, uint32_t ebit, uint32_t eaddr)
+static void ot_flash_set_error(OtFlashState *s, uint32_t ebit, uint32_t eaddr)
 {
-    /*
-     * done is always signalled, even on error - at least this is what is
-     * implemented in the OT flash_ctrl.c wait_for_done()
-     */
-    s->regs[R_OP_STATUS] |= R_OP_STATUS_DONE_MASK;
-    s->regs[R_INTR_STATE] |= INTR_OP_DONE_MASK;
     if (ebit) {
         s->regs[R_OP_STATUS] |= R_OP_STATUS_ERR_MASK;
         s->regs[R_INTR_STATE] |= INTR_CORR_ERR_MASK;
         s->regs[R_ERR_ADDR] = FIELD_DP32(0, ERR_ADDR, ERR_ADDR, eaddr);
         s->regs[R_ERR_CODE] = ebit;
     }
-    trace_ot_flash_op_complete(s->op.kind, !ebit);
+    trace_ot_flash_set_error(s->op.kind, ebit, eaddr);
+    ot_flash_update_irqs(s);
+}
+
+static void ot_flash_op_complete(OtFlashState *s)
+{
+    /*
+     * done is always signalled when the full operation is completed, even
+     * if there was an error at some point in the operation.
+     */
+    s->regs[R_OP_STATUS] |= R_OP_STATUS_DONE_MASK;
+    s->regs[R_INTR_STATE] |= INTR_OP_DONE_MASK;
+    trace_ot_flash_op_complete(s->op.kind, !s->regs[R_ERR_CODE]);
     s->op.kind = OP_NONE;
     ot_flash_update_irqs(s);
 }
@@ -795,7 +801,8 @@ static void ot_flash_op_read(OtFlashState *s)
         if (s->op.info_sel >= storage->info_part_count) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid info partition: %u\n",
                           __func__, s->op.info_sel);
-            ot_flash_op_complete(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
+            ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
+            ot_flash_op_complete(s);
             return;
         }
         max_size = storage->info_size;
@@ -807,7 +814,8 @@ static void ot_flash_op_read(OtFlashState *s)
         if (bank >= storage->bank_count) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid bank: %d\n", __func__,
                           bank);
-            ot_flash_op_complete(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
+            ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
+            ot_flash_op_complete(s);
             return;
         }
         /* get the adress relative to the bank */
@@ -817,7 +825,8 @@ static void ot_flash_op_read(OtFlashState *s)
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: invalid address in partition: %u %u\n", __func__,
                           address, s->op.info_sel);
-            ot_flash_op_complete(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
+            ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, s->op.address);
+            ot_flash_op_complete(s);
             return;
         }
         /* add the bank offset of the first byte of info part */
@@ -857,7 +866,7 @@ static void ot_flash_op_read(OtFlashState *s)
     }
 
     if (!s->op.count) {
-        ot_flash_op_complete(s, 0u, 0u);
+        ot_flash_op_complete(s);
     }
 }
 
@@ -1131,7 +1140,8 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             default:
                 qemu_log_mask(LOG_UNIMP, "%s: Operation %u not implemented\n",
                               __func__, op);
-                ot_flash_op_complete(s, R_ERR_CODE_OP_ERR_MASK, 0u);
+                ot_flash_set_error(s, R_ERR_CODE_OP_ERR_MASK, 0u);
+                ot_flash_op_complete(s);
                 return;
             }
             s->op.count = num + 1u;
