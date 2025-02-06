@@ -1103,7 +1103,8 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_COMMAND: {
         if (cmdfifo_is_full(s->cmd_fifo)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: cmd fifo full\n", s->ot_id);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: cmd fifo full\n", __func__,
+                          s->ot_id);
             REG_UPDATE(s, ERROR_STATUS, CMDBUSY, (uint32_t) true);
             ot_spi_host_update_error(s);
             return;
@@ -1113,12 +1114,14 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
 
         /* IP not enabled */
         if (!(REG_GET(s, CONTROL, SPIEN))) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: no SPI/EN\n", s->ot_id);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: no SPI/EN\n", __func__,
+                          s->ot_id);
             return;
         }
 
         if (!ot_spi_host_is_ready(s)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: busy\n", s->ot_id);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: busy\n", __func__,
+                          s->ot_id);
             REG_UPDATE(s, ERROR_STATUS, CMDBUSY, 1);
             ot_spi_host_update_regs(s);
             break;
@@ -1129,14 +1132,16 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
              (FIELD_EX32(val32, COMMAND, SPEED) != 0u)) ||
             (FIELD_EX32(val32, COMMAND, SPEED) == 3u)) {
             /* dual/quad SPI cannot be used w/ full duplex mode */
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid command parameters\n",
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: invalid command parameters\n", __func__,
                           s->ot_id);
             REG_UPDATE(s, ERROR_STATUS, CMDINVAL, 1u);
             error = true;
         }
         if (!(s->regs[R_CSID] < s->num_cs)) {
             /* CSID exceeds max num_cs */
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid csid\n", s->ot_id);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid csid\n", __func__,
+                          s->ot_id);
             REG_UPDATE(s, ERROR_STATUS, CSIDINVAL, 1u);
             error = true;
         }
