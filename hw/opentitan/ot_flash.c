@@ -6,6 +6,7 @@
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Alex Jones <alex.jones@lowrisc.org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,8 +26,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *
- * Note: for now, only a minimalist subset of Power Manager device is
- *       implemented in order to enable OpenTitan's ROM boot to progress
+ * Known limitations:
+ *  - ECC/ICV/Scrambling functionality is not yet implemented in QEMU,
+ *    including ECC single error support.
+ *  - Alert functionality is not yet modelled (outside of test alerts).
+ *  - Program Repair / High Endurance enables are meaningless in the OpenTitan
+ *    Generic Flash Bank and so are not emulated.
+ *  - Erase Suspend is not emulated in QEMU (erases are done synchronously, so
+ *    you can suspend, but the bit will immediately be cleared).
+ *  - HW info cfg overrides are not modelled in QEMU.
  */
 
 #include "qemu/osdep.h"
@@ -769,6 +777,7 @@ static void ot_flash_update_irqs(OtFlashState *s)
 
 static void ot_flash_update_alerts(OtFlashState *s)
 {
+    /* @todo Implement non-test alert sources and update them here as well. */
     uint32_t level = s->regs[R_ALERT_TEST];
 
     for (unsigned ix = 0u; ix < PARAM_NUM_ALERTS; ix++) {
@@ -833,7 +842,6 @@ static void ot_flash_update_prog_watermark(OtFlashState *s)
     trace_ot_flash_update_prog_watermark(lvl, prog_watermark_level);
     ot_flash_update_irqs(s);
 }
-
 
 static void ot_flash_op_signal(void *opaque)
 {
@@ -1838,8 +1846,13 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_ERASE_SUSPEND:
-        val32 &= R_ERASE_SUSPEND_REQ_MASK;
-        s->regs[reg] = val32;
+        /*
+         * @todo We do not implement the erase suspend operation in QEMU as we
+         * do all erases synchronously, and so just immediately clear the erase
+         * suspend request. To implement this feature properly we would have to
+         * add delay to bank erases & check for erase suspends at each step.
+         */
+        s->regs[reg] = 0u;
         break;
     case R_REGION_CFG_REGWEN_0:
     case R_REGION_CFG_REGWEN_1:
@@ -2498,6 +2511,8 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
      *   - INFO1 bank 1
      *   - INFO2 bank 1
      * - Debug info (ELF file names)
+     *
+     * @todo Add ECC section to backend for ECC/ICV support also
      */
     flash->data = (uint32_t *)(base);
     flash->info =
