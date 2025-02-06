@@ -755,6 +755,7 @@ struct OtFlashState {
     OtFlashStorage flash;
 
     BlockBackend *blk; /* Flash backend */
+    bool no_mem_prot; /* Flag to disable mem protection features */
 };
 
 static void ot_flash_update_irqs(OtFlashState *s)
@@ -923,6 +924,121 @@ static void ot_flash_op_complete(OtFlashState *s)
     ot_flash_update_irqs(s);
 }
 
+static uint32_t ot_flash_get_info_page_cfg_reg(
+    unsigned bank, unsigned info_partition, unsigned page)
+{
+    switch (bank) {
+    case 0u:
+        switch (info_partition) {
+        case 0u:
+            return R_BANK0_INFO0_PAGE_CFG_0 + page;
+        case 1u:
+            return R_BANK0_INFO1_PAGE_CFG;
+        case 2u:
+            return R_BANK0_INFO2_PAGE_CFG_0 + page;
+        default:
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid info partition: %u\n",
+                          __func__, info_partition);
+            return 0u;
+        }
+    case 1u:
+        switch (info_partition) {
+        case 0u:
+            return R_BANK1_INFO0_PAGE_CFG_0 + page;
+        case 1u:
+            return R_BANK1_INFO1_PAGE_CFG;
+        case 2u:
+            return R_BANK1_INFO2_PAGE_CFG_0 + page;
+        default:
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid info partition: %u\n",
+                          __func__, info_partition);
+            return 0u;
+        }
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid bank: %d\n", __func__,
+                      bank);
+        return 0u;
+    }
+}
+
+static bool
+ot_flash_info_page_cfg_op_enabled(OtFlashState *s, uint32_t info_page_cfg_reg)
+{
+    unsigned en_field;
+    switch (s->op.kind) {
+    case OP_READ:
+        en_field = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
+                                     BANK_INFO_PAGE_CFG_RD_EN);
+        break;
+    case OP_PROG:
+        en_field = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
+                                     BANK_INFO_PAGE_CFG_PROG_EN);
+        break;
+    case OP_ERASE:
+        en_field = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
+                                     BANK_INFO_PAGE_CFG_ERASE_EN);
+        break;
+    case OP_NONE:
+        xtrace_ot_flash_error("cannot check mp without operation");
+        return false;
+    default:
+        xtrace_ot_flash_error("unsupported operation?");
+        return false;
+    }
+    return en_field == OT_MULTIBITBOOL4_TRUE;
+}
+
+static bool
+ot_flash_mp_region_cfg_op_enabled(OtFlashState *s, uint32_t mp_cfg_reg)
+{
+    unsigned en_field;
+    switch (s->op.kind) {
+    case OP_READ:
+        en_field = SHARED_FIELD_EX32(s->regs[mp_cfg_reg], MP_REGION_CFG_RD_EN);
+        break;
+    case OP_PROG:
+        en_field =
+            SHARED_FIELD_EX32(s->regs[mp_cfg_reg], MP_REGION_CFG_PROG_EN);
+        break;
+    case OP_ERASE:
+        en_field =
+            SHARED_FIELD_EX32(s->regs[mp_cfg_reg], MP_REGION_CFG_ERASE_EN);
+        break;
+    case OP_NONE:
+        xtrace_ot_flash_error("cannot check mp without operation");
+        return false;
+    default:
+        xtrace_ot_flash_error("unsupported operation?");
+        return false;
+    }
+    return en_field == OT_MULTIBITBOOL4_TRUE;
+}
+
+static bool ot_flash_default_region_cfg_op_enabled(OtFlashState *s)
+{
+    unsigned en_field;
+    switch (s->op.kind) {
+    case OP_READ:
+        en_field = FIELD_EX32(s->regs[R_DEFAULT_REGION], DEFAULT_REGION, RD_EN);
+        break;
+    case OP_PROG:
+        en_field =
+            FIELD_EX32(s->regs[R_DEFAULT_REGION], DEFAULT_REGION, PROG_EN);
+        break;
+    case OP_ERASE:
+        en_field =
+            FIELD_EX32(s->regs[R_DEFAULT_REGION], DEFAULT_REGION, ERASE_EN);
+        break;
+    case OP_NONE:
+        xtrace_ot_flash_error("cannot check mp without operation");
+        return false;
+    default:
+        xtrace_ot_flash_error("unsupported operation?");
+        return false;
+    }
+    return en_field == OT_MULTIBITBOOL4_TRUE;
+}
+
 static bool ot_flash_can_erase_bank(const OtFlashState *s, unsigned bank)
 {
     switch (bank) {
@@ -987,6 +1103,35 @@ static unsigned ot_flash_next_info_address(OtFlashState *s)
     unsigned address = address_in_bank + bank_offset + info_part_offset;
     trace_ot_flash_info_part(s->op.address, s->op.count, s->op.remaining, bank,
                              info_partition, address);
+    if (s->no_mem_prot ||
+        (s->op.kind == OP_ERASE && s->op.erase_sel == ERASE_SEL_BANK)) {
+        return address;
+    }
+
+    /* Check the matching info partition page config register */
+    unsigned page = address_in_bank / BYTES_PER_PAGE;
+    uint32_t info_page_cfg_reg =
+        ot_flash_get_info_page_cfg_reg(bank, info_partition, page);
+    if (!info_page_cfg_reg) {
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, op_address);
+        s->op.failed = true;
+        return address;
+    }
+    if (SHARED_FIELD_EX32(s->regs[info_page_cfg_reg], BANK_INFO_PAGE_CFG_EN) !=
+        OT_MULTIBITBOOL4_TRUE) {
+        return address; /* page config is disabled; so access is permitted. */
+    }
+    if (!ot_flash_info_page_cfg_op_enabled(s, info_page_cfg_reg)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: operation %s on info page %u in partition %u of "
+                      "bank %u is disabled by page config\n",
+                      __func__, OP_NAME(s->op.kind), page, bank,
+                      info_partition);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, op_address);
+        s->op.failed = true;
+        return address;
+    }
+
     return address;
 }
 
@@ -1008,6 +1153,68 @@ static unsigned ot_flash_next_data_address(OtFlashState *s)
     }
     trace_ot_flash_data_part(s->op.address, s->op.count, s->op.remaining, bank,
                              address);
+
+    if (s->no_mem_prot ||
+        (s->op.kind == OP_ERASE && s->op.erase_sel == ERASE_SEL_BANK)) {
+        return address;
+    }
+
+    /*
+     * Check through the memory protection regions 0->9, and see if the current
+     * page falls within a region. If so, and it is enabled, apply its perms.
+     * Otherwise apply the default region's permissions. Note that MP region
+     * page indexes are cumulative across banks.
+     *
+     * If any two MP regions overlap, the lower index region has priority.
+     */
+    unsigned page = address / BYTES_PER_PAGE;
+    bool matching_region_found = false;
+    for (unsigned region = 0u; region < NUM_REGIONS; region++) {
+        /* Ignore disabled regions */
+        unsigned r_region_cfg = R_MP_REGION_CFG_0 + region;
+        if (SHARED_FIELD_EX32(s->regs[r_region_cfg], MP_REGION_CFG_EN) !=
+            OT_MULTIBITBOOL4_TRUE) {
+            continue;
+        }
+
+        /*
+         * Check if the current flash word falls in this region.
+         * Size is inclusive at the base, but exclusive at (base+size).
+         */
+        unsigned r_region = R_MP_REGION_0 + region;
+        unsigned region_base_page =
+            SHARED_FIELD_EX32(s->regs[r_region], MP_REGION_BASE);
+        unsigned region_size =
+            SHARED_FIELD_EX32(s->regs[r_region], MP_REGION_SIZE);
+        if (page < region_base_page ||
+            page >= (region_base_page + region_size)) {
+            continue;
+        }
+        matching_region_found = true;
+
+        /* Page does fall in this region, so check if enabled for operation. */
+        if (!ot_flash_mp_region_cfg_op_enabled(s, r_region_cfg)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: operation %s on page %u of data partition in "
+                          "bank %u is disabled by MP region %u\n",
+                          __func__, OP_NAME(s->op.kind), page, bank, region);
+            ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, address);
+            s->op.failed = true;
+            return address;
+        }
+        break;
+    }
+
+    /* If page not in any region, apply the default region's permissions. */
+    if (!matching_region_found && !ot_flash_default_region_cfg_op_enabled(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: operation %s on page %u of data partition in bank "
+                      "%u is disabled by default region\n",
+                      __func__, OP_NAME(s->op.kind), page, bank);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, address);
+        s->op.failed = true;
+        return address;
+    }
     return address;
 }
 
@@ -2002,6 +2209,9 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
 
 static Property ot_flash_properties[] = {
     DEFINE_PROP_DRIVE("drive", OtFlashState, blk),
+    /* Optionally disable memory protection, as searching for valid memory
+    regions and checking their config can slow down regular operation. */
+    DEFINE_PROP_BOOL("no-mem-prot", OtFlashState, no_mem_prot, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
