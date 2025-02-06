@@ -435,6 +435,30 @@ REG32(CSR20, 0x50u)
 
 /* clang-format on */
 
+typedef enum {
+    OP_NONE,
+    OP_INIT,
+    OP_READ,
+    OP_PROG,
+    OP_ERASE,
+} OtFlashOperation;
+
+typedef enum {
+    CONTROL_OP_READ = 0x0,
+    CONTROL_OP_PROG = 0x1,
+    CONTROL_OP_ERASE = 0x2,
+} OtFlashControlOperation;
+
+typedef enum {
+    ERASE_SEL_PAGE = 0x0,
+    ERASE_SEL_BANK = 0x1,
+} OtFlashControlEraseSelection;
+
+typedef enum {
+    PROG_SEL_NORMAL = 0x0,
+    PROG_SEL_REPAIR = 0x1,
+} OtFlashControlProgramSelection;
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_LAST_REG (R_RD_FIFO)
@@ -576,6 +600,50 @@ static const char *CSR_NAMES[CSRS_COUNT] = {
 };
 #undef CSR_NAME_ENTRY
 
+#define FLASH_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
+
+static const char *OP_NAMES[] = {
+    FLASH_NAME_ENTRY(OP_NONE),  FLASH_NAME_ENTRY(OP_INIT),
+    FLASH_NAME_ENTRY(OP_READ),  FLASH_NAME_ENTRY(OP_PROG),
+    FLASH_NAME_ENTRY(OP_ERASE),
+};
+
+static const char *CONTROL_OP_NAMES[] = {
+    FLASH_NAME_ENTRY(CONTROL_OP_READ),
+    FLASH_NAME_ENTRY(CONTROL_OP_PROG),
+    FLASH_NAME_ENTRY(CONTROL_OP_ERASE),
+};
+
+static const char *ERASE_SELECTION_NAMES[] = {
+    FLASH_NAME_ENTRY(ERASE_SEL_PAGE),
+    FLASH_NAME_ENTRY(ERASE_SEL_BANK),
+};
+
+static const char *PROGRAM_SELECTION_NAMES[] = {
+    FLASH_NAME_ENTRY(PROG_SEL_NORMAL),
+    FLASH_NAME_ENTRY(PROG_SEL_REPAIR),
+};
+
+#undef FLASH_NAME_ENTRY
+
+#define OP_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(OP_NAMES) ? OP_NAMES[(_st_)] : "?")
+
+#define CONTROL_OP_NAME(_st_) \
+    ((unsigned)(_st_) < ARRAY_SIZE(CONTROL_OP_NAMES) ? \
+         CONTROL_OP_NAMES[(_st_)] : \
+         "?")
+
+#define ERASE_NAME(_st_) \
+    ((unsigned)(_st_) < ARRAY_SIZE(ERASE_SELECTION_NAMES) ? \
+         ERASE_SELECTION_NAMES[(_st_)] : \
+         "?")
+
+#define PROGRAM_NAME(_st_) \
+    ((unsigned)(_st_) < ARRAY_SIZE(PROGRAM_SELECTION_NAMES) ? \
+         PROGRAM_SELECTION_NAMES[(_st_)] : \
+         "?")
+
 /**
  * Bank 0 information partition type 0 pages.
  *
@@ -608,12 +676,6 @@ static const char *CSR_NAMES[CSRS_COUNT] = {
     trace_ot_flash_error(__func__, __LINE__, _msg_)
 #define xtrace_ot_flash_info(_msg_, _val_) \
     trace_ot_flash_info(__func__, __LINE__, _msg_, _val_)
-
-typedef enum {
-    OP_NONE,
-    OP_INIT,
-    OP_READ,
-} OtFlashOperation;
 
 enum {
     BIN_APP_OTRE,
@@ -681,6 +743,8 @@ struct OtFlashState {
         unsigned address;
         unsigned info_sel;
         bool info_part;
+        bool prog_sel;
+        bool erase_sel;
     } op;
     OtFifo32 rd_fifo;
     OtFlashStorage flash;
@@ -727,7 +791,7 @@ static void ot_flash_op_signal(void *opaque)
             FIELD_DP32(s->regs[R_STATUS], STATUS, INITIALIZED, 1u);
         s->regs[R_PHY_STATUS] =
             FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
-        trace_ot_flash_op_complete(s->op.kind, true);
+        trace_ot_flash_op_complete(OP_NAME(s->op.kind), true);
         s->op.kind = OP_NONE;
         break;
     default:
@@ -747,7 +811,7 @@ static void ot_flash_initialize(OtFlashState *s)
     }
 
     s->op.kind = OP_INIT;
-    trace_ot_flash_op_start(s->op.kind);
+    trace_ot_flash_op_start(OP_NAME(s->op.kind));
     s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 1u);
     s->regs[R_PHY_STATUS] =
         FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
@@ -768,7 +832,7 @@ static void ot_flash_set_error(OtFlashState *s, uint32_t ebit, uint32_t eaddr)
         s->regs[R_ERR_ADDR] = FIELD_DP32(0, ERR_ADDR, ERR_ADDR, eaddr);
         s->regs[R_ERR_CODE] = ebit;
     }
-    trace_ot_flash_set_error(s->op.kind, ebit, eaddr);
+    trace_ot_flash_set_error(OP_NAME(s->op.kind), ebit, eaddr);
     ot_flash_update_irqs(s);
 }
 
@@ -780,7 +844,7 @@ static void ot_flash_op_complete(OtFlashState *s)
      */
     s->regs[R_OP_STATUS] |= R_OP_STATUS_DONE_MASK;
     s->regs[R_INTR_STATE] |= INTR_OP_DONE_MASK;
-    trace_ot_flash_op_complete(s->op.kind, !s->regs[R_ERR_CODE]);
+    trace_ot_flash_op_complete(OP_NAME(s->op.kind), !s->regs[R_ERR_CODE]);
     s->op.kind = OP_NONE;
     ot_flash_update_irqs(s);
 }
@@ -874,7 +938,7 @@ static void ot_flash_op_execute(OtFlashState *s)
 {
     switch (s->op.kind) {
     case OP_READ:
-        trace_ot_flash_op_start(s->op.kind);
+        trace_ot_flash_op_start(OP_NAME(s->op.kind));
         ot_flash_op_read(s);
         break;
     default:
@@ -1127,24 +1191,44 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         bool part_sel = (bool)FIELD_EX32(val32, CONTROL, PARTITION_SEL);
         unsigned info_sel = (unsigned)FIELD_EX32(val32, CONTROL, INFO_SEL);
         unsigned num = (unsigned)FIELD_EX32(val32, CONTROL, NUM);
+
         if (start && s->op.kind == OP_NONE) {
-            /* NOLINTNEXTLINE */
             switch (op) {
-            case 0:
+            case CONTROL_OP_READ:
                 s->op.kind = OP_READ;
                 s->op.address = s->regs[R_ADDR] & ~3u;
                 s->op.info_part = part_sel;
                 s->op.info_sel = info_sel;
                 xtrace_ot_flash_info("Read from", s->op.address);
+                s->op.count = num + 1u;
+                break;
+            case CONTROL_OP_PROG:
+                s->op.kind = OP_PROG;
+                s->op.address = s->regs[R_ADDR] & ~3u;
+                s->op.info_part = part_sel;
+                s->op.info_sel = info_sel;
+                s->op.prog_sel = (bool)prog_sel;
+                s->op.count = num + 1u;
+                xtrace_ot_flash_info("Write to", s->op.address);
+                break;
+            case CONTROL_OP_ERASE:
+                s->op.kind = OP_ERASE;
+                s->op.address = s->regs[R_ADDR] & ~3u;
+                s->op.info_part = part_sel;
+                s->op.info_sel = info_sel;
+                s->op.erase_sel = (bool)erase_sel;
+                /* Erase operations neither go through FIFOs nor use/require a word count */
+                s->op.count = 0u;
+                xtrace_ot_flash_info("Erase at", s->op.address);
                 break;
             default:
-                qemu_log_mask(LOG_UNIMP, "%s: Operation %u not implemented\n",
-                              __func__, op);
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "%s: Operation %u (%s) is invalid\n", __func__,
+                              op, CONTROL_OP_NAME(op));
                 ot_flash_set_error(s, R_ERR_CODE_OP_ERR_MASK, 0u);
                 ot_flash_op_complete(s);
                 return;
             }
-            s->op.count = num + 1u;
         }
         ot_flash_op_execute(s);
         break;
