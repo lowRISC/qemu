@@ -7,7 +7,8 @@ flash controller virtual device.
 
 ````text
 usage: flashgen.py [-h] [-D] [-a {0,1}] [-s OFFSET] [-x file] [-X elf]
-                   [-b file] [-B elf] [-t OTDESC] [-U] [-A] [-v] [-d] flash
+                   [-b file] [-B elf] [-t OTDESC] [-T] [-U] [-A] [-v] [-d]
+                   flash
 
 Create/update an OpenTitan backend flash file.
 
@@ -17,20 +18,18 @@ options:
 Image:
   flash                 virtual flash file
   -D, --discard         Discard any previous flash file content
-  -a {0,1}, --bank {0,1}
-                        flash bank for data (default: 0)
-  -s OFFSET, --offset OFFSET
-                        offset of the BL0 file (default: 0x10000)
+  -a, --bank {0,1}      flash bank for data (default: 0)
+  -s, --offset OFFSET   offset of the BL0 file (default: 0x10000)
 
 Files:
-  -x file, --exec file  rom extension or application
-  -X elf, --exec-elf elf
-                        ELF file for rom extension or application, for symbol tracking (default: auto)
-  -b file, --boot file  bootloader 0 file
-  -B elf, --boot-elf elf
-                        ELF file for bootloader, for symbol tracking (default: auto)
-  -t OTDESC, --otdesc OTDESC
-                        OpenTitan style file descriptor, may be repeated
+  -x, --exec file       rom extension or application
+  -X, --exec-elf elf    ELF file for rom extension or application, for symbol
+                        tracking (default: auto)
+  -b, --boot file       bootloader 0 file
+  -B, --boot-elf elf    ELF file for bootloader, for symbol tracking (default:
+                        auto)
+  -t, --otdesc OTDESC   OpenTitan style file descriptor, may be repeated
+  -T, --ignore-time     Discard time checking on ELF files
   -U, --unsafe-elf      Discard sanity checking on ELF files
   -A, --accept-invalid  Blindy accept invalid input files
 
@@ -96,10 +95,13 @@ matching signed binary files to help with debugging.
   file should be smaller than the selected offset for the bootloader location, mutually exclusive
   with `-t`.
 
+* `-T` tell the script to ignore any time discrepancy between a binary and an ELF file. A binary
+  file being generated from an ELF file, the former is not expected to be older than the latter.
+
 * `-U` tell the script to ignore any discrepancies found between a binary file and an ELF file. If
   the path to an ELF file is stored in the flash image file, the ELF content is validated against
   the binary file. Its code position and size, overall size and entry point should be coherent.
-  Moreover, the modification time of the binary file should not be younger than the ELF origin file.
+  This option implies `-T` option, _i.e._ also discards time comparison between BIN and ELF files.
   Note that contents of both files are not compared, as the binary file may be amended after the ELF
   file creation.
 

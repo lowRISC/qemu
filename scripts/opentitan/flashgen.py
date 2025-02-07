@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """Create/update an OpenTitan backend flash file.
@@ -57,8 +57,10 @@ class FlashGen:
        :param bl_offset: offset of the BL0 storage within the data partition.
                          if forced to 0, do not reserve any space for BL0, i.e.
                          dedicated all storage space to ROM_EXT section.
-       :discard_elf_check: whether to ignore mismatching binary/elf files.
+       :discard_elf_check: whether to ignore mismatching binary/ELF files.
        :accept_invalid: accept invalid input files (fully ignore content)
+       :discard_time_check: whether to ignore mismatching time between binary
+                         and ELF files.
     """
 
     NUM_BANKS = 2
@@ -155,14 +157,16 @@ class FlashGen:
     BOOT_PARTS = 2
 
     def __init__(self, bl_offset: Optional[int] = None,
-                 discard_elf_check: Optional[bool] = None,
-                 accept_invalid: Optional[bool] = None):
+                 discard_elf_check: bool = False,
+                 accept_invalid: bool = False,
+                 discard_time_check: bool = False):
         self._log = getLogger('flashgen')
         self._check_manifest_size()
         self._bl_offset = bl_offset if bl_offset is not None \
             else self.CHIP_ROM_EXT_SIZE_MAX
-        self._accept_invalid = bool(accept_invalid)
-        self._check_elf = not (bool(discard_elf_check) or self._accept_invalid)
+        self._accept_invalid = accept_invalid
+        self._check_elf = not (discard_elf_check or self._accept_invalid)
+        self._check_time = not discard_time_check and self._check_elf
         hfmt = ''.join(self.HEADER_FORMAT.values())
         header_size = scalc(hfmt)
         assert header_size == 32
@@ -314,7 +318,7 @@ class FlashGen:
             bintime = stat(dfp.name).st_mtime
             if bintime < elftime:
                 msg = 'Application binary file is older than ELF file'
-                if self._check_elf:
+                if self._check_time:
                     raise RuntimeError(msg)
                 self._log.warning(msg)
             be_match = self._compare_bin_elf(bindesc, elfpath)
@@ -351,7 +355,7 @@ class FlashGen:
             bintime = stat(dfp.name).st_mtime
             if bintime < elftime:
                 msg = 'Boot binary file is older than ELF file'
-                if self._check_elf:
+                if self._check_time:
                     raise RuntimeError(msg)
                 self._log.warning(msg)
             be_match = self._compare_bin_elf(bindesc, elfpath)
@@ -634,6 +638,8 @@ def main():
         files.add_argument('-t', '--otdesc', action='append', default=[],
                            help='OpenTitan style file descriptor, '
                                 'may be repeated')
+        files.add_argument('-T', '--ignore-time', action='store_true',
+                           help='Discard time checking on ELF files')
         files.add_argument('-U', '--unsafe-elf', action='store_true',
                            help='Discard sanity checking on ELF files')
         files.add_argument('-A', '--accept-invalid', action='store_true',
@@ -649,8 +655,8 @@ def main():
         configure_loggers(args.verbose, 'flashgen', 'elf')
 
         use_bl0 = bool(args.boot) or len(args.otdesc) > 1
-        gen = FlashGen(args.offset if use_bl0 else 0, bool(args.unsafe_elf),
-                       bool(args.accept_invalid))
+        gen = FlashGen(args.offset if use_bl0 else 0, args.unsafe_elf,
+                       args.accept_invalid, args.ignore_time)
         flash_pathname = args.flash[0]
         backup_filename = None
         if args.otdesc and any(filter(None, (args.bank,
