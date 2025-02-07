@@ -532,11 +532,6 @@ static bool ot_spi_host_is_ready(OtSPIHostState *s)
     return !cmdfifo_is_full(s->cmd_fifo);
 }
 
-static bool ot_spi_host_is_on_error(OtSPIHostState *s)
-{
-    return (bool)s->regs[R_ERROR_STATUS];
-}
-
 static void ot_spi_host_chip_select(OtSPIHostState *s, uint32_t csid,
                                     bool activate)
 {
@@ -767,7 +762,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         headcmd->ts = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     }
 
-    while (length && !ot_spi_host_is_on_error(s)) {
+    while (length) {
         if (write && txfifo_is_empty(s->tx_fifo)) {
             break;
         }
@@ -916,16 +911,18 @@ static void ot_spi_host_post_fsm(void *opaque)
         if (!cmdfifo_is_empty(s->cmd_fifo)) {
             /* more commands have been scheduled */
             trace_ot_spi_host_debug(s->ot_id, "next cmd");
-            if (!ot_spi_host_is_on_error(s)) {
-                ot_spi_host_step_fsm(s, "post");
-            } else {
-                trace_ot_spi_host_debug(s->ot_id, "no resched: on err");
-            }
+            ot_spi_host_step_fsm(s, "post");
         } else {
             trace_ot_spi_host_debug(s->ot_id, "no resched: no cmd");
         }
     } else {
-        trace_ot_spi_host_debug(s->ot_id, "no resched: ongoing");
+        unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
+        bool pending = timer_pending(s->fsm_delay);
+        trace_ot_spi_host_cmd_ongoing(s->ot_id, headcmd->cmdid, length,
+                                      pending);
+        if (!pending) {
+            ot_spi_host_step_fsm(s, "pending");
+        }
     }
 }
 
