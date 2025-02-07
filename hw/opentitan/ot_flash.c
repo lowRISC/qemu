@@ -686,6 +686,7 @@ enum {
 #define OP_INIT_DURATION_NS     1000000u /* 1 ms */
 #define ELFNAME_SIZE            256u
 #define OT_FLASH_READ_FIFO_SIZE 16u
+#define OT_FLASH_PROG_FIFO_SIZE 16u
 #define BUS_PGM_RES             ((REG_BUS_PGM_RES_BYTES) / (OT_TL_UL_D_WIDTH_BYTES))
 
 typedef struct {
@@ -748,6 +749,7 @@ struct OtFlashState {
         bool erase_sel;
     } op;
     OtFifo32 rd_fifo;
+    OtFifo32 prog_fifo;
     OtFlashStorage flash;
 
     BlockBackend *blk; /* Flash backend */
@@ -780,6 +782,42 @@ static bool ot_flash_regs_is_wr_enabled(OtFlashState *s, unsigned regwen)
 {
     return (bool)(s->regs[regwen] & REGWEN_EN_MASK);
 }
+
+static void ot_flash_update_rd_watermark(OtFlashState *s)
+{
+    unsigned rd_watermark_level =
+        SHARED_FIELD_EX32(s->regs[R_FIFO_LVL], FIFO_LVL_RD);
+    unsigned lvl = ot_fifo32_num_used(&s->rd_fifo);
+
+    /* Read FIFO watermark generates an interrupt when the Read FIFO fills to
+    (equal to or greater than) the watermark level. */
+    if (lvl >= rd_watermark_level) {
+        s->regs[R_INTR_STATE] |= INTR_RD_LVL_MASK;
+    } else {
+        s->regs[R_INTR_STATE] &= ~INTR_RD_LVL_MASK;
+    }
+    trace_ot_flash_update_rd_watermark(lvl, rd_watermark_level);
+    ot_flash_update_irqs(s);
+}
+
+static void ot_flash_update_prog_watermark(OtFlashState *s)
+{
+    unsigned prog_watermark_level =
+        SHARED_FIELD_EX32(s->regs[R_FIFO_LVL], FIFO_LVL_PROG);
+    unsigned lvl = ot_fifo32_num_used(&s->prog_fifo);
+
+    /* Prog FIFO watermark generates an interrupt when the Prog FIFO drains to
+    (equal to or less than) the watermark level. */
+    if (lvl <= prog_watermark_level) {
+        s->regs[R_INTR_STATE] |= INTR_PROG_LVL_MASK;
+    } else {
+        s->regs[R_INTR_STATE] &= ~INTR_PROG_LVL_MASK;
+    }
+    trace_ot_flash_update_prog_watermark(lvl, prog_watermark_level);
+    ot_flash_update_irqs(s);
+}
+
+
 
 static void ot_flash_op_signal(void *opaque)
 {
@@ -823,6 +861,26 @@ static void ot_flash_initialize(OtFlashState *s)
 static bool ot_flash_fifo_in_reset(OtFlashState *s)
 {
     return (bool)s->regs[R_FIFO_RST];
+}
+
+static void ot_flash_reset_rd_fifo(OtFlashState *s)
+{
+    ot_fifo32_reset(&s->rd_fifo);
+    s->regs[R_STATUS] |= R_STATUS_RD_EMPTY_MASK;
+    s->regs[R_STATUS] &= ~R_STATUS_RD_FULL_MASK;
+    s->regs[R_INTR_STATE] &= ~INTR_RD_FULL_MASK;
+    trace_ot_flash_reset_fifo("rd");
+    ot_flash_update_rd_watermark(s);
+}
+
+static void ot_flash_reset_prog_fifo(OtFlashState *s)
+{
+    ot_fifo32_reset(&s->prog_fifo);
+    s->regs[R_STATUS] |= R_STATUS_PROG_EMPTY_MASK;
+    s->regs[R_STATUS] &= ~R_STATUS_PROG_FULL_MASK;
+    s->regs[R_INTR_STATE] |= INTR_PROG_EMPTY_MASK;
+    trace_ot_flash_reset_fifo("prog");
+    ot_flash_update_prog_watermark(s);
 }
 
 static void ot_flash_set_error(OtFlashState *s, uint32_t ebit, uint32_t eaddr)
@@ -921,6 +979,7 @@ static void ot_flash_op_read(OtFlashState *s)
         if (!ot_flash_fifo_in_reset(s)) {
             ot_fifo32_push(&s->rd_fifo, word);
             s->regs[R_STATUS] &= ~R_STATUS_RD_EMPTY_MASK;
+            ot_flash_update_rd_watermark(s);
         }
         if (ot_fifo32_is_full(&s->rd_fifo)) {
             s->regs[R_STATUS] |= R_STATUS_RD_FULL_MASK;
@@ -1105,6 +1164,10 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
                            (uint32_t)ot_fifo32_is_full(&s->rd_fifo));
         val32 = FIELD_DP32(val32, STATUS, RD_EMPTY,
                            (uint32_t)ot_fifo32_is_empty(&s->rd_fifo));
+        val32 = FIELD_DP32(val32, STATUS, PROG_FULL,
+                           (uint32_t)ot_fifo32_is_full(&s->prog_fifo));
+        val32 = FIELD_DP32(val32, STATUS, PROG_EMPTY,
+                           (uint32_t)ot_fifo32_is_empty(&s->prog_fifo));
         break;
     case R_RD_FIFO:
         if (!ot_fifo32_is_empty(&s->rd_fifo)) {
@@ -1114,6 +1177,7 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
             if (ot_fifo32_is_empty(&s->rd_fifo)) {
                 s->regs[R_STATUS] |= R_STATUS_RD_EMPTY_MASK;
             }
+            ot_flash_update_rd_watermark(s);
             ot_flash_update_irqs(s);
             if (s->op.count) {
                 ot_flash_op_execute(s);
@@ -1124,7 +1188,10 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
         }
         break;
     case R_CURR_FIFO_LVL:
-        val32 = ot_fifo32_num_used(&s->rd_fifo) << FIFO_LVL_RD_SHIFT;
+        val32 =
+            SHARED_FIELD_DP32(0u, FIFO_LVL_RD, ot_fifo32_num_used(&s->rd_fifo));
+        val32 = SHARED_FIELD_DP32(val32, FIFO_LVL_PROG,
+                                  ot_fifo32_num_used(&s->prog_fifo));
         break;
     case R_ALERT_TEST:
     case R_PROG_FIFO:
@@ -1455,14 +1522,35 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_FIFO_LVL:
         val32 &= FIFO_LVL_PROG_MASK | FIFO_LVL_RD_MASK;
         s->regs[reg] = val32;
+        ot_flash_update_rd_watermark(s);
+        ot_flash_update_prog_watermark(s);
         break;
     case R_FIFO_RST:
         val32 &= R_FIFO_RST_EN_MASK;
         s->regs[reg] = val32;
         if (val32) {
-            ot_fifo32_reset(&s->rd_fifo);
+            ot_flash_reset_rd_fifo(s);
+            ot_flash_reset_prog_fifo(s);
         }
+        break;
     case R_PROG_FIFO:
+        if (!ot_fifo32_is_full(&s->prog_fifo)) {
+            if (!ot_flash_fifo_in_reset(s)) {
+                ot_fifo32_push(&s->prog_fifo, val32);
+                s->regs[R_STATUS] &= ~R_STATUS_PROG_EMPTY_MASK;
+                s->regs[R_INTR_STATE] &= ~INTR_PROG_EMPTY_MASK;
+                ot_flash_update_prog_watermark(s);
+                ot_flash_update_irqs(s);
+            }
+            if (ot_fifo32_is_full(&s->prog_fifo)) {
+                s->regs[R_STATUS] |= R_STATUS_PROG_FULL_MASK;
+            }
+            if (s->op.count) {
+                ot_flash_op_execute(s);
+            }
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: Write full FIFO\n", __func__);
+        }
         break;
     case R_FAULT_STATUS: {
         uint32_t rw0c_mask = (R_FAULT_STATUS_PHY_RELBL_ERR_MASK |
@@ -1748,7 +1836,8 @@ static void ot_flash_reset(DeviceState *dev)
     ot_flash_update_irqs(s);
     ot_flash_update_alerts(s);
 
-    ot_fifo32_reset(&s->rd_fifo);
+    ot_flash_reset_rd_fifo(s);
+    ot_flash_reset_prog_fifo(s);
 }
 
 #ifdef USE_HEXDUMP
@@ -2023,6 +2112,7 @@ static void ot_flash_init(Object *obj)
     s->regs = g_new0(uint32_t, REGS_COUNT);
     s->csrs = g_new0(uint32_t, CSRS_COUNT);
     ot_fifo32_create(&s->rd_fifo, OT_FLASH_READ_FIFO_SIZE);
+    ot_fifo32_create(&s->prog_fifo, OT_FLASH_PROG_FIFO_SIZE);
 
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
