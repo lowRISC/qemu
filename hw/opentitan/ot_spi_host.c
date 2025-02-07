@@ -318,7 +318,6 @@ struct OtSPIHostState {
     TxFifo *tx_fifo;
     CmdFifo *cmd_fifo;
 
-    QEMUBH *fsm_bh; /**< Run queued commands */
     QEMUTimer *fsm_delay; /**< Simulate delayed SPI transfer completion */
 
     IbexIRQ irqs[2u]; /**< System bus IRQs */
@@ -714,10 +713,6 @@ static void ot_spi_host_internal_reset(OtSPIHostState *s)
     ot_spi_host_update_alert(s);
 }
 
-/**
- * Called either from the I/O functions (command, rx_data, tx_data) or from
- * the bottom handler to start a new command.
- */
 static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 {
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
@@ -853,15 +848,6 @@ post:
     }
 
     ot_spi_host_trace_status(s->ot_id, "S<", ot_spi_host_get_status(s));
-}
-
-/**
- * Called from the bottom handler to start the next queued command.
- */
-static void ot_spi_host_schedule_fsm(void *opaque)
-{
-    OtSPIHostState *s = opaque;
-    ot_spi_host_step_fsm(s, "bh");
 }
 
 /**
@@ -1346,7 +1332,6 @@ static void ot_spi_host_instance_init(Object *obj)
     txfifo_create(s->tx_fifo, TXFIFO_LEN);
     cmdfifo_create(s->cmd_fifo, CMDFIFO_LEN);
 
-    s->fsm_bh = qemu_bh_new(&ot_spi_host_schedule_fsm, s);
     s->fsm_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_host_post_fsm, s);
 }
 
