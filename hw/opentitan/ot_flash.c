@@ -991,12 +991,6 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
     (void)size;
     uint32_t val32;
 
-    if (ot_flash_is_disabled(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: flash has been disabled\n",
-                      __func__);
-        return 0u;
-    }
-
     hwaddr reg = R32_OFF(addr);
 
     switch (reg) {
@@ -1164,12 +1158,6 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     uint32_t pc = ibex_get_current_pc();
     trace_ot_flash_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
 
-    if (ot_flash_is_disabled(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: flash has been disabled\n",
-                      __func__);
-        return;
-    }
-
     switch (reg) {
     case R_INTR_STATE: {
         uint32_t rw1c_mask = INTR_CORR_ERR_MASK | INTR_OP_DONE_MASK;
@@ -1205,8 +1193,6 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         if (ot_flash_is_disabled(s)) {
             xtrace_ot_flash_error("flash controller disabled by SW");
             memory_region_set_enabled(&s->mmio.mem, false);
-            memory_region_set_enabled(&s->mmio.csrs, false);
-            memory_region_set_enabled(&s->mmio.regs, false);
         }
         break;
     case R_INIT:
@@ -1231,6 +1217,20 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         unsigned num = (unsigned)FIELD_EX32(val32, CONTROL, NUM);
 
         if (start && s->op.kind == OP_NONE) {
+            /*
+             * If the flash controller is disabled by software, then (a) the
+             * flash protocol controller completes existing software commands,
+             * (b) the flash physical controller completes existing stateful
+             * operations, and (c) the flash protocol controller MP errors
+             * back all controller initiated operations.
+             */
+            if (ot_flash_is_disabled(s)) {
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: flash has been disabled\n",
+                              __func__);
+                ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, 0u);
+                return;
+            }
+
             switch (op) {
             case CONTROL_OP_READ:
                 s->op.kind = OP_READ;
@@ -1504,12 +1504,6 @@ static uint64_t ot_flash_csrs_read(void *opaque, hwaddr addr, unsigned size)
     (void)size;
     uint32_t val32;
 
-    if (ot_flash_is_disabled(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: flash has been disabled\n",
-                      __func__);
-        return 0u;
-    }
-
     hwaddr csr = R32_OFF(addr);
 
     switch (csr) {
@@ -1560,12 +1554,6 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
 
     uint32_t pc = ibex_get_current_pc();
     trace_ot_flash_io_write((uint32_t)addr, CSR_NAME(csr), val32, pc);
-
-    if (ot_flash_is_disabled(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: flash has been disabled\n",
-                      __func__);
-        return;
-    }
 
     bool enable = s->csrs[R_CSR0_REGWEN] & R_CSR0_REGWEN_FIELD0_MASK;
     switch (csr) {
