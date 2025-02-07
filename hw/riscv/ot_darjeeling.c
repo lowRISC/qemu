@@ -1211,7 +1211,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(0, 13)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("bus-num", 0)
+            IBEX_DEV_STRING_PROP("ot_id", "spi0"),
+            IBEX_DEV_UINT_PROP("bus-num", 0),
+            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
         ),
     },
     [OT_DJ_SOC_DEV_SPI_DEVICE] = {
