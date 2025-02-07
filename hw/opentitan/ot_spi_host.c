@@ -1099,14 +1099,6 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_COMMAND: {
-        if (cmdfifo_is_full(s->cmd_fifo)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: cmd fifo full\n", __func__,
-                          s->ot_id);
-            REG_UPDATE(s, ERROR_STATUS, CMDBUSY, (uint32_t) true);
-            ot_spi_host_update_error(s);
-            return;
-        }
-
         val32 &= R_COMMAND_MASK;
 
         /* IP not enabled */
@@ -1117,9 +1109,9 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         }
 
         if (!ot_spi_host_is_ready(s)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: busy\n", __func__,
-                          s->ot_id);
-            REG_UPDATE(s, ERROR_STATUS, CMDBUSY, 1);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: busy (cmd_fifo full)\n",
+                          __func__, s->ot_id);
+            REG_UPDATE(s, ERROR_STATUS, CMDBUSY, 1u);
             ot_spi_host_update_regs(s);
             break;
         }
