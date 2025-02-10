@@ -502,8 +502,10 @@ static bool ot_spi_host_is_ready(const OtSPIHostState *s)
 static void ot_spi_host_chip_select(OtSPIHostState *s, unsigned csid,
                                     bool activate)
 {
-    trace_ot_spi_host_cs(s->ot_id, csid, activate ? "" : "de");
-    qemu_set_irq(s->cs_lines[csid], !activate);
+    if (csid < s->num_cs) {
+        trace_ot_spi_host_cs(s->ot_id, csid, activate ? "" : "de");
+        qemu_set_irq(s->cs_lines[csid], !activate);
+    }
 }
 
 static bool ot_spi_host_update_stall(OtSPIHostState *s)
