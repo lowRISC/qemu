@@ -417,17 +417,17 @@ static void txfifo_reset(TxFifo *fifo)
     fifo->head = 0u;
 }
 
-static bool txfifo_is_empty(TxFifo *fifo)
+static bool txfifo_is_empty(const TxFifo *fifo)
 {
     return (fifo->num == 0u);
 }
 
-static bool txfifo_is_full(TxFifo *fifo)
+static bool txfifo_is_full(const TxFifo *fifo)
 {
     return (fifo->num == fifo->capacity);
 }
 
-static uint32_t txfifo_slot_used(TxFifo *fifo)
+static uint32_t txfifo_slot_used(const TxFifo *fifo)
 {
     return fifo->num;
 }
@@ -465,17 +465,17 @@ static void cmdfifo_reset(CmdFifo *fifo)
     fifo->head = 0u;
 }
 
-static bool cmdfifo_is_empty(CmdFifo *fifo)
+static bool cmdfifo_is_empty(const CmdFifo *fifo)
 {
     return (fifo->num == 0);
 }
 
-static bool cmdfifo_is_full(CmdFifo *fifo)
+static bool cmdfifo_is_full(const CmdFifo *fifo)
 {
     return (fifo->num == fifo->capacity);
 }
 
-static uint32_t cmdfifo_num_used(CmdFifo *fifo)
+static uint32_t cmdfifo_num_used(const CmdFifo *fifo)
 {
     return fifo->num;
 }
@@ -494,7 +494,7 @@ static bool ot_spi_host_is_tx(uint32_t command)
     return (bool)(FIELD_EX32(command, COMMAND, DIRECTION) & 0x2u);
 }
 
-static bool ot_spi_host_is_ready(OtSPIHostState *s)
+static bool ot_spi_host_is_ready(const OtSPIHostState *s)
 {
     return !cmdfifo_is_full(s->cmd_fifo);
 }
