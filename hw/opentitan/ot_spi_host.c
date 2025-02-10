@@ -295,10 +295,10 @@ typedef struct {
 } CmdFifo;
 
 typedef struct {
-    bool transaction; /**< SPI transation (CS is active) */
-    bool rx_stall; /**< RX FIFO is full while processing a command */
-    bool tx_stall; /**< TX FIFO is empty while processing a command */
-    bool output_en; /**< SPI host output pins are enabled */
+    bool transaction; /* SPI transation (CS is active) */
+    bool rx_stall; /* RX FIFO is full while processing a command */
+    bool tx_stall; /* TX FIFO is empty while processing a command */
+    bool output_en; /* SPI host output pins are enabled */
 } OtSPIHostFsm;
 
 typedef enum {
@@ -324,29 +324,27 @@ struct OtSPIHostClass {
 };
 
 struct OtSPIHostState {
-    /* <private> */
     SysBusDevice parent_obj;
 
-    /* <public> */
     MemoryRegion mmio;
 
-    qemu_irq *cs_lines; /**< CS output lines */
-    SSIBus *ssi; /**< SPI bus */
+    qemu_irq *cs_lines; /* CS output lines */
+    SSIBus *ssi; /* SPI bus */
 
-    uint32_t *regs; /**< Registers (except. fifos) */
+    uint32_t *regs; /* Registers (except. fifos) */
 
     RxFifo *rx_fifo;
     TxFifo *tx_fifo;
     CmdFifo *cmd_fifo;
 
-    QEMUTimer *fsm_delay; /**< Simulate delayed SPI transfer completion */
+    QEMUTimer *fsm_delay; /* Simulate delayed SPI transfer completion */
 
-    IbexIRQ irqs[2u]; /**< System bus IRQs */
-    IbexIRQ alert; /**< OpenTitan alert */
-    uint64_t total_transfer; /**< Transfered bytes since reset */
-    unsigned last_command_id; /**< Command tracker (for debug purpose) */
-    unsigned last_clkdiv; /**< SPI clock tracker (for debug purpose) */
-    OtSPIHostCmd active; /**< Command being executed, if any */
+    IbexIRQ irqs[2u]; /* System bus IRQs */
+    IbexIRQ alert; /* OpenTitan alert */
+    uint64_t total_transfer; /* Transfered bytes since reset */
+    unsigned last_command_id; /* Command tracker (for debug purpose) */
+    unsigned last_clkdiv; /* SPI clock tracker (for debug purpose) */
+    OtSPIHostCmd active; /* Command being executed, if any */
 
     OtSPIHostFsm fsm;
     bool on_reset;
@@ -356,8 +354,8 @@ struct OtSPIHostState {
     uint32_t pclk; /* input peripheral clock (Hz) */
     uint32_t start_delay_ns; /* initial command kick off delay */
     uint32_t completion_delay_ns; /** completion delay/pacing */
-    uint32_t bus_num; /**< SPI host port number */
-    uint32_t num_cs; /**< Supported CS line count */
+    uint32_t bus_num; /* SPI host port number */
+    uint32_t num_cs; /* Supported CS line count */
 };
 
 /* ------------------------------------------------------------------------ */
