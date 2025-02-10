@@ -55,7 +55,7 @@
 /* ------------------------------------------------------------------------ */
 
 /* undef to get all the repeated, identical status query traces */
-#undef DISCARD_REPEATED_STATUS_TRACES
+#define DISCARD_REPEATED_STATUS_TRACES
 
 /* fake delayed completion of HW commands */
 #define FSM_COMPLETION_DELAY_NS 100U /* nanoseconds */
