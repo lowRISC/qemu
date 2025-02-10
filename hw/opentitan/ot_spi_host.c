@@ -506,6 +506,33 @@ static void ot_spi_host_chip_select(OtSPIHostState *s, unsigned csid,
     qemu_set_irq(s->cs_lines[csid], !activate);
 }
 
+static bool ot_spi_host_update_stall(OtSPIHostState *s)
+{
+    g_assert(s->active.state != CMD_NONE);
+
+    uint32_t command = s->active.cmd.command;
+    unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
+    bool read = ot_spi_host_is_rx(command);
+    bool write = ot_spi_host_is_tx(command);
+
+    bool resume = true;
+
+    if (write && txfifo_is_empty(s->tx_fifo)) {
+        trace_ot_spi_host_stall(s->ot_id, "TX", length);
+        s->fsm.tx_stall = true;
+        resume = false;
+    }
+
+    if (read && fifo8_is_full(s->rx_fifo)) {
+        trace_ot_spi_host_stall(s->ot_id, "RX", length);
+        s->fsm.rx_stall = true;
+
+        resume = false;
+    }
+
+    return resume;
+}
+
 static void ot_spi_host_trace_status(const OtSPIHostState *s, const char *msg,
                                      uint32_t status)
 {
@@ -716,6 +743,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     ot_spi_host_update_event(s);
 
     unsigned byte_count = 0;
+    bool resched = true;
 
     if (s->active.state == CMD_EXECUTED) {
         goto post;
@@ -799,16 +827,8 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
     if (length) {
         /* if the transfer early ended, a stall condition has been detected */
-        if (write && txfifo_is_empty(s->tx_fifo)) {
-            trace_ot_spi_host_stall(s->ot_id, "TX", length);
-            s->fsm.tx_stall = true;
-        }
-        if (read && fifo8_is_full(s->rx_fifo)) {
-            trace_ot_spi_host_stall(s->ot_id, "RX", length);
-            s->fsm.rx_stall = true;
-        }
-
         s->active.cmd.command = FIELD_DP32(command, COMMAND, LEN, length - 1);
+        resched = ot_spi_host_update_stall(s);
     } else {
         s->active.cmd.command = FIELD_DP32(command, COMMAND, LEN, 0);
         s->active.state = CMD_EXECUTED;
@@ -831,8 +851,16 @@ post:
         }
         timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + delay);
     } else if (!timer_pending(s->fsm_delay)) {
-        delay = FSM_COMPLETION_DELAY_NS;
-        timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + delay);
+        delay = (int64_t)s->completion_delay_ns;
+        if (resched) {
+            /*
+             * Do not reschedule the FSM when a stall prevents any further
+             * action. Once the SPI Host is read/written and data FIFO(s) get
+             * some free slots, the FSM is automatically rescheduled
+             */
+            timer_mod(s->fsm_delay,
+                      qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + delay);
+        }
     }
 
     ot_spi_host_trace_status(s, "S<", ot_spi_host_get_status(s));
@@ -1107,7 +1135,6 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             break;
         }
 
-        bool error = false;
         if (((FIELD_EX32(val32, COMMAND, DIRECTION) == 0x3u) &&
              (FIELD_EX32(val32, COMMAND, SPEED) != 0u)) ||
             (FIELD_EX32(val32, COMMAND, SPEED) == 3u)) {
@@ -1116,14 +1143,13 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
                           "%s: %s: invalid command parameters\n", __func__,
                           s->ot_id);
             REG_UPDATE(s, ERROR_STATUS, CMDINVAL, 1u);
-            error = true;
         }
+
         if (!(s->regs[R_CSID] < s->num_cs)) {
             /* CSID exceeds max num_cs */
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid csid\n", __func__,
                           s->ot_id);
             REG_UPDATE(s, ERROR_STATUS, CSIDINVAL, 1u);
-            error = true;
         }
 
         CmdFifoSlot slot = {
@@ -1133,32 +1159,35 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             .id = s->last_command_id++,
         };
 
-        bool activate = cmdfifo_is_empty(s->cmd_fifo) && !s->fsm.rx_stall &&
-                        !s->fsm.tx_stall && !error;
-
         trace_ot_spi_host_new_command(
             s->ot_id, slot.id,
             F_COMMAND_DIRECTION[FIELD_EX32(slot.command, COMMAND, DIRECTION)],
             F_COMMAND_SPEED[FIELD_EX32(slot.command, COMMAND, SPEED)],
             s->regs[R_CSID], (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
-            FIELD_EX32(slot.command, COMMAND, LEN) + 1u, activate);
+            FIELD_EX32(slot.command, COMMAND, LEN) + 1u);
 
         cmdfifo_push(s->cmd_fifo, &slot);
-        ot_spi_host_update_event(s); /* track ready */
-        if (activate) {
-            if (s->active.state == CMD_NONE) {
-                cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
-                s->active.state = CMD_ONGOING;
-                s->active.size = 0u;
+
+        if (s->active.state == CMD_NONE) {
+            cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
+            s->active.state = CMD_ONGOING;
+            s->active.size = 0u;
+            bool activate = ot_spi_host_update_stall(s);
+            ot_spi_host_update_regs(s);
+
+            trace_ot_spi_host_kick_command(s->ot_id, s->active.cmd.id,
+                                           activate);
+
+            if (activate) {
+                /*
+                 * add a small delay before kicking of the command FSM. This
+                 * yield execution back to the vCPU (releasing the IO thread),
+                 * so the guest can check the SPI Host status, etc. This very
+                 * short delay does not slow down execution.
+                 */
+                timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
+                                            s->start_delay_ns);
             }
-            /*
-             * add a small delay before kicking of the command FSM. This yield
-             * execution back to the vCPU (releasing the IO thread), so the
-             * guest can check the SPI Host status, etc. This very short delay
-             * does not seem to slow down execution.
-             */
-            timer_mod(s->fsm_delay,
-                      qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + s->start_delay_ns);
             break;
         }
         ot_spi_host_update_regs(s);
