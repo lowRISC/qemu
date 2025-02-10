@@ -280,13 +280,42 @@ typedef struct {
 /** RX FIFO is byte-written and word-read */
 typedef Fifo8 RxFifo;
 
+/**
+ * TX FIFO needs 36 bits of storage (32-bit word + 4-bit tracking)
+ */
+typedef struct {
+    uint32_t bits; /* which bytes are meaningful in data (4 bits) */
+    uint32_t data; /* 1..4 bytes */
+} TxFifoSlot;
+
+static_assert(sizeof(TxFifoSlot) == sizeof(uint64_t),
+              "Invalid TxFifoSlot size");
+
+/**
+ * Command FIFO stores commands along with SPI device configuration.
+ */
+typedef struct {
+    uint32_t opts; /* configopts */
+    uint32_t command; /* command */
+    unsigned cs; /* csid */
+    unsigned id; /* for debug/tracking */
+} CmdFifoSlot;
+
 /** TX FIFO contains TX data and tracks meaningful bytes in TX words */
-struct TxFifo;
-typedef struct TxFifo TxFifo;
+typedef struct {
+    TxFifoSlot *data;
+    uint32_t capacity;
+    uint32_t head;
+    uint32_t num;
+} TxFifo;
 
 /** Command FIFO contains commands and SPI device configuration */
-struct CmdFifo;
-typedef struct CmdFifo CmdFifo;
+typedef struct {
+    CmdFifoSlot *data;
+    uint32_t capacity;
+    uint32_t head;
+    uint32_t num;
+} CmdFifo;
 
 typedef struct {
     bool active; /**< a command is being handled */
@@ -295,6 +324,22 @@ typedef struct {
     bool tx_stall; /**< TX FIFO is empty while processing a command */
     bool output_en; /**< SPI host output pins are enabled */
 } OtSPIHostFsm;
+
+typedef enum {
+    CMD_NONE, /* no command (unused slot) */
+    CMD_ONGOING, /* command is being executed, not yet completed */
+    CMD_EXECUTED, /* commmand has been executed, need to be discarded */
+} OtSPIHostCmdState;
+
+/**
+ * Current command, if any.
+ */
+typedef struct {
+    CmdFifoSlot cmd;
+    OtSPIHostCmdState state;
+    int64_t ts;
+    unsigned size;
+} OtSPIHostCmd;
 
 /* this class is only required to manage on-hold reset */
 struct OtSPIHostClass {
@@ -323,8 +368,9 @@ struct OtSPIHostState {
     IbexIRQ irqs[2u]; /**< System bus IRQs */
     IbexIRQ alert; /**< OpenTitan alert */
     uint64_t total_transfer; /**< Transfered bytes since reset */
-    uint16_t last_command_id; /**< Command tracker (for debug purpose) */
+    unsigned last_command_id; /**< Command tracker (for debug purpose) */
     unsigned last_clkdiv; /**< SPI clock tracker (for debug purpose) */
+    OtSPIHostCmd active; /**< Command being executed, if any */
 
     OtSPIHostFsm fsm;
     bool on_reset;
@@ -334,7 +380,7 @@ struct OtSPIHostState {
     uint32_t pclk; /* input peripheral clock (Hz) */
     uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /**< SPI host port number */
-    uint8_t num_cs; /**< Supported CS line count */
+    uint32_t num_cs; /**< Supported CS line count */
 };
 
 /* ------------------------------------------------------------------------ */
@@ -346,50 +392,6 @@ static void ot_spi_host_post_fsm(void *opaque);
 /* ------------------------------------------------------------------------ */
 /* FIFOs */
 /* ------------------------------------------------------------------------ */
-
-/**
- * TX FIFO needs 36 bits of storage (32-bit word + 4-bit tracking)
- */
-typedef struct {
-    uint32_t bits; /* which bytes are meaningful in data (4 bits) */
-    uint32_t data; /* 1..4 bytes */
-} TxFifoSlot;
-
-static_assert(sizeof(TxFifoSlot) == sizeof(uint64_t),
-              "Invalid TxFifoSlot size");
-
-struct TxFifo {
-    TxFifoSlot *data;
-    uint32_t capacity;
-    uint32_t head;
-    uint32_t num;
-};
-
-enum CmdState {
-    CMD_SCHEDULED, /* command scheduled for execution, not yet handled */
-    CMD_ONGOING, /* command is being executed, not yet completed */
-    CMD_EXECUTED, /* commmand has been executed, need to be popped out */
-};
-
-/**
- * Command FIFO stores commands along with SPI device configuration.
- */
-typedef struct {
-    int64_t ts;
-    unsigned size;
-    uint32_t opts; /* configopts */
-    uint32_t command; /* command */
-    uint8_t csid; /* csid[7:0] */
-    int8_t state; /* enum CmdState */
-    uint16_t cmdid; /* for debug/tracking */
-} CmdFifoSlot;
-
-struct CmdFifo {
-    CmdFifoSlot *data;
-    uint32_t capacity;
-    uint32_t head;
-    uint32_t num;
-};
 
 static void txfifo_create(TxFifo *fifo, uint32_t capacity)
 {
@@ -486,12 +488,6 @@ static void cmdfifo_pop(CmdFifo *fifo, CmdFifoSlot *cmd)
     fifo->num--;
 }
 
-static CmdFifoSlot *cmdfifo_peek(CmdFifo *fifo)
-{
-    g_assert(fifo->num > 0u);
-    return &fifo->data[fifo->head];
-}
-
 static void cmdfifo_reset(CmdFifo *fifo)
 {
     fifo->num = 0u;
@@ -532,7 +528,7 @@ static bool ot_spi_host_is_ready(OtSPIHostState *s)
     return !cmdfifo_is_full(s->cmd_fifo);
 }
 
-static void ot_spi_host_chip_select(OtSPIHostState *s, uint32_t csid,
+static void ot_spi_host_chip_select(OtSPIHostState *s, unsigned csid,
                                     bool activate)
 {
     trace_ot_spi_host_cs(s->ot_id, csid, activate ? "" : "de");
@@ -695,6 +691,7 @@ static void ot_spi_host_internal_reset(OtSPIHostState *s)
     cmdfifo_reset(s->cmd_fifo);
 
     memset(&s->fsm, 0, sizeof(s->fsm));
+    memset(&s->active, 0, sizeof(s->active));
 
     for (unsigned csid = 0u; csid < s->num_cs; csid++) {
         ot_spi_host_chip_select(s, csid, false);
@@ -706,37 +703,36 @@ static void ot_spi_host_internal_reset(OtSPIHostState *s)
 
     ot_spi_host_update_regs(s);
     ot_spi_host_update_alert(s);
+
+    ot_spi_host_trace_status(s, "intrst", ot_spi_host_get_status(s));
 }
 
 static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 {
-    CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
-
-    trace_ot_spi_host_fsm(s->ot_id, headcmd->cmdid, cause);
+    trace_ot_spi_host_fsm(s->ot_id, s->active.cmd.id, cause);
 
     s->fsm.active = true;
     ot_spi_host_update_event(s);
 
     unsigned byte_count = 0;
 
-    if (headcmd->state == CMD_EXECUTED) {
+    if (s->active.state == CMD_EXECUTED) {
         goto post;
     }
 
-    uint32_t command = headcmd->command;
+    uint32_t command = s->active.cmd.command;
     bool read = ot_spi_host_is_rx(command);
     bool write = ot_spi_host_is_tx(command);
     unsigned speed = FIELD_EX32(command, COMMAND, SPEED);
-    unsigned clkdiv = FIELD_EX32(headcmd->opts, CONFIGOPTS, CLKDIV);
+    unsigned clkdiv = FIELD_EX32(s->active.cmd.opts, CONFIGOPTS, CLKDIV);
     if (trace_event_get_state(TRACE_OT_SPI_HOST_CMD_CLOCK)) {
         if (clkdiv != s->last_clkdiv) {
             unsigned spiclock = s->pclk / ((clkdiv + 1u) * 2u);
-            trace_ot_spi_host_cmd_clock(s->ot_id, headcmd->cmdid,
+            trace_ot_spi_host_cmd_clock(s->ot_id, s->active.cmd.id,
                                         s->completion_delay_ns == 0, spiclock);
         }
     }
     s->last_clkdiv = clkdiv;
-    bool multi = speed != 0;
     unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
     if (!(read || write)) {
         /* dummy mode uses clock cycle count rather than byte count */
@@ -752,15 +748,17 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     ot_spi_host_trace_status(s->ot_id, "S>", ot_spi_host_get_status(s));
 
     trace_ot_spi_host_exec_command(
-        s->ot_id, headcmd->cmdid,
+        s->ot_id, s->active.cmd.id,
         F_COMMAND_DIRECTION[FIELD_EX32(command, COMMAND, DIRECTION)],
         F_COMMAND_SPEED[FIELD_EX32(command, COMMAND, SPEED)],
-        (uint32_t)headcmd->csid, (bool)FIELD_EX32(command, COMMAND, CSAAT),
+        (unsigned)s->active.cmd.cs, (bool)FIELD_EX32(command, COMMAND, CSAAT),
         length, s->fsm.transaction);
 
-    if (headcmd->size == 0) {
-        headcmd->ts = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+    if (s->active.size == 0) {
+        s->active.ts = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     }
+
+    bool multi = speed != 0;
 
     while (length) {
         if (write && txfifo_is_empty(s->tx_fifo)) {
@@ -772,8 +770,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
         if (!s->fsm.transaction) {
             s->fsm.transaction = true;
-            ot_spi_host_chip_select(s, (uint32_t)headcmd->csid,
-                                    s->fsm.transaction);
+            ot_spi_host_chip_select(s, s->active.cmd.cs, s->fsm.transaction);
         }
 
         uint8_t tx =
@@ -799,7 +796,6 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         byte_count++;
     }
 
-    int8_t cmd_state;
     if (length) {
         /* if the transfer early ended, a stall condition has been detected */
         if (write && txfifo_is_empty(s->tx_fifo)) {
@@ -811,27 +807,23 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
             s->fsm.rx_stall = true;
         }
 
-        command = FIELD_DP32(command, COMMAND, LEN, length - 1);
-        cmd_state = CMD_ONGOING;
+        s->active.cmd.command = FIELD_DP32(command, COMMAND, LEN, length - 1);
     } else {
-        command = FIELD_DP32(command, COMMAND, LEN, 0);
-        cmd_state = CMD_EXECUTED;
+        s->active.cmd.command = FIELD_DP32(command, COMMAND, LEN, 0);
+        s->active.state = CMD_EXECUTED;
     }
-
-    headcmd->command = command;
-    headcmd->state = cmd_state;
 
 post:
     ot_spi_host_update_regs(s);
 
-    headcmd->size += byte_count;
+    s->active.size += byte_count;
 
     int64_t delay;
-    if (headcmd->state == CMD_EXECUTED && byte_count) {
+    if (s->active.state == CMD_EXECUTED && byte_count) {
         if (!s->completion_delay_ns) {
             unsigned spiclock = s->pclk / ((clkdiv + 1u) * 2u);
             delay = NANOSECONDS_PER_SECOND / (int64_t)spiclock;
-            delay *= headcmd->size;
+            delay *= s->active.size;
             delay >>= speed;
         } else {
             delay = (int64_t)s->completion_delay_ns;
@@ -853,27 +845,26 @@ static void ot_spi_host_post_fsm(void *opaque)
 {
     OtSPIHostState *s = opaque;
 
-    CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
-    trace_ot_spi_host_fsm(s->ot_id, headcmd->cmdid, "post");
+    trace_ot_spi_host_fsm(s->ot_id, s->active.cmd.id, "post");
 
-    uint32_t command = headcmd->command;
-    bool retire = headcmd->state == CMD_EXECUTED;
+    uint32_t command = s->active.cmd.command;
+    bool retire = s->active.state == CMD_EXECUTED;
 
     if (retire && trace_event_get_state(TRACE_OT_SPI_HOST_CMD_STAT)) {
         int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-        int64_t elapsed = now - headcmd->ts;
-        if (headcmd->size) {
+        int64_t elapsed = now - s->active.ts;
+        if (s->active.size) {
             unsigned speed =
-                (unsigned)((headcmd->size * NANOSECONDS_PER_SECOND) / elapsed);
-            trace_ot_spi_host_cmd_stat(s->ot_id, headcmd->cmdid, headcmd->size,
-                                       speed);
+                (unsigned)((s->active.size * NANOSECONDS_PER_SECOND) / elapsed);
+            trace_ot_spi_host_cmd_stat(s->ot_id, s->active.cmd.id,
+                                       s->active.size, speed);
         }
     }
 
     ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
 
     if (retire) {
-        trace_ot_spi_host_retire_command(s->ot_id, headcmd->cmdid);
+        trace_ot_spi_host_retire_command(s->ot_id, s->active.cmd.id);
 
         if (ot_spi_host_is_rx(command)) {
             /*
@@ -889,12 +880,11 @@ static void ot_spi_host_post_fsm(void *opaque)
         /* release /CS if this is the last command of the current transaction */
         if (!FIELD_EX32(command, COMMAND, CSAAT)) {
             s->fsm.transaction = false;
-            ot_spi_host_chip_select(s, (uint32_t)headcmd->csid,
-                                    s->fsm.transaction);
+            ot_spi_host_chip_select(s, s->active.cmd.cs, s->fsm.transaction);
         }
 
         /* retire command */
-        cmdfifo_pop(s->cmd_fifo, NULL);
+        s->active.state = CMD_NONE;
 
         /* release active only if the last pushed command has been retired */
         if (cmdfifo_is_empty(s->cmd_fifo)) {
@@ -911,6 +901,11 @@ static void ot_spi_host_post_fsm(void *opaque)
         if (!cmdfifo_is_empty(s->cmd_fifo)) {
             /* more commands have been scheduled */
             trace_ot_spi_host_debug(s->ot_id, "next cmd");
+            if (s->active.state == CMD_NONE) {
+                cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
+                s->active.state = CMD_ONGOING;
+                s->active.size = 0u;
+            }
             ot_spi_host_step_fsm(s, "post");
         } else {
             trace_ot_spi_host_debug(s->ot_id, "no resched: no cmd");
@@ -918,7 +913,7 @@ static void ot_spi_host_post_fsm(void *opaque)
     } else {
         unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
         bool pending = timer_pending(s->fsm_delay);
-        trace_ot_spi_host_cmd_ongoing(s->ot_id, headcmd->cmdid, length,
+        trace_ot_spi_host_cmd_ongoing(s->ot_id, s->active.cmd.id, length,
                                       pending);
         if (!pending) {
             ot_spi_host_step_fsm(s, "pending");
@@ -981,7 +976,7 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
         ot_spi_host_trace_status(s->ot_id, "rxd", ot_spi_host_get_status(s));
         val32 = bswap32(val32);
         bool resume = false;
-        if (!cmdfifo_is_empty(s->cmd_fifo)) {
+        if (s->active.state != CMD_NONE) {
             if (!s->fsm.tx_stall) {
                 uint32_t rxwm = REG_GET(s, CONTROL, RX_WATERMARK);
                 if (rxwm < sizeof(uint32_t)) {
@@ -1133,28 +1128,30 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         }
 
         CmdFifoSlot slot = {
-            .size = 0,
             .opts = s->regs[R_CONFIGOPTS],
             .command = val32,
-            .csid = (uint8_t)s->regs[R_CSID],
-            .state = CMD_SCHEDULED,
-            .cmdid = s->last_command_id++,
+            .cs = s->regs[R_CSID],
+            .id = s->last_command_id++,
         };
 
         bool activate = cmdfifo_is_empty(s->cmd_fifo) && !s->fsm.rx_stall &&
                         !s->fsm.tx_stall && !error;
 
         trace_ot_spi_host_new_command(
-            s->ot_id, slot.cmdid,
+            s->ot_id, slot.id,
             F_COMMAND_DIRECTION[FIELD_EX32(slot.command, COMMAND, DIRECTION)],
             F_COMMAND_SPEED[FIELD_EX32(slot.command, COMMAND, SPEED)],
-            s->regs[R_CSID] & 0xffu,
-            (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
+            s->regs[R_CSID], (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
             FIELD_EX32(slot.command, COMMAND, LEN) + 1u, activate);
 
         cmdfifo_push(s->cmd_fifo, &slot);
         ot_spi_host_update_event(s); /* track ready */
         if (activate) {
+            if (s->active.state == CMD_NONE) {
+                cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
+                s->active.state = CMD_ONGOING;
+                s->active.size = 0u;
+            }
             ot_spi_host_step_fsm(s, "cmd");
             break;
         }
@@ -1174,7 +1171,7 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         }
 
         txfifo_push(s->tx_fifo, val32, size);
-        bool resume = !cmdfifo_is_empty(s->cmd_fifo) && s->fsm.tx_stall &&
+        bool resume = (s->active.state != CMD_NONE) && s->fsm.tx_stall &&
                       !s->fsm.rx_stall;
         s->fsm.tx_stall = false;
         if (resume) {
@@ -1235,9 +1232,9 @@ static const MemoryRegionOps ot_spi_host_ops = {
 
 static Property ot_spi_host_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtSPIHostState, ot_id),
-    DEFINE_PROP_UINT8("num-cs", OtSPIHostState, num_cs, 1),
-    DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0),
-    DEFINE_PROP_UINT32("pclk", OtSPIHostState, pclk, 0),
+    DEFINE_PROP_UINT32("num-cs", OtSPIHostState, num_cs, 1u),
+    DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0u),
+    DEFINE_PROP_UINT32("pclk", OtSPIHostState, pclk, 0u),
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
                        0),
     DEFINE_PROP_END_OF_LIST(),
