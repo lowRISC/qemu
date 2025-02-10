@@ -58,7 +58,9 @@
 #define DISCARD_REPEATED_STATUS_TRACES
 
 /* fake delayed completion of HW commands */
-#define FSM_COMPLETION_DELAY_NS 100U /* nanoseconds */
+#define FSM_COMPLETION_DELAY_NS 100U /* 100 ns (~ BH) */
+/* initial FSM start up delay */
+#define FSM_START_DELAY_NS 20000U /* 20 uS */
 
 #define TXFIFO_LEN  288U /* bytes */
 #define RXFIFO_LEN  256U /* bytes */
@@ -352,16 +354,11 @@ struct OtSPIHostState {
     /* properties */
     char *ot_id;
     uint32_t pclk; /* input peripheral clock (Hz) */
+    uint32_t start_delay_ns; /* initial command kick off delay */
     uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /**< SPI host port number */
     uint32_t num_cs; /**< Supported CS line count */
 };
-
-/* ------------------------------------------------------------------------ */
-/* Declarations */
-/* ------------------------------------------------------------------------ */
-
-static void ot_spi_host_post_fsm(void *opaque);
 
 /* ------------------------------------------------------------------------ */
 /* FIFOs */
@@ -685,7 +682,8 @@ static void ot_spi_host_update_alert(OtSPIHostState *s)
 
 static void ot_spi_host_internal_reset(OtSPIHostState *s)
 {
-    trace_ot_spi_host_internal_reset(s->ot_id);
+    trace_ot_spi_host_internal_reset(s->ot_id, s->start_delay_ns,
+                                     s->completion_delay_ns);
 
     timer_del(s->fsm_delay);
 
@@ -840,20 +838,11 @@ post:
     ot_spi_host_trace_status(s, "S<", ot_spi_host_get_status(s));
 }
 
-/**
- * Called only from the timer once a command step is over (either completed or
- * stalled)
- */
-static void ot_spi_host_post_fsm(void *opaque)
+static void ot_spi_host_retire(OtSPIHostState *s)
 {
-    OtSPIHostState *s = opaque;
-
-    trace_ot_spi_host_fsm(s->ot_id, s->active.cmd.id, "post");
-
     uint32_t command = s->active.cmd.command;
-    bool retire = s->active.state == CMD_EXECUTED;
 
-    if (retire && trace_event_get_state(TRACE_OT_SPI_HOST_CMD_STAT)) {
+    if (trace_event_get_state(TRACE_OT_SPI_HOST_CMD_STAT)) {
         int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
         int64_t elapsed = now - s->active.ts;
         if (s->active.size) {
@@ -864,51 +853,61 @@ static void ot_spi_host_post_fsm(void *opaque)
         }
     }
 
-    ot_spi_host_trace_status(s, "P>", ot_spi_host_get_status(s));
+    trace_ot_spi_host_retire_command(s->ot_id, s->active.cmd.id);
 
-    if (retire) {
-        trace_ot_spi_host_retire_command(s->ot_id, s->active.cmd.id);
-
-        if (ot_spi_host_is_rx(command)) {
-            /*
-             * transfer has been completed, RX FIFO may need padding up to a
-             * word
-             */
-            while (!fifo8_is_full(s->rx_fifo) &&
-                   fifo8_num_used(s->rx_fifo) & 0x3u) {
-                fifo8_push(s->rx_fifo, 0u);
-            }
+    if (ot_spi_host_is_rx(command)) {
+        /*
+         * transfer has been completed, RX FIFO may need padding up to a
+         * word
+         */
+        while (!fifo8_is_full(s->rx_fifo) &&
+               fifo8_num_used(s->rx_fifo) & 0x3u) {
+            fifo8_push(s->rx_fifo, 0u);
         }
+    }
 
-        /* release /CS if this is the last command of the current transaction */
-        if (!FIELD_EX32(command, COMMAND, CSAAT)) {
-            s->fsm.transaction = false;
-            ot_spi_host_chip_select(s, s->active.cmd.cs, s->fsm.transaction);
+    /* release /CS if this is the last command of the current transaction */
+    if (!FIELD_EX32(command, COMMAND, CSAAT)) {
+        s->fsm.transaction = false;
+        ot_spi_host_chip_select(s, s->active.cmd.cs, s->fsm.transaction);
+    }
+
+    /* retire command */
+    s->active.state = CMD_NONE;
+
+    /* last command has completed */
+    if (!cmdfifo_is_empty(s->cmd_fifo)) {
+        /* more commands have been scheduled */
+        trace_ot_spi_host_debug(s->ot_id, "next cmd");
+        if (s->active.state == CMD_NONE) {
+            cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
+            s->active.state = CMD_ONGOING;
+            s->active.size = 0u;
         }
-
-        /* retire command */
-        s->active.state = CMD_NONE;
+        ot_spi_host_step_fsm(s, "post");
+    } else {
+        trace_ot_spi_host_debug(s->ot_id, "no resched: no cmd");
     }
 
     ot_spi_host_update_regs(s);
+}
 
-    ot_spi_host_trace_status(s, "P<", ot_spi_host_get_status(s));
+static void ot_spi_host_schedule_fsm(void *opaque)
+{
+    OtSPIHostState *s = opaque;
+
+    trace_ot_spi_host_fsm(s->ot_id, s->active.cmd.id, "sched");
+
+    bool retire = s->active.state == CMD_EXECUTED;
+
+    ot_spi_host_trace_status(s, "P>", ot_spi_host_get_status(s));
 
     if (retire) {
-        /* last command has completed */
-        if (!cmdfifo_is_empty(s->cmd_fifo)) {
-            /* more commands have been scheduled */
-            trace_ot_spi_host_debug(s->ot_id, "next cmd");
-            if (s->active.state == CMD_NONE) {
-                cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
-                s->active.state = CMD_ONGOING;
-                s->active.size = 0u;
-            }
-            ot_spi_host_step_fsm(s, "post");
-        } else {
-            trace_ot_spi_host_debug(s->ot_id, "no resched: no cmd");
-        }
+        ot_spi_host_retire(s);
     } else {
+        ot_spi_host_update_regs(s);
+
+        uint32_t command = s->active.cmd.command;
         unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
         bool pending = timer_pending(s->fsm_delay);
         trace_ot_spi_host_cmd_ongoing(s->ot_id, s->active.cmd.id, length,
@@ -917,6 +916,8 @@ static void ot_spi_host_post_fsm(void *opaque)
             ot_spi_host_step_fsm(s, "pending");
         }
     }
+
+    ot_spi_host_trace_status(s, "P<", ot_spi_host_get_status(s));
 }
 
 static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
@@ -1150,7 +1151,14 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
                 s->active.state = CMD_ONGOING;
                 s->active.size = 0u;
             }
-            ot_spi_host_step_fsm(s, "cmd");
+            /*
+             * add a small delay before kicking of the command FSM. This yield
+             * execution back to the vCPU (releasing the IO thread), so the
+             * guest can check the SPI Host status, etc. This very short delay
+             * does not seem to slow down execution.
+             */
+            timer_mod(s->fsm_delay,
+                      qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + s->start_delay_ns);
             break;
         }
         ot_spi_host_update_regs(s);
@@ -1233,6 +1241,8 @@ static Property ot_spi_host_properties[] = {
     DEFINE_PROP_UINT32("num-cs", OtSPIHostState, num_cs, 1u),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0u),
     DEFINE_PROP_UINT32("pclk", OtSPIHostState, pclk, 0u),
+    DEFINE_PROP_UINT32("start-delay", OtSPIHostState, start_delay_ns,
+                       FSM_START_DELAY_NS),
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
                        0),
     DEFINE_PROP_END_OF_LIST(),
@@ -1316,7 +1326,7 @@ static void ot_spi_host_instance_init(Object *obj)
     txfifo_create(s->tx_fifo, TXFIFO_LEN);
     cmdfifo_create(s->cmd_fifo, CMDFIFO_LEN);
 
-    s->fsm_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_host_post_fsm, s);
+    s->fsm_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_host_schedule_fsm, s);
 }
 
 static void ot_spi_host_class_init(ObjectClass *klass, void *data)
