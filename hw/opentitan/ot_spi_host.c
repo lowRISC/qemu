@@ -318,7 +318,6 @@ typedef struct {
 } CmdFifo;
 
 typedef struct {
-    bool active; /**< a command is being handled */
     bool transaction; /**< SPI transation (CS is active) */
     bool rx_stall; /**< RX FIFO is full while processing a command */
     bool tx_stall; /**< TX FIFO is empty while processing a command */
@@ -575,7 +574,8 @@ static uint32_t ot_spi_host_get_status(OtSPIHostState *s)
     /* State */
     status =
         FIELD_DP32(status, STATUS, READY, (uint32_t)ot_spi_host_is_ready(s));
-    status = FIELD_DP32(status, STATUS, ACTIVE, s->fsm.active);
+    status = FIELD_DP32(status, STATUS, ACTIVE,
+                        (uint32_t)(s->active.state != CMD_NONE));
 
     return status;
 }
@@ -597,7 +597,8 @@ static uint32_t ot_spi_host_build_event_bits(OtSPIHostState *s)
     events = FIELD_DP32(events, EVENT_ENABLE, TXWM, txwm);
     events = FIELD_DP32(events, EVENT_ENABLE, READY,
                         (uint32_t)ot_spi_host_is_ready(s));
-    events = FIELD_DP32(events, EVENT_ENABLE, IDLE, (uint32_t)!s->fsm.active);
+    events = FIELD_DP32(events, EVENT_ENABLE, IDLE,
+                        (uint32_t)(s->active.state == CMD_NONE));
     return events;
 }
 
@@ -711,7 +712,6 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 {
     trace_ot_spi_host_fsm(s->ot_id, s->active.cmd.id, cause);
 
-    s->fsm.active = true;
     ot_spi_host_update_event(s);
 
     unsigned byte_count = 0;
@@ -885,11 +885,6 @@ static void ot_spi_host_post_fsm(void *opaque)
 
         /* retire command */
         s->active.state = CMD_NONE;
-
-        /* release active only if the last pushed command has been retired */
-        if (cmdfifo_is_empty(s->cmd_fifo)) {
-            s->fsm.active = false;
-        }
     }
 
     ot_spi_host_update_regs(s);
