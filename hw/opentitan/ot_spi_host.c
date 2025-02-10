@@ -239,31 +239,6 @@ static const char *F_COMMAND_SPEED[4u] = {
     "ERROR",
 };
 
-static void ot_spi_host_trace_status(const char *ot_id, const char *msg,
-                                     uint32_t status)
-{
-    unsigned cmd = FIELD_EX32(status, STATUS, CMDQD);
-    unsigned rxd = FIELD_EX32(status, STATUS, RXQD);
-    unsigned txd = FIELD_EX32(status, STATUS, TXQD);
-    char str[64u];
-    int last =
-        snprintf(str, sizeof(str), "%s%s%s%s%s%s%s%s%s%s",
-                 FIELD_EX32(status, STATUS, RXWM) ? "RXM|" : "",
-                 FIELD_EX32(status, STATUS, RXSTALL) ? "RXS|" : "",
-                 FIELD_EX32(status, STATUS, RXEMPTY) ? "RXE|" : "",
-                 FIELD_EX32(status, STATUS, RXFULL) ? "RXF|" : "",
-                 FIELD_EX32(status, STATUS, TXWM) ? "TXM|" : "",
-                 FIELD_EX32(status, STATUS, TXSTALL) ? "TXS|" : "",
-                 FIELD_EX32(status, STATUS, TXEMPTY) ? "TXE|" : "",
-                 FIELD_EX32(status, STATUS, TXFULL) ? "TXF|" : "",
-                 FIELD_EX32(status, STATUS, ACTIVE) ? "ACT|" : "",
-                 FIELD_EX32(status, STATUS, READY) ? "RDY|" : "");
-    if (str[last - 1] == '|') {
-        str[last - 1] = '\0';
-    }
-    trace_ot_spi_host_status(ot_id, msg, status, str, cmd, rxd, txd);
-}
-
 #ifdef DISCARD_REPEATED_STATUS_TRACES
 typedef struct {
     uint64_t pc;
@@ -534,6 +509,34 @@ static void ot_spi_host_chip_select(OtSPIHostState *s, unsigned csid,
     qemu_set_irq(s->cs_lines[csid], !activate);
 }
 
+static void ot_spi_host_trace_status(const OtSPIHostState *s, const char *msg,
+                                     uint32_t status)
+{
+    unsigned cmd = FIELD_EX32(status, STATUS, CMDQD);
+    unsigned rxd = FIELD_EX32(status, STATUS, RXQD);
+    unsigned txd = FIELD_EX32(status, STATUS, TXQD);
+    char str[64u];
+    int last =
+        snprintf(str, sizeof(str), "%s%s%s%s%s%s%s%s%s%s",
+                 FIELD_EX32(status, STATUS, RXWM) ? "RXM|" : "",
+                 FIELD_EX32(status, STATUS, RXSTALL) ? "RXS|" : "",
+                 FIELD_EX32(status, STATUS, RXEMPTY) ? "RXE|" : "",
+                 FIELD_EX32(status, STATUS, RXFULL) ? "RXF|" : "",
+                 FIELD_EX32(status, STATUS, TXWM) ? "TXM|" : "",
+                 FIELD_EX32(status, STATUS, TXSTALL) ? "TXS|" : "",
+                 FIELD_EX32(status, STATUS, TXEMPTY) ? "TXE|" : "",
+                 FIELD_EX32(status, STATUS, TXFULL) ? "TXF|" : "",
+                 FIELD_EX32(status, STATUS, ACTIVE) ? "ACT|" : "",
+                 FIELD_EX32(status, STATUS, READY) ? "RDY|" : "");
+    if (str[last - 1] == '|') {
+        str[last - 1] = '\0';
+    }
+    char st = (char)(s->active.state == CMD_NONE ?
+                         'N' :
+                         (s->active.state == CMD_ONGOING ? 'O' : 'X'));
+    trace_ot_spi_host_status(s->ot_id, msg, status, str, cmd, rxd, txd, st);
+}
+
 static uint32_t ot_spi_host_get_status(OtSPIHostState *s)
 {
     uint32_t status = R_STATUS_BYTEORDER_MASK; /* always little-endian */
@@ -745,7 +748,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         length = DIV_ROUND_UP(length, 8u);
     }
 
-    ot_spi_host_trace_status(s->ot_id, "S>", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s, "S>", ot_spi_host_get_status(s));
 
     trace_ot_spi_host_exec_command(
         s->ot_id, s->active.cmd.id,
@@ -834,7 +837,7 @@ post:
         timer_mod(s->fsm_delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + delay);
     }
 
-    ot_spi_host_trace_status(s->ot_id, "S<", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s, "S<", ot_spi_host_get_status(s));
 }
 
 /**
@@ -861,7 +864,7 @@ static void ot_spi_host_post_fsm(void *opaque)
         }
     }
 
-    ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s, "P>", ot_spi_host_get_status(s));
 
     if (retire) {
         trace_ot_spi_host_retire_command(s->ot_id, s->active.cmd.id);
@@ -889,7 +892,7 @@ static void ot_spi_host_post_fsm(void *opaque)
 
     ot_spi_host_update_regs(s);
 
-    ot_spi_host_trace_status(s->ot_id, "P<", ot_spi_host_get_status(s));
+    ot_spi_host_trace_status(s, "P<", ot_spi_host_get_status(s));
 
     if (retire) {
         /* last command has completed */
@@ -968,7 +971,7 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
             val32 <<= 8u;
             val32 |= (uint32_t)fifo8_pop(s->rx_fifo);
         }
-        ot_spi_host_trace_status(s->ot_id, "rxd", ot_spi_host_get_status(s));
+        ot_spi_host_trace_status(s, "rxd", ot_spi_host_get_status(s));
         val32 = bswap32(val32);
         bool resume = false;
         if (s->active.state != CMD_NONE) {
@@ -1014,7 +1017,7 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
         trace_ot_spi_host_io_read(s->ot_id, (uint32_t)addr, REG_NAME(reg),
                                   val32, pc);
         if (reg == R_STATUS) {
-            ot_spi_host_trace_status(s->ot_id, "", val32);
+            ot_spi_host_trace_status(s, "", val32);
         }
 #ifdef DISCARD_REPEATED_STATUS_TRACES
         trace_cache.count = 1u;
