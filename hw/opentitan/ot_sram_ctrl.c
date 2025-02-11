@@ -536,7 +536,7 @@ static MemTxResult ot_sram_ctrl_mem_init_read_with_attrs(
         /*
          * the whole RAM is not fully initialized, check if this cell has been
          * initialized
-        */
+         */
         unsigned slot = ot_sram_ctrl_get_u64_slot(cell);
         unsigned offset = ot_sram_ctrl_get_u64_offset(cell);
 

@@ -145,7 +145,8 @@ ot_multibitbool_and_lo(uint32_t a, uint32_t b, uint32_t size)
 }
 
 /*
- * Computes the new multibit register value when writing to a W1S register field.
+ * Computes the new multibit register value when writing to a W1S register
+ * field.
  */
 static inline uint32_t
 ot_multibitbool_w1s_write(uint32_t old, uint32_t val, uint32_t size)
@@ -154,7 +155,8 @@ ot_multibitbool_w1s_write(uint32_t old, uint32_t val, uint32_t size)
 }
 
 /*
- * Computes the new multibit register value when writing to a W1C register field.
+ * Computes the new multibit register value when writing to a W1C register
+ * field.
  */
 static inline uint32_t
 ot_multibitbool_w1c_write(uint32_t old, uint32_t val, uint32_t size)
@@ -163,7 +165,8 @@ ot_multibitbool_w1c_write(uint32_t old, uint32_t val, uint32_t size)
 }
 
 /*
- * Computes the new multibit register value when writing to a W0C register field.
+ * Computes the new multibit register value when writing to a W0C register
+ * field.
  */
 static inline uint32_t
 ot_multibitbool_w0c_write(uint32_t old, uint32_t val, uint32_t size)

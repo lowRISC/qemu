@@ -277,7 +277,7 @@ typedef struct {
     { \
         __VA_ARGS__, \
         { \
-            .out = {.num = -1 } \
+            .out = { .num = -1 } \
         } \
     }
 
