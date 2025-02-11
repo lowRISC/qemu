@@ -6,6 +6,7 @@ Checks:          '*,
                   -altera-*,
                   -android-cloexec-fopen,
                   -bugprone-assignment-in-if-condition,
+                  -bugprone-branch-clone,
                   -bugprone-casting-through-void,
                   -bugprone-easily-swappable-parameters,
                   -bugprone-implicit-widening-of-multiplication-result,
@@ -15,6 +16,7 @@ Checks:          '*,
                   -clang-diagnostic-error,
                   -clang-diagnostic-unknown-warning-option,
                   -cert-dcl37-c,-cert-dcl51-cpp,
+                  -cert-int09-c,
                   -concurrency-mt-unsafe,
                   -cppcoreguidelines-init-variables,
                   -cppcoreguidelines-interfaces-global-init,
@@ -30,8 +32,13 @@ Checks:          '*,
                   -readability-avoid-nested-conditional-operator,
                   -readability-function-cognitive-complexity,
                   -readability-identifier-length,
+                  -readability-enum-initial-value,
                   -readability-isolate-declaration,
-                  -readability-redundant-casting'
+                  -readability-math-missing-parentheses,
+                  -readability-redundant-casting,
+                  -readability-redundant-declaration'
+
 UseColor: true
+SystemHeaders: false
 WarningsAsErrors: '*'
 ...
