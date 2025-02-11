@@ -312,8 +312,7 @@ struct OtSPIHostState {
     qemu_irq *cs_lines; /**< CS output lines */
     SSIBus *ssi; /**< SPI bus */
 
-    uint32_t *regs; /**< Registers (except. banked and fifos) */
-    uint32_t *config_opts; /**< Banked configopts registers */
+    uint32_t *regs; /**< Registers (except. fifos) */
 
     RxFifo *rx_fifo;
     TxFifo *tx_fifo;
@@ -702,9 +701,6 @@ static void ot_spi_host_reset(OtSPIHostState *s)
     s->regs[R_ERROR_STATUS] = 0x00u;
     s->regs[R_EVENT_ENABLE] = 0x00u;
 
-    /* configopts registers are banked */
-    memset(s->config_opts, 0, s->num_cs * sizeof(uint32_t));
-
     /* rxdata, txdata, and command registers are managed w/ FIFOs */
     fifo8_reset(s->rx_fifo);
     txfifo_reset(s->tx_fifo);
@@ -944,20 +940,11 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
     case R_ERROR_STATUS:
     case R_EVENT_ENABLE:
     case R_CSID:
+    case R_CONFIGOPTS:
         val32 = s->regs[reg];
         break;
     case R_STATUS:
         val32 = ot_spi_host_get_status(s);
-        break;
-    case R_CONFIGOPTS:
-        if (s->regs[R_CSID] < s->num_cs) {
-            val32 = s->config_opts[s->regs[R_CSID]];
-        } else {
-            val32 = 0u;
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s: CSID invalid, Hardware settings discarded\n",
-                          __func__, s->ot_id);
-        }
         break;
     case R_RXDATA: {
         /* here, size != 4 is illegal, what to do in this case? */
@@ -1088,18 +1075,8 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         break;
     case R_CONFIGOPTS:
-        /* Update the respective config-opts register based on CSIDth index */
-        if (s->regs[R_CSID] < s->num_cs) {
-            val32 &= R_CONFIGOPTS_MASK;
-            s->config_opts[s->regs[R_CSID]] = val32;
-        } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s: CSID invalid, Hardware settings discarded\n",
-                          __func__, s->ot_id);
-        }
-        break;
     case R_CSID:
-        s->regs[R_CSID] = val32;
+        s->regs[reg] = val32;
         break;
     case R_COMMAND: {
         if (cmdfifo_is_full(s->cmd_fifo)) {
@@ -1146,11 +1123,10 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             error = true;
         }
 
-        uint8_t csid = (uint8_t)s->regs[R_CSID];
         CmdFifoSlot slot = {
-            .opts = s->config_opts[csid],
+            .opts = s->regs[R_CONFIGOPTS],
             .command = val32,
-            .csid = csid,
+            .csid = (uint8_t)s->regs[R_CSID],
             .state = CMD_SCHEDULED,
             .cmdid = s->last_command_id++,
         };
@@ -1162,7 +1138,8 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             s->ot_id, slot.cmdid,
             F_COMMAND_DIRECTION[FIELD_EX32(slot.command, COMMAND, DIRECTION)],
             F_COMMAND_SPEED[FIELD_EX32(slot.command, COMMAND, SPEED)],
-            (uint32_t)csid, (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
+            s->regs[R_CSID] & 0xffu,
+            (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
             FIELD_EX32(slot.command, COMMAND, LEN) + 1u, activate);
 
         cmdfifo_push(s->cmd_fifo, &slot);
@@ -1311,7 +1288,6 @@ static void ot_spi_host_instance_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
-    s->config_opts = g_new0(uint32_t, (size_t)s->num_cs);
 
     s->rx_fifo = g_new0(RxFifo, 1u);
     s->tx_fifo = g_new0(TxFifo, 1u);
