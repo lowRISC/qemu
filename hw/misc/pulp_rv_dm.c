@@ -238,6 +238,7 @@ static void pulp_rv_dm_load_rom(PulpRVDMState *s)
     memcpy(rom, DEBUG_ROM, sizeof(DEBUG_ROM));
 }
 
+/* NOLINTNEXTLINE */
 static uint64_t pulp_rv_dm_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     (void)opaque;
