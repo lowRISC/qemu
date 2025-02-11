@@ -247,6 +247,20 @@ To force QEMU to execute an application despite this feature, bypassing the DFT 
   For now, bus 0 is assigned to the SPI Host controller with an external flash storage. See also
   Flash controller section.
 
+* `-global ot-spi_host.start-delay=<time>` may be used to change the default SPI Host FSM start
+  delay. This delay is used to yield back the control to the vCPU before kicking of the execution
+  of a new SPI Host command, so that the guest code gets a chance to check the statuses of the SPI
+  Host right after pushing the command. Without this delay, the SPI Host state may change quickly
+  and report statuses that might be different than the real HW, _e.g._ a command may already be
+  completed when the guest code reads back the SPI Host status. Time should be specified in ns,
+  and defaults to 20000 (20 µs).
+
+* -`global ot-spi_host.completion-delay=<time>` may be forced to discard the experimental SPI Host
+  clock pacing, which helps to achieve the requested bandwidth on the SPI Host bus, which is always
+  caped with the performances of the QEMU host. Forcing a small value here can help achieving the
+  best SPI Host transfer performances, but decreases accuracy of the SPI Host clock settings. Time
+  should be specified in ns, and defaults to 0 that indicates automatic SPI bus clock management.
+
 ### Reset Manager
 
 It is possible to limit the number of times the VM reboots the guest. This option may be useful
