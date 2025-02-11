@@ -18,9 +18,9 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" &&
           sudo apt-get update &&
-          sudo apt-get install -y git make pkg-config clang-18 cmake ninja-build python3 rust-all \
+          sudo apt-get install -y git make pkg-config clang-19 cmake ninja-build python3 rust-all \
             libpixman-1-dev libglib2.0-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
           git clean -dffx subprojects
           mkdir build-clang
           (cd build-clang &&
-           ../configure --cc=clang-18 --disable-werror --disable-install-blobs \
+           ../configure --cc=clang-19 --disable-werror --disable-install-blobs \
              --target-list=riscv32-softmmu,riscv64-softmmu)
       - name: Build
         run: |
@@ -73,9 +73,9 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" &&
           sudo apt-get update &&
-          sudo apt-get install -y clang-format-18
+          sudo apt-get install -y clang-format-19
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Check C code format
@@ -106,9 +106,9 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
             sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" &&
           sudo apt-get update &&
-          sudo apt-get install -y clang-tidy-18 libglib2.0-dev
+          sudo apt-get install -y clang-tidy-19 libglib2.0-dev
       - name: Check out QEMU
         uses: actions/checkout@v4
       - name: Download QEMU source artifacts
@@ -166,7 +166,7 @@ jobs:
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
           sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
-          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" &&
           sudo apt-get update &&
           sudo apt-get install -y git make pkg-config gcc cmake ninja-build python3 rust-all \
             libpixman-1-dev libglib2.0-dev
