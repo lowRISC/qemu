@@ -31,8 +31,9 @@ if [ ${version_major} -lt ${EXPECTED_VERSION} ]; then
     exit 1
 else
     if [ ${version_major} -ne ${EXPECTED_VERSION} ]; then
-        echo -n "clang-tidy v${EXPECTED_VERSION} expected, " >&2
-        echo "v${version_full} may generate unexpected results" >&2
+        WMSG="clang-tidy v${EXPECTED_VERSION} expected,"
+        WMSG="${WMSG} v${version_full} may generate unexpected results"
+        echo "${WMSG}" >&2
     fi
 fi
 
@@ -57,7 +58,7 @@ while [ $# -gt 0 ]; do
 done
 
 # config
-QEMU_ROOT="$(dirname $0)"/../..
+QEMU_ROOT="$(realpath $(dirname $0)/../..)"
 CFG="$(dirname $0)"/clang-tidy.yml
 FILES_D="$(dirname $0)"/clang-tidy.d
 FILES=""
@@ -69,4 +70,5 @@ if [ $CI_MODE -eq 1 ]; then
     done
 fi
 
+echo "Using ${clangtidy}"
 exec "${clangtidy}" --config-file="${CFG}" $ARGS $FILES
