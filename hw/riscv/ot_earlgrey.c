@@ -65,6 +65,7 @@
 #include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
+#include "hw/opentitan/ot_unimp.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/dm.h"
 #include "hw/riscv/dtm.h"
@@ -514,46 +515,46 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_I2C0] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-i2c",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40080000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "i2c0"),
             IBEX_DEV_UINT_PROP("size", 0x80u)
         )
     },
     [OT_EG_SOC_DEV_I2C1] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-i2c",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40090000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "i2c1"),
             IBEX_DEV_UINT_PROP("size", 0x80u)
         )
     },
     [OT_EG_SOC_DEV_I2C2] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-i2c",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x400a0000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "i2c2"),
             IBEX_DEV_UINT_PROP("size", 0x80u)
         )
     },
     [OT_EG_SOC_DEV_PATTGEN] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-pattgen",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x400e0000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "pattgen"),
             IBEX_DEV_UINT_PROP("size", 0x80u)
         )
     },
@@ -702,13 +703,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_USBDEV] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-usbdev",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40320000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "usbdev"),
             IBEX_DEV_UINT_PROP("size", 0x1000u)
         )
     },
@@ -758,35 +759,35 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         )
     },
     [OT_EG_SOC_DEV_SYSRST_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-sysrst_ctrl",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40430000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "sysrst_ctrl"),
             IBEX_DEV_UINT_PROP("size", 0x100u)
         )
     },
     [OT_EG_SOC_DEV_ADC_CTRL] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-adc_ctrl",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40440000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "adc_ctrl"),
             IBEX_DEV_UINT_PROP("size", 0x80u)
         )
     },
     [OT_EG_SOC_DEV_PWM] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-pwm",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40450000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "pwm"),
             IBEX_DEV_UINT_PROP("size", 0x80u)
         )
     },
@@ -943,13 +944,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_KEYMGR] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-keymgr",
+        .type = TYPE_OT_UNIMP,
         .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x41140000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "keymgr"),
             IBEX_DEV_UINT_PROP("size", 0x100u),
             IBEX_DEV_BOOL_PROP("warn-once", true)
         )
@@ -1045,7 +1046,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_ROM_CTRL] = {
         .type = TYPE_OT_ROM_CTRL,
-        .name = "ot-rom_ctrl",
         .memmap = MEMMAPENTRIES(
             { .base = 0x411e0000u },
             { .base = 0x00008000u }
