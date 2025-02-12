@@ -1085,8 +1085,8 @@ static uint64_t ot_edn_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = s->regs[reg];
         break;
     case R_SW_CMD_STS: {
-        uint32_t rdy = (uint32_t) ot_edn_is_cmd_rdy(s, false);
-        uint32_t reg_rdy = (uint32_t) ot_edn_is_cmd_rdy(s, true);
+        uint32_t rdy = (uint32_t)ot_edn_is_cmd_rdy(s, false);
+        uint32_t reg_rdy = (uint32_t)ot_edn_is_cmd_rdy(s, true);
         val32 = s->regs[R_SW_CMD_STS];
         val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_STS, s->rng.last_cmd_status);
         val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_RDY, rdy);
@@ -1163,6 +1163,7 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
         s->regs[R_ALERT_TEST] = val32;
+        ot_edn_update_alerts(s);
         break;
     case R_REGWEN:
         val32 &= R_REGWEN_EN_MASK;
