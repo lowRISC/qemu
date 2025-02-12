@@ -56,8 +56,8 @@
 
 /* clang-format off */
 REG32(ALERT_TEST, 0x0u)
-    FIELD(ALERT_TEST, RECOV_CTRL_UPDATE_ERR, 0, 1u)
-    FIELD(ALERT_TEST, FATAL_FAULT, 1, 1u)
+    SHARED_FIELD(ALERT_RECOV_CTRL_UPDATE_ERR, 0u, 1u)
+    SHARED_FIELD(ALERT_FATAL_FAULT, 1u, 1u)
 REG32(KEY_SHARE0_0, 0x4u)
 REG32(KEY_SHARE0_1, 0x8u)
 REG32(KEY_SHARE0_2, 0xcu)
@@ -119,6 +119,10 @@ REG32(STATUS, 0x84u)
 #define OT_AES_KEYSHARE_BM_MASK ((1u << (PARAM_NUM_REGS_KEY * 2u)) - 1u)
 #define OT_AES_IV_BM_MASK       ((1u << (PARAM_NUM_REGS_IV)) - 1u)
 #define OT_AES_DATA_BM_MASK     ((1u << (PARAM_NUM_REGS_DATA)) - 1u)
+
+#define OT_AES_ALERT_STATUS_OFFSET \
+    (R_STATUS_ALERT_RECOV_CTRL_UPDATE_ERR_SHIFT - \
+     ALERT_RECOV_CTRL_UPDATE_ERR_SHIFT)
 
 #define OT_AES_DATA_SIZE (PARAM_NUM_REGS_DATA * sizeof(uint32_t))
 #define OT_AES_KEY_SIZE  (PARAM_NUM_REGS_KEY * sizeof(uint32_t))
@@ -327,7 +331,8 @@ static inline uint32_t ot_aes_get_key_mask(OtAESRegisters *r)
 static void ot_aes_update_alert(OtAESState *s)
 {
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        bool level = (bool)(s->regs->status & (1u << ix));
+        bool level =
+            (bool)(s->regs->status & (1u << (ix + OT_AES_ALERT_STATUS_OFFSET)));
         ibex_irq_set(&s->alerts[ix], (int)level);
     }
 }
@@ -1095,10 +1100,10 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
 
     switch (reg) {
     case R_ALERT_TEST:
-        if (val32 & R_ALERT_TEST_RECOV_CTRL_UPDATE_ERR_MASK) {
+        if (val32 & ALERT_RECOV_CTRL_UPDATE_ERR_MASK) {
             r->status |= R_STATUS_ALERT_RECOV_CTRL_UPDATE_ERR_MASK;
         }
-        if (val32 & R_ALERT_TEST_FATAL_FAULT_MASK) {
+        if (val32 & ALERT_FATAL_FAULT_MASK) {
             r->status |= R_STATUS_ALERT_FATAL_FAULT_MASK;
         }
         ot_aes_update_alert(s);
