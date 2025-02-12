@@ -1127,7 +1127,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_PLIC_EXT] = {
         .type = TYPE_OT_PLIC_EXT,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x2c000000u }
+            { .base = 0x4c000000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO(0, HART, IRQ_M_SOFT),
