@@ -53,5 +53,6 @@ system_ss.add(when: 'CONFIG_OT_SPI_HOST', if_true: files('ot_spi_host.c'))
 system_ss.add(when: 'CONFIG_OT_SRAM_CTRL', if_true: files('ot_sram_ctrl.c'))
 system_ss.add(when: 'CONFIG_OT_TIMER', if_true: files('ot_timer.c'))
 system_ss.add(when: 'CONFIG_OT_UART', if_true: files('ot_uart.c'))
+system_ss.add(when: 'CONFIG_OT_UNIMP', if_true: files('ot_unimp.c'))
 
 subdir('otbn')
