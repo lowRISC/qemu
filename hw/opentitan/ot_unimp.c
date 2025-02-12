@@ -37,6 +37,7 @@
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "trace.h"
 
 /* Comportable special registers */
 
@@ -87,7 +88,11 @@ static void ot_unimp_update_irqs(OtUnimpState *s)
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
     for (unsigned ix = 0; ix < s->irq_count; ix++) {
-        ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
+        int lvl = (int)((level >> ix) & 0x1u);
+        if (ibex_irq_get_level(&s->irqs[ix]) != lvl) {
+            trace_ot_unimp_irq(s->ot_id, ix, (bool)lvl);
+        }
+        ibex_irq_set(&s->irqs[ix], lvl);
     }
 }
 
@@ -96,6 +101,7 @@ static void ot_unimp_update_alerts(OtUnimpState *s, uint32_t val32)
     for (unsigned ix = 0; ix < s->alert_count; ix++) {
         if ((val32 >> ix) & 0x1u) {
             /* alert test signals are transient */
+            trace_ot_unimp_alert(s->ot_id, ix);
             ibex_irq_raise(&s->alerts[ix]);
             ibex_irq_lower(&s->alerts[ix]);
         }
