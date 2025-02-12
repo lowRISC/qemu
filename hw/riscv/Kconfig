@@ -59,6 +59,7 @@ config OT_DARJEELING
     select SIFIVE_PLIC
     select SPLIT_IRQ
     select TAP_CTRL_RBB
+    select UNIMP
 
 config OT_EARLGREY
     bool
