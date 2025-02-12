@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2022 Western Digital
  * Copyright (c) 2022-2023 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Wilfred Mallawa <wilfred.mallawa@wdc.com>
@@ -34,7 +35,5 @@
 
 #define TYPE_OT_SPI_HOST "ot-spi_host"
 OBJECT_DECLARE_TYPE(OtSPIHostState, OtSPIHostClass, OT_SPI_HOST)
-
-#define OT_SPI_HOST_IRQ_NUM 2
 
 #endif /* HW_OPENTITAN_OT_SPI_HOST_H */
