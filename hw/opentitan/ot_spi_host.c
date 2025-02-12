@@ -1279,12 +1279,11 @@ static Property ot_spi_host_properties[] = {
 
 static void ot_spi_host_reset_enter(Object *obj, ResetType type)
 {
+    OtSPIHostClass *c = OT_SPI_HOST_GET_CLASS(obj);
     OtSPIHostState *s = OT_SPI_HOST(obj);
-    (void)type;
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
     }
 
     s->regs[R_INTR_STATE] = 0x00u;
@@ -1304,8 +1303,12 @@ static void ot_spi_host_reset_enter(Object *obj, ResetType type)
 
 static void ot_spi_host_reset_exit(Object *obj, ResetType type)
 {
+    OtSPIHostClass *c = OT_SPI_HOST_GET_CLASS(obj);
     OtSPIHostState *s = OT_SPI_HOST(obj);
-    (void)type;
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
 
     s->on_reset = false;
 }
@@ -1316,6 +1319,11 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->pclk);
+
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
 
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 
@@ -1366,8 +1374,10 @@ static void ot_spi_host_class_init(ObjectClass *klass, void *data)
     dc->realize = ot_spi_host_realize;
     device_class_set_props(dc, ot_spi_host_properties);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
-    rc->phases.enter = &ot_spi_host_reset_enter;
-    rc->phases.exit = &ot_spi_host_reset_exit;
+    OtSPIHostClass *sc = OT_SPI_HOST_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_spi_host_reset_enter, NULL,
+                                       &ot_spi_host_reset_exit,
+                                       &sc->parent_phases);
 }
 
 static const TypeInfo ot_spi_host_info = {
