@@ -308,8 +308,10 @@ REG32(LC_STATE, 2008u)
 
 #define INTR_MASK (INTR_OTP_OPERATION_DONE_MASK | INTR_OTP_ERROR_MASK)
 #define ALERT_TEST_MASK \
-    (R_ALERT_TEST_FATAL_MACRO_ERROR_MASK | R_ALERT_TEST_FATAL_CHECK_ERROR_MASK | \
-     R_ALERT_TEST_FATAL_BUS_INTEG_ERROR_MASK | R_ALERT_TEST_FATAL_PRIM_OTP_ALERT_MASK | \
+    (R_ALERT_TEST_FATAL_MACRO_ERROR_MASK | \
+     R_ALERT_TEST_FATAL_CHECK_ERROR_MASK | \
+     R_ALERT_TEST_FATAL_BUS_INTEG_ERROR_MASK | \
+     R_ALERT_TEST_FATAL_PRIM_OTP_ALERT_MASK | \
      R_ALERT_TEST_RECOV_PRIM_OTP_ALERT_MASK)
 
 #define SW_CFG_WINDOW      0x800u
@@ -667,14 +669,13 @@ static bool ot_otp_eg_is_readable(OtOTPEgState *s, int partition, unsigned addr)
                                         READ_LOCK);
             break;
         case OTP_PART_ROT_CREATOR_AUTH_CODESIGN:
-            rdaccess =
-                (bool)SHARED_FIELD_EX32(s->regs[R_ROT_CREATOR_AUTH_CODESIGN_READ_LOCK],
-                                        READ_LOCK);
+            rdaccess = (bool)SHARED_FIELD_EX32(
+                s->regs[R_ROT_CREATOR_AUTH_CODESIGN_READ_LOCK], READ_LOCK);
             break;
         case OTP_PART_ROT_CREATOR_AUTH_STATE:
-            rdaccess =
-                (bool)SHARED_FIELD_EX32(s->regs[R_ROT_CREATOR_AUTH_STATE_READ_LOCK],
-                                        READ_LOCK);
+            rdaccess = (bool)
+                SHARED_FIELD_EX32(s->regs[R_ROT_CREATOR_AUTH_STATE_READ_LOCK],
+                                  READ_LOCK);
             break;
         case OTP_PART_SECRET0:
         case OTP_PART_SECRET1:
@@ -852,16 +853,23 @@ static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
                        32u);
         break;
     case R_ROT_CREATOR_AUTH_CODESIGN_DIGEST_0:
-        val32 = (uint32_t)ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_ROT_CREATOR_AUTH_CODESIGN);
+        val32 = (uint32_t)
+            ot_otp_eg_swcfg_get_part_digest(s,
+                                            OTP_PART_ROT_CREATOR_AUTH_CODESIGN);
         break;
     case R_ROT_CREATOR_AUTH_CODESIGN_DIGEST_1:
-        val32 = (uint32_t)(ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_ROT_CREATOR_AUTH_CODESIGN) >> 32u);
+        val32 = (uint32_t)(ot_otp_eg_swcfg_get_part_digest(
+                               s, OTP_PART_ROT_CREATOR_AUTH_CODESIGN) >>
+                           32u);
         break;
     case R_ROT_CREATOR_AUTH_STATE_DIGEST_0:
-        val32 = (uint32_t)ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_ROT_CREATOR_AUTH_STATE);
+        val32 = (uint32_t)
+            ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_ROT_CREATOR_AUTH_STATE);
         break;
     case R_ROT_CREATOR_AUTH_STATE_DIGEST_1:
-        val32 = (uint32_t)(ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_ROT_CREATOR_AUTH_STATE) >> 32u);
+        val32 = (uint32_t)(ot_otp_eg_swcfg_get_part_digest(
+                               s, OTP_PART_ROT_CREATOR_AUTH_STATE) >>
+                           32u);
         break;
     case R_HW_CFG0_DIGEST_0:
         val32 = (uint32_t)ot_otp_eg_swcfg_get_part_digest(s, OTP_PART_HW_CFG0);
@@ -1168,7 +1176,8 @@ static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
     memset(hw_cfg->soc_dbg_state, 0, sizeof(hw_cfg->soc_dbg_state));
     hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_EN_SRAM_IFETCH];
 
-    entropy_cfg->en_csrng_sw_app_read = (uint8_t)otp->data[R_EN_CSRNG_SW_APP_READ];
+    entropy_cfg->en_csrng_sw_app_read =
+        (uint8_t)otp->data[R_EN_CSRNG_SW_APP_READ];
 }
 
 static void ot_otp_eg_ctrl_get_lc_info(
