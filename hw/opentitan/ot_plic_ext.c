@@ -2,6 +2,7 @@
  * QEMU OpenTitan PLIC extension
  *
  * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -41,38 +42,59 @@
 /* clang-format off */
 REG32(MSIP0, 0x0u)
     FIELD(MSIP0, EN, 0u, 1u)
-REG32(ALERT_TEST, 0x4u)
+
+REG32(ALERT_TEST, 0x0u)
     FIELD(ALERT_TEST, FATAL_FAULT, 0u, 1u)
 /* clang-format on */
 
+#define OT_PLIC_EXT_MSIP_BASE  0x0u
+#define OT_PLIC_EXT_ALERT_BASE 0x4000u
+#define OT_PLIC_EXT_APERTURE   0x8000u
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
-#define R_LAST_REG (R_ALERT_TEST)
-#define REGS_COUNT (R_LAST_REG + 1u)
-#define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
-#define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+#define R_LAST_MSIP_REG (R_MSIP0)
+#define MSIP_REGS_COUNT (R_LAST_MSIP_REG + 1u)
+#define MSIP_REGS_SIZE  (MSIP_REGS_COUNT * sizeof(uint32_t))
+#define MSIP_REG_NAME(_reg_) \
+    ((((_reg_) <= MSIP_REGS_COUNT) && MSIP_REG_NAMES[_reg_]) ? \
+         MSIP_REG_NAMES[_reg_] : \
+         "?")
+
+#define R_LAST_ALERT_REG (R_ALERT_TEST)
+#define ALERT_REGS_COUNT (R_LAST_ALERT_REG + 1u)
+#define ALERT_REGS_SIZE  (ALERT_REGS_COUNT * sizeof(uint32_t))
+#define ALERT_REG_NAME(_reg_) \
+    ((((_reg_) <= ALERT_REGS_COUNT) && ALERT_REG_NAMES[_reg_]) ? \
+         ALERT_REG_NAMES[_reg_] : \
+         "?")
 
 struct OtPlicExtState {
     SysBusDevice parent_obj;
 
-    MemoryRegion mmio;
+    MemoryRegion mem;
+    MemoryRegion mmio_msip;
+    MemoryRegion mmio_alert;
+
     IbexIRQ irq;
     IbexIRQ alert;
 
-    uint32_t regs[REGS_COUNT];
+    uint32_t msip_regs[MSIP_REGS_COUNT];
 
     char *ot_id;
 };
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
-static const char *REG_NAMES[REGS_COUNT] = {
+static const char *MSIP_REG_NAMES[MSIP_REGS_COUNT] = {
     REG_NAME_ENTRY(MSIP0),
+};
+
+static const char *ALERT_REG_NAMES[ALERT_REGS_COUNT] = {
     REG_NAME_ENTRY(ALERT_TEST),
 };
 #undef REG_NAME_ENTRY
 
-static uint64_t ot_plic_ext_regs_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_plic_ext_msip_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtPlicExtState *s = opaque;
     (void)size;
@@ -80,14 +102,68 @@ static uint64_t ot_plic_ext_regs_read(void *opaque, hwaddr addr, unsigned size)
 
     hwaddr reg = R32_OFF(addr);
 
+    /* NOLINTNEXTLINE(hicpp-multiway-paths-covered) */
     switch (reg) {
     case R_MSIP0:
-        val32 = s->regs[reg];
+        val32 = s->msip_regs[reg];
         break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
+        val32 = 0;
+        break;
+    }
+
+    uint32_t pc = ibex_get_current_pc();
+    trace_ot_plic_ext_io_msip_read_out(s->ot_id, (uint32_t)addr,
+                                       MSIP_REG_NAME(reg), val32, pc);
+
+    return (uint64_t)val32;
+}
+
+static void ot_plic_ext_msip_write(void *opaque, hwaddr addr, uint64_t val64,
+                                   unsigned size)
+{
+    OtPlicExtState *s = opaque;
+    uint32_t val32 = (uint32_t)val64;
+    (void)size;
+
+    hwaddr reg = R32_OFF(addr);
+
+    uint32_t pc = ibex_get_current_pc();
+    trace_ot_plic_ext_io_msip_write(s->ot_id, (uint32_t)addr,
+                                    MSIP_REG_NAME(reg), val32, pc);
+
+    /* NOLINTNEXTLINE(hicpp-multiway-paths-covered) */
+    switch (reg) {
+    case R_MSIP0:
+        val32 &= R_MSIP0_EN_MASK;
+        s->msip_regs[reg] = val32;
+        ibex_irq_set(&s->irq, (int)(bool)val32);
+        break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
+        break;
+    }
+}
+
+static uint64_t ot_plic_ext_alert_read(void *opaque, hwaddr addr, unsigned size)
+{
+    OtPlicExtState *s = opaque;
+    (void)size;
+    uint32_t val32;
+
+    hwaddr reg = R32_OFF(addr);
+
+    /* NOLINTNEXTLINE(hicpp-multiway-paths-covered) */
+    switch (reg) {
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+                      __func__, s->ot_id, addr, ALERT_REG_NAME(reg));
         val32 = 0;
         break;
     default:
@@ -99,14 +175,14 @@ static uint64_t ot_plic_ext_regs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_plic_ext_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg),
-                                  val32, pc);
+    trace_ot_plic_ext_io_alert_read_out(s->ot_id, (uint32_t)addr,
+                                        ALERT_REG_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
 }
 
-static void ot_plic_ext_regs_write(void *opaque, hwaddr addr, uint64_t val64,
-                                   unsigned size)
+static void ot_plic_ext_alert_write(void *opaque, hwaddr addr, uint64_t val64,
+                                    unsigned size)
 {
     OtPlicExtState *s = opaque;
     uint32_t val32 = (uint32_t)val64;
@@ -115,18 +191,13 @@ static void ot_plic_ext_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_plic_ext_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
-                               pc);
+    trace_ot_plic_ext_io_alert_write(s->ot_id, (uint32_t)addr,
+                                     ALERT_REG_NAME(reg), val32, pc);
 
+    /* NOLINTNEXTLINE(hicpp-multiway-paths-covered) */
     switch (reg) {
-    case R_MSIP0:
-        val32 &= R_MSIP0_EN_MASK;
-        s->regs[reg] = val32;
-        ibex_irq_set(&s->irq, (int)(bool)val32);
-        break;
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        s->regs[reg] = val32;
         ibex_irq_set(&s->alert, (int)(bool)val32);
         break;
     default:
@@ -142,9 +213,17 @@ static Property ot_plic_ext_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps ot_plic_ext_regs_ops = {
-    .read = &ot_plic_ext_regs_read,
-    .write = &ot_plic_ext_regs_write,
+static const MemoryRegionOps ot_plic_ext_msip_ops = {
+    .read = &ot_plic_ext_msip_read,
+    .write = &ot_plic_ext_msip_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl.min_access_size = 4u,
+    .impl.max_access_size = 4u,
+};
+
+static const MemoryRegionOps ot_plic_ext_alert_ops = {
+    .read = &ot_plic_ext_alert_read,
+    .write = &ot_plic_ext_alert_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
@@ -158,25 +237,22 @@ static void ot_plic_ext_reset(DeviceState *dev)
     ibex_irq_set(&s->alert, 0);
 }
 
-static void ot_plic_ext_realize(DeviceState *dev, Error **errp)
-{
-    (void)errp;
-
-    OtPlicExtState *s = OT_PLIC_EXT(dev);
-
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
-}
-
 static void ot_plic_ext_init(Object *obj)
 {
     OtPlicExtState *s = OT_PLIC_EXT(obj);
 
-    memory_region_init_io(&s->mmio, obj, &ot_plic_ext_regs_ops, s,
-                          TYPE_OT_PLIC_EXT, REGS_SIZE);
-    sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
+    /* Top-level container */
+    memory_region_init(&s->mem, obj, TYPE_OT_PLIC_EXT, OT_PLIC_EXT_APERTURE);
+    sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mem);
+
+    memory_region_init_io(&s->mmio_msip, obj, &ot_plic_ext_msip_ops, s,
+                          TYPE_OT_PLIC_EXT ".msip", MSIP_REGS_SIZE);
+    memory_region_add_subregion(&s->mem, OT_PLIC_EXT_MSIP_BASE, &s->mmio_msip);
+
+    memory_region_init_io(&s->mmio_alert, obj, &ot_plic_ext_alert_ops, s,
+                          TYPE_OT_PLIC_EXT ".alert", ALERT_REGS_SIZE);
+    memory_region_add_subregion(&s->mem, OT_PLIC_EXT_ALERT_BASE,
+                                &s->mmio_alert);
 
     ibex_qdev_init_irq(obj, &s->irq, NULL);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
@@ -188,7 +264,6 @@ static void ot_plic_ext_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     device_class_set_legacy_reset(dc, &ot_plic_ext_reset);
-    dc->realize = &ot_plic_ext_realize;
     device_class_set_props(dc, ot_plic_ext_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
