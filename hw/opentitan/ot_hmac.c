@@ -1229,10 +1229,8 @@ static void ot_hmac_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     OtHMACState *s = OT_HMAC(dev);
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+
+    g_assert(s->ot_id);
 }
 
 static void ot_hmac_reset(DeviceState *dev)

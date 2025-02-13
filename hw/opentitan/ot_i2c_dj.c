@@ -959,11 +959,6 @@ static void ot_i2c_dj_reset(DeviceState *dev)
 {
     OtI2CDjState *s = OT_I2C_DJ(dev);
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(dev)->parent));
-    }
-
     i2c_end_transfer(s->bus);
 
     for (unsigned index = 0; index < ARRAY_SIZE(s->irqs); index++) {
@@ -983,6 +978,8 @@ static void ot_i2c_dj_realize(DeviceState *dev, Error **errp)
 {
     OtI2CDjState *s = OT_I2C_DJ(dev);
     (void)errp;
+
+    g_assert(s->ot_id);
 
     /* TODO: check if the following can be moved to ot_i2c_dj_init */
     s->bus = i2c_init_bus(dev, TYPE_OT_I2C_DJ);

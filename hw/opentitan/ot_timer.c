@@ -375,13 +375,10 @@ static void ot_timer_reset(DeviceState *dev)
 
 static void ot_timer_realize(DeviceState *dev, Error **errp)
 {
+    OtTimerState *s = OT_TIMER(dev);
     (void)errp;
 
-    OtTimerState *s = OT_TIMER(dev);
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 }
 
 static void ot_timer_init(Object *obj)

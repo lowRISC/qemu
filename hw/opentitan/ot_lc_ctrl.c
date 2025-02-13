@@ -2178,10 +2178,7 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
     (void)errp;
     OtLcCtrlState *s = OT_LC_CTRL(dev);
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 
     ot_lc_ctrl_configure_lc_states(s);
     ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_LC_TCOUNT,

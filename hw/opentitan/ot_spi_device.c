@@ -2133,10 +2133,7 @@ static void ot_spi_device_realize(DeviceState *dev, Error **errp)
     OtSPIDeviceState *s = OT_SPI_DEVICE(dev);
     (void)errp;
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 
     qemu_chr_fe_set_handlers(&s->chr, &ot_spi_device_chr_can_receive,
                              &ot_spi_device_chr_receive,

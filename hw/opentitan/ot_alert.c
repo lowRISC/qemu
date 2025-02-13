@@ -1008,14 +1008,10 @@ static void ot_alert_realize(DeviceState *dev, Error **errp)
 
     OtAlertState *s = OT_ALERT(dev);
 
+    g_assert(s->ot_id);
     g_assert(s->n_alerts != 0);
     g_assert(s->pclk != 0);
     g_assert(s->n_classes > 0 && s->n_classes <= 32);
-
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
 
     size_t size = sizeof(OtAlertIntr) + sizeof(OtAlertPing) +
                   sizeof(OtAlertTemplate) * s->n_alerts +

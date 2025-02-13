@@ -709,12 +709,8 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 {
     OtSramCtrlState *s = OT_SRAM_CTRL(dev);
 
+    g_assert(s->ot_id);
     g_assert(s->size);
-
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
 
     s->wsize = DIV_ROUND_UP(s->size, sizeof(uint32_t));
     unsigned size = s->wsize * sizeof(uint32_t);

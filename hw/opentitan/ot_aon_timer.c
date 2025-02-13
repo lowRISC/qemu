@@ -532,10 +532,8 @@ static void ot_aon_timer_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     OtAonTimerState *s = OT_AON_TIMER(dev);
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+
+    g_assert(s->ot_id);
 }
 
 static void ot_aon_timer_init(Object *obj)

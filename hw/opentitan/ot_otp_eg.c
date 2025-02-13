@@ -1383,10 +1383,7 @@ static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
     OtOTPEgState *s = OT_OTP_EG(dev);
     (void)errp;
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 
     ot_otp_eg_load(s, &error_fatal);
 }

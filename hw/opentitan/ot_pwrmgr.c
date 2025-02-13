@@ -928,11 +928,6 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     g_assert(PWRMGR_CONFIG[s->version].reset_mask <
              (1u << PWRMGR_CONFIG[s->version].reset_count));
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
-
     trace_ot_pwrmgr_reset(s->ot_id, "enter");
 
     if (c->parent_phases.enter) {
@@ -981,6 +976,8 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
 {
     OtPwrMgrState *s = OT_PWRMGR(dev);
     (void)errp;
+
+    g_assert(s->ot_id);
 
     if (s->num_rom) {
         if (s->num_rom > 8u * sizeof(uint8_t)) {

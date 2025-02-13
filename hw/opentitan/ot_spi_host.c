@@ -1320,11 +1320,6 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->pclk);
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
-
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 
     qdev_init_gpio_out_named(DEVICE(s), s->cs_lines, SSI_GPIO_CS,

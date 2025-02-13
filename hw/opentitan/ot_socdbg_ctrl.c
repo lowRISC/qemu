@@ -776,10 +776,7 @@ static void ot_socdbg_ctrl_realize(DeviceState *dev, Error **errp)
     OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(dev);
     (void)errp;
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 
     s->dbg_locked &= POLICY_CAT_MASK | POLICY_RELOCK_MASK;
     s->dbg_unlocked &= POLICY_CAT_MASK | POLICY_RELOCK_MASK;

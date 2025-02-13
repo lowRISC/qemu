@@ -815,11 +815,6 @@ static void ot_gpio_dj_reset_enter(Object *obj, ResetType type)
     OtGpioDjClass *c = OT_GPIO_DJ_GET_CLASS(obj);
     OtGpioDjState *s = OT_GPIO_DJ(obj);
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
-
     s->log_en = s->log_id ? !strcmp(s->ot_id, s->log_id) : true;
 
     if (s->log_en) {
@@ -895,6 +890,8 @@ static void ot_gpio_dj_realize(DeviceState *dev, Error **errp)
 {
     OtGpioDjState *s = OT_GPIO_DJ(dev);
     (void)errp;
+
+    g_assert(s->ot_id);
 
     qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_dj_chr_can_receive,
                              &ot_gpio_dj_chr_receive,

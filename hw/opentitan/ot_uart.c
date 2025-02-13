@@ -453,7 +453,8 @@ static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_uart_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_uart_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                              pc);
 
     return (uint64_t)val32;
 }
@@ -604,10 +605,7 @@ static void ot_uart_realize(DeviceState *dev, Error **errp)
     OtUARTState *s = OT_UART(dev);
     (void)errp;
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 
     fifo8_create(&s->tx_fifo, OT_UART_TX_FIFO_SIZE);
     fifo8_create(&s->rx_fifo, OT_UART_RX_FIFO_SIZE);
