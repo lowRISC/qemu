@@ -1399,7 +1399,7 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 
     /* Link, define properties and realize devices, then connect GPIOs */
     BusState *bus = sysbus_get_default();
-    ot_common_configure_devices_with_id(s->devices, bus, "", false,
+    ot_common_configure_devices_with_id(s->devices, bus, "soc", false,
                                         ot_eg_soc_devices,
                                         ARRAY_SIZE(ot_eg_soc_devices));
 
