@@ -344,7 +344,8 @@ class QEMUExecuter:
                         fw_args.extend(('-object', rom_opt))
                     rom_count += 1
                 else:
-                    fw_args.extend(('-kernel', exec_path))
+                    if args.embedded_flash is None:
+                        fw_args.extend(('-kernel', exec_path))
         else:
             exec_path = None
         return machine, xtype, fw_args, exec_path
