@@ -726,7 +726,7 @@ class QEMUFileManager:
            :return: the full path to the temporary flash file
         """
         # pylint: disable=import-outside-toplevel
-        from flashgen import FlashGen
+        from ot.eflash.gen import FlashGen
         gen = FlashGen(FlashGen.CHIP_ROM_EXT_SIZE_MAX if bool(bootloader)
                        else 0, True)
         self._configure_logger(gen)
