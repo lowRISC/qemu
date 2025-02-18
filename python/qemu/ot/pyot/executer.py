@@ -454,7 +454,9 @@ class QEMUExecuter:
             if args.boot and not isfile(args.boot):
                 raise ValueError(f'No such bootloader file: {args.boot}')
             if args.embedded_flash is not None:
-                flash_file = self._qfm.create_eflash_image(xexec, args.boot)
+                no_flash_header = args.no_flash_header
+                flash_file = self._qfm.create_eflash_image(xexec, args.boot,
+                                                           no_flash_header)
                 temp_files['flash'].add(flash_file)
                 qemu_args.extend(('-drive', f'if=mtd,id=eflash,'
                                             f'bus={args.embedded_flash},'

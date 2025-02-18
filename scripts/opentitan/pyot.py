@@ -113,6 +113,10 @@ def main():
                            help='SPI flash image file')
         files.add_argument('-g', '--otcfg', metavar='file',
                            help='configuration options for OpenTitan devices')
+        files.add_argument('-H', '--no-flash-header', action='store_const',
+                           const=True,
+                           help='application and/or bootloader files contain '
+                                'no OT header')
         files.add_argument('-K', '--keep-tmp', action='store_true',
                            help='Do not automatically remove temporary files '
                                 'and dirs on exit')

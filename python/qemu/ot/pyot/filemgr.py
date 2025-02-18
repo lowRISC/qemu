@@ -178,11 +178,14 @@ class QEMUFileManager:
                             name)
 
     def create_eflash_image(self, app: Optional[str] = None,
-                            bootloader: Optional[str] = None) -> str:
+                            bootloader: Optional[str] = None,
+                            no_flash_header: bool = False) -> str:
         """Generate a temporary flash image file.
 
            :param app: optional path to the application or the rom extension
            :param bootloader: optional path to a bootloader
+           :param no_flash_header: input binary file do not contain an OpenTitan
+                                   application header (i.e. regular files)
            :return: the full path to the temporary flash file
         """
         # pylint: disable=import-outside-toplevel
@@ -197,10 +200,10 @@ class QEMUFileManager:
             gen.open(flash_file)
             if app:
                 with open(app, 'rb') as afp:
-                    gen.store_rom_ext(0, afp)
+                    gen.store_rom_ext(0, afp, no_header=no_flash_header)
             if bootloader:
                 with open(bootloader, 'rb') as bfp:
-                    gen.store_bootloader(0, bfp)
+                    gen.store_bootloader(0, bfp, no_header=no_flash_header)
         finally:
             gen.close()
         return flash_file
