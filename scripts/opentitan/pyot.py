@@ -1239,9 +1239,9 @@ class QEMUExecuter:
             app = self._argdict.get('exec')
             if app:
                 assert 'timeout' in self._argdict
-                timeout = int(float(self._argdict.get('timeout') *
+                timeout = int(float(self._argdict.get('timeout')) *
                               float(self._argdict.get('timeout_factor',
-                                                      DEFAULT_TIMEOUT_FACTOR))))
+                                                      DEFAULT_TIMEOUT_FACTOR)))
                 self._log.debug('Execute %s', basename(self._argdict['exec']))
                 adef = EasyDict(command=self._qemu_cmd, timeout=timeout,
                                 start_delay=self.DEFAULT_START_DELAY)
@@ -1306,7 +1306,7 @@ class QEMUExecuter:
                 try:
                     targs = exec_info.args
                     icount = self.get_namespace_arg(targs, 'icount')
-                except (AttributeError, KeyError):
+                except (AttributeError, KeyError, UnboundLocalError):
                     icount = None
                 if csv:
                     csv.writerow(TestResult(test_name, sret, xtime, icount,
