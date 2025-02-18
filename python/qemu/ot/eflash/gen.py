@@ -240,13 +240,14 @@ class FlashGen:
         return data
 
     def store_rom_ext(self, bank: int, dfp: BinaryIO,
-                      elfpath: Optional[str] = None) -> None:
+                      elfpath: Optional[str] = None,
+                      no_header: bool = False) -> None:
         if not 0 <= bank < self.NUM_BANKS:
             raise ValueError(f'Invalid bank {bank}')
         data = dfp.read()
         if len(data) > self.BYTES_PER_BANK:
             raise ValueError('Data too large')
-        bindesc = self._check_rom_ext(data)
+        bindesc = self._check_rom_ext(data) if not no_header else None
         boot_entries = self.read_boot_info()
         if not boot_entries:
             next_loc = BootLocation(self.BOOT_BANK, 0, 0)
@@ -297,10 +298,10 @@ class FlashGen:
         if bindesc:
             if not elfpath:
                 elfpath = self._get_elf_filename(dfp.name)
-        elif elfpath:
+        elif elfpath and not no_header:
             self._log.warning('Discarding ELF as input binary file is invalid')
             elfpath = None
-        if elfpath:
+        if elfpath and not no_header:
             elftime = stat(elfpath).st_mtime
             bintime = stat(dfp.name).st_mtime
             if bintime < elftime:
@@ -320,7 +321,8 @@ class FlashGen:
         self._store_debug_info(ename, elfpath)
 
     def store_bootloader(self, bank: int, dfp: BinaryIO,
-                         elfpath: Optional[str] = None) -> None:
+                         elfpath: Optional[str] = None,
+                         no_header: bool = False) -> None:
         if self._bl_offset == 0:
             raise ValueError('Bootloader cannot be used')
         if not 0 <= bank < self.NUM_BANKS:
@@ -328,16 +330,16 @@ class FlashGen:
         data = dfp.read()
         if len(data) > self.BYTES_PER_BANK:
             raise ValueError('Data too large')
-        bindesc = self._check_bootloader(data)
+        bindesc = self._check_bootloader(data) if not no_header else None
         self._write(self._header_size + self._bl_offset, data)
         ename = f'otb0{bank}'
         if bindesc:
             if not elfpath:
                 elfpath = self._get_elf_filename(dfp.name)
-        elif elfpath:
+        elif elfpath and not no_header:
             self._log.warning('Discarding ELF as input binary file is invalid')
             elfpath = None
-        if elfpath:
+        if elfpath and not no_header:
             elftime = stat(elfpath).st_mtime
             bintime = stat(dfp.name).st_mtime
             if bintime < elftime:
