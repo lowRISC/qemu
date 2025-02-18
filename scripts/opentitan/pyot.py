@@ -729,7 +729,6 @@ class QEMUFileManager:
         from ot.eflash.gen import FlashGen
         gen = FlashGen(FlashGen.CHIP_ROM_EXT_SIZE_MAX if bool(bootloader)
                        else 0, True)
-        self._configure_logger(gen)
         flash_fd, flash_file = mkstemp(suffix='.raw', prefix='qemu_ot_flash_')
         self._in_fly.add(flash_file)
         close(flash_fd)
@@ -763,7 +762,6 @@ class QEMUFileManager:
             return otp_file
         from otptool import OtpImage
         otp = OtpImage()
-        self._configure_logger(otp)
         with open(vmem, 'rt', encoding='utf-8') as vfp:
             otp.load_vmem(vfp, 'otp')
         otp_fd, otp_file = mkstemp(suffix='.raw', prefix='qemu_ot_otp_')
@@ -811,15 +809,6 @@ class QEMUFileManager:
                 self._log.debug('Keep OTP image file %s', basename(filename))
                 self._otp_files[vmem] = (raw, count)
             break
-
-    def _configure_logger(self, tool) -> None:
-        log = getLogger('pyot')
-        flog = tool.logger
-        # sub-tool get one logging level down to reduce log messages
-        floglevel = min(logging.CRITICAL, log.getEffectiveLevel() + 10)
-        flog.setLevel(floglevel)
-        for hdlr in log.handlers:
-            flog.addHandler(hdlr)
 
     def _cleanup(self) -> None:
         """Remove a generated, temporary flash image file.
@@ -1961,6 +1950,7 @@ def main():
             result_file = args.result
 
         log = configure_loggers(args.verbose, 'pyot',
+                                -1, 'flashgen', 'elf', 'otp', 1,
                                 args.vcp_verbose or 0,
                                 'pyot.vcp', name_width=30,
                                 ms=args.log_time, quiet=args.quiet,
