@@ -66,6 +66,9 @@
 #define RXFIFO_LEN  256U /* bytes */
 #define CMDFIFO_LEN 4U /* slots */
 
+/* undef to build for `master`, not for Earlgrey 1.0 */
+#define OT_IS_EARLGREY_V1_0_0
+
 /* ------------------------------------------------------------------------ */
 /* Register definitions */
 /* ------------------------------------------------------------------------ */
@@ -110,10 +113,17 @@ REG32(CONFIGOPTS, 0x18u)
 REG32(CSID, 0x1cu)
     FIELD(CSID, CSID, 0u, 32u)
 REG32(COMMAND, 0x20u)
+#ifdef OT_IS_EARLGREY_V1_0_0
+    FIELD(COMMAND, LEN, 0u, 9u)
+    FIELD(COMMAND, CSAAT, 9u, 1u)
+    FIELD(COMMAND, SPEED, 10u, 2u)
+    FIELD(COMMAND, DIRECTION, 12u, 2u)
+#else
     FIELD(COMMAND, CSAAT, 0u, 1u)
     FIELD(COMMAND, SPEED, 1u, 2u)
     FIELD(COMMAND, DIRECTION, 3u, 2u)
     FIELD(COMMAND, LEN, 5u, 20u)
+#endif
 REG32(RXDATA, 0x24u)
 REG32(TXDATA, 0x28u)
 REG32(ERROR_ENABLE, 0x2cu)

@@ -45,6 +45,9 @@
 #define PARAM_NUM_HINTABLE_CLOCKS    4u
 #define PARAM_NUM_ALERTS             2u
 
+/* undef to build for `master`, not for Earlgrey 1.0 */
+#define OT_IS_EARLGREY_V1_0_0
+
 /* clang-format off */
 REG32(ALERT_TEST, 0x0u)
     FIELD(ALERT_TEST, RECOV_FAULT, 0u, 1u)
@@ -341,13 +344,22 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] &= val32;
         break;
     case R_JITTER_ENABLE:
-        if (s->regs[R_JITTER_REGWEN]) {
+#ifdef OT_IS_EARLGREY_V1_0_0
+	/*
+	 * There is a known bug in Earlgrey 1.0.0, where the Clkmgr Jitter Enable
+	 * REGWEN was not properly connected, meaning it is unused here.
+	 */
+	val32 &= R_JITTER_ENABLE_VAL_MASK;
+	s->regs[reg] = val32;
+#else
+	if (s->regs[R_JITTER_REGWEN]) {
             val32 &= R_JITTER_ENABLE_VAL_MASK;
             s->regs[reg] = val32;
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: JITTER_ENABLE protected w/ REGWEN\n", __func__);
         }
+#endif
         break;
     case R_CLK_ENABLES:
         val32 &= CLK_ENABLES_MASK;
