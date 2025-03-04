@@ -35,6 +35,10 @@ class TItxtError(RecordError):
     """Error in TI-txt content"""
 
 
+class VMemError(RecordError):
+    """Error in VMem content"""
+
+
 class RecordSegment:
     """Data container for a consecutive sequence of bytes.
 
@@ -513,6 +517,78 @@ class TItxtParser(RecordParser):
                 print('')
 
 
+class VMemParser(RecordParser):
+    """VMEM record file parser.
+
+       Additional named arguments:
+
+       :param eccbits: count of trailing bits in each data chunk
+       :param byteorder: either 'little' or 'big', default to big
+    """
+
+    def __init__(self, src, *args, **kwargs):
+        if 'eccbits' in kwargs:
+            try:
+                self._eccbits = int(kwargs.pop('eccbits'))
+            except ValueError as exc:
+                raise ValueError('Invalid ecc bit count') from exc
+        else:
+            self._eccbits = 0
+        self._ecc_bytes = (self._eccbits + 7) // 8
+        if 'byteorder' in kwargs:
+            byteorder = kwargs.pop('byteorder')
+            try:
+                self._reverse = {'little': True, 'big': False}[byteorder]
+            except KeyError as exc:
+                raise ValueError('Invalid byte order') from exc
+        else:
+            self._reverse = False
+        super().__init__(src, *args, **kwargs)
+
+    def _get_next_chunk(self):
+        cmt_re = re_compile(r'(#|//).*$')
+        address = 0
+        block_count = 0
+        if self._ecc_bytes:
+            bs = slice(0, -self._ecc_bytes)
+            be = slice(-self._ecc_bytes, None)
+        else:
+            bs, be = slice(None), slice(0)
+
+        if self._reverse:
+            def conv(data):
+                return bytes(reversed(data))
+        else:
+            def conv(data):
+                return data
+
+        for lno, line in enumerate(self._src, start=1):
+            line = cmt_re.sub('', line).rstrip()
+            if not line:
+                continue
+            if not line.startswith('@'):
+                raise VMemError(f'Invalid line @ {lno}')
+            parts = line[1:].split(' ')
+            part_count = len(parts)
+            try:
+                block = int(parts[0], 16)
+            except ValueError as exc:
+                raise VMemError(f"Invalid address @ line {lno}: {exc}") from exc
+            if block != block_count:
+                raise VMemError(f"Unexpected block {block} @ line {lno}")
+            try:
+                bmap = map(unhexlify, parts[1:])
+            except (TypeError, ValueError) as exc:
+                raise VMemError(f"{exc} @ line {lno}") from exc
+            blocks = ((conv(b[bs]), conv(b[be])) for b in bmap)
+            # _ecc is not yet managed/verified, only discarded
+            data, _ecc = (b''.join(x) for x in zip(*blocks))
+            self._verify_address(address)
+            yield (RecordParser.DATA, address, data)
+            address += len(data)
+            block_count += part_count - 1
+
+
 class RecordBuilder:
     """Abstract record generator.
 
@@ -677,6 +753,68 @@ class TItxtBuilder(RecordBuilder):
 
     def _create_eof(self):
         return 'q'
+
+
+class VMemBuilder(RecordBuilder):
+    """VMEM generator.
+
+       :param crlf: whether to force CRLF line terminators or use host default
+       :param byteorder: either 'little' or 'big', default to big
+       :param chunksize: how many bytes to encode per chunk
+       :param offsetize: how many chars to encode the VMEM offset (0: auto)
+       :param linewidth: maximum character per output line
+    """
+
+    # pylint: disable=abstract-method
+
+    def __init__(self, crlf=False, byteorder: Optional[str] = None,
+                 chunksize: int = 4, offsetsize: int = 0, linewidth: int = 80):
+        super().__init__(crlf)
+        self._chunk_size = chunksize
+        self._offset_size = offsetsize
+        self._line_width = linewidth
+        try:
+            self._reverse = {'little': True, 'big': False}[byteorder]
+        except KeyError as exc:
+            raise ValueError('Invalid byte order') from exc
+
+    def _create_data(self, offset, segment):
+        if offset:
+            raise ValueError('VMEM format does not support offsets')
+        data = segment.data
+        if not data:
+            return
+        total_chunk_count = ((segment.size + self._chunk_size - 1) //
+                             self._chunk_size)
+        max_bit_count = total_chunk_count.bit_length()
+        off_char_len = 2 * ((max_bit_count + 7) // 8)
+        if self._offset_size:
+            if self._offset_size < off_char_len:
+                raise ValueError('Not enough char to encode VMEM offset')
+            off_char_len = self._offset_size
+        off_len = len(f'@{0:0{off_char_len}X} ')
+        chunk_len = 2 * self._chunk_size + 1
+        chunk_per_line = (self._line_width - off_len) // chunk_len
+        line_byte_count = self._chunk_size * chunk_per_line
+        chunk_indices = [x * self._chunk_size for x in range(0, chunk_per_line)]
+        offpos = 0
+        cksize = self._chunk_size
+
+        if self._reverse:
+            def conv(data):
+                return bytes(reversed(data))
+        else:
+            def conv(data):
+                return data
+
+        for pos in range(0, len(data), line_byte_count):
+            chunks = (hexlify(conv(data[pos+ck:pos+ck+cksize])).upper().decode()
+                      for ck in chunk_indices)
+            yield f'@{offpos:0{off_char_len}X} {" ".join(chunks)}'
+            offpos += chunk_per_line
+
+    def _create_eof(self):
+        return ''
 
 
 class BinaryBuilder:
