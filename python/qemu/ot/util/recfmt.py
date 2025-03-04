@@ -11,6 +11,9 @@ from io import BytesIO, StringIO
 from os import stat, linesep, SEEK_SET
 from re import compile as re_compile
 from struct import pack as spack
+from typing import BinaryIO, Optional, TextIO
+
+import sys
 
 
 # pylint: disable-msg=broad-except,invalid-name
@@ -33,7 +36,7 @@ class TItxtError(RecordError):
 
 
 class RecordSegment:
-    """Data container for a consecutive sequence of bytes.RecordSegment
+    """Data container for a consecutive sequence of bytes.
 
        ..note:: RecordSegment methods are extensively called, so the code has
                 been optimized to decrease Python call overhead.
@@ -46,31 +49,39 @@ class RecordSegment:
 
     @property
     def size(self):
+        """Return the size in bytes of a segment."""
         return self._size
 
     @property
     def baseaddr(self):
+        """Return the address of the first byte of the segment."""
         return self._baseaddr
 
     @property
     def absaddr(self):
-        return self._baseaddr+self._size
+        """Return the absolute address of this segment."""
+        return self._baseaddr + self._size
 
     @property
     def reladdr(self):
+        """Return the relative address of this segment."""
         return self._size
 
     @property
-    def data(self):
+    def data(self) -> bytes:
+        """Return the segment payload."""
         return self._buffer.getvalue()
 
     def __str__(self):
-        return 'Data segment @ %08x %d bytes' % (self._baseaddr, self._size)
+        return f'Data segment @ {self._baseaddr:08x} {self._size} bytes'
 
-    def write(self, data, offset=None):
+    def write(self, data: bytes, offset=None):
+        """Write new data to the segment, at the specified offset."""
         self.write_with_size(data, len(data), offset)
 
     def write_with_size(self, data, size, offset):
+        """Write new data to the segment, at the specified offset, with a
+           specific size."""
         if offset is not None and (offset - self._baseaddr) != self._size:
             offset -= self._baseaddr
             self._buffer.seek(offset, SEEK_SET)
@@ -82,37 +93,38 @@ class RecordSegment:
 class RecordParser:
     """Abstract record file parser.
 
-      :param src: file object for sourcing SREC stream
+      :param src: file object for sourcing stream
       :param offset: byte offset to substract to encoded address
       :param min_addr: lowest address to consider
       :param max_addr: highest address to consider
       :param segment_gap: distance between non-consecutive address to trigger
                           a new segment
-      :param verbose: emit extra information while processing the SREC stream
-      :param verify: verify the SREC checksum with calculated one
+      :param verbose: emit extra information while processing the stream
+      :param verify: verify the checksum with calculated one
     """
 
     (INFO, DATA, EXECUTE, EOF) = range(1, 5)
 
-    def __init__(self, src, offset=0, min_addr=0x0, max_addr=0xffffffff,
-                 segment_gap=16, verbose=False, verify=True):
+    def __init__(self, src: TextIO, offset: int = 0, min_addr: int = 0x0,
+                 max_addr: int = 0xffffffff, segment_gap: int = 16,
+                 verbose: bool = False, verify: bool = True):
         if segment_gap < 1:
             raise ValueError("Invalid segment gap")
-        self._src = src
-        self._offset = offset
-        self._min_addr = min_addr
-        self._max_addr = max_addr
-        self._verbose = verbose
-        self._exec_addr = None
-        self._segments = []
-        self._info = None
-        self._gap = segment_gap
-        self._seg = None
-        self._bytes = 0
-        self._verify = verify
+        self._src: TextIO = src
+        self._offset: int = offset
+        self._min_addr: int = min_addr
+        self._max_addr: int = max_addr
+        self._verbose: bool = verbose
+        self._exec_addr: Optional[int] = None
+        self._segments: list[RecordSegment] = []
+        self._info: Optional[RecordSegment] = None
+        self._gap: int = segment_gap
+        self._seg: Optional[RecordSegment] = None
+        self._bytes: int = 0
+        self._verify: bool = verify
 
-    def parse(self, shift=False):
-        """Parse the SREC stream"""
+    def parse(self):
+        """Parse the stream"""
         for (record, address, value) in self:
             if record == RecordParser.DATA:
                 addr = address - self._offset
@@ -139,18 +151,21 @@ class RecordParser:
     def _get_next_chunk(self):
         raise NotImplementedError()
 
-    def get_data_segments(self):
+    def get_data_segments(self) -> list[RecordSegment]:
+        """Return all segments."""
         return self._segments
 
-    def get_info(self):
-        return self._info.data if self._info else bytearray()
+    def get_info(self) -> bytes:
+        """Return the info segment data, if there is such a segment."""
+        return bytes(self._info.data) if self._info else bytes()
 
-    def getexec(self):
+    def getexec(self) -> Optional[int]:
+        """Return the execution address (entry point) if any."""
         return self._exec_addr
 
     @classmethod
     def is_valid_syntax(cls, file):
-        """Tell whether the file contains a valid HEX syntax.
+        """Tell whether the file contains a valid syntax.
 
            :param file: either a filepath or a file-like object
            :return: True if the file content looks valid
@@ -175,10 +190,10 @@ class RecordParser:
 
     def _verify_address(self, address):
         if (address < self._min_addr) or (address > self._max_addr):
-            raise RecordError("Address out of range [0x%08x..0x%08x]: 0x%08x" %
-                              (self._min_addr, self._max_addr, address))
+            raise RecordError(f"Address out of range [0x{self._min_addr:08x}.."
+                              f"0x{self._max_addr:08x}: 0x{address:08x}")
         if address < self._offset:
-            raise RecordError("Invalid address in file: 0x%08x" % address)
+            raise RecordError(f"Invalid address in file: 0x{address:08x}")
 
     def _store_segment(self):
         if self._seg and self._seg.size:
@@ -195,21 +210,19 @@ class SRecParser(RecordParser):
     def _get_next_chunk(self):
         # test if the file size can be found...
         try:
-            import sys
             self._bytes = stat(self._src.name)[6]
         except Exception:
             pass
         bc = 0
         try:
-            for (l, line) in enumerate(self._src, start=1):
+            for (lno, line) in enumerate(self._src, start=1):
                 line = line.strip()
                 if self._verbose and self._bytes:
-                    opc = (50*bc)//self._bytes
+                    opc = (50 * bc) // self._bytes
                     bc += len(line)
-                    pc = (50*bc)//self._bytes
+                    pc = (50 * bc) // self._bytes
                     if pc > opc:
-                        info = '\rAnalysing SREC file [%3d%%] %s' % \
-                                       (2*pc, '.' * pc)
+                        info = f"\rAnalysing SREC file [{2*pc:3d}%%] {'.' * pc}"
                         sys.stdout.write(info)
                         sys.stdout.flush()
                 try:
@@ -251,26 +264,26 @@ class SRecParser(RecordParser):
                         raise SRecError("Unsupported SREC record")
                     try:
                         bytes_ = unhexlify(line[2:-2])
-                    except TypeError:
-                        raise SRecError("%s @ line %s" % (str(e), l))
+                    except TypeError as exc:
+                        raise SRecError(f"{exc} @ line {lno}") from exc
                     size = int(line[2:4], 16)
                     effsize = len(bytes_)
                     if size != effsize:
-                        raise SRecError("Expected %d bytes, got %d "
-                                        "@ line %d" % (size, effsize, l))
+                        raise SRecError(f"Expected {size} bytes, got {effsize} "
+                                        f"@ line {lno}")
                     if self._verify:
                         csum = sum(Array('B', bytes_))
                         csum &= 0xff
                         csum ^= 0xff
                         rsum = int(line[-2:], 16)
                         if rsum != csum:
-                            raise SRecError("Invalid checksum: 0x%02x / "
-                                            "0x%02x" % (rsum, csum))
+                            raise SRecError(f"Invalid checksum: 0x{rsum:02x} / "
+                                            f"0x{csum:02x}")
                     if self._verify and record:
                         self._verify_address(address)
                     yield (type_, address, bytes_[addrend:])
-                except RecordError as ex:
-                    raise ex.__class__("%s @ line %d:'%s'" % (ex, l, line))
+                except RecordError as exc:
+                    raise exc.__class__(f"{exc} @ line {lno}:'{line}'") from exc
         finally:
             if self._verbose:
                 print('')
@@ -283,27 +296,25 @@ class IHexParser(RecordParser):
     SYNTAX_CRE = re_compile('(?i)^:[0-9A-F]+$')
 
     def __init__(self, *args, **kwargs):
-        super(IHexParser, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._offset_addr = 0
 
     def _get_next_chunk(self):
         # test if the file size can be found...
         try:
-            import sys
             self._bytes = stat(self._src.name)[6]
         except Exception:
             pass
         bc = 0
         try:
-            for (lpos, line) in enumerate(self._src, start=1):
+            for (lno, line) in enumerate(self._src, start=1):
                 line = line.strip()
                 if self._verbose and self._bytes:
-                    opc = (50*bc)//self._bytes
+                    opc = (50 * bc) // self._bytes
                     bc += len(line)
-                    pc = (50*bc)//self._bytes
+                    pc = (50 * bc) // self._bytes
                     if pc > opc:
-                        info = '\rAnalysing iHEX file [%3d%%] %s' % \
-                                       (2*pc, '.' * pc)
+                        info = f"\rAnalysing iHEX file [{2*pc:3d}%%] {'.' * pc}"
                         sys.stdout.write(info)
                         sys.stdout.flush()
                 try:
@@ -319,8 +330,8 @@ class IHexParser(RecordParser):
                     elif record == 1:
                         type_ = RecordParser.EOF
                         if address != 0:
-                            print("Unexpected non-zero address in EOF: %04x" %
-                                  address, file=sys.stderr)
+                            print(f"Unexpected non-zero address in EOF: "
+                                  f"0x{address:04x}", file=sys.stderr)
                     elif record == 2:
                         self._offset_addr &= ~((1 << 20) - 1)
                         self._offset_addr |= int(line[9:-2], 16) << 4
@@ -334,29 +345,29 @@ class IHexParser(RecordParser):
                         ip = int(line[13:-2], 16)
                         address = (cs << 4) + ip
                     else:
-                        raise IHexError("Unsupported IHEX record: %d" % record)
+                        raise IHexError(f"Unsupported IHEX record: {record}")
                     try:
                         bytes_ = unhexlify(line[9:-2])
-                    except TypeError:
-                        raise IHexError("%s @ line %s" % (str(e), lpos))
+                    except TypeError as exc:
+                        raise IHexError(f"{exc} @ line {lno}") from exc
                     effsize = len(bytes_)
                     if size != effsize:
-                        raise IHexError("Expected %d bytes, got %d "
-                                        "@ line %d" % (size, effsize, lpos))
+                        raise IHexError(f"Expected {size} bytes, got {effsize} "
+                                        f"@ line {lno}")
                     if self._verify:
                         csum = sum(Array('B', unhexlify(line[1:-2])))
                         csum = (-csum) & 0xff
                         rsum = int(line[-2:], 16)
                         if rsum != csum:
-                            raise IHexError("Invalid checksum: 0x%02x / "
-                                            "0x%02x" % (rsum, csum))
+                            raise IHexError(f"Invalid checksum: 0x{rsum:02x} / "
+                                            f"0x{csum:02x}")
                     if type_ == RecordParser.DATA:
                         address += self._offset_addr
                     if self._verify and record:
                         self._verify_address(address)
                     yield (type_, address, bytes_)
-                except RecordError as ex:
-                    raise ex.__class__("%s @ line %d:'%s'" % (ex, lpos, line))
+                except RecordError as exc:
+                    raise exc.__class__(f"{exc} @ line {lno}:'{line}'") from exc
         finally:
             if self._verbose:
                 print('')
@@ -368,10 +379,12 @@ class IHexFastParser(RecordParser):
        Faster implementation than IHexParser, but less readable.
     """
 
+    # pylint: disable=abstract-method
+
     HEXCRE = re_compile(r'(?aim)^:((?:[0-9A-F][0-9A-F]){5,})$')
 
     def __init__(self, *args, **kwargs):
-        super(IHexFastParser, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._offset_addr = 0
 
     @classmethod
@@ -393,11 +406,11 @@ class IHexFastParser(RecordParser):
                 ihex_count = len(cls.HEXCRE.findall(data))
                 lf_count = data.count('\n')
                 valid = ihex_count == lf_count
-            except Exception as exc:
+            except Exception:
                 pass
         return valid
 
-    def parse(self, shift=False):
+    def parse(self):
         for pos, mo in enumerate(self.HEXCRE.finditer(self._src.read()),
                                  start=1):
             bvalues = unhexlify(mo.group(0)[1:])
@@ -405,13 +418,13 @@ class IHexFastParser(RecordParser):
             rsum = bvalues[-1]
             data = bvalues[4:-1]
             if len(data) != size:
-                raise IHexError('Invalid line @ %d in HEX file' % pos)
+                raise IHexError(f'Invalid line @ {pos} in HEX file')
             if self._verify:
                 csum = sum(bvalues[:-1])
                 csum = (-csum) & 0xff
                 if rsum != csum:
-                    raise IHexError("Invalid checksum: 0x%02x / 0x%02x" %
-                                    (rsum, csum))
+                    raise IHexError(f"Invalid checksum: 0x{rsum:02x} /"
+                                    f" 0x{csum:02x}")
             address = (bvalues[1] << 8) + bvalues[2]
             record = bvalues[3]
             if self._verify and record:
@@ -432,8 +445,8 @@ class IHexFastParser(RecordParser):
             elif record == 1:
                 # RecordParser.EOF
                 if address != 0:
-                    print("Unexpected non-zero address in EOF: %04x" %
-                          address, file=sys.stderr)
+                    print(f"Unexpected non-zero address @ EOF: "
+                          f"0x:{address:04x}", file=sys.stderr)
             elif record == 2:
                 if size != 2:
                     raise IHexError('Invalid segment address')
@@ -463,21 +476,20 @@ class TItxtParser(RecordParser):
     def _get_next_chunk(self):
         # test if the file size can be found...
         try:
-            import sys
             self._bytes = stat(self._src.name)[6]
         except Exception:
             pass
         bc = 0
         try:
-            for (l, line) in enumerate(self._src, start=1):
+            for (lno, line) in enumerate(self._src, start=1):
                 line = line.strip()
                 if self._verbose and self._bytes:
-                    opc = (50*bc)//self._bytes
+                    opc = (50 * bc) // self._bytes
                     bc += len(line)
-                    pc = (50*bc)//self._bytes
+                    pc = (50 * bc) // self._bytes
                     if pc > opc:
-                        info = '\rAnalysing TItxt file [%3d%%] %s' % \
-                                       (2*pc, '.' * pc)
+                        info = (f"\rAnalysing TItxt file [{2*pc:3d}%%] "
+                                f"{'.' * pc}")
                         sys.stdout.write(info)
                         sys.stdout.flush()
                 try:
@@ -485,17 +497,17 @@ class TItxtParser(RecordParser):
                         address = int(line[1:], 16)
                         continue
                     if line == 'q':
-                        yield(RecordParser.EOF, 0, b'')
+                        yield (RecordParser.EOF, 0, b'')
                         break
                     try:
                         bytes_ = unhexlify(line)
-                    except TypeError as e:
-                        raise IHexError("%s @ line %s" % (str(e), l))
+                    except TypeError as exc:
+                        raise IHexError(f'{exc} @ line {lno}') from exc
                     self._verify_address(address)
                     yield (RecordParser.DATA, address, bytes_)
                     address += len(bytes_)
-                except RecordError as e:
-                    raise e.__class__("%s @ line %d:'%s'" % (e, l, line))
+                except RecordError as exc:
+                    raise exc.__class__(f"{exc} @ line {lno}:'{line}'") from exc
         finally:
             if self._verbose:
                 print('')
@@ -508,7 +520,7 @@ class RecordBuilder:
     """
 
     def __init__(self, crlf=False):
-        self._linesep = crlf and '\r\n' or linesep
+        self._linesep = '\r\n' if crlf else linesep
         self._buffer = StringIO()
 
     def build(self, datasegs, infoseg=None, execaddr=None, offset=0):
@@ -528,23 +540,20 @@ class RecordBuilder:
             self._buffer.write(eof)
             self._buffer.write(self._linesep)
 
-    def getvalue(self):
+    def getvalue(self) -> str:
+        """Return the record as as string."""
         return self._buffer.getvalue()
 
-    @classmethod
-    def _create_info(cls, segment):
+    def _create_info(self, segment):
         raise NotImplementedError()
 
-    @classmethod
-    def _create_data(cls, offset, segment):
+    def _create_data(self, offset, segment):
         raise NotImplementedError()
 
-    @classmethod
-    def _create_exec(cls, address):
+    def _create_exec(self, address):
         raise NotImplementedError()
 
-    @classmethod
-    def _create_eof(cls):
+    def _create_eof(self):
         raise NotImplementedError()
 
 
@@ -553,21 +562,20 @@ class SRecBuilder(RecordBuilder):
     """
 
     @classmethod
-    def checksum(cls, hexastr):
+    def checksum(cls, hexastr: str) -> int:
+        """Compute the checksum of an hexa string."""
         dsum = sum(Array('B', unhexlify(hexastr)))
         dsum &= 0xff
         return dsum ^ 0xff
 
-    @classmethod
-    def _create_info(cls, segment):
+    def _create_info(self, segment):
         msg = segment.data[:16]
-        line = 'S0%02X%04X' % (len(msg)+2+1, 0)
+        line = f'S0{len(msg)+2+1:02x}{0:04x}'
         line += hexlify(msg)
-        line += "%02x" % SRecBuilder.checksum(line[2:])
+        line += f'{SRecBuilder.checksum(line[2:]):02x}'
         return line.upper()
 
-    @classmethod
-    def _create_data(cls, offset, segment):
+    def _create_data(self, offset, segment):
         data = segment.data
         upaddr = segment.baseaddr+len(data)
         if upaddr < (1 << 16):
@@ -579,14 +587,13 @@ class SRecBuilder(RecordBuilder):
         for pos in range(0, len(data), 16):
             chunk = data[pos:pos+16]
             hexachunk = hexlify(chunk).decode()
-            line = prefix % (len(chunk) + int(prefix[1])+1 + 1,
+            line = prefix % (len(chunk) + int(prefix[1]) + 1 + 1,
                              offset + segment.baseaddr) + hexachunk
-            line += "%02x" % SRecBuilder.checksum(line[2:])
+            line += f'{SRecBuilder.checksum(line[2:]):02x}'
             yield line.upper()
             offset += 16
 
-    @classmethod
-    def _create_exec(cls, address):
+    def _create_exec(self, address):
         if address < (1 << 16):
             prefix = 'S903%04x'
         elif address < (1 << 24):
@@ -594,11 +601,10 @@ class SRecBuilder(RecordBuilder):
         else:
             prefix = 'S705%08x'
         line = prefix % address
-        line += "%02x" % SRecBuilder.checksum(line[2:])
+        line += f'{SRecBuilder.checksum(line[2:]):02x}'
         return line.upper()
 
-    @classmethod
-    def _create_eof(cls):
+    def _create_eof(self):
         return ''
 
 
@@ -607,17 +613,16 @@ class IHexBuilder(RecordBuilder):
     """
 
     @classmethod
-    def checksum(cls, hexastr):
+    def checksum(cls, hexastr: str) -> int:
+        """Compute the checksum of an hexa string."""
         csum = sum(Array('B', unhexlify(hexastr)))
         csum = (-csum) & 0xff
         return csum
 
-    @classmethod
-    def _create_info(cls, segment):
+    def _create_info(self, segment):
         return ''
 
-    @classmethod
-    def _create_data(cls, offset, segment):
+    def _create_data(self, offset, segment):
         data = segment.data
         address = offset + segment.baseaddr
         high_addr = None
@@ -625,36 +630,33 @@ class IHexBuilder(RecordBuilder):
             high = address >> 16
             if high != high_addr:
                 hi_bytes = spack('>H', high)
-                yield cls._create_line(4, 0, hi_bytes)
+                yield self._create_line(4, 0, hi_bytes)
                 high_addr = high
             chunk = data[pos:pos+16]
-            yield cls._create_line(0, address & 0xffff, chunk)
+            yield self._create_line(0, address & 0xffff, chunk)
             address += 16
 
-    @classmethod
-    def _create_exec(cls, address):
+    def _create_exec(self, address):
         if address < (1 << 20):
             cs = address >> 4
             ip = address & 0xFFFF
             addr = (cs << 16) | ip
             addr = spack('>I', addr)
-            return cls._create_line(3, 0, addr)
+            return self._create_line(3, 0, addr)
         addr = spack('>I', address)
-        return cls._create_line(5, 0, addr)
+        return self._create_line(5, 0, addr)
 
-    @classmethod
-    def _create_eof(cls):
-        return cls._create_line(1)
+    def _create_eof(self):
+        return self._create_line(1)
 
-    @classmethod
-    def _create_line(cls, type_, address=0, data=None):
+    def _create_line(self, type_, address=0, data=None):
         if not data:
             data = b''
         hexdat = hexlify(data).decode()
         length = len(data)
-        datastr = '%02X%04X%02X%s' % (length, address, type_, hexdat)
-        checksum = cls.checksum(datastr)
-        line = ':%s%02X' % (datastr, checksum)
+        datastr = f'{length:02X}{address:04X}{type_:02X}{hexdat}'
+        checksum = self.checksum(datastr)
+        line = f':{datastr}{checksum:02X}'
         return line.upper()
 
 
@@ -662,24 +664,26 @@ class TItxtBuilder(RecordBuilder):
     """TI-txt generator.
     """
 
-    @classmethod
-    def _create_data(cls, offset, segment):
+    # pylint: disable=abstract-method
+
+    def _create_data(self, offset, segment):
         data = segment.data
         if data:
-            yield '@%04x' % (segment.baseaddr + offset)
+            yield f'@{segment.baseaddr + offset:04x}'
         for pos in range(0, len(data), 16):
             chunk = data[pos:pos+16]
-            line = ' '.join(['%02x' % b for b in chunk])
+            line = ' '.join((f'{b:02x}' for b in chunk))
             yield line.upper()
 
-    @classmethod
-    def _create_eof(cls):
+    def _create_eof(self):
         return 'q'
 
 
 class BinaryBuilder:
     """Raw binary generator.
     """
+
+    # pylint: disable=missing-function-docstring
 
     def __init__(self, maxsize):
         self._iofp = BytesIO()
@@ -700,9 +704,9 @@ class BinaryBuilder:
             self._iofp.write(segment.data)
         self._iofp.seek(0, SEEK_SET)
 
-    def getvalue(self):
+    def getvalue(self) -> bytes:
         return self._iofp.getvalue()
 
     @property
-    def io(self):
+    def io(self) -> BinaryIO:
         return self._iofp
