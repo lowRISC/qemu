@@ -118,7 +118,7 @@ class QEMUWrapper:
         log = self._log
         last_error = ''
         vcp_map = tdef.vcp_map
-        vcp_ctxs: dict[int, tuple[str, socket, bytearray]] = {}
+        vcp_ctxs: dict[int, list[str, socket, bytearray, logging.Logger]] = {}
         try:
             workdir = dirname(tdef.command[0])
             log.debug('Executing QEMU as %s', ' '.join(tdef.command))
