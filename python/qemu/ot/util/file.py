@@ -6,7 +6,15 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
+from os import stat
+from os.path import relpath
+from time import localtime, strftime
+from typing import BinaryIO, TextIO, Union
+
 import re
+
+from .elf import ElfBlob
+from .recfmt import RecordSegment, VMemBuilder
 
 
 def guess_test_type(file_path: str) -> str:
@@ -27,3 +35,53 @@ def guess_test_type(file_path: str) -> str:
         if re.match(vmem_re, line):
             return 'vmem'
     return 'bin'
+
+
+def make_vmem_from_elf(elf_file: Union[str, BinaryIO],
+                       vmem_file: Union[str, TextIO],
+                       offset: int = 0,
+                       chunksize: int = 4,
+                       offsetsize: int = 0,
+                       close_elf: bool = True) -> None:
+    """Create a VMEM file from an ELF file.
+
+       :param elf_file:   ELF to convert, as either a file path or a binary
+                          file object
+       :param vmem_file:  ELF to convert, either a file path or a text file
+                          object
+       :param offset:     optional offset in bytes within the VMEM file to store
+                          the ELF blob
+       :param chunksize:  how many bytes per VMEM chunk to generate
+       :param offsetsize: how many chars to use to emit the chunk offset
+       :param close_elf:  whether to close the ELF input file object
+    """
+    elf = ElfBlob()
+    if isinstance(elf_file, str):
+        with open(elf_file, 'rb') as efp:
+            elfstat = stat(efp.fileno())
+            elf.load(efp)
+        elfname = relpath(elf_file)
+    else:
+        elf.load(elf_file)
+        elfname = relpath(elf_file.name)
+        elfstat = stat(elf_file.fileno())
+        if close_elf:
+            elf_file.close()
+
+    seg = RecordSegment()
+    seg.write(elf.blob, offset=offset)
+
+    vmem = VMemBuilder(byteorder='little', chunksize=chunksize,
+                       offsetsize=offsetsize)
+    vmem.build([seg])
+
+    elftime = localtime(elfstat.st_mtime)
+    is_path = isinstance(vmem_file, str)
+    with open(vmem_file, 'wt') if is_path else vmem_file as vfp:
+        print(f'// name:       {elfname}', file=vfp)
+        print(f'// built:      {strftime("%Y/%m/%d %H:%M:%S", elftime)}', file=vfp)
+        print(f'// size:       {elfstat.st_size}', file=vfp)
+        print(f'// rawsize:    {elf.size}', file=vfp)
+        print(f'// entrypoint: 0x{elf.entry_point:08x}', file=vfp)
+        print(file=vfp)
+        vfp.write(vmem.getvalue())
