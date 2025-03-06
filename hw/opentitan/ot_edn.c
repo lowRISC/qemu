@@ -2,6 +2,7 @@
  * QEMU OpenTitan Entropy Distribution Network device
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -23,9 +24,6 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
- *
- * Note: for now, only a minimalist subset of EDN device is implemented in order
- *       to enable OpenTitan's ROM boot to progress
  */
 
 #include "qemu/osdep.h"
@@ -42,7 +40,6 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
 #include "trace.h"
 
 
@@ -54,8 +51,8 @@
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
-    SHARED_FIELD(INTR_EDN_CMD_REQ_DONE_BIT, 0u, 1u)
-    SHARED_FIELD(INTR_EDN_FATAL_ERR_BIT, 1u, 1u)
+    SHARED_FIELD(INTR_EDN_CMD_REQ_DONE, 0u, 1u)
+    SHARED_FIELD(INTR_EDN_FATAL_ERR, 1u, 1u)
 REG32(INTR_ENABLE, 0x4u)
 REG32(INTR_TEST, 0x8u)
 REG32(ALERT_TEST, 0xcu)
@@ -77,6 +74,11 @@ REG32(SW_CMD_STS, 0x24u)
     FIELD(SW_CMD_STS, CMD_ACK, 2u, 1u)
     FIELD(SW_CMD_STS, CMD_STS, 3u, 3u)
 REG32(HW_CMD_STS, 0x28u)
+    FIELD(HW_CMD_STS, BOOT_MODE, 0u, 1u)
+    FIELD(HW_CMD_STS, AUTO_MODE, 1u, 1u)
+    FIELD(HW_CMD_STS, CMD_TYPE, 2u, 4u)
+    FIELD(HW_CMD_STS, CMD_ACK, 6u, 1u)
+    FIELD(HW_CMD_STS, CMD_STS, 7u, 3u)
 REG32(RESEED_CMD, 0x2cu)
 REG32(GENERATE_CMD, 0x30u)
 REG32(MAX_NUM_REQS_BETWEEN_RESEEDS, 0x34u)
@@ -86,10 +88,10 @@ REG32(RECOV_ALERT_STS, 0x38u)
     FIELD(RECOV_ALERT_STS, AUTO_REQ_MODE_FIELD_ALERT, 2u, 1u)
     FIELD(RECOV_ALERT_STS, CMD_FIFO_RST_FIELD_ALERT, 3u, 1u)
     FIELD(RECOV_ALERT_STS, EDN_BUS_CMP_ALERT, 12u, 1u)
+    FIELD(RECOV_ALERT_STS, CSRNG_ACK_ERR, 13u, 1u)
 REG32(ERR_CODE, 0x3cu)
     FIELD(ERR_CODE, SFIFO_RESCMD_ERR, 0u, 1u)
     FIELD(ERR_CODE, SFIFO_GENCMD_ERR, 1u, 1u)
-    FIELD(ERR_CODE, SFIFO_OUTPUT_ERR, 2u, 1u)
     FIELD(ERR_CODE, EDN_ACK_SM_ERR, 20u, 1u)
     FIELD(ERR_CODE, EDN_MAIN_SM_ERR, 21u, 1u)
     FIELD(ERR_CODE, EDN_CNTR_ERR, 22u, 1u)
@@ -110,7 +112,7 @@ REG32(MAIN_SM_STATE, 0x44u)
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
-#define INTR_MASK (INTR_EDN_CMD_REQ_DONE_BIT_MASK | INTR_EDN_FATAL_ERR_BIT_MASK)
+#define INTR_MASK (INTR_EDN_CMD_REQ_DONE_MASK | INTR_EDN_FATAL_ERR_MASK)
 #define ALERT_TEST_MASK \
     (R_ALERT_TEST_RECOV_ALERT_MASK | R_ALERT_TEST_FATAL_ALERT_MASK)
 #define CTRL_MASK \
@@ -124,14 +126,12 @@ REG32(MAIN_SM_STATE, 0x44u)
      R_RECOV_ALERT_STS_EDN_BUS_CMP_ALERT_MASK)
 #define ERR_CODE_MASK \
     (R_ERR_CODE_SFIFO_RESCMD_ERR_MASK | R_ERR_CODE_SFIFO_GENCMD_ERR_MASK | \
-     R_ERR_CODE_SFIFO_OUTPUT_ERR_MASK | R_ERR_CODE_EDN_ACK_SM_ERR_MASK | \
-     R_ERR_CODE_EDN_MAIN_SM_ERR_MASK | R_ERR_CODE_EDN_CNTR_ERR_MASK | \
-     R_ERR_CODE_FIFO_WRITE_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK | \
-     R_ERR_CODE_FIFO_STATE_ERR_MASK)
-#define ERR_CODE_FIFO_MASK \
-    (R_ERR_CODE_SFIFO_RESCMD_ERR_MASK | R_ERR_CODE_SFIFO_GENCMD_ERR_MASK | \
-     R_ERR_CODE_SFIFO_OUTPUT_ERR_MASK | R_ERR_CODE_FIFO_WRITE_ERR_MASK | \
+     R_ERR_CODE_EDN_ACK_SM_ERR_MASK | R_ERR_CODE_EDN_MAIN_SM_ERR_MASK | \
+     R_ERR_CODE_EDN_CNTR_ERR_MASK | R_ERR_CODE_FIFO_WRITE_ERR_MASK | \
      R_ERR_CODE_FIFO_READ_ERR_MASK | R_ERR_CODE_FIFO_STATE_ERR_MASK)
+#define ERR_CODE_ACTIVE_MASK \
+    (R_ERR_CODE_EDN_ACK_SM_ERR_MASK | R_ERR_CODE_EDN_MAIN_SM_ERR_MASK | \
+     R_ERR_CODE_EDN_CNTR_ERR_MASK)
 
 #define ALERT_STATUS_BIT(_x_) R_RECOV_ALERT_STS_##_x_##_FIELD_ALERT_MASK
 
@@ -177,57 +177,56 @@ static_assert(ALERT_COUNT == PARAM_NUM_ALERTS, "Invalid alert count");
 
 typedef enum {
     EDN_IDLE, /* idle */
+    /* Boot */
     EDN_BOOT_LOAD_INS, /* boot: load the instantiate command */
-    EDN_BOOT_LOAD_GEN, /* boot: load the generate command */
     EDN_BOOT_INS_ACK_WAIT, /* boot: wait for instantiate command ack */
-    EDN_BOOT_CAPT_GEN_CNT, /* boot: capture the gen fifo count */
-    EDN_BOOT_SEND_GEN_CMD, /* boot: send the generate command */
+    EDN_BOOT_LOAD_GEN, /* boot: load the generate command */
     EDN_BOOT_GEN_ACK_WAIT, /* boot: wait for generate command ack */
     EDN_BOOT_PULSE, /* boot: signal a done pulse */
-    EDN_BOOT_DONE, /* boot: stay in done state until reset */
+    EDN_BOOT_DONE, /* boot: stay in done state until leaving boot */
+    EDN_BOOT_LOAD_UNI, /* boot: load the uninstantiate command */
+    EDN_BOOT_UNI_ACK_WAIT, /* boot: wait for uninstantiate command ack */
+    /* Auto */
     EDN_AUTO_LOAD_INS, /* auto: load the instantiate command */
     EDN_AUTO_FIRST_ACK_WAIT, /* auto: wait for first instantiate command ack */
-    EDN_AUTO_ACK_WAIT, /* auto: wait for auto command ack */
+    EDN_AUTO_ACK_WAIT, /* auto: wait for instantiate command ack */
     EDN_AUTO_DISPATCH, /* auto: determine next command to be sent */
     EDN_AUTO_CAPT_GEN_CNT, /* auto: capture the gen fifo count */
     EDN_AUTO_SEND_GEN_CMD, /* auto: send the generate command */
     EDN_AUTO_CAPT_RESEED_CNT, /* auto: capture the reseed fifo count */
     EDN_AUTO_SEND_RESEED_CMD, /* auto: send the reseed command */
+    /* Misc */
     EDN_SW_PORT_MODE, /* swport: no hw request mode */
+    EDN_REJECT_CSRNG_ENTROPY, /* stop accepting entropy from CSRNG */
     EDN_ERROR, /* illegal state reached and hang */
 } OtEDNFsmState;
 
-typedef enum {
-    CSRNG_STATUS_SUCCESS,
-    CSRNG_STATUS_INVALID_ACMD,
-    CSRNG_STATUS_INVALID_GEN_CMD,
-    CSRNG_STATUS_INVALID_CMD_SEQ,
-    CSRNG_STATUS_RESEED_CNT_EXCEEDED,
-} OtCSRNGCmdStatus;
-
 typedef struct {
     OtCSRNGState *device; /* CSRNG instance */
-    OtCSRNGCmdStatus last_cmd_status; /* status of the last CSRNG command */
     qemu_irq genbits_ready; /* Set when ready to receive entropy */
     uint32_t appid; /* unique HW application id to identify on CSRNG */
-    bool instantiated; /* instantiated state, not yet uninstantiated */
-    bool no_fips; /* true if 1+ rcv entropy packets were no FIPS-compliant */
     unsigned rem_packet_count; /* remaining expected packets in generate cmd */
+    OtCSRNGCmdStatus hw_cmd_status; /* status of the last CSRNG command */
+    OtCSRNGCmdStatus sw_cmd_status; /* status of the last SW command */
     uint32_t buffer[OT_CSRNG_CMD_WORD_MAX]; /* temp buffer for commands */
     OtFifo32 bits_fifo; /* input FIFO with entropy received from CSRNG */
-    OtFifo32 sw_cmd_fifo; /* generic command output FIFO */
-    OtFifo32 cmd_gen_fifo; /* FIFO to store replayed generate command */
-    OtFifo32 cmd_reseed_fifo; /* FIFO to store replayed reseed command */
+    OtFifo32 cmd_gen_fifo; /* "Replay" FIFO to store generate command */
+    OtFifo32 cmd_reseed_fifo; /* "Replay" FIFO to store reseed command */
+    uint8_t hw_cmd_type; /* type of the last CSRNG HW command */
+    bool hw_ack; /* last SW command has been completed */
+    bool sw_ack; /* last SW command has been completed */
+    bool instantiated; /* instantiated state, not yet uninstantiated */
+    bool no_fips; /* true if 1+ rcv entropy packets were no FIPS-compliant */
 } OtEDNCSRNG;
 
 typedef struct OtEDNEndPoint {
     ot_edn_push_entropy_fn fn; /* function to call when entropy is available */
     void *opaque; /* opaque pointer forwaded with the fn() call */
     OtFifo32 fifo; /* output unpacker */
-    bool fips; /* whether stored entropy is FIPS-compliant */
     size_t gen_count; /* Number of 32-bit entropy word in current generation */
     size_t total_count; /* Total number of 32-bit entropy words */
     QSIMPLEQ_ENTRY(OtEDNEndPoint) request;
+    bool fips; /* whether stored entropy is FIPS-compliant */
 } OtEDNEndPoint;
 
 typedef QSIMPLEQ_HEAD(OtEndpointQueue, OtEDNEndPoint) OtEndpointQueue;
@@ -241,48 +240,50 @@ struct OtEDNState {
     QEMUBH *ep_bh; /**< Endpoint requests */
 
     uint32_t *regs;
+    uint32_t recov_alert_sts; /* track signalled recovery alert */
 
-    unsigned reseed_counter; /* track remaining requests before reseeding */
-    bool sw_cmd_ready; /* ready to receive command in SW port mode */
+    unsigned max_reqs_cnt; /* track remaining requests before reseeding */
     OtEDNFsmState state; /* Main FSM state */
     OtEDNCSRNG rng;
     OtEDNEndPoint endpoints[ENDPOINT_COUNT_MAX];
     OtEndpointQueue ep_requests;
+    bool sw_cmd_ready; /* ready to receive command in SW port mode */
 };
 
 static const uint16_t OtEDNFsmStateCode[] = {
-    [EDN_IDLE] = 0b110000101,
-    [EDN_BOOT_LOAD_INS] = 0b110110111,
+    [EDN_IDLE] = 0b011000001,
+    [EDN_BOOT_LOAD_INS] = 0b111000111,
+    [EDN_BOOT_INS_ACK_WAIT] = 0b001111001,
     [EDN_BOOT_LOAD_GEN] = 0b000000011,
-    [EDN_BOOT_INS_ACK_WAIT] = 0b011010010,
-    [EDN_BOOT_CAPT_GEN_CNT] = 0b010111010,
-    [EDN_BOOT_SEND_GEN_CMD] = 0b011100100,
-    [EDN_BOOT_GEN_ACK_WAIT] = 0b101101100,
-    [EDN_BOOT_PULSE] = 0b100001010,
-    [EDN_BOOT_DONE] = 0b011011111,
-    [EDN_AUTO_LOAD_INS] = 0b001110000,
-    [EDN_AUTO_FIRST_ACK_WAIT] = 0b001001101,
-    [EDN_AUTO_ACK_WAIT] = 0b101100011,
-    [EDN_AUTO_DISPATCH] = 0b110101110,
-    [EDN_AUTO_CAPT_GEN_CNT] = 0b000110101,
-    [EDN_AUTO_SEND_GEN_CMD] = 0b111111000,
-    [EDN_AUTO_CAPT_RESEED_CNT] = 0b000100110,
-    [EDN_AUTO_SEND_RESEED_CMD] = 0b101010110,
-    [EDN_SW_PORT_MODE] = 0b100111001,
-    [EDN_ERROR] = 0b010010001,
+    [EDN_BOOT_GEN_ACK_WAIT] = 0b001110111,
+    [EDN_BOOT_PULSE] = 0b010101001,
+    [EDN_BOOT_DONE] = 0b011110000,
+    [EDN_BOOT_LOAD_UNI] = 0b100110101,
+    [EDN_BOOT_UNI_ACK_WAIT] = 0b000101100,
+    [EDN_AUTO_LOAD_INS] = 0b110111100,
+    [EDN_AUTO_FIRST_ACK_WAIT] = 0b110100011,
+    [EDN_AUTO_ACK_WAIT] = 0b010010010,
+    [EDN_AUTO_DISPATCH] = 0b101100001,
+    [EDN_AUTO_CAPT_GEN_CNT] = 0b100001110,
+    [EDN_AUTO_SEND_GEN_CMD] = 0b111011101,
+    [EDN_AUTO_CAPT_RESEED_CNT] = 0b010111111,
+    [EDN_AUTO_SEND_RESEED_CMD] = 0b001101010,
+    [EDN_SW_PORT_MODE] = 0b010010101,
+    [EDN_REJECT_CSRNG_ENTROPY] = 0b000011000,
+    [EDN_ERROR] = 0b101111110,
 };
 
 #define STATE_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
 static const char *STATE_NAMES[] = {
     STATE_NAME_ENTRY(EDN_IDLE),
     STATE_NAME_ENTRY(EDN_BOOT_LOAD_INS),
-    STATE_NAME_ENTRY(EDN_BOOT_LOAD_GEN),
     STATE_NAME_ENTRY(EDN_BOOT_INS_ACK_WAIT),
-    STATE_NAME_ENTRY(EDN_BOOT_CAPT_GEN_CNT),
-    STATE_NAME_ENTRY(EDN_BOOT_SEND_GEN_CMD),
+    STATE_NAME_ENTRY(EDN_BOOT_LOAD_GEN),
     STATE_NAME_ENTRY(EDN_BOOT_GEN_ACK_WAIT),
     STATE_NAME_ENTRY(EDN_BOOT_PULSE),
     STATE_NAME_ENTRY(EDN_BOOT_DONE),
+    STATE_NAME_ENTRY(EDN_BOOT_LOAD_UNI),
+    STATE_NAME_ENTRY(EDN_BOOT_UNI_ACK_WAIT),
     STATE_NAME_ENTRY(EDN_AUTO_LOAD_INS),
     STATE_NAME_ENTRY(EDN_AUTO_FIRST_ACK_WAIT),
     STATE_NAME_ENTRY(EDN_AUTO_ACK_WAIT),
@@ -292,6 +293,7 @@ static const char *STATE_NAMES[] = {
     STATE_NAME_ENTRY(EDN_AUTO_CAPT_RESEED_CNT),
     STATE_NAME_ENTRY(EDN_AUTO_SEND_RESEED_CMD),
     STATE_NAME_ENTRY(EDN_SW_PORT_MODE),
+    STATE_NAME_ENTRY(EDN_REJECT_CSRNG_ENTROPY),
     STATE_NAME_ENTRY(EDN_ERROR),
 };
 #undef STATE_NAME_ENTRY
@@ -366,75 +368,112 @@ static void ot_edn_update_irqs(OtEDNState *s)
 static void ot_edn_update_alerts(OtEDNState *s)
 {
     uint32_t level = s->regs[R_ALERT_TEST];
-    if (s->regs[R_ERR_CODE] & ERR_CODE_MASK) {
-        /* ERR_CODE is sticky */
+    s->regs[R_ALERT_TEST] = 0u;
+
+    /* only these errors seem to generate an alert (from HW observation) */
+    if (s->regs[R_ERR_CODE] & ERR_CODE_ACTIVE_MASK) {
         level |= 1u << ALERT_FATAL;
     }
-    if (s->regs[R_ERR_CODE_TEST] & ERR_CODE_MASK) {
+    if (s->regs[R_ERR_CODE_TEST] & ERR_CODE_ACTIVE_MASK) {
         level |= 1u << ALERT_FATAL;
+        /*
+         * "The action of writing this register will force an error pulse."
+         * This documented assertion does not seem to hold true. Alert seems
+         * sticky
+         */
     }
     if (s->regs[R_RECOV_ALERT_STS] & RECOV_ALERT_STS_MASK) {
-        level |= 1u << ALERT_RECOVERABLE;
+        /* recoverable alerts do not trigger stick alert */
+        if (!(s->recov_alert_sts & (1u << ALERT_RECOVERABLE))) {
+            level |= 1u << ALERT_RECOVERABLE;
+            s->recov_alert_sts |= 1u << ALERT_RECOVERABLE;
+        }
     }
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
-static void ot_edn_check_multibitboot(OtEDNState *s, uint8_t mbbool,
+static bool ot_edn_check_multibitboot(OtEDNState *s, uint8_t mbbool,
                                       uint32_t alert_bit)
 {
     switch (mbbool) {
     case OT_MULTIBITBOOL4_TRUE:
+        return true;
     case OT_MULTIBITBOOL4_FALSE:
-        return;
+        return false;
     default:
         break;
     }
 
     s->regs[R_RECOV_ALERT_STS] |= 1u << alert_bit;
     ot_edn_update_alerts(s);
+    return false;
 }
 
-static bool ot_edn_is_enabled(OtEDNState *s)
+static bool ot_edn_is_enabled(const OtEDNState *s)
 {
     uint32_t enable = FIELD_EX32(s->regs[R_CTRL], CTRL, EDN_ENABLE);
 
     return enable == OT_MULTIBITBOOL4_TRUE;
 }
 
-static bool ot_edn_is_disabled(OtEDNState *s)
-{
-    uint32_t enable = FIELD_EX32(s->regs[R_CTRL], CTRL, EDN_ENABLE);
-
-    return enable == OT_MULTIBITBOOL4_FALSE;
-}
-
-static bool ot_edn_is_boot_req_mode(OtEDNState *s)
+static bool ot_edn_is_boot_req_mode(const OtEDNState *s)
 {
     uint32_t auto_req = FIELD_EX32(s->regs[R_CTRL], CTRL, BOOT_REQ_MODE);
 
     return auto_req == OT_MULTIBITBOOL4_TRUE;
 }
 
-static bool ot_edn_is_auto_req_mode(OtEDNState *s)
+static bool ot_edn_is_auto_req_mode(const OtEDNState *s)
 {
     uint32_t auto_req = FIELD_EX32(s->regs[R_CTRL], CTRL, AUTO_REQ_MODE);
 
     return auto_req == OT_MULTIBITBOOL4_TRUE;
 }
 
-static bool ot_edn_is_sw_port_mode(OtEDNState *s)
+static bool ot_edn_is_boot_mode(const OtEDNState *s)
 {
-    return !ot_edn_is_boot_req_mode(s) && !ot_edn_is_auto_req_mode(s);
+    /* NOLINTNEXTLINE */
+    switch (s->state) {
+    case EDN_BOOT_INS_ACK_WAIT ... EDN_BOOT_UNI_ACK_WAIT:
+        return true;
+    default:
+        return false;
+    }
 }
 
-static OtCsrngCmd ot_edn_get_last_csrng_command(OtEDNState *s)
+static bool ot_edn_is_auto_mode(const OtEDNState *s)
+{
+    /* NOLINTNEXTLINE */
+    switch (s->state) {
+    case EDN_AUTO_ACK_WAIT ... EDN_AUTO_SEND_RESEED_CMD:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool ot_edn_is_sw_cmd_mode(const OtEDNState *s)
+{
+    /* NOLINTNEXTLINE */
+    switch (s->state) {
+    case EDN_AUTO_LOAD_INS:
+    case EDN_AUTO_FIRST_ACK_WAIT:
+    case EDN_SW_PORT_MODE:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static OtCSRNGCmd ot_edn_get_last_csrng_command(const OtEDNState *s)
 {
     const OtEDNCSRNG *c = &s->rng;
 
     uint32_t last_cmd = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, ACMD);
 
+    /* NOLINTNEXTLINE */
     switch (last_cmd) {
     case OT_CSRNG_CMD_NONE:
     case OT_CSRNG_CMD_INSTANTIATE:
@@ -442,26 +481,19 @@ static OtCsrngCmd ot_edn_get_last_csrng_command(OtEDNState *s)
     case OT_CSRNG_CMD_GENERATE:
     case OT_CSRNG_CMD_UPDATE:
     case OT_CSRNG_CMD_UNINSTANTIATE:
-        return (OtCsrngCmd)last_cmd;
+        return (OtCSRNGCmd)last_cmd;
     default:
         g_assert_not_reached();
     }
 }
 
-static bool ot_edn_is_cmd_rdy(OtEDNState *s, bool check_fifo)
+static bool ot_edn_is_cmd_reg_rdy(const OtEDNState *s)
 {
-    if (!ot_edn_is_enabled(s)) {
-        return false;
-    }
-    if (check_fifo && ot_fifo32_is_full(&s->rng.sw_cmd_fifo)) {
-        return false;
-    }
+    /* NOLINTNEXTLINE */
     switch (s->state) {
-    case EDN_IDLE:
-    case EDN_BOOT_PULSE:
-    case EDN_BOOT_DONE:
     case EDN_AUTO_LOAD_INS:
     case EDN_AUTO_FIRST_ACK_WAIT:
+    case EDN_AUTO_DISPATCH:
         return true;
     case EDN_SW_PORT_MODE:
         return s->sw_cmd_ready;
@@ -470,22 +502,90 @@ static bool ot_edn_is_cmd_rdy(OtEDNState *s, bool check_fifo)
     }
 }
 
+static bool ot_edn_is_cmd_rdy(const OtEDNState *s)
+{
+    /* NOLINTNEXTLINE */
+    switch (s->state) {
+    case EDN_AUTO_LOAD_INS:
+    case EDN_AUTO_DISPATCH:
+        return true;
+    case EDN_SW_PORT_MODE:
+        return s->sw_cmd_ready;
+    default:
+        return false;
+    }
+}
+
+static void ot_edn_reset_replay_fifos(OtEDNState *s)
+{
+    /*
+     * "The generate and reseed FIFOs are reset under four circumstances. These
+     *  circumstances are:
+     *  (a) when the EDN is disabled,
+     *  (b) when the SWPortMode state is entered,
+     *  (c) when the boot sequence has completed, or
+     *  (d) when the EDN enters the Idle state after it finishes operation in
+     *      auto mode."
+     */
+    OtEDNCSRNG *c = &s->rng;
+
+    trace_ot_edn_reset_replay_fifos(c->appid);
+
+    ot_fifo32_reset(&c->cmd_gen_fifo);
+    ot_fifo32_reset(&c->cmd_reseed_fifo);
+}
+
+static void ot_edn_manage_error(OtEDNState *s)
+{
+    s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_MASK;
+    if (s->regs[R_ERR_CODE] & R_ERR_CODE_EDN_MAIN_SM_ERR_MASK) {
+        /* real HW seems to add this error on clock cycle after main error */
+        s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_ACK_SM_ERR_MASK;
+    }
+    ot_edn_update_irqs(s);
+    ot_edn_update_alerts(s);
+}
+
 static void ot_edn_change_state_line(OtEDNState *s, OtEDNFsmState state,
                                      int line)
 {
-    trace_ot_edn_change_state(s->rng.appid, line, STATE_NAME(s->state),
-                              s->state, STATE_NAME(state), state);
+    if (state != s->state) {
+        trace_ot_edn_change_state(s->rng.appid, line, STATE_NAME(s->state),
+                                  s->state, STATE_NAME(state), state);
+    }
 
     s->state = state;
 
-    if (s->state == EDN_ERROR) {
-        s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_MAIN_SM_ERR_MASK;
-        ot_edn_update_alerts(s);
+    switch (s->state) {
+    case EDN_ERROR:
+        s->rng.hw_cmd_type = (uint8_t)OT_CSRNG_CMD_NONE;
+        ot_edn_manage_error(s);
+        break;
+    case EDN_IDLE:
+    case EDN_REJECT_CSRNG_ENTROPY:
+        s->rng.hw_cmd_type = (uint8_t)OT_CSRNG_CMD_NONE;
+        break;
+    default:
+        break;
     }
 }
 
 #define ot_edn_change_state(_s_, _st_) \
     ot_edn_change_state_line(_s_, _st_, __LINE__)
+
+static void ot_edn_connect_csrng(OtEDNState *s)
+{
+    OtEDNCSRNG *c = &s->rng;
+
+    /* if the IRQ is not initialized, the EDN has yet to connected to CSRNG */
+    if (!c->genbits_ready) {
+        qemu_irq req_sts;
+        req_sts = qdev_get_gpio_in_named(DEVICE(s), TYPE_OT_EDN "-req_sts", 0);
+        c->genbits_ready = ot_csnrg_connect_hw_app(c->device, c->appid, req_sts,
+                                                   &ot_edn_fill_bits, s);
+        g_assert(c->genbits_ready);
+    }
+}
 
 static bool ot_edn_update_genbits_ready(OtEDNState *s)
 {
@@ -504,24 +604,27 @@ static bool ot_edn_update_genbits_ready(OtEDNState *s)
     return accept_entropy;
 }
 
-static int ot_edn_push_csrng_request(OtEDNState *s)
+static OtCSRNGCmdStatus
+ot_edn_push_csrng_request(OtEDNState *s, uint32_t length)
 {
+    ot_edn_connect_csrng(s);
+
     OtEDNCSRNG *c = &s->rng;
 
-    /* if the IRQ is not initialized, the EDN has yet to connected to CSRNG */
-    if (!c->genbits_ready) {
-        qemu_irq req_sts;
-        req_sts = qdev_get_gpio_in_named(DEVICE(s), TYPE_OT_EDN "-req_sts", 0);
-        c->genbits_ready = ot_csnrg_connect_hw_app(c->device, c->appid, req_sts,
-                                                   &ot_edn_fill_bits, s);
-        g_assert(c->genbits_ready);
-    }
-    s->regs[R_SW_CMD_STS] |= R_SW_CMD_STS_CMD_ACK_MASK;
-    int res = ot_csrng_push_command(c->device, c->appid, c->buffer);
-    if (res) {
-        xtrace_ot_edn_error(c->appid, "CSRNG rejected command");
-        /* do not expect any delayed completion */
-        memset(c->buffer, 0, sizeof(*c->buffer));
+    OtCSRNGCmdStatus res = CSRNG_STATUS_INVALID_ACMD;
+
+    for (unsigned cix = 0; cix < length; cix++) {
+        trace_ot_edn_push_csrng_command(c->appid, c->buffer[cix]);
+        res = ot_csrng_push_command(c->device, c->appid, c->buffer[cix]);
+        if (res != CSRNG_STATUS_SUCCESS) {
+            trace_ot_edn_push_csrng_error(c->appid, (int)res);
+            ot_edn_change_state(s, EDN_REJECT_CSRNG_ENTROPY);
+            s->regs[R_RECOV_ALERT_STS] |= R_RECOV_ALERT_STS_CSRNG_ACK_ERR_MASK;
+            /* do not expect any delayed completion */
+            memset(c->buffer, 0, sizeof(*c->buffer));
+            ot_edn_update_alerts(s);
+            break;
+        }
     }
 
     return res;
@@ -534,26 +637,38 @@ static void ot_edn_send_boot_req(OtEDNState *s, unsigned reg)
     uint32_t command = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, ACMD);
     if (command != OT_CSRNG_CMD_NONE) {
         xtrace_ot_edn_error(c->appid, "Another command is already scheduled");
+        s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_MAIN_SM_ERR_MASK;
         ot_edn_change_state(s, EDN_ERROR);
         return;
     }
 
     c->buffer[0u] = s->regs[reg];
     command = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, ACMD);
+    uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
+    if (clen) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %u: boot command CLEN is non-zero\n", __func__,
+                      c->appid);
+        /*
+         * the HW does not consider this case as an error and resume execution,
+         * which causes the CSRNG to stall
+         */
+    }
 
     if (command == OT_CSRNG_CMD_GENERATE) {
         c->rem_packet_count = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, GLEN);
         xtrace_ot_edn_dinfo(c->appid, "Boot generation w/ packets",
                             c->rem_packet_count);
         ot_edn_update_genbits_ready(s);
-        ot_edn_change_state(s, EDN_BOOT_CAPT_GEN_CNT);
+        ot_edn_change_state(s, EDN_BOOT_LOAD_GEN);
         for (unsigned epix = 0; epix < ARRAY_SIZE(s->endpoints); epix++) {
             s->endpoints[epix].gen_count = 0;
         }
     }
-    if (ot_edn_push_csrng_request(s)) {
-        xtrace_ot_edn_error(c->appid, "Cannot push command");
-        ot_edn_change_state(s, EDN_ERROR);
+
+    c->hw_cmd_type = (uint8_t)FIELD_EX32(command, OT_CSNRG_CMD, ACMD);
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, 1u);
+    if (c->hw_cmd_status) {
         return;
     }
 
@@ -573,187 +688,134 @@ static void ot_edn_send_boot_req(OtEDNState *s, unsigned reg)
     }
 }
 
-static void ot_edn_try_auto_instantiate(OtEDNState *s)
+static void ot_edn_send_auto_reseed_cmd(OtEDNState *s)
 {
     OtEDNCSRNG *c = &s->rng;
 
-    if (ot_fifo32_is_empty(&c->sw_cmd_fifo)) {
-        /* instantiate command not yet loaded into the SW_CMD_REQ */
-        xtrace_ot_edn_xinfo(c->appid, "no SW cmd in FIFO", 0);
-        return;
-    }
+    bool fatal_error = false;
+    uint32_t command;
+    uint32_t length;
 
-    uint32_t command = ot_fifo32_peek(&c->sw_cmd_fifo);
-    uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
-    if (ot_fifo32_num_used(&c->sw_cmd_fifo) < length) {
-        /* instantiate command not fully loaded into the SW_CMD_REQ */
-        xtrace_ot_edn_xinfo(c->appid, "SW cmd FIFO incomplete", 0);
-        return;
-    }
-
-    uint32_t num = length;
-    const uint32_t *cmd = ot_fifo32_pop_buf(&c->sw_cmd_fifo, num, &num);
-    g_assert(num == length);
-    memcpy(c->buffer, cmd, length * sizeof(uint32_t));
-
-    if (ot_edn_push_csrng_request(s)) {
-        xtrace_ot_edn_error(c->appid, "Cannot execute command");
-        ot_edn_change_state(s, EDN_ERROR);
-        return;
-    }
-
-    ot_edn_change_state(s, EDN_AUTO_FIRST_ACK_WAIT);
-}
-
-static void ot_edn_send_reseed_cmd(OtEDNState *s)
-{
-    OtEDNCSRNG *c = &s->rng;
-
+    memset(c->buffer, 0, sizeof(c->buffer));
     if (ot_fifo32_is_empty(&c->cmd_reseed_fifo)) {
         s->regs[R_ERR_CODE] |=
             R_ERR_CODE_SFIFO_RESCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
-        s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
-        ot_edn_update_irqs(s);
-        ot_edn_update_alerts(s);
-        return;
+        fatal_error = true;
+        command = (uint32_t)OT_CSRNG_CMD_NONE;
+        length = 1u; /* always push the command */
+    } else {
+        command = ot_fifo32_peek(&c->cmd_reseed_fifo);
+        length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
+        if (ot_fifo32_num_used(&c->cmd_reseed_fifo) < length) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_SFIFO_RESCMD_ERR_MASK |
+                                   R_ERR_CODE_FIFO_READ_ERR_MASK;
+            fatal_error = true;
+        }
+        uint32_t num = length;
+        const uint32_t *cmd;
+        cmd = ot_fifo32_peek_buf(&c->cmd_reseed_fifo, num, &length);
+        if (num != length) {
+            xtrace_ot_edn_error(c->appid, "incoherent reseed FIFO length");
+        }
+        memcpy(c->buffer, cmd, length * sizeof(uint32_t));
     }
 
-    uint32_t command = ot_fifo32_peek(&c->cmd_reseed_fifo);
-    uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
-    if (ot_fifo32_num_used(&c->cmd_reseed_fifo) < length) {
-        s->regs[R_ERR_CODE] |=
-            R_ERR_CODE_SFIFO_RESCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
 
-        s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
-        ot_edn_update_irqs(s);
-        ot_edn_update_alerts(s);
+    if (fatal_error) {
+        ot_edn_change_state(s, EDN_ERROR);
         return;
     }
 
     ot_edn_change_state(s, EDN_AUTO_SEND_RESEED_CMD);
 
-    uint32_t num = length;
-    const uint32_t *cmd = ot_fifo32_peek_buf(&c->cmd_reseed_fifo, num, &num);
-    g_assert(num == length);
-    memcpy(c->buffer, cmd, length * sizeof(uint32_t));
-
-    if (ot_edn_push_csrng_request(s)) {
-        xtrace_ot_edn_error(c->appid, "Cannot execute command");
-        ot_edn_change_state(s, EDN_ERROR);
+    c->hw_cmd_type = (uint8_t)FIELD_EX32(command, OT_CSNRG_CMD, ACMD);
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, length);
+    if (c->hw_cmd_status) {
         return;
     }
 
     ot_edn_change_state(s, EDN_AUTO_ACK_WAIT);
 }
 
-static void ot_edn_send_generate_cmd(OtEDNState *s)
+static void ot_edn_send_auto_generate_cmd(OtEDNState *s)
 {
     OtEDNCSRNG *c = &s->rng;
 
+    bool fatal_error = false;
+    uint32_t command;
+    uint32_t length;
+
+    memset(c->buffer, 0, sizeof(c->buffer));
     if (ot_fifo32_is_empty(&c->cmd_gen_fifo)) {
         s->regs[R_ERR_CODE] |=
             R_ERR_CODE_SFIFO_GENCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
-        s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
-        ot_edn_update_irqs(s);
-        ot_edn_update_alerts(s);
+        fatal_error = true;
+        command = (uint32_t)OT_CSRNG_CMD_NONE;
+        length = 1u; /* always push the command */
+    } else {
+        command = ot_fifo32_peek(&c->cmd_gen_fifo);
+        length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
+        if (ot_fifo32_num_used(&c->cmd_gen_fifo) < length) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_SFIFO_GENCMD_ERR_MASK |
+                                   R_ERR_CODE_FIFO_READ_ERR_MASK;
+            fatal_error = true;
+        }
+        uint32_t num = length;
+        const uint32_t *cmd =
+            ot_fifo32_peek_buf(&c->cmd_gen_fifo, num, &length);
+        if (num != length) {
+            xtrace_ot_edn_error(c->appid, "incoherent generate FIFO length");
+        }
+        memcpy(c->buffer, cmd, length * sizeof(uint32_t));
+        c->rem_packet_count = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, GLEN);
+        xtrace_ot_edn_dinfo(c->appid, "Generate cmd w/ packets",
+                            c->rem_packet_count);
+    }
+
+    if (fatal_error) {
+        ot_edn_change_state(s, EDN_ERROR);
         return;
     }
 
-    uint32_t command = ot_fifo32_peek(&c->cmd_gen_fifo);
-    xtrace_ot_edn_xinfo(c->appid, "COMMAND", command);
-    uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
-    if (ot_fifo32_num_used(&c->cmd_gen_fifo) < length) {
-        s->regs[R_ERR_CODE] |=
-            R_ERR_CODE_SFIFO_GENCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
-        s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
-        ot_edn_update_irqs(s);
-        ot_edn_update_alerts(s);
-        return;
-    }
+    xtrace_ot_edn_xinfo(c->appid, "COMMAND", c->buffer[0]);
 
-    uint32_t num = length;
-    const uint32_t *cmd = ot_fifo32_peek_buf(&c->cmd_gen_fifo, num, &num);
-    g_assert(num == length);
-    memcpy(c->buffer, cmd, length * sizeof(uint32_t));
-    c->rem_packet_count = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, GLEN);
-    xtrace_ot_edn_dinfo(c->appid, "Generate cmd w/ packets",
-                        c->rem_packet_count);
     ot_edn_update_genbits_ready(s);
-
-    ot_edn_change_state(s, EDN_AUTO_SEND_GEN_CMD);
+    ot_edn_change_state(s, EDN_AUTO_SEND_RESEED_CMD);
 
     for (unsigned epix = 0; epix < ARRAY_SIZE(s->endpoints); epix++) {
         s->endpoints[epix].gen_count = 0;
     }
-    if (ot_edn_push_csrng_request(s)) {
-        xtrace_ot_edn_error(c->appid, "Cannot execute command");
-        ot_edn_change_state(s, EDN_ERROR);
+
+    c->hw_cmd_type = (uint8_t)FIELD_EX32(command, OT_CSNRG_CMD, ACMD);
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, length);
+    if (c->hw_cmd_status) {
         return;
     }
 
-    if (s->reseed_counter) {
-        s->reseed_counter -= 1u;
+    if (s->max_reqs_cnt) {
+        s->max_reqs_cnt -= 1u;
     }
 
     ot_edn_change_state(s, EDN_AUTO_ACK_WAIT);
 }
 
-static void ot_edn_send_uninstanciate_cmd(OtEDNState *s)
+static void ot_edn_send_boot_uninstanciate_cmd(OtEDNState *s)
 {
     OtEDNCSRNG *c = &s->rng;
+
+    g_assert(s->state == EDN_BOOT_LOAD_UNI);
 
     memset(c->buffer, 0, sizeof(c->buffer));
     c->buffer[0u] =
         FIELD_DP32(0, OT_CSNRG_CMD, ACMD, OT_CSRNG_CMD_UNINSTANTIATE);
 
-    if (ot_edn_push_csrng_request(s)) {
-        xtrace_ot_edn_error(c->appid, "Cannot execute command");
-        ot_edn_change_state(s, EDN_ERROR);
+    c->hw_cmd_type = (uint8_t)OT_CSRNG_CMD_UNINSTANTIATE;
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, 1u);
+    if (c->hw_cmd_status) {
         return;
     }
 
-    /* TODO: what is the actual state of uninstantiating from boot mode? */
-    ot_edn_change_state(s, EDN_AUTO_ACK_WAIT);
-}
-
-static void ot_edn_try_sw_request(OtEDNState *s)
-{
-    OtEDNCSRNG *c = &s->rng;
-
-    uint32_t command = ot_fifo32_peek(&c->sw_cmd_fifo);
-    uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
-    if (ot_fifo32_num_used(&c->sw_cmd_fifo) != length) {
-        /* command not yet complete */
-        return;
-    }
-
-    g_assert(s->state == EDN_SW_PORT_MODE);
-
-    uint32_t num = length;
-    const uint32_t *cmd = ot_fifo32_peek_buf(&c->sw_cmd_fifo, num, &num);
-    memcpy(c->buffer, cmd, length * sizeof(uint32_t));
-    ot_fifo32_reset(&c->sw_cmd_fifo);
-
-    s->sw_cmd_ready = false;
-
-    command = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, ACMD);
-
-    if (command == OT_CSRNG_CMD_GENERATE) {
-        c->rem_packet_count = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, GLEN);
-        xtrace_ot_edn_dinfo(c->appid, "SW generation w/ packets",
-                            c->rem_packet_count);
-        ot_edn_update_genbits_ready(s);
-        for (unsigned epix = 0; epix < ARRAY_SIZE(s->endpoints); epix++) {
-            s->endpoints[epix].gen_count = 0;
-        }
-    }
-
-    if (ot_edn_push_csrng_request(s)) {
-        xtrace_ot_edn_error(c->appid, "Cannot execute command");
-        ot_edn_change_state(s, EDN_ERROR);
-        s->sw_cmd_ready = true;
-        return;
-    }
+    ot_edn_change_state(s, EDN_BOOT_UNI_ACK_WAIT);
 }
 
 static void ot_edn_handle_disable(OtEDNState *s)
@@ -785,69 +847,30 @@ static void ot_edn_handle_disable(OtEDNState *s)
     /* signal CSRNG that EDN is no longer ready to receive entropy */
     ot_edn_update_genbits_ready(s);
 
-    switch (s->state) {
-    case EDN_BOOT_GEN_ACK_WAIT:
-        /* no longer expect a generate ack */
-        ot_edn_change_state(s, EDN_BOOT_DONE);
-        break;
-    case EDN_AUTO_ACK_WAIT:
-        /* no longer expect a generate ack */
-        ot_edn_change_state(s, EDN_IDLE);
-        break;
-    default:
-        break;
-    }
+    /* disconnect */
+    qemu_irq rdy;
+    rdy = ot_csnrg_connect_hw_app(c->device, c->appid, NULL, NULL, NULL);
+    g_assert(!rdy);
 
-    ot_edn_send_uninstanciate_cmd(s);
-}
-
-static void ot_edn_complete_sw_req(OtEDNState *s)
-{
-    s->sw_cmd_ready = true;
-    s->regs[R_INTR_STATE] |= INTR_EDN_CMD_REQ_DONE_BIT_MASK;
-    ot_edn_update_irqs(s);
-}
-
-static void ot_edn_dispatch(OtEDNState *s)
-{
-    OtEDNCSRNG *c = &s->rng;
-
-    if (ot_edn_is_boot_req_mode(s)) {
-        xtrace_ot_edn_dinfo(c->appid, "Dispatch in boot mode",
-                            c->rem_packet_count);
-        s->reseed_counter = s->regs[R_MAX_NUM_REQS_BETWEEN_RESEEDS];
-        ot_edn_change_state(s, EDN_IDLE);
-        return;
-    }
-
-    if (ot_edn_is_sw_port_mode(s)) {
-        xtrace_ot_edn_dinfo(c->appid, "Dispatch in sw port mode", 0);
-        ot_edn_complete_sw_req(s);
-        return;
-    }
-
-    xtrace_ot_edn_dinfo(c->appid, "Dispatch in auto mode", c->rem_packet_count);
-    if (s->reseed_counter == 0) {
-        ot_edn_change_state(s, EDN_AUTO_CAPT_RESEED_CNT);
-        ot_edn_send_reseed_cmd(s);
-        s->reseed_counter = s->regs[R_MAX_NUM_REQS_BETWEEN_RESEEDS];
-    } else {
-        ot_edn_change_state(s, EDN_AUTO_CAPT_GEN_CNT);
-        ot_edn_send_generate_cmd(s);
-    }
+    c->genbits_ready = NULL;
 }
 
 static void ot_edn_clean_up(OtEDNState *s, bool discard_requests)
 {
     OtEDNCSRNG *c = &s->rng;
 
+    trace_ot_edn_clean_up(c->appid, discard_requests);
+
     c->instantiated = false;
     s->sw_cmd_ready = false;
-    s->rng.last_cmd_status = CSRNG_STATUS_SUCCESS;
-    s->reseed_counter = 0;
+    c->hw_cmd_status = CSRNG_STATUS_SUCCESS;
+    c->sw_cmd_status = CSRNG_STATUS_SUCCESS;
+    c->hw_ack = false;
+    c->sw_ack = false;
+    s->recov_alert_sts = 0u;
+    s->max_reqs_cnt = 0;
     memset(c->buffer, 0, sizeof(*c->buffer));
     ot_fifo32_reset(&c->bits_fifo);
-    ot_fifo32_reset(&c->sw_cmd_fifo);
     ot_edn_update_irqs(s);
     ot_edn_update_alerts(s);
 
@@ -862,10 +885,184 @@ static void ot_edn_clean_up(OtEDNState *s, bool discard_requests)
         ot_fifo32_reset(&s->endpoints[epix].fifo);
         s->endpoints[epix].fips = false;
     }
-    if (c->genbits_ready) {
-        qemu_set_irq(c->genbits_ready, 0);
-    }
+
+    bool accept_entropy = ot_edn_update_genbits_ready(s);
+    g_assert(!accept_entropy);
+    c->genbits_ready = NULL;
+
     ot_edn_change_state(s, EDN_IDLE);
+}
+
+static bool ot_edn_update_mode(OtEDNState *s)
+{
+    if (!ot_edn_is_enabled(s)) {
+        if (s->state != EDN_IDLE && s->state != EDN_ERROR) {
+            ot_edn_change_state(s, EDN_IDLE);
+            ot_edn_handle_disable(s);
+        }
+        return true;
+    }
+
+    /* EDN is enabled */
+
+    OtEDNCSRNG *c = &s->rng;
+
+    if (s->state == EDN_IDLE) {
+        if (ot_edn_is_boot_req_mode(s)) {
+            trace_ot_edn_enable(c->appid, "boot mode");
+            ot_edn_change_state(s, EDN_BOOT_LOAD_INS);
+            ot_edn_send_boot_req(s, R_BOOT_INS_CMD);
+        } else if (ot_edn_is_auto_req_mode(s)) {
+            trace_ot_edn_enable(c->appid, "auto mode");
+            s->sw_cmd_ready = true;
+            ot_edn_change_state(s, EDN_AUTO_LOAD_INS);
+        } else {
+            trace_ot_edn_enable(c->appid, "sw mode");
+            s->sw_cmd_ready = true;
+            ot_edn_reset_replay_fifos(s);
+            ot_edn_change_state(s, EDN_SW_PORT_MODE);
+        }
+        return true;
+    }
+
+    if (s->state == EDN_BOOT_DONE) {
+        trace_ot_edn_enable(c->appid, "boot uninstantiate");
+        ot_edn_change_state(s, EDN_BOOT_LOAD_UNI);
+        ot_edn_send_boot_uninstanciate_cmd(s);
+        return true;
+    }
+
+    return s->state == EDN_SW_PORT_MODE;
+}
+
+static void ot_edn_handle_ctrl(OtEDNState *s, uint32_t val32)
+{
+#define CHECK_MULTIBOOT(_s_, _r_, _b_) \
+    ot_edn_check_multibitboot((_s_), FIELD_EX32(val32, _r_, _b_), \
+                              ALERT_STATUS_BIT(_b_));
+    bool enable = CHECK_MULTIBOOT(s, CTRL, EDN_ENABLE);
+    bool boot_req_mode = CHECK_MULTIBOOT(s, CTRL, BOOT_REQ_MODE);
+    bool auto_req_mode = CHECK_MULTIBOOT(s, CTRL, AUTO_REQ_MODE);
+    bool cmd_fifo_rst = CHECK_MULTIBOOT(s, CTRL, CMD_FIFO_RST);
+
+    bool disabling = (s->regs[R_CTRL] & R_CTRL_EDN_ENABLE_MASK) &&
+                     !(val32 & R_CTRL_EDN_ENABLE_MASK);
+
+    s->regs[R_CTRL] = val32;
+
+    OtEDNCSRNG *c = &s->rng;
+
+    trace_ot_edn_ctrl_in_state(c->appid, STATE_NAME(s->state), s->state, enable,
+                               boot_req_mode, auto_req_mode, cmd_fifo_rst);
+
+    if ((FIELD_EX32(s->regs[R_CTRL], CTRL, CMD_FIFO_RST) ==
+         OT_MULTIBITBOOL4_TRUE) ||
+        disabling) {
+        ot_edn_reset_replay_fifos(s);
+    }
+
+    if (disabling) {
+        ot_edn_clean_up(s, true);
+    }
+
+    if (!ot_edn_update_mode(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %u: EDN in %s, write 0x%08x to CTRL is delayed\n",
+                      __func__, c->appid, STATE_NAME(s->state), val32);
+    }
+}
+
+static void ot_edn_complete_sw_req(OtEDNState *s, OtCSRNGCmdStatus cmd_status)
+{
+    OtEDNCSRNG *c = &s->rng;
+
+    c->sw_cmd_status = cmd_status;
+    c->sw_ack = true;
+    s->sw_cmd_ready = cmd_status == CSRNG_STATUS_SUCCESS;
+    s->regs[R_INTR_STATE] |= INTR_EDN_CMD_REQ_DONE_MASK;
+
+    ot_edn_update_irqs(s);
+}
+
+static void ot_edn_handle_sw_cmd_req(OtEDNState *s, uint32_t value)
+{
+    OtEDNCSRNG *c = &s->rng;
+
+    if (!ot_edn_is_sw_cmd_mode(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %u: ignore SW REQ in %s\n",
+                      __func__, c->appid, STATE_NAME(s->state));
+        return;
+    }
+
+    ot_edn_connect_csrng(s);
+
+    c->sw_ack = false;
+
+    trace_ot_edn_push_csrng_command(c->appid, value);
+    OtCSRNGCmdStatus res = ot_csrng_push_command(c->device, c->appid, value);
+    if (res != CSRNG_STATUS_SUCCESS) {
+        xtrace_ot_edn_error(c->appid, "CSRNG rejected command");
+        s->sw_cmd_ready = false;
+        s->regs[R_RECOV_ALERT_STS] |= R_RECOV_ALERT_STS_CSRNG_ACK_ERR_MASK;
+        ot_edn_change_state(s, EDN_REJECT_CSRNG_ENTROPY);
+        ot_edn_complete_sw_req(s, res);
+        ot_edn_update_alerts(s);
+        return;
+    }
+
+    if (s->state == EDN_SW_PORT_MODE) {
+        if (s->sw_cmd_ready) {
+            /*
+             * first word for this command sequence:
+             * 1. value contains the actual command
+             * 2. flag SW command as not ready till the command is completed
+             */
+            s->sw_cmd_ready = false;
+            uint32_t command = FIELD_EX32(value, OT_CSNRG_CMD, ACMD);
+            if (command == OT_CSRNG_CMD_GENERATE) {
+                c->rem_packet_count = FIELD_EX32(value, OT_CSNRG_CMD, GLEN);
+                xtrace_ot_edn_dinfo(c->appid, "SW generation w/ packets",
+                                    c->rem_packet_count);
+                ot_edn_update_genbits_ready(s);
+                for (unsigned epix = 0; epix < ARRAY_SIZE(s->endpoints);
+                     epix++) {
+                    s->endpoints[epix].gen_count = 0;
+                }
+            }
+        }
+    }
+
+    if (s->state == EDN_AUTO_LOAD_INS) {
+        ot_edn_change_state(s, EDN_AUTO_FIRST_ACK_WAIT);
+    }
+}
+
+static void ot_edn_auto_dispatch(OtEDNState *s)
+{
+    const OtEDNCSRNG *c = &s->rng;
+
+    bool auto_req_mode = ot_edn_is_auto_req_mode(s);
+    trace_ot_edn_auto_dispatch(c->appid, auto_req_mode, s->max_reqs_cnt);
+
+    ot_edn_update_irqs(s);
+
+    if (!auto_req_mode) {
+        ot_edn_change_state(s, EDN_IDLE);
+        ot_edn_reset_replay_fifos(s);
+        ot_edn_update_mode(s);
+        return;
+    }
+
+    if (s->state == EDN_AUTO_DISPATCH) {
+        if (s->max_reqs_cnt == 0) {
+            ot_edn_change_state(s, EDN_AUTO_CAPT_RESEED_CNT);
+            ot_edn_send_auto_reseed_cmd(s);
+            s->max_reqs_cnt = s->regs[R_MAX_NUM_REQS_BETWEEN_RESEEDS];
+        } else {
+            ot_edn_change_state(s, EDN_AUTO_CAPT_GEN_CNT);
+            ot_edn_send_auto_generate_cmd(s);
+        }
+    }
 }
 
 static void ot_edn_fill_bits(void *opaque, const uint32_t *bits, bool fips)
@@ -880,8 +1077,8 @@ static void ot_edn_fill_bits(void *opaque, const uint32_t *bits, bool fips)
         break;
     default:
         xtrace_ot_edn_error(c->appid, "unexpected state");
+        s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_MAIN_SM_ERR_MASK;
         ot_edn_change_state(s, EDN_ERROR);
-        qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_PANIC, 1);
         break;
     }
 
@@ -896,7 +1093,7 @@ static void ot_edn_fill_bits(void *opaque, const uint32_t *bits, bool fips)
             xtrace_ot_edn_error(c->appid, "entropy input fifo overflow");
             s->regs[R_ERR_CODE] |= R_ERR_CODE_SFIFO_GENCMD_ERR_MASK |
                                    R_ERR_CODE_FIFO_WRITE_ERR_MASK;
-            s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_BIT_MASK;
+            s->regs[R_INTR_STATE] |= INTR_EDN_FATAL_ERR_MASK;
             ot_edn_update_irqs(s);
             ot_edn_update_alerts(s);
             return;
@@ -996,76 +1193,76 @@ static void ot_edn_csrng_ack_irq(void *opaque, int n, int level)
 
     trace_ot_edn_csrng_ack(c->appid, STATE_NAME(s->state), level);
 
-    OtCsrngCmd last_cmd = ot_edn_get_last_csrng_command(s);
     /*
      * cleaning up the first world would be enough, clearing the whole buffer
      * help debugging
      */
     memset(c->buffer, 0, sizeof(*c->buffer));
 
-    c->last_cmd_status =
-        level != 0 ? CSRNG_STATUS_INVALID_ACMD : CSRNG_STATUS_SUCCESS;
+    OtCSRNGCmdStatus cmd_status;
 
-    if (level) {
-        xtrace_ot_edn_error(c->appid, "last command failed");
-        ot_edn_change_state(s, EDN_ERROR);
-        /* TODO: better error handling is required (IRQ signalling, ...)*/
+    /* NOLINTNEXTLINE */
+    switch (level) {
+    case CSRNG_STATUS_SUCCESS:
+    case CSRNG_STATUS_INVALID_ACMD:
+    case CSRNG_STATUS_INVALID_GEN_CMD:
+    case CSRNG_STATUS_INVALID_CMD_SEQ:
+    case CSRNG_STATUS_RESEED_CNT_EXCEEDED:
+        cmd_status = (OtCSRNGCmdStatus)level;
+        break;
+    default:
+        qemu_log("%s: unexpected CSRNG ack value: %d\n", __func__, level);
         g_assert_not_reached();
         return;
     }
 
-    /* success */
-    switch (last_cmd) {
-    case OT_CSRNG_CMD_INSTANTIATE:
-        c->instantiated = true;
-        break;
-    case OT_CSRNG_CMD_UNINSTANTIATE:
-        if (ot_edn_is_sw_port_mode(s)) {
-            ot_edn_complete_sw_req(s);
+    if (cmd_status != CSRNG_STATUS_SUCCESS) {
+        trace_ot_edn_push_csrng_error(c->appid, level);
+        if (s->state != EDN_ERROR) {
+            ot_edn_change_state(s, EDN_REJECT_CSRNG_ENTROPY);
         }
-#ifdef EDN_DISCARD_PENDING_REQUEST_ON_DISABLE
-        ot_edn_clean_up(s, true);
-#else
-        ot_edn_clean_up(s, false);
-#endif
-        return;
-    default:
-        break;
     }
 
     switch (s->state) {
     case EDN_BOOT_INS_ACK_WAIT:
         ot_edn_change_state(s, EDN_BOOT_LOAD_GEN);
         ot_edn_send_boot_req(s, R_BOOT_GEN_CMD);
+        c->hw_cmd_status = cmd_status;
         break;
     case EDN_BOOT_GEN_ACK_WAIT:
-        /* todo: boot pulse/done only activated once the generation is over? */
         ot_edn_change_state(s, EDN_BOOT_PULSE);
         ot_edn_change_state(s, EDN_BOOT_DONE);
+        c->hw_cmd_status = cmd_status;
+        ot_edn_update_mode(s);
+        break;
+    case EDN_BOOT_UNI_ACK_WAIT:
+        ot_edn_reset_replay_fifos(s);
+        ot_edn_change_state(s, EDN_IDLE);
+        c->hw_cmd_status = cmd_status;
+        ot_edn_update_mode(s);
         break;
     case EDN_AUTO_FIRST_ACK_WAIT:
         ot_edn_change_state(s, EDN_AUTO_DISPATCH);
-        ot_edn_dispatch(s);
+        ot_edn_complete_sw_req(s, cmd_status);
+        ot_edn_auto_dispatch(s);
         break;
     case EDN_AUTO_ACK_WAIT:
         ot_edn_change_state(s, EDN_AUTO_DISPATCH);
-        ot_edn_dispatch(s);
+        c->hw_cmd_status = cmd_status;
+        ot_edn_auto_dispatch(s);
         break;
     case EDN_SW_PORT_MODE:
-        ot_edn_dispatch(s);
+        ot_edn_complete_sw_req(s, cmd_status);
         break;
     default:
-        trace_ot_edn_invalid_state(c->appid, __func__, STATE_NAME(s->state),
-                                   s->state);
-        s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_ACK_SM_ERR_MASK;
-        ot_edn_update_alerts(s);
-        g_assert_not_reached();
+        break;
     }
 }
 
 static uint64_t ot_edn_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtEDNState *s = opaque;
+    OtEDNCSRNG *c = &s->rng;
     (void)size;
     uint32_t val32;
 
@@ -1084,15 +1281,22 @@ static uint64_t ot_edn_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_ERR_CODE_TEST:
         val32 = s->regs[reg];
         break;
-    case R_SW_CMD_STS: {
-        uint32_t rdy = (uint32_t)ot_edn_is_cmd_rdy(s, false);
-        uint32_t reg_rdy = (uint32_t)ot_edn_is_cmd_rdy(s, true);
-        val32 = s->regs[R_SW_CMD_STS];
-        val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_STS, s->rng.last_cmd_status);
-        val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_RDY, rdy);
-        val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_REG_RDY, reg_rdy);
+    case R_HW_CMD_STS:
+        val32 = FIELD_DP32(0u, HW_CMD_STS, BOOT_MODE, ot_edn_is_boot_mode(s));
+        val32 =
+            FIELD_DP32(val32, HW_CMD_STS, AUTO_MODE, ot_edn_is_auto_mode(s));
+        val32 =
+            FIELD_DP32(val32, HW_CMD_STS, CMD_TYPE, (uint32_t)c->hw_cmd_type);
+        val32 = FIELD_DP32(val32, HW_CMD_STS, CMD_ACK, c->hw_ack);
+        val32 = FIELD_DP32(val32, HW_CMD_STS, CMD_STS, c->hw_cmd_status);
         break;
-    }
+    case R_SW_CMD_STS:
+        val32 =
+            FIELD_DP32(0u, SW_CMD_STS, CMD_REG_RDY, ot_edn_is_cmd_reg_rdy(s));
+        val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_RDY, ot_edn_is_cmd_rdy(s));
+        val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_ACK, c->sw_ack);
+        val32 = FIELD_DP32(val32, SW_CMD_STS, CMD_STS, c->sw_cmd_status);
+        break;
     case R_MAIN_SM_STATE:
         switch (s->state) {
         case EDN_IDLE ... EDN_ERROR:
@@ -1126,10 +1330,6 @@ static uint64_t ot_edn_regs_read(void *opaque, hwaddr addr, unsigned size)
 
     return (uint64_t)val32;
 };
-
-#define CHECK_MULTIBOOT(_s_, _r_, _b_) \
-    ot_edn_check_multibitboot((_s_), FIELD_EX32(s->regs[R_##_r_], _r_, _b_), \
-                              ALERT_STATUS_BIT(_b_));
 
 static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                               unsigned size)
@@ -1170,76 +1370,20 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] &= val32;
         break;
     case R_CTRL:
-        if (s->regs[R_REGWEN]) {
-            val32 &= CTRL_MASK;
-            s->regs[reg] = val32;
-            CHECK_MULTIBOOT(s, CTRL, EDN_ENABLE);
-            CHECK_MULTIBOOT(s, CTRL, BOOT_REQ_MODE);
-            CHECK_MULTIBOOT(s, CTRL, AUTO_REQ_MODE);
-            CHECK_MULTIBOOT(s, CTRL, CMD_FIFO_RST);
-            if (FIELD_EX32(s->regs[reg], CTRL, CMD_FIFO_RST) ==
-                OT_MULTIBITBOOL4_TRUE) {
-                ot_fifo32_reset(&s->rng.cmd_gen_fifo);
-                ot_fifo32_reset(&s->rng.cmd_reseed_fifo);
-            }
-            trace_ot_edn_ctrl_in_state(c->appid, STATE_NAME(s->state),
-                                       s->state);
-            if (s->state == EDN_IDLE) {
-                if (ot_edn_is_enabled(s)) {
-                    if (ot_edn_is_boot_req_mode(s)) {
-                        trace_ot_edn_enable(c->appid, "boot mode");
-                        ot_edn_change_state(s, EDN_BOOT_LOAD_INS);
-                        ot_edn_send_boot_req(s, R_BOOT_INS_CMD);
-                    } else if (ot_edn_is_auto_req_mode(s)) {
-                        trace_ot_edn_enable(c->appid, "auto mode");
-                        ot_edn_change_state(s, EDN_AUTO_LOAD_INS);
-                        ot_edn_try_auto_instantiate(s);
-                    } else {
-                        trace_ot_edn_enable(c->appid, "sw mode");
-                        ot_fifo32_reset(&c->sw_cmd_fifo);
-                        s->sw_cmd_ready = true;
-                        ot_edn_change_state(s, EDN_SW_PORT_MODE);
-                    }
-                }
-            } else if (ot_edn_is_disabled(s)) {
-                OtCsrngCmd last_cmd = ot_edn_get_last_csrng_command(s);
-                /* do not pile up uninstanciation requests */
-                if (last_cmd != OT_CSRNG_CMD_UNINSTANTIATE) {
-                    trace_ot_edn_enable(c->appid, "disabling");
-                    ot_edn_handle_disable(s);
-                }
-            }
-        } else {
+        if (!s->regs[R_REGWEN]) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "Cannot change CTRL, REGWEN disabled");
+            break;
         }
+        val32 &= CTRL_MASK;
+        ot_edn_handle_ctrl(s, val32);
         break;
     case R_BOOT_INS_CMD:
     case R_BOOT_GEN_CMD:
         s->regs[reg] = val32;
         break;
     case R_SW_CMD_REQ:
-        s->regs[R_SW_CMD_STS] &= ~R_SW_CMD_STS_CMD_ACK_MASK;
-        /* ignore all sw commands in auto req mode once instantiated */
-        if (ot_edn_is_auto_req_mode(s) && c->instantiated) {
-            xtrace_ot_edn_dinfo(c->appid, "ignore SW REQ", c->appid);
-            break;
-        }
-        if (!ot_fifo32_is_full(&c->sw_cmd_fifo)) {
-            ot_fifo32_push(&c->sw_cmd_fifo, val32);
-            if (s->state == EDN_AUTO_LOAD_INS) {
-                ot_edn_try_auto_instantiate(s);
-                break;
-            }
-            if (ot_edn_is_sw_port_mode(s)) {
-                ot_edn_try_sw_request(s);
-                break;
-            }
-        } else {
-            s->regs[R_ERR_CODE] |= R_ERR_CODE_FIFO_WRITE_ERR_MASK;
-            ot_edn_update_alerts(s);
-            xtrace_ot_edn_error(c->appid, "sw fifo full");
-        }
+        ot_edn_handle_sw_cmd_req(s, val32);
         break;
     case R_RESEED_CMD:
         if (ot_fifo32_is_full(&c->cmd_reseed_fifo)) {
@@ -1260,15 +1404,24 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_MAX_NUM_REQS_BETWEEN_RESEEDS:
         s->regs[reg] = val32;
-        s->reseed_counter = val32;
+        s->max_reqs_cnt = val32;
         break;
     case R_RECOV_ALERT_STS:
         val32 &= RECOV_ALERT_STS_MASK;
-        s->regs[reg] = val32;
+        s->regs[reg] &= val32; /* rw0c */
+        s->recov_alert_sts &= val32;
+        ot_edn_update_alerts(s);
         break;
     case R_ERR_CODE_TEST:
         val32 &= R_ERR_CODE_TEST_VAL_MASK;
         s->regs[reg] = val32;
+        if ((1u << val32) & ERR_CODE_ACTIVE_MASK) {
+            if (s->state != EDN_ERROR) {
+                s->regs[R_ERR_CODE] |= 1u << val32;
+                ot_edn_change_state(s, EDN_ERROR);
+            }
+        }
+        ot_edn_update_irqs(s);
         ot_edn_update_alerts(s);
         break;
     case R_SW_CMD_STS:
@@ -1315,8 +1468,6 @@ static void ot_edn_reset(DeviceState *dev)
 
     ot_edn_clean_up(s, true);
 
-    /* do not reset connection info since reset order is not known */
-    (void)c->genbits_ready;
     ot_fifo32_reset(&c->cmd_gen_fifo);
     ot_fifo32_reset(&c->cmd_reseed_fifo);
 
@@ -1347,7 +1498,6 @@ static void ot_edn_init(Object *obj)
     s->ep_bh = qemu_bh_new(&ot_edn_handle_ep_request, s);
 
     ot_fifo32_create(&c->bits_fifo, OT_CSRNG_PACKET_WORD_COUNT * 2u);
-    ot_fifo32_create(&c->sw_cmd_fifo, OT_CSRNG_CMD_WORD_MAX);
     ot_fifo32_create(&c->cmd_gen_fifo, OT_CSRNG_CMD_WORD_MAX);
     ot_fifo32_create(&c->cmd_reseed_fifo, OT_CSRNG_CMD_WORD_MAX);
 
