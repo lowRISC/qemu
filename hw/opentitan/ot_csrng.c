@@ -2,6 +2,7 @@
  * QEMU OpenTitan Cryptographically Secure Random Number Generator
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -28,7 +29,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/guest-random.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qemu/queue.h"
@@ -51,6 +51,7 @@
 
 #define PARAM_NUM_IRQS   4u
 #define PARAM_NUM_ALERTS 2u
+#define N_APP_COUNT      (OT_CSRNG_HW_APP_MAX + 1u)
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
@@ -84,16 +85,16 @@ REG32(GENBITS_VLD, 0x30u)
     FIELD(GENBITS_VLD, GENBITS_FIPS, 1u, 1u)
 REG32(GENBITS, 0x34u)
 REG32(INT_STATE_READ_ENABLE, 0x38u)
-    FIELD(INT_STATE_READ_ENABLE, INT_STATE_READ_ENABLE, 0u, 3u)
+    FIELD(INT_STATE_READ_ENABLE, VAL, 0u, N_APP_COUNT)
 REG32(INT_STATE_READ_ENABLE_REGWEN, 0x3cu)
-    FIELD(INT_STATE_READ_ENABLE, INT_STATE_READ_ENABLE_REGWEN, 0u, 1u)
+    FIELD(INT_STATE_READ_ENABLE_REGWEN, EN, 0u, 1u)
 REG32(INT_STATE_NUM, 0x40u)
     FIELD(INT_STATE_NUM, VAL, 0u, 4u)
 REG32(INT_STATE_VAL, 0x44u)
 REG32(FIPS_FORCE, 0x48u)
-    FIELD(FIPS_FORCE, FIPS_FORCE, 0u, 2u)
+    FIELD(FIPS_FORCE, VAL, 0u, N_APP_COUNT)
 REG32(HW_EXC_STS, 0x4cu)
-    FIELD(HW_EXC_STS, HW_EXC_STS, 0u, 16u)
+    FIELD(HW_EXC_STS, VAL, 0u, 16u)
 REG32(RECOV_ALERT_STS, 0x50u)
     FIELD(RECOV_ALERT_STS, ENABLE_FIELD_ALERT, 0u, 1u)
     FIELD(RECOV_ALERT_STS, SW_APP_ENABLE_FIELD_ALERT, 1u, 1u)
@@ -152,7 +153,7 @@ REG32(MAIN_SM_STATE, 0x5cu)
     (R_ALERT_TEST_RECOV_ALERT_MASK | R_ALERT_TEST_FATAL_ALERT_MASK)
 #define CTRL_MASK \
     (R_CTRL_ENABLE_MASK | R_CTRL_SW_APP_ENABLE_MASK | \
-     R_CTRL_READ_INT_STATE_MASK)
+     R_CTRL_READ_INT_STATE_MASK | R_CTRL_FIPS_FORCE_ENABLE_MASK)
 #define GENBITS_VLD_MASK \
     (R_GENBITS_VLD_GENBITS_VLD_MASK | R_GENBITS_VLD_GENBITS_FIPS_MASK)
 #define RECOV_ALERT_STS_MASK \
@@ -172,6 +173,16 @@ REG32(MAIN_SM_STATE, 0x5cu)
 
 #define OT_CSRNG_AES_BLOCK_WORD  (OT_CSRNG_AES_BLOCK_SIZE / sizeof(uint32_t))
 #define OT_CSRNG_AES_BLOCK_DWORD (OT_CSRNG_AES_BLOCK_SIZE / sizeof(uint64_t))
+
+/*
+ * Should be limited to OT_CSRNG_CMD_WORD_MAX, but the HW does not enforce it
+ * so be sure to accept CLEN up to 15, not 12. CLEN being coded on 4 bits, and
+ * command using 1 slot, the actual CLEN is limited to 15. HW ignores the
+ * trailing additional data words ([12..15])
+ */
+#define CMD_FIFO_CAPACITY (R_OT_CSNRG_CMD_CLEN_MASK + 1u)
+
+#define SW_INSTANCE_ID OT_CSRNG_HW_APP_MAX
 
 #define ALERT_STATUS_BIT(_x_) R_RECOV_ALERT_STS_##_x_##_FIELD_ALERT_MASK
 
@@ -231,8 +242,6 @@ static_assert(OT_CSRNG_AES_BLOCK_SIZE + OT_CSRNG_AES_KEY_SIZE ==
 #define xtrace_ot_csrng_show_buffer(_id_, _msg_, _buf_, _len_) \
     ot_csrng_show_buffer(__func__, __LINE__, _id_, _msg_, _buf_, _len_)
 
-#define SW_INSTANCE_ID OT_CSRNG_HW_APP_MAX
-
 #define ENTROPY_SRC_INITIAL_REQUEST_COUNT 5u
 
 enum {
@@ -243,12 +252,27 @@ enum {
 
 static_assert(ALERT_COUNT == PARAM_NUM_ALERTS, "Invalid alert count");
 
+/*
+ * Command execution result.
+ *
+ * Zero value signals the success and immediate completion of a command
+ * Positive values signal a deferred completion of a command
+ * Negative values signal an error, encoding a OtCSRNGCmdStatus value
+ */
 typedef enum {
-    CSRNG_CMD_STALLED = -2, /* entropy stack is stalled */
-    CSRNG_CMD_ERROR = -1, /* command error, not recoverable */
-    CSRNG_CMD_OK = 0, /* command completed ok */
-    CSRNG_CMD_RETRY = 1, /* command cannot be executed for now */
-    CSRNG_CMD_DEFERRED = 2, /* command completion deferred */
+    /* entropy stack is stalled */
+    CSRNG_CMD_STALLED = -CSRNG_STATUS_COUNT,
+    /* command errors, not recoverable */
+    CSRNG_CMD_RESEED_CNT_EXCEEDED = -CSRNG_STATUS_RESEED_CNT_EXCEEDED,
+    CSRNG_CMD_INVALID_CMD_SEQ = -CSRNG_STATUS_INVALID_CMD_SEQ,
+    CSRNG_CMD_INVALID_GEN_CMD = -CSRNG_STATUS_INVALID_GEN_CMD,
+    CSRNG_CMD_INVALID_ACMD = -CSRNG_STATUS_INVALID_ACMD,
+    /* command completed ok */
+    CSRNG_CMD_OK = 0,
+    /* command cannot be executed for now */
+    CSRNG_CMD_RETRY = 1,
+    /* command completion deferred */
+    CSRNG_CMD_DEFERRED = 2,
 } OtCSRNDCmdResult;
 
 typedef enum {
@@ -275,12 +299,12 @@ typedef struct {
     uint8_t key[OT_CSRNG_AES_KEY_SIZE];
     uint32_t material[OT_CSRNG_SEED_WORD_COUNT];
     unsigned material_len; /* in word count */
-    /* See https://github.com/lowRISC/opentitan/issues/16499 */
-    unsigned reseed_counter;
+    unsigned reseed_counter; /* generate command count since last reseed */
     unsigned rem_packet_count; /* remaining packets to generate */
     bool instantiated;
     bool seeded; /* ready to generate randomness */
     bool fips;
+    bool force_fips;
 } OtCSRNGDrng;
 
 typedef struct OtCSRNGInstance {
@@ -319,7 +343,7 @@ struct OtCSRNGState {
     bool enabled;
     bool sw_app_granted;
     bool read_int_granted;
-    bool es_available;
+    bool es_available; /* guest warning if entropy power cycling is invalid */
     uint32_t scheduled_cmd;
     unsigned entropy_delay;
     unsigned es_retry_count;
@@ -334,16 +358,25 @@ struct OtCSRNGState {
     OtOTPState *otp_ctrl;
 };
 
+/* clang-format off */
 static const uint8_t OtCSRNGFsmStateCode[] = {
-    [CSRNG_IDLE] = 0b01001110,           [CSRNG_PARSE_CMD] = 0b10111011,
-    [CSRNG_INSTANT_PREP] = 0b11000001,   [CSRNG_INSTANT_REQ] = 0b01010100,
-    [CSRNG_RESEED_PREP] = 0b11011101,    [CSRNG_RESEED_REQ] = 0b01011011,
-    [CSRNG_GENERATE_PREP] = 0b11101111,  [CSRNG_GENERATE_REQ] = 0b00100100,
-    [CSRNG_UPDATE_PREP] = 0b00110001,    [CSRNG_UPDATE_REQ] = 0b10010000,
-    [CSRNG_UNINSTANT_PREP] = 0b11110110, [CSRNG_UNINSTANT_REQ] = 0b01100011,
-    [CSRNG_CLR_A_DATA] = 0b00000010,     [CSRNG_CMD_COMP_WAIT] = 0b10111100,
-    [CSRNG_ERROR] = 0b01111000
+    [CSRNG_IDLE]           = 0b01001110, // 0x4e: idle
+    [CSRNG_PARSE_CMD]      = 0b10111011, // 0xbb: parse the cmd
+    [CSRNG_INSTANT_PREP]   = 0b11000001, // 0xc1: instantiate prep
+    [CSRNG_INSTANT_REQ]    = 0b01010100, // 0x54: instantiate request
+    [CSRNG_RESEED_PREP]    = 0b11011101, // 0xdd: reseed prep
+    [CSRNG_RESEED_REQ]     = 0b01011011, // 0x5b: reseed request
+    [CSRNG_GENERATE_PREP]  = 0b11101111, // 0xef: generate prep
+    [CSRNG_GENERATE_REQ]   = 0b00100100, // 0x24: generate request
+    [CSRNG_UPDATE_PREP]    = 0b00110001, // 0x31: update prep
+    [CSRNG_UPDATE_REQ]     = 0b00100100, // 0x24: update request
+    [CSRNG_UNINSTANT_PREP] = 0b11110110, // 0xf6: uninstantiate prep
+    [CSRNG_UNINSTANT_REQ]  = 0b01100011, // 0x63: uninstantiate request
+    [CSRNG_CLR_A_DATA]     = 0b00000010, // 0x02: clear out the add. data fifo
+    [CSRNG_CMD_COMP_WAIT]  = 0b10111100, // 0xbc: wait for command to complete
+    [CSRNG_ERROR]          = 0b01111000  // 0x78: error state
 };
+/* clang-format on */
 
 #define STATE_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
 static const char *STATE_NAMES[] = {
@@ -378,12 +411,18 @@ static const char *STATE_NAMES[] = {
 static bool ot_csrng_check_multibitboot(OtCSRNGState *s, uint8_t mbbool,
                                         uint32_t alert_bit);
 static void ot_csrng_command_schedule(OtCSRNGState *s, OtCSRNGInstance *inst);
-static bool ot_csrng_instance_is_command_ready(OtCSRNGInstance *inst);
-static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res);
+static bool
+ot_csrng_instance_is_command_ready(const OtCSRNGInstance *inst, bool fatal);
+static void ot_csrng_complete_command(OtCSRNGInstance *inst,
+                                      OtCSRNGCmdStatus sts);
 static void ot_csrng_change_state_line(OtCSRNGState *s, OtCSRNGFsmState state,
                                        int line);
-static unsigned ot_csrng_get_slot(OtCSRNGInstance *inst);
-static bool ot_csrng_drng_is_instantiated(OtCSRNGInstance *inst);
+static unsigned ot_csrng_get_slot(const OtCSRNGInstance *inst);
+static bool ot_csrng_drng_is_instantiated(const OtCSRNGInstance *inst);
+static void ot_csrng_release_hw_app(OtCSRNGInstance *inst);
+static void ot_csrng_update_irqs(OtCSRNGState *s);
+static void ot_csrng_update_alerts(OtCSRNGState *s);
+
 static OtCSRNDCmdResult
 ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0);
 
@@ -391,58 +430,132 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0);
 /* Public API */
 /* -------------------------------------------------------------------------- */
 
-qemu_irq ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id,
-                                 qemu_irq req_sts, ot_csrng_genbit_filler_fn fn,
-                                 void *opaque)
+qemu_irq
+ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
+                        ot_csrng_genbit_filler_fn filler_fn, void *opaque)
 {
     g_assert(app_id < OT_CSRNG_HW_APP_MAX);
-    g_assert(req_sts);
-    g_assert(fn);
 
     OtCSRNGInstance *inst = &s->instances[app_id];
+
+    if (!filler_fn) {
+        if (inst->hw.filler) {
+            xtrace_ot_csrng_info("HW app was not connected", app_id);
+            return NULL;
+        }
+
+        trace_ot_csrng_disconnection(app_id, true);
+        ot_csrng_release_hw_app(inst);
+
+        return NULL;
+    }
+
+    g_assert(req_sts);
+
     /* if connection is invoked many times, there is no reason for changes */
     if (inst->hw.filler) {
-        g_assert(inst->hw.filler == fn);
+        g_assert(inst->hw.filler == filler_fn);
     }
     if (inst->hw.req_sts) {
         g_assert(inst->hw.req_sts == req_sts);
     }
-    inst->hw.filler = fn;
+
+    trace_ot_csrng_connection(app_id, inst->hw.filler == NULL);
+
+    inst->hw.filler = filler_fn;
     inst->hw.opaque = opaque;
     inst->hw.req_sts = req_sts;
-
-    trace_ot_csrng_connection(app_id);
 
     return qdev_get_gpio_in_named(DEVICE(s), TYPE_OT_CSRNG "-genbits_ready",
                                   (int)app_id);
 }
 
-int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
-                          const uint32_t *command)
+OtCSRNGCmdStatus ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
+                                       uint32_t word)
 {
     g_assert(app_id < OT_CSRNG_HW_APP_MAX);
 
     if (s->state == CSRNG_ERROR) {
-        return -1;
+        return CSRNG_STATUS_INVALID_CMD_SEQ;
     }
 
     OtCSRNGInstance *inst = &s->instances[app_id];
     g_assert(inst->hw.filler);
     g_assert(inst->hw.req_sts);
 
-    ot_fifo32_reset(&inst->cmd_fifo);
-    uint32_t acmd = FIELD_EX32(command[0], OT_CSNRG_CMD, ACMD);
-    uint32_t length = FIELD_EX32(command[0], OT_CSNRG_CMD, CLEN) + 1u;
+    /* FIFO is emptied in #ot_csrng_complete_command */
+    if (ot_fifo32_is_full(&inst->cmd_fifo)) {
+        xtrace_ot_csrng_error("Command FIFO is full");
+        return CSRNG_STATUS_INVALID_CMD_SEQ;
+    }
+
+    bool check_cmd = ot_fifo32_is_empty(&inst->cmd_fifo);
+
+    ot_fifo32_push(&inst->cmd_fifo, word);
+    uint32_t cmd = ot_fifo32_peek(&inst->cmd_fifo);
+
+    uint32_t acmd = FIELD_EX32(cmd, OT_CSNRG_CMD, ACMD);
+    uint32_t length = FIELD_EX32(cmd, OT_CSNRG_CMD, CLEN) + 1u;
+
+    if (check_cmd) {
+        /* NOLINTNEXTLINE */
+        switch (acmd) {
+        case OT_CSRNG_CMD_INSTANTIATE:
+        case OT_CSRNG_CMD_RESEED:
+            ot_csrng_check_multibitboot(s,
+                                        (uint8_t)FIELD_EX32(cmd, OT_CSNRG_CMD,
+                                                            FLAG0),
+                                        ALERT_STATUS_BIT(ACMD_FLAG0));
+            break;
+        case OT_CSRNG_CMD_GENERATE ... OT_CSRNG_CMD_UNINSTANTIATE:
+            break;
+        default:
+            xtrace_ot_csrng_error("Invalid command opcode");
+            ot_fifo32_reset(&inst->cmd_fifo);
+            return CSRNG_STATUS_INVALID_ACMD;
+        }
+
+        if (length > CMD_FIFO_CAPACITY) {
+            xtrace_ot_csrng_error("Invalid command length (overflow)");
+            /*
+             * as CLEN width cannot encode more than CMD_FIFO_CAPACITY, this
+             * error should never occur.
+             */
+            g_assert_not_reached();
+        }
+    }
+
+    if (ot_fifo32_num_used(&inst->cmd_fifo) > length) {
+        xtrace_ot_csrng_error("Invalid command length (too many)");
+        /*
+         * as the FIFO should have been handled and emptied in a previous call
+         * to this function, this error should never occur.
+         */
+        g_assert_not_reached();
+    }
+    if (ot_fifo32_num_used(&inst->cmd_fifo) < length) {
+        /* more payload is expected */
+        return CSRNG_STATUS_SUCCESS;
+    }
+
     if (acmd == OT_CSRNG_CMD_GENERATE) {
-        uint32_t glen = FIELD_EX32(command[0], OT_CSNRG_CMD, GLEN);
+        uint32_t glen = FIELD_EX32(cmd, OT_CSNRG_CMD, GLEN);
         trace_ot_csrng_push_command(app_id, CMD_NAME(acmd), acmd, 'g', glen);
+
+        const OtCSRNGDrng *drng = &inst->drng;
+        if (drng->reseed_counter >= s->regs[R_RESEED_INTERVAL]) {
+            s->regs[R_INTR_STATE] |= INTR_CS_HW_INST_EXC_MASK;
+            s->regs[R_RECOV_ALERT_STS] |=
+                R_RECOV_ALERT_STS_CMD_STAGE_INVALID_RESEED_CNT_ALERT_MASK;
+            ot_fifo32_reset(&inst->cmd_fifo);
+            ot_csrng_update_irqs(s);
+            ot_csrng_update_alerts(s);
+            return CSRNG_STATUS_RESEED_CNT_EXCEEDED;
+        }
     } else {
         trace_ot_csrng_push_command(app_id, CMD_NAME(acmd), acmd, 'c', length);
     }
-    if (length > OT_CSRNG_CMD_WORD_MAX) {
-        xtrace_ot_csrng_error("Invalid command length");
-        return -1;
-    }
+
     if (acmd == OT_CSRNG_CMD_UNINSTANTIATE) {
         if (!ot_csrng_drng_is_instantiated(inst)) {
             /*
@@ -468,13 +581,9 @@ int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
         }
     }
 
-    while (length--) {
-        ot_fifo32_push(&inst->cmd_fifo, *command++);
-    }
-
     ot_csrng_command_schedule(s, inst);
 
-    return 0;
+    return CSRNG_STATUS_SUCCESS;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -530,18 +639,12 @@ static void ot_csrng_drng_clear_material(OtCSRNGInstance *inst)
     drng->material_len = 0;
 }
 
-static unsigned ot_csrng_drng_remaining_count(OtCSRNGInstance *inst)
+static unsigned ot_csrng_drng_remaining_count(const OtCSRNGInstance *inst)
 {
     return inst->drng.rem_packet_count;
 }
 
-static void ot_csrng_drng_set_count(OtCSRNGInstance *inst,
-                                    unsigned packet_count)
-{
-    inst->drng.rem_packet_count = packet_count;
-}
-
-static bool ot_csrng_drng_is_instantiated(OtCSRNGInstance *inst)
+static bool ot_csrng_drng_is_instantiated(const OtCSRNGInstance *inst)
 {
     return inst->drng.instantiated;
 }
@@ -562,7 +665,7 @@ static OtCSRNDCmdResult ot_csrng_drng_instantiate(
 {
     OtCSRNGDrng *drng = &inst->drng;
     if (drng->instantiated) {
-        return CSRNG_CMD_ERROR;
+        return CSRNG_CMD_INVALID_CMD_SEQ;
     }
 
     memset(drng->v_counter, 0, sizeof(drng->v_counter));
@@ -666,17 +769,24 @@ static void ot_csrng_drng_update(OtCSRNGInstance *inst)
 static OtCSRNDCmdResult
 ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
 {
+    OtCSRNGState *s = inst->parent;
     OtCSRNGDrng *drng = &inst->drng;
     g_assert(drng->instantiated);
 
+    unsigned slot = ot_csrng_get_slot(inst);
     drng->seeded = false;
 
     if (!flag0) {
-        if (!inst->parent->es_available) {
+        if (!s->es_available) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot request entropy w/o power cycling ES\n",
+                          "%s: Requesting entropy w/o power cycling ES\n",
                           __func__);
-            return CSRNG_CMD_ERROR;
+            /*
+             * Continue anyway as it seems HW does not enforce what is
+             * documented. Force the flag so the warning message is only
+             * shown once (it does not serve any other purpose).
+             */
+            s->es_available = true;
         }
 
         uint64_t buffer[OT_RANDOM_SRC_DWORD_COUNT];
@@ -684,25 +794,26 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
         unsigned len = drng->material_len * sizeof(uint32_t);
         memcpy(buffer, drng->material, MIN(len, sizeof(buffer)));
 
-        OtCSRNGState *s = inst->parent;
+
         uint64_t entropy[OT_RANDOM_SRC_DWORD_COUNT];
         int res;
         bool fips;
-        trace_ot_csrng_request_entropy(ot_csrng_get_slot(inst),
-                                       s->entropy_gennum);
+        trace_ot_csrng_request_entropy(slot, s->entropy_gennum);
         OtRandomSrcIfClass *cls = OT_RANDOM_SRC_IF_GET_CLASS(rand_dev);
         OtRandomSrcIf *randif = OT_RANDOM_SRC_IF(rand_dev);
         res = cls->get_random_values(randif, s->entropy_gennum, entropy, &fips);
         if (res) {
             s->entropy_delay = (res > 1) ? (unsigned)res : 0;
-            trace_ot_csrng_entropy_rejected(ot_csrng_get_slot(inst),
+            trace_ot_csrng_entropy_rejected(slot,
                                             res < 0 ? (res == -2 ? "stalled" :
                                                                    "error") :
                                                       "not ready",
                                             res);
-            return res < 0 ? (res == -2 ? CSRNG_CMD_STALLED : CSRNG_CMD_ERROR) :
+            return res < 0 ? (res == -2 ? CSRNG_CMD_STALLED :
+                                          CSRNG_CMD_RESEED_CNT_EXCEEDED) :
                              CSRNG_CMD_RETRY;
         }
+
         /* always perform XOR which is a no-op if material_len is zero */
         for (unsigned ix = 0; ix < OT_RANDOM_SRC_DWORD_COUNT; ix++) {
             buffer[ix] ^= entropy[ix];
@@ -716,9 +827,9 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
         drng->fips = false;
     }
 
-    drng->reseed_counter = 1u;
-
+    drng->reseed_counter = 0u;
     drng->seeded = true;
+    drng->force_fips = (bool)((s->regs[R_FIPS_FORCE] >> slot) & 0x1u);
 
     return CSRNG_CMD_OK;
 }
@@ -740,10 +851,11 @@ static void ot_csrng_drng_generate(OtCSRNGInstance *inst, uint32_t *out,
     xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "out", out,
                                 OT_CSRNG_AES_BLOCK_SIZE);
 
-    *fips = drng->fips;
+    *fips = drng->fips || drng->force_fips;
 
     if (!ot_csrng_drng_remaining_count(inst)) {
         ot_csrng_drng_update(inst);
+        /* last packet generation for the current command */
         drng->reseed_counter += 1u;
     }
 }
@@ -752,7 +864,7 @@ static void ot_csrng_drng_generate(OtCSRNGInstance *inst, uint32_t *out,
 /* Private implementation */
 /* -------------------------------------------------------------------------- */
 
-static unsigned ot_csrng_get_slot(OtCSRNGInstance *inst)
+static unsigned ot_csrng_get_slot(const OtCSRNGInstance *inst)
 {
     unsigned slot = (unsigned)(uintptr_t)(inst - &inst->parent->instances[0]);
     g_assert(slot <= SW_INSTANCE_ID);
@@ -771,6 +883,7 @@ static void ot_csrng_update_irqs(OtCSRNGState *s)
 static void ot_csrng_update_alerts(OtCSRNGState *s)
 {
     uint32_t level = s->regs[R_ALERT_TEST];
+    s->regs[R_ALERT_TEST] = 0u;
 
     if (__builtin_popcount(s->regs[R_RECOV_ALERT_STS])) {
         level |= 1u << ALERT_RECOVERABLE;
@@ -782,6 +895,7 @@ static void ot_csrng_update_alerts(OtCSRNGState *s)
 
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        ibex_irq_set(&s->alerts[ix], 0);
     }
 }
 
@@ -794,6 +908,8 @@ static void ot_csrng_change_state_line(OtCSRNGState *s, OtCSRNGFsmState state,
     s->state = state;
 
     if (s->state == CSRNG_ERROR) {
+        s->regs[R_INTR_STATE] |= INTR_CS_FATAL_ERR_MASK;
+        ot_csrng_update_irqs(s);
         ot_csrng_update_alerts(s);
     }
 }
@@ -844,36 +960,29 @@ static bool ot_csrng_is_in_queue(OtCSRNGInstance *inst)
                          cmd_request) == inst;
 }
 
-static bool ot_csrng_expedite_uninstantiation(OtCSRNGInstance *inst)
+static void ot_csrng_release_hw_app(OtCSRNGInstance *inst)
 {
-    /* check if the instance has been flagged for uninstantiation */
-    if (ot_fifo32_is_empty(&inst->cmd_fifo)) {
-        return false;
-    }
-
-    uint32_t cmd = ot_fifo32_peek(&inst->cmd_fifo);
-    uint32_t acmd = FIELD_EX32(cmd, OT_CSNRG_CMD, ACMD);
-    if (acmd != OT_CSRNG_CMD_UNINSTANTIATE) {
-        return false;
-    }
-
-    unsigned slot = ot_csrng_get_slot(inst);
-    trace_ot_csrng_expedite_uninstantiation(slot);
-
     /* remove the command from the queue since it is handled right here */
     OtCSRNGState *s = inst->parent;
-    QSIMPLEQ_REMOVE(&s->cmd_requests, inst, OtCSRNGInstance, cmd_request);
+    if (ot_csrng_is_in_queue(inst)) {
+        QSIMPLEQ_REMOVE(&s->cmd_requests, inst, OtCSRNGInstance, cmd_request);
+    }
 
     if (QSIMPLEQ_EMPTY(&s->cmd_requests)) {
         qemu_bh_cancel(s->cmd_scheduler);
         timer_del(s->entropy_scheduler);
     }
 
-    trace_ot_csrng_instantiate(slot, false);
+    unsigned slot = ot_csrng_get_slot(inst);
+    trace_ot_csrng_uninstantiate(slot, false);
     ot_csrng_drng_uninstantiate(inst);
-    ot_csrng_complete_command(inst, 0);
 
-    return true;
+    ot_fifo32_reset(&inst->cmd_fifo);
+    inst->defer_completion = false;
+
+    inst->hw.filler = NULL;
+    inst->hw.opaque = NULL;
+    inst->hw.req_sts = NULL;
 }
 
 static void ot_csrng_handle_enable(OtCSRNGState *s)
@@ -919,19 +1028,13 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
         for (unsigned ix = 0u; ix < OT_CSRNG_HW_APP_MAX; ix++) {
             OtCSRNGInstance *inst = &s->instances[ix];
             if (ot_csrng_drng_is_instantiated(inst)) {
-                /*
-                 * the instance may have received an unistantiation command
-                 * that has not been dequeued yet. If this is the case, proceed
-                 * with uninstantiation rather than rejecting the disablement of
-                 * the CSRNG
-                 */
-                if (!ot_csrng_expedite_uninstantiation(inst)) {
-                    qemu_log_mask(
-                        LOG_GUEST_ERROR,
-                        "%s: Cannot disable CSRNG as EDN #%u still active\n",
-                        __func__, ot_csrng_get_slot(inst));
-                    return;
-                }
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "%s: Forcing CSRNG disablement while EDN #%u "
+                              "still active\n",
+                              __func__, ot_csrng_get_slot(inst));
+
+                trace_ot_csrng_disconnection(ix, false);
+                ot_csrng_release_hw_app(inst);
             }
         }
         s->enabled = false;
@@ -955,22 +1058,24 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
                  * is an unstantiate command, in which case it is immediately
                  * completed
                  */
-                bool success;
+                OtCSRNGCmdStatus sts;
                 if (!ot_fifo32_is_empty(&inst->cmd_fifo)) {
                     uint32_t cmd = ot_fifo32_peek(&inst->cmd_fifo);
                     uint32_t acmd = FIELD_EX32(cmd, OT_CSNRG_CMD, ACMD);
-                    success = acmd == OT_CSRNG_CMD_UNINSTANTIATE;
+                    sts = acmd == OT_CSRNG_CMD_UNINSTANTIATE ?
+                              CSRNG_STATUS_SUCCESS :
+                              CSRNG_STATUS_INVALID_CMD_SEQ;
                 } else {
-                    success = false;
+                    sts = CSRNG_STATUS_INVALID_CMD_SEQ;
                 }
-                qemu_set_irq(inst->hw.req_sts, (int)!success);
+                qemu_set_irq(inst->hw.req_sts, (int)sts);
             }
 
             QSIMPLEQ_REMOVE_HEAD(&s->cmd_requests, cmd_request);
         }
 
         /* reset all instances */
-        for (unsigned ix = 0u; ix < OT_CSRNG_HW_APP_MAX + 1u; ix++) {
+        for (unsigned ix = 0u; ix < N_APP_COUNT; ix++) {
             inst = &s->instances[ix];
             ot_csrng_drng_uninstantiate(inst);
             ot_fifo32_reset(&inst->cmd_fifo);
@@ -1003,12 +1108,14 @@ static void ot_csrng_complete_sw_command(OtCSRNGInstance *inst, bool res)
     ot_csrng_update_irqs(s);
 }
 
-static void ot_csrng_complete_hw_command(OtCSRNGInstance *inst, int res)
+static void
+ot_csrng_complete_hw_command(OtCSRNGInstance *inst, OtCSRNGCmdStatus sts)
 {
-    qemu_set_irq(inst->hw.req_sts, res);
+    qemu_set_irq(inst->hw.req_sts, (int)sts);
 }
 
-static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res)
+static void ot_csrng_complete_command(OtCSRNGInstance *inst,
+                                      OtCSRNGCmdStatus sts)
 {
     uint32_t num;
     const uint32_t *buffer =
@@ -1032,19 +1139,14 @@ static void ot_csrng_complete_command(OtCSRNGInstance *inst, int res)
     trace_ot_csrng_show_command("complete", slot, CMD_NAME(acmd), acmd);
 
     if (slot == SW_INSTANCE_ID) {
-        trace_ot_csrng_complete_command(slot, "sw", CMD_NAME(acmd), acmd, res);
-        ot_csrng_complete_sw_command(inst, res);
+        trace_ot_csrng_complete_command(slot, "sw", CMD_NAME(acmd), acmd, sts);
+        ot_csrng_complete_sw_command(inst, sts);
     } else {
-        trace_ot_csrng_complete_command(slot, "hw", CMD_NAME(acmd), acmd, res);
-        ot_csrng_complete_hw_command(inst, res);
+        trace_ot_csrng_complete_command(slot, "hw", CMD_NAME(acmd), acmd, sts);
+        ot_csrng_complete_hw_command(inst, sts);
     }
 
-    if (res == 0) {
-        CHANGE_STATE(s, CSRNG_IDLE);
-    } else {
-        CHANGE_STATE(s, CSRNG_ERROR);
-        ot_csrng_update_alerts(s);
-    }
+    CHANGE_STATE(s, CSRNG_IDLE);
 }
 
 static OtCSRNDCmdResult
@@ -1052,7 +1154,7 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
 {
     OtCSRNGInstance *inst = &s->instances[slot];
 
-    trace_ot_csrng_instantiate(slot, true);
+    trace_ot_csrng_instantiate(slot);
 
     uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
     uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
@@ -1067,6 +1169,8 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
     buffer += 1u;
 
     if (clen) {
+        /* ignore trailing additional words, as HW does */
+        clen = MIN(clen, OT_CSRNG_CMD_WORD_MAX);
         xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
                                     clen * sizeof(uint32_t));
     }
@@ -1090,14 +1194,14 @@ ot_csrng_handle_uninstantiate(OtCSRNGState *s, unsigned slot)
 {
     OtCSRNGInstance *inst = &s->instances[slot];
 
-    trace_ot_csrng_instantiate(slot, false);
+    trace_ot_csrng_uninstantiate(slot, true);
 
     ot_csrng_drng_uninstantiate(inst);
 
     return CSRNG_CMD_OK;
 }
 
-static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
+static OtCSRNDCmdResult ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
 {
     OtCSRNGInstance *inst = &s->instances[slot];
 
@@ -1108,7 +1212,7 @@ static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
         xtrace_ot_csrng_error("generation for no packet");
         CHANGE_STATE(s, CSRNG_ERROR);
         ot_csrng_update_alerts(s);
-        return -1;
+        return CSRNG_CMD_INVALID_GEN_CMD;
     }
 
     uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
@@ -1119,6 +1223,9 @@ static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
                                ot_fifo32_num_used(&inst->cmd_fifo), &num);
         g_assert(num - 1u == clen);
         buffer += 1u;
+        /* ignore trailing additional words, as HW does */
+        clen = MIN(clen, OT_CSRNG_CMD_WORD_MAX);
+
         xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
                                     clen * sizeof(uint32_t));
         ot_csrng_drng_store_material(inst, buffer, clen);
@@ -1136,7 +1243,7 @@ static int ot_csrng_handle_generate(OtCSRNGState *s, unsigned slot)
         /* should we resume? */
     }
 
-    ot_csrng_drng_set_count(inst, packet_count);
+    inst->drng.rem_packet_count = packet_count;
 
     /*
      * do not ack command yet,
@@ -1163,6 +1270,8 @@ static OtCSRNDCmdResult ot_csrng_handle_reseed(OtCSRNGState *s, unsigned slot)
                                ot_fifo32_num_used(&inst->cmd_fifo), &num);
         g_assert(num - 1u == clen);
         buffer += 1u;
+        /* ignore trailing additional words, as HW does */
+        clen = MIN(clen, OT_CSRNG_CMD_WORD_MAX);
 
         xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
                                     clen * sizeof(uint32_t));
@@ -1197,6 +1306,8 @@ static OtCSRNDCmdResult ot_csrng_handle_update(OtCSRNGState *s, unsigned slot)
                                ot_fifo32_num_used(&inst->cmd_fifo), &num);
         g_assert(num - 1u == clen);
         buffer += 1u;
+        /* ignore trailing additional words, as HW does */
+        clen = MIN(clen, OT_CSRNG_CMD_WORD_MAX);
 
         xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "mat", buffer,
                                     clen * sizeof(uint32_t));
@@ -1275,7 +1386,7 @@ static void ot_csrng_hwapp_filler_bh(void *opaque)
          * its readiness status (only generate commands complete async.)
          */
         if (!ot_csrng_drng_remaining_count(inst)) {
-            ot_csrng_complete_command(inst, 0);
+            ot_csrng_complete_command(inst, CSRNG_STATUS_SUCCESS);
         }
     }
 }
@@ -1299,12 +1410,13 @@ static void ot_csrng_swapp_fill(OtCSRNGInstance *inst)
     } else {
         /* check if the instance is running an deferred completion command */
         if (inst->defer_completion) {
-            ot_csrng_complete_command(inst, 0);
+            ot_csrng_complete_command(inst, CSRNG_STATUS_SUCCESS);
         }
     }
 }
 
-static bool ot_csrng_instance_is_command_ready(OtCSRNGInstance *inst)
+static bool
+ot_csrng_instance_is_command_ready(const OtCSRNGInstance *inst, bool fatal)
 {
     /* there should be a full command stored in the command FIFO */
     if (ot_fifo32_is_empty(&inst->cmd_fifo)) {
@@ -1313,10 +1425,25 @@ static bool ot_csrng_instance_is_command_ready(OtCSRNGInstance *inst)
     uint32_t command = ot_fifo32_peek(&inst->cmd_fifo);
     uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
 
-    return ot_fifo32_num_used(&inst->cmd_fifo) == length;
+    bool is_ready = ot_fifo32_num_used(&inst->cmd_fifo) == length;
+
+    if (fatal && !is_ready) {
+        unsigned word_count = ot_fifo32_num_used(&inst->cmd_fifo);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %u: command 0x%06x empty: %u, length %u, exp: %u\n",
+                      __func__, ot_csrng_get_slot(inst), command,
+                      ot_fifo32_is_empty(&inst->cmd_fifo), word_count, length);
+        if (word_count < length) {
+            xtrace_ot_csrng_error("cannot execute an incomplete command");
+        } else {
+            xtrace_ot_csrng_error("cannot execute an overflowed command");
+        }
+    }
+
+    return is_ready;
 }
 
-static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
+static OtCSRNDCmdResult ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
 {
     OtCSRNGInstance *inst = &s->instances[slot];
 
@@ -1345,12 +1472,12 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
             R_RECOV_ALERT_STS_CMD_STAGE_INVALID_ACMD_ALERT_MASK;
         CHANGE_STATE(s, CSRNG_ERROR);
         ot_csrng_update_alerts(s);
-        return -1;
+        return CSRNG_CMD_INVALID_ACMD;
     }
 
     if (!s->enabled) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: not enabled\n", __func__);
-        return -1;
+        return CSRNG_CMD_INVALID_ACMD;
     }
 
     switch (acmd) {
@@ -1358,7 +1485,7 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
         if (ot_csrng_drng_is_instantiated(inst)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: instance %u already active\n",
                           __func__, slot);
-            return -1;
+            return CSRNG_CMD_INVALID_CMD_SEQ;
         }
         break;
     case OT_CSRNG_CMD_UNINSTANTIATE:
@@ -1369,11 +1496,11 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
                           __func__, slot);
             CHANGE_STATE(s, CSRNG_ERROR);
             ot_csrng_update_alerts(s);
-            return -1;
+            return CSRNG_CMD_INVALID_CMD_SEQ;
         }
     }
 
-    int res;
+    OtCSRNDCmdResult res;
 
     switch (acmd) {
     case OT_CSRNG_CMD_INSTANTIATE:
@@ -1428,6 +1555,7 @@ static void ot_csrng_command_schedule(OtCSRNGState *s, OtCSRNGInstance *inst)
                      __func__);
         s->regs[R_INTR_STATE] |= INTR_CS_HW_INST_EXC_MASK;
         ot_csrng_update_irqs(s);
+        g_assert(false);
         return;
     }
 
@@ -1460,13 +1588,7 @@ static void ot_csrng_command_scheduler(void *opaque)
 
     trace_ot_csrng_show_command("pop", slot, CMD_NAME(acmd), acmd);
 
-    if (!ot_csrng_instance_is_command_ready(inst)) {
-        xtrace_ot_csrng_error("cannot execute an incomplete command");
-        uint32_t length = FIELD_EX32(command, OT_CSNRG_CMD, CLEN) + 1u;
-        qemu_log_mask(LOG_GUEST_ERROR, "empty: %u, length %u, exp: %u\n",
-                      ot_fifo32_is_empty(&inst->cmd_fifo),
-                      ot_fifo32_num_used(&inst->cmd_fifo), length);
-
+    if (!ot_csrng_instance_is_command_ready(inst, true)) {
         g_assert_not_reached();
     }
 
@@ -1486,7 +1608,7 @@ static void ot_csrng_command_scheduler(void *opaque)
      * in this round.
      */
     trace_ot_csrng_command_scheduler(slot, "cmd ready, execute");
-    int res;
+    OtCSRNDCmdResult res;
     res = ot_csrng_handle_command(s, slot);
     switch (res) {
     case CSRNG_CMD_RETRY:
@@ -1507,10 +1629,16 @@ static void ot_csrng_command_scheduler(void *opaque)
         }
         /* do not complete command either */
         break;
-    case CSRNG_CMD_ERROR:
     case CSRNG_CMD_OK:
+        ot_csrng_complete_command(inst, CSRNG_STATUS_SUCCESS);
+        break;
     default:
-        ot_csrng_complete_command(inst, res);
+        trace_ot_csrng_reject_command(slot, command, res);
+        /*
+         * Negative res values are errors, encoding the type of command error.
+         * Convert the encoded error back into a OtCSRNGCmdStatus.
+         */
+        ot_csrng_complete_command(inst, -res);
         break;
     }
 
@@ -1534,7 +1662,19 @@ static void ot_csrng_command_scheduler(void *opaque)
 static uint32_t ot_csrng_read_state_db(OtCSRNGState *s)
 {
     unsigned appid = s->regs[R_INT_STATE_NUM];
-    if (appid > OT_CSRNG_HW_APP_MAX) {
+    if (appid >= N_APP_COUNT) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid appid %d\n", __func__,
+                      appid);
+        return 0;
+    }
+    if (!s->read_int_granted) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: read state db disabled\n",
+                      __func__);
+        return 0;
+    }
+    if (!((s->regs[R_INT_STATE_READ_ENABLE] >> appid) & 0x1)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: read state db not enable for %d\n",
+                      __func__, appid);
         return 0;
     }
 
@@ -1553,7 +1693,7 @@ static uint32_t ot_csrng_read_state_db(OtCSRNGState *s)
         break;
     case 5u ... 12u: /* Key */
         /* use big endian and reverse order to match OpenTitan order */
-        base = 12 - s->state_db_ix;
+        base = 12u - s->state_db_ix;
         val32 = ldl_be_p(&drng->key[base * sizeof(uint32_t)]);
         break;
     case 13u: /* Status + Compliance, only 8 LSBs matter */
@@ -1590,6 +1730,7 @@ static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_ENABLE:
     case R_REGWEN:
     case R_CTRL:
+    case R_RESEED_INTERVAL:
     case R_SW_CMD_STS:
     case R_INT_STATE_NUM:
     case R_HW_EXC_STS:
@@ -1598,8 +1739,17 @@ static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_ERR_CODE_TEST:
         val32 = s->regs[reg];
         break;
+    case R_RESEED_COUNTER_0:
+    case R_RESEED_COUNTER_1:
+    case R_RESEED_COUNTER_2: {
+        unsigned appid = reg - R_RESEED_COUNTER_0;
+        g_assert(appid < N_APP_COUNT);
+        inst = &s->instances[appid];
+        const OtCSRNGDrng *drng = &inst->drng;
+        val32 = drng->reseed_counter;
+    } break;
     case R_INT_STATE_VAL:
-        val32 = s->read_int_granted ? ot_csrng_read_state_db(s) : 0u;
+        val32 = ot_csrng_read_state_db(s);
         break;
     case R_MAIN_SM_STATE:
         switch (s->state) {
@@ -1698,52 +1848,53 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_REGWEN:
         val32 &= R_REGWEN_EN_MASK;
-        s->regs[reg] &= val32;
+        s->regs[reg] &= val32; /* rw0c */
         break;
     case R_CTRL:
-        if (s->regs[R_REGWEN]) {
-            uint32_t prev = s->regs[reg];
-            val32 &= CTRL_MASK;
-            s->regs[reg] = val32;
-            CHECK_MULTIBOOT(s, CTRL, ENABLE);
-            CHECK_MULTIBOOT(s, CTRL, SW_APP_ENABLE);
-            CHECK_MULTIBOOT(s, CTRL, READ_INT_STATE);
-            uint32_t change = val32 ^ prev;
-            if (change) {
-                xtrace_ot_csrng_info("handling CTRL change", val32);
-                ot_csrng_handle_enable(s);
-                bool granted;
-                OtOTPStateClass *oc =
-                    OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
-                const OtOTPEntropyCfg *entropy_cfg =
-                    oc->get_entropy_cfg(s->otp_ctrl);
-                if (entropy_cfg) {
-                    granted = entropy_cfg->en_csrng_sw_app_read ==
-                              OT_MULTIBITBOOL8_TRUE;
-                } else {
-                    /* defaults to granted if no entropy config in OTP */
-                    granted = true;
-                }
-                if (granted) {
-                    uint32_t sw_app_en = FIELD_EX32(val32, CTRL, SW_APP_ENABLE);
-                    s->sw_app_granted = sw_app_en == OT_MULTIBITBOOL4_TRUE;
-                    uint32_t read_int = FIELD_EX32(val32, CTRL, READ_INT_STATE);
-                    s->read_int_granted = read_int == OT_MULTIBITBOOL4_TRUE;
-                } else {
-                    s->sw_app_granted = false;
-                    s->read_int_granted = false;
-                }
+        if (!s->regs[R_REGWEN]) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s protected w/ REGWEN\n",
+                          __func__, REG_NAME(reg));
+            break;
+        }
+        uint32_t prev = s->regs[reg];
+        val32 &= CTRL_MASK;
+        s->regs[reg] = val32;
+        CHECK_MULTIBOOT(s, CTRL, ENABLE);
+        CHECK_MULTIBOOT(s, CTRL, SW_APP_ENABLE);
+        CHECK_MULTIBOOT(s, CTRL, READ_INT_STATE);
+        CHECK_MULTIBOOT(s, CTRL, FIPS_FORCE_ENABLE);
+        uint32_t change = val32 ^ prev;
+        if (change) {
+            xtrace_ot_csrng_info("handling CTRL change", val32);
+            ot_csrng_handle_enable(s);
+            bool granted;
+            OtOTPStateClass *oc =
+                OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+            const OtOTPEntropyCfg *entropy_cfg =
+                oc->get_entropy_cfg(s->otp_ctrl);
+            if (entropy_cfg) {
+                granted =
+                    entropy_cfg->en_csrng_sw_app_read == OT_MULTIBITBOOL8_TRUE;
+            } else {
+                /* defaults to granted if no entropy config in OTP */
+                granted = true;
             }
-        } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: CTRL protected w/ REGWEN\n",
-                          __func__);
+            if (granted) {
+                uint32_t sw_app_en = FIELD_EX32(val32, CTRL, SW_APP_ENABLE);
+                s->sw_app_granted = sw_app_en == OT_MULTIBITBOOL4_TRUE;
+                uint32_t read_int = FIELD_EX32(val32, CTRL, READ_INT_STATE);
+                s->read_int_granted = read_int == OT_MULTIBITBOOL4_TRUE;
+            } else {
+                s->sw_app_granted = false;
+                s->read_int_granted = false;
+            }
         }
         break;
     case R_CMD_REQ:
         inst = &s->instances[SW_INSTANCE_ID];
         if (!ot_fifo32_is_full(&inst->cmd_fifo)) {
             ot_fifo32_push(&inst->cmd_fifo, val32);
-            if (ot_csrng_instance_is_command_ready(inst)) {
+            if (ot_csrng_instance_is_command_ready(inst, false)) {
                 /*
                  * assume CMD RDY works the same way as the csrng_req_ready
                  * wire, which is a blind guess, need to check RTL here
@@ -1757,6 +1908,23 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             /* TBC: how to signal this error */
         }
         break;
+    case R_RESEED_INTERVAL:
+        s->regs[reg] = val32;
+        ot_csrng_update_irqs(s);
+        break;
+    case R_INT_STATE_READ_ENABLE:
+        if (!s->regs[R_INT_STATE_READ_ENABLE_REGWEN]) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s protected w/ REGWEN\n",
+                          __func__, REG_NAME(reg));
+            break;
+        }
+        val32 &= R_INT_STATE_READ_ENABLE_VAL_MASK;
+        s->regs[reg] = val32;
+        break;
+    case R_INT_STATE_READ_ENABLE_REGWEN:
+        val32 &= R_INT_STATE_READ_ENABLE_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* rw0c */
+        break;
     case R_INT_STATE_NUM:
         if (s->read_int_granted) {
             val32 &= R_INT_STATE_NUM_VAL_MASK;
@@ -1768,12 +1936,29 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             }
         }
         break;
+    case R_FIPS_FORCE:
+        if (!s->regs[R_REGWEN]) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s protected w/ REGWEN\n",
+                          __func__, REG_NAME(reg));
+            break;
+        }
+        val32 &= R_FIPS_FORCE_VAL_MASK;
+        s->regs[reg] = val32;
+        break;
     case R_ERR_CODE_TEST:
+        if (!s->regs[R_REGWEN]) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s protected w/ REGWEN\n",
+                          __func__, REG_NAME(reg));
+            break;
+        }
         val32 &= R_ERR_CODE_TEST_VAL_MASK;
         val32 = 1u << val32;
         val32 &= ERR_CODE_MASK;
         s->regs[R_ERR_CODE] = val32;
         break;
+    case R_RESEED_COUNTER_0:
+    case R_RESEED_COUNTER_1:
+    case R_RESEED_COUNTER_2:
     case R_SW_CMD_STS:
     case R_GENBITS_VLD:
     case R_GENBITS:
@@ -1827,6 +2012,7 @@ static void ot_csrng_reset(DeviceState *dev)
     s->regs[R_CTRL] = 0x9999u;
     s->regs[R_RESEED_INTERVAL] = 0xffffffffu;
     s->regs[R_INT_STATE_READ_ENABLE_REGWEN] = 0x1u;
+    s->regs[R_INT_STATE_READ_ENABLE] = 0x7u;
     s->regs[R_MAIN_SM_STATE] = 0x4eu;
     s->enabled = false;
     s->es_available = false;
@@ -1836,7 +2022,7 @@ static void ot_csrng_reset(DeviceState *dev)
     s->es_retry_count = 0;
     s->state = CSRNG_IDLE;
 
-    for (unsigned ix = 0; ix < OT_CSRNG_HW_APP_MAX + 1u; ix++) {
+    for (unsigned ix = 0; ix < N_APP_COUNT; ix++) {
         OtCSRNGInstance *inst = &s->instances[ix];
         g_assert(inst->parent);
         ot_fifo32_reset(&inst->cmd_fifo);
@@ -1883,13 +2069,15 @@ static void ot_csrng_init(Object *obj)
                                         TYPE_OT_CSRNG "-genbits_ready",
                                         OT_CSRNG_HW_APP_MAX);
 
+    static_assert(CMD_FIFO_CAPACITY >= OT_CSRNG_CMD_WORD_MAX,
+                  "Invalid CMD FIFO size");
     /* HW instances + 1 internal SW instance */
-    s->instances = g_new0(OtCSRNGInstance, OT_CSRNG_HW_APP_MAX + 1u);
+    s->instances = g_new0(OtCSRNGInstance, N_APP_COUNT);
     OtCSRNGInstance *inst = &s->instances[SW_INSTANCE_ID];
-    for (unsigned ix = 0; ix < OT_CSRNG_HW_APP_MAX + 1u; ix++) {
+    for (unsigned ix = 0; ix < N_APP_COUNT; ix++) {
         inst = &s->instances[ix];
         inst->parent = s;
-        ot_fifo32_create(&inst->cmd_fifo, OT_CSRNG_CMD_WORD_MAX);
+        ot_fifo32_create(&inst->cmd_fifo, CMD_FIFO_CAPACITY);
         if (ix != SW_INSTANCE_ID) {
             inst->hw.filler_bh = qemu_bh_new(&ot_csrng_hwapp_filler_bh, inst);
         }

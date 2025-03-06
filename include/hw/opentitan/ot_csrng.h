@@ -2,6 +2,7 @@
  * QEMU OpenTitan Cryptographically Secure Random Number Generator
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -54,7 +55,16 @@ typedef enum {
     OT_CSRNG_CMD_GENERATE = 3,
     OT_CSRNG_CMD_UPDATE = 4,
     OT_CSRNG_CMD_UNINSTANTIATE = 5,
-} OtCsrngCmd;
+} OtCSRNGCmd;
+
+typedef enum {
+    CSRNG_STATUS_SUCCESS,
+    CSRNG_STATUS_INVALID_ACMD,
+    CSRNG_STATUS_INVALID_GEN_CMD,
+    CSRNG_STATUS_INVALID_CMD_SEQ,
+    CSRNG_STATUS_RESEED_CNT_EXCEEDED,
+    CSRNG_STATUS_COUNT,
+} OtCSRNGCmdStatus;
 
 /* clang-format off */
 REG32(OT_CSNRG_CMD, 0)
@@ -80,22 +90,24 @@ typedef void (*ot_csrng_genbit_filler_fn)(void *opaque, const uint32_t *bits,
                                           bool fips);
 
 /**
- * Connect a HW application to the CSRNG device.
+ * Connect or disconnect a HW application to the CSRNG device.
  *
  * @s the CSRNG device
  * @app_id the HW application unique identifier
  * @req_sts the IRQ to signal once a command is completed. The IRQ level signal
  *          the completion status of the command: 0 indicates a sucessful
- *          completion, non-zero a failed one.
- * @fn the filler function to call with one or more entropy packet, when a
- *     generate command is called.
- * @opaque a opaque pointer to forward to the filler function
+ *          completion, non-zero a failed one. Ignored if filler_fn is NULL.
+ * @filler_fn the filler function to call with one or more entropy packet, when
+ *            a generate command is called. If filler_fn is NULL, the HW
+ *            application is disconnected.
+ * @opaque a opaque pointer to forward to the filler_fn function
  * @return an IRQ line that signals whether the HW application is ready to
  *         receive entropy, i.e. genbits_ready
  */
-qemu_irq ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id,
-                                 qemu_irq req_sts, ot_csrng_genbit_filler_fn fn,
-                                 void *opaque);
+qemu_irq
+ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
+                        ot_csrng_genbit_filler_fn filler_fn, void *opaque);
+
 
 /**
  * Request a generated entropy block.
@@ -116,11 +128,11 @@ int ot_csrng_request_entropy(OtCSRNGState *s, unsigned app_id);
  * @s the CSRNG device
  * @app_id the HW application unique identifier, as provided with the connect
  *         command
- * @command the command to execute (with any payload)
- * @return 0 on success, -1 otherwise. If non-zero, the req_sts is not
+ * @word a command or payload chunk
+ * @return CSRNG_STATUS_SUCCESS on success. If failure, the req_sts is not
  *         signalled for this command.
  */
-int ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
-                          const uint32_t *command);
+OtCSRNGCmdStatus ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
+                                       uint32_t word);
 
 #endif /* HW_OPENTITAN_OT_CSRNG_H */
