@@ -1,0 +1,12 @@
+smoke-tests-ot:
+  tags:
+    - qemu_ot
+  stage: test
+  needs: ["build-clang"]
+  script:
+    - build/qemu-system-riscv32 -M help | grep ibexdemo
+    - build/qemu-system-riscv32 -M help | grep ot-earlgrey
+    - timeout -s KILL 4 build/qemu-system-riscv32 -M ibexdemo -nographic
+        -device loader,addr=0x100080,file=build/exit_id.bin -d in_asm,int
+    - timeout -s KILL 4 build/qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -nographic
+        -object ot-rom_img,id=rom,file=build/exit_eg.bin -d in_asm,int

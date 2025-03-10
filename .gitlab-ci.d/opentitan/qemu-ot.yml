@@ -1,0 +1,9 @@
+variables:
+  BAREMETAL_REF: "b0-250310-1"
+  QEMU_BUILD_OPTS: "--disable-install-blobs"
+
+include:
+  - local: '/.gitlab-ci.d/opentitan/build.yml'
+  - local: '/.gitlab-ci.d/opentitan/pylint-ot.yml'
+  - local: '/.gitlab-ci.d/opentitan/ot-smoke.yml'
+  - local: '/.gitlab-ci.d/opentitan/ot-bmtests.yml'

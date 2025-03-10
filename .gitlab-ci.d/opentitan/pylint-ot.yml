@@ -1,0 +1,12 @@
+pylint-ot:
+  tags:
+    - qemu_ot
+  stage: build
+  script:
+    # disable duplicate code as all front end are tested at once (false positive)
+    # disable fixme ("# TODO" comments)
+    - python3 -m virtualenv .venv
+    - . .venv/bin/activate
+    - pip3 install -r scripts/opentitan/requirements.txt
+    - pylint --rcfile scripts/opentitan/.pylintrc -d 'duplicate-code' -d 'fixme'
+        scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
