@@ -1402,10 +1402,10 @@ static void ot_flash_op_erase_bank(OtFlashState *s, unsigned address)
     }
 
     /*
-        * For bank erase only, if the data partition is selected, just the
-        * data partition is erased. If the info partition is selected, BOTH
-        * the data and info partitions are erased.
-        */
+     * For bank erase only, if the data partition is selected, just the
+     * data partition is erased. If the info partition is selected, BOTH
+     * the data and info partitions are erased.
+     */
     unsigned bank_address = address - (address % bank_size);
     bank_address /= sizeof(uint32_t); /* convert to word address */
     unsigned data_address, info_address = 0u;
@@ -1819,7 +1819,8 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 s->op.info_part = part_sel;
                 s->op.info_sel = info_sel;
                 s->op.erase_sel = (bool)erase_sel;
-                /* Erase operations neither go through FIFOs nor use/require a word count */
+                /* Erase operations neither go through FIFOs nor use/require a
+                 * word count */
                 s->op.count = 0u;
                 xtrace_ot_flash_info("Erase at", s->op.address);
                 break;
