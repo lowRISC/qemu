@@ -1341,7 +1341,8 @@ static int ot_csrng_handle_command(OtCSRNGState *s, unsigned slot)
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "Unknown command: %u\n", acmd);
         // JW: check this shouldn't be CMD_STAGE_INVALID_CMD_SEQ_ALERT.
-        s->regs[R_RECOV_ALERT_STS] |= R_RECOV_ALERT_STS_CMD_STAGE_INVALID_ACMD_ALERT_MASK;
+        s->regs[R_RECOV_ALERT_STS] |=
+            R_RECOV_ALERT_STS_CMD_STAGE_INVALID_ACMD_ALERT_MASK;
         CHANGE_STATE(s, CSRNG_ERROR);
         ot_csrng_update_alerts(s);
         return -1;
