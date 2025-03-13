@@ -21,6 +21,7 @@ from typing import Any, Iterator, Optional
 import re
 import sys
 
+from ot.util.file import guess_test_type
 from ot.util.log import flush_memory_loggers
 from ot.util.misc import EasyDict
 
@@ -106,7 +107,7 @@ class QEMUExecuter:
         """
         self._argdict = dict(self._args.__dict__)
         for tst in sorted(self._build_test_list()):
-            ttype = self.guess_test_type(tst)
+            ttype = guess_test_type(tst)
             yield f'{basename(tst)} ({ttype})'
 
     def run(self, debug: bool, allow_no_test: bool) -> int:
@@ -260,20 +261,6 @@ class QEMUExecuter:
             return normpath(path)
         return normpath(joinpath(getcwd(), path))
 
-    @staticmethod
-    def guess_test_type(filepath: str) -> str:
-        """Guess a test file type from its contents.
-
-           :return: identified content
-        """
-        with open(filepath, 'rb') as bfp:
-            header = bfp.read(4)
-        if header == b'\x7fELF':
-            return 'elf'
-        if header == b'OTPT':
-            return 'spiflash'
-        return 'bin'
-
     def _cleanup_temp_files(self, storage: dict[str, set[str]]) -> None:
         if self._qfm.keep_temporary:
             return
@@ -327,7 +314,7 @@ class QEMUExecuter:
             exec_path = self._virtual_tests.get(args.exec)
             if not exec_path:
                 exec_path = self.abspath(args.exec)
-            xtype = self.guess_test_type(exec_path)
+            xtype = guess_test_type(exec_path)
             if xtype == 'spiflash':
                 fw_args.extend(('-drive',
                                 f'if=mtd,id=spiflash,bus=0,format=raw,'
