@@ -8,13 +8,17 @@
 
 from atexit import register
 from logging import getLogger
+from io import BytesIO
 from os import close, environ, sep, unlink
-from os.path import abspath, basename, exists, isdir, isfile, normpath
+from os.path import abspath, basename, exists, isdir, isfile, normpath, splitext
 from shutil import rmtree
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Optional
 
 import re
+
+from ot.util.elf import ElfBlob
+from ot.util.file import guess_test_type
 
 
 class QEMUFileManager:
@@ -198,12 +202,28 @@ class QEMUFileManager:
         self._log.debug('Create %s', basename(flash_file))
         try:
             gen.open(flash_file)
-            if app:
-                with open(app, 'rb') as afp:
-                    gen.store_rom_ext(0, afp, no_header=no_flash_header)
-            if bootloader:
-                with open(bootloader, 'rb') as bfp:
-                    gen.store_bootloader(0, bfp, no_header=no_flash_header)
+            xfiles = ((app, 'rom_ext'), (bootloader, 'bootloader'))
+            for xpath, xhdlr in xfiles:
+                if not xpath:
+                    continue
+                xtype = guess_test_type(xpath)
+                xstore = getattr(gen, f'store_{xhdlr}')
+                xname = basename(xpath)
+                if xtype == 'elf':
+                    with open(xpath, 'rb') as efp:
+                        elf = ElfBlob()
+                        elf.load(efp)
+                        if elf.address_size != 32:
+                            raise RuntimeError(f'{xname}: not an ELF32 file')
+                        xfp = BytesIO(elf.blob)
+                        xfp.name = f'{splitext(xname)[0]}.bin'
+                        xstore(0, xfp, xpath, no_header=no_flash_header)
+                elif xtype == 'bin':
+                    with open(xpath, 'rb') as xfp:
+                        xstore(0, xfp, no_header=no_flash_header)
+                else:
+                    raise RuntimeError(f'{xname} format {xtype.upper()} is '
+                                       f'not supported')
         finally:
             gen.close()
         return flash_file
