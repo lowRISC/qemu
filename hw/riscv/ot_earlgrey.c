@@ -640,9 +640,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DEVLINK("kmac", KMAC)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("edn-ep", 4u)
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("silicon_creator_id", 0x4001u),
             IBEX_DEV_UINT_PROP("product_id", 0x0002u),
             IBEX_DEV_UINT_PROP("revision_id", 0x1u),
