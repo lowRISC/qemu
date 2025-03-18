@@ -476,7 +476,13 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: entropy_src gennum mismatch req:%d cur:%u\n",
                       __func__, genid, s->gennum);
-        return -2;
+        /*
+         * Continue anyway as it seems HW does not enforce what is documented.
+         * Force the generation id so the warning message is only shown once.
+         */
+        if (genid != 0) {
+            s->gennum = (unsigned)genid;
+        }
     }
 
     bool fips_compliant;
@@ -502,11 +508,12 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
     case ENTROPY_SRC_STARTUP_FAIL1: {
         int wait_ns;
         if (timer_pending(s->scheduler)) {
-            wait_ns = 1;
-        } else {
             /* computed delay fits into a 31-bit value */
             wait_ns = (int)(timer_expire_time_ns(s->scheduler) -
                             qemu_clock_get_ns(OT_VIRTUAL_CLOCK));
+            wait_ns = MAX(wait_ns, 1);
+        } else {
+            wait_ns = 1;
         }
         trace_ot_entropy_src_init_ongoing(STATE_NAME(s->state), s->state,
                                           wait_ns);
@@ -1330,6 +1337,7 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                     /* boot phase */
                     ot_entropy_src_change_state(s, ENTROPY_SRC_BOOT_HT_RUNNING);
                 }
+                trace_ot_entropy_src_info("initial schedule");
                 uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                 timer_mod(s->scheduler,
                           (int64_t)(now +
