@@ -62,7 +62,7 @@ static inline uint32_t ot_fifo32_pop(OtFifo32 *fifo)
     return ret;
 }
 
-static inline uint32_t ot_fifo32_peek(OtFifo32 *fifo)
+static inline uint32_t ot_fifo32_peek(const OtFifo32 *fifo)
 {
     g_assert(fifo->num > 0);
 
@@ -86,7 +86,7 @@ ot_fifo32_pop_buf(OtFifo32 *fifo, uint32_t max, uint32_t *num)
 }
 
 static inline const uint32_t *
-ot_fifo32_peek_buf(OtFifo32 *fifo, uint32_t max, uint32_t *num)
+ot_fifo32_peek_buf(const OtFifo32 *fifo, uint32_t max, uint32_t *num)
 {
     uint32_t *ret;
 
@@ -110,22 +110,22 @@ static inline void ot_fifo32_reset(OtFifo32 *fifo)
     fifo->head = 0u;
 }
 
-static inline bool ot_fifo32_is_empty(OtFifo32 *fifo)
+static inline bool ot_fifo32_is_empty(const OtFifo32 *fifo)
 {
     return (fifo->num == 0u);
 }
 
-static inline bool ot_fifo32_is_full(OtFifo32 *fifo)
+static inline bool ot_fifo32_is_full(const OtFifo32 *fifo)
 {
     return (fifo->num == fifo->capacity);
 }
 
-static inline uint32_t ot_fifo32_num_free(OtFifo32 *fifo)
+static inline uint32_t ot_fifo32_num_free(const OtFifo32 *fifo)
 {
     return fifo->capacity - fifo->num;
 }
 
-static inline uint32_t ot_fifo32_num_used(OtFifo32 *fifo)
+static inline uint32_t ot_fifo32_num_used(const OtFifo32 *fifo)
 {
     return fifo->num;
 }
