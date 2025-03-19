@@ -2,7 +2,7 @@
  * QEMU OpenTitan HMAC device
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
- * Copyright (c) 2024 lowRISC contributors.
+ * Copyright (c) 2024-2025 lowRISC contributors.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -443,10 +443,21 @@ static void ot_hmac_writeback_digest_state(OtHMACState *s)
 
 static void ot_hmac_restore_context(OtHMACState *s)
 {
+    /*
+     * When restoring context, if HMAC is enabled we must add the block size to
+     * the message length to keep our cryptographic library consistent with the
+     * SW interface. This is because the extra block containing the key XORed
+     * with the inner pad is not included in the SW-visible message length.
+     */
+    unsigned msg_length = s->regs->msg_length;
+    if (s->regs->cfg & R_CFG_HMAC_EN_MASK) {
+        msg_length += ot_hmac_get_block_size_bytes(s) * 8u;
+    }
+
     switch (s->ctx->digest_size_started) {
     case HMAC_SHA2_256:
         s->ctx->state.sha256.curlen = 0;
-        s->ctx->state.sha256.length = s->regs->msg_length;
+        s->ctx->state.sha256.length = msg_length;
         for (unsigned idx = 0; idx < 8u; idx++) {
             LOAD32H(s->ctx->state.sha256.state[idx], s->regs->digest + idx);
         }
@@ -458,7 +469,7 @@ static void ot_hmac_restore_context(OtHMACState *s)
          */
     case HMAC_SHA2_512:
         s->ctx->state.sha512.curlen = 0;
-        s->ctx->state.sha512.length = s->regs->msg_length;
+        s->ctx->state.sha512.length = msg_length;
         for (unsigned idx = 0; idx < 8u; idx++) {
             LOAD64H(s->ctx->state.sha512.state[idx], s->regs->digest + 2 * idx);
         }
