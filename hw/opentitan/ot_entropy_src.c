@@ -2,6 +2,7 @@
  * QEMU OpenTitan Entropy Source device
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -79,10 +80,12 @@ REG32(MODULE_ENABLE, 0x20u)
     FIELD(MODULE_ENABLE, MODULE_ENABLE, 0u, 4u)
 REG32(CONF, 0x24u)
     FIELD(CONF, FIPS_ENABLE, 0u, 4u)
-    FIELD(CONF, ENTROPY_DATA_REG_ENABLE, 4u, 4u)
-    FIELD(CONF, THRESHOLD_SCOPE, 12u, 4u)
-    FIELD(CONF, RNG_BIT_ENABLE, 20u, 4u)
-    FIELD(CONF, RNG_BIT_SEL, 24u, 2u)
+    FIELD(CONF, FIPS_FLAG, 4u, 4u)
+    FIELD(CONF, RNG_FIPS, 8u, 4u)
+    FIELD(CONF, RNG_BIT_ENABLE, 12u, 4u)
+    FIELD(CONF, RNG_BIT_SEL, 16u, 2u)
+    FIELD(CONF, THRESHOLD_SCOPE, 18u, 4u)
+    FIELD(CONF, ENTROPY_DATA_REG_ENABLE, 22u, 4u)
 REG32(ENTROPY_CONTROL, 0x28u)
     FIELD(ENTROPY_CONTROL, ES_ROUTE, 0u, 4u)
     FIELD(ENTROPY_CONTROL, ES_TYPE, 4u, 4u)
@@ -149,11 +152,11 @@ REG32(FW_OV_RD_FIFO_OVERFLOW, 0xbcu)
 REG32(FW_OV_RD_DATA, 0xc0u)
 REG32(FW_OV_WR_DATA, 0xc4u)
 REG32(OBSERVE_FIFO_THRESH, 0xc8u)
-    FIELD(OBSERVE_FIFO_THRESH, VAL, 0u, 7u)
+    FIELD(OBSERVE_FIFO_THRESH, VAL, 0u, 6u)
 REG32(OBSERVE_FIFO_DEPTH, 0xccu)
-    FIELD(OBSERVE_FIFO_DEPTH, VAL, 0u, 7u)
+    FIELD(OBSERVE_FIFO_DEPTH, VAL, 0u, 6u)
 REG32(DEBUG_STATUS, 0xd0u)
-    FIELD(DEBUG_STATUS, ENTROPY_FIFO_DEPTH, 0u, 3u)
+    FIELD(DEBUG_STATUS, ENTROPY_FIFO_DEPTH, 0u, 2u)
     FIELD(DEBUG_STATUS, SHA3_FSM, 3u, 3u)
     FIELD(DEBUG_STATUS, SHA3_BLOCK_PR, 6u, 1u)
     FIELD(DEBUG_STATUS, SHA3_SQUEEZING, 7u, 1u)
@@ -177,10 +180,14 @@ REG32(RECOV_ALERT_STS, 0xd4u)
     FIELD(RECOV_ALERT_STS, ES_THRESH_CFG_ALERT, 14u, 1u)
     FIELD(RECOV_ALERT_STS, ES_FW_OV_WR_ALERT, 15u, 1u)
     FIELD(RECOV_ALERT_STS, ES_FW_OV_DISABLE_ALERT, 16u, 1u)
+    FIELD(RECOV_ALERT_STS, FIPS_FLAG_FIELD_ALERT, 17u, 1u)
+    FIELD(RECOV_ALERT_STS, RNG_FIPS_FIELD_ALERT, 18u, 1u)
+    FIELD(RECOV_ALERT_STS, POSTHT_ENTROPY_DROP_ALERT, 31u, 1u)
 REG32(ERR_CODE, 0xd8u)
     FIELD(ERR_CODE, SFIFO_ESRNG_ERR, 0u, 1u)
-    FIELD(ERR_CODE, SFIFO_OBSERVE_ERR, 1u, 1u)
-    FIELD(ERR_CODE, SFIFO_ESFINAL_ERR, 2u, 1u)
+    FIELD(ERR_CODE, SFIFO_DISTR_ERR, 1u, 1u)
+    FIELD(ERR_CODE, SFIFO_OBSERVE_ERR, 2u, 1u)
+    FIELD(ERR_CODE, SFIFO_ESFINAL_ERR, 3u, 1u)
     FIELD(ERR_CODE, ES_ACK_SM_ERR, 20u, 1u)
     FIELD(ERR_CODE, ES_MAIN_SM_ERR, 21u, 1u)
     FIELD(ERR_CODE, ES_CNTR_ERR, 22u, 1u)
@@ -209,9 +216,9 @@ REG32(MAIN_SM_STATE, 0xe0u)
 #define ALERT_TEST_MASK \
     (R_ALERT_TEST_RECOV_ALERT_MASK | R_ALERT_TEST_FATAL_ALERT_MASK)
 #define CONF_MASK \
-    (R_CONF_FIPS_ENABLE_MASK | R_CONF_ENTROPY_DATA_REG_ENABLE_MASK | \
-     R_CONF_THRESHOLD_SCOPE_MASK | R_CONF_RNG_BIT_ENABLE_MASK | \
-     R_CONF_RNG_BIT_SEL_MASK)
+    (R_CONF_FIPS_ENABLE_MASK | R_CONF_FIPS_FLAG_MASK | R_CONF_RNG_FIPS_MASK | \
+     R_CONF_RNG_BIT_ENABLE_MASK | R_CONF_RNG_BIT_SEL_MASK | \
+     R_CONF_THRESHOLD_SCOPE_MASK | R_CONF_ENTROPY_DATA_REG_ENABLE_MASK)
 #define ENTROPY_CONTROL_MASK \
     (R_ENTROPY_CONTROL_ES_ROUTE_MASK | R_ENTROPY_CONTROL_ES_TYPE_MASK)
 #define FW_OV_CONTROL_MASK \
@@ -232,14 +239,17 @@ REG32(MAIN_SM_STATE, 0xe0u)
      R_RECOV_ALERT_STS_ES_BUS_CMP_ALERT_MASK | \
      R_RECOV_ALERT_STS_ES_THRESH_CFG_ALERT_MASK | \
      R_RECOV_ALERT_STS_ES_FW_OV_WR_ALERT_MASK | \
-     R_RECOV_ALERT_STS_ES_FW_OV_DISABLE_ALERT_MASK)
+     R_RECOV_ALERT_STS_ES_FW_OV_DISABLE_ALERT_MASK | \
+     R_RECOV_ALERT_STS_FIPS_FLAG_FIELD_ALERT_MASK | \
+     R_RECOV_ALERT_STS_RNG_FIPS_FIELD_ALERT_MASK | \
+     R_RECOV_ALERT_STS_POSTHT_ENTROPY_DROP_ALERT_MASK)
 #define ERR_CODE_MASK \
-    (R_ERR_CODE_SFIFO_ESRNG_ERR_MASK | R_ERR_CODE_SFIFO_OBSERVE_ERR_MASK | \
-     R_ERR_CODE_SFIFO_ESFINAL_ERR_MASK | R_ERR_CODE_ES_ACK_SM_ERR_MASK | \
-     R_ERR_CODE_ES_MAIN_SM_ERR_MASK | R_ERR_CODE_ES_CNTR_ERR_MASK | \
-     R_ERR_CODE_SHA3_STATE_ERR_MASK | R_ERR_CODE_SHA3_RST_STORAGE_ERR_MASK | \
-     R_ERR_CODE_FIFO_WRITE_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK | \
-     R_ERR_CODE_FIFO_STATE_ERR_MASK)
+    (R_ERR_CODE_SFIFO_ESRNG_ERR_MASK | R_ERR_CODE_SFIFO_DISTR_ERR_MASK | \
+     R_ERR_CODE_SFIFO_OBSERVE_ERR_MASK | R_ERR_CODE_SFIFO_ESFINAL_ERR_MASK | \
+     R_ERR_CODE_ES_ACK_SM_ERR_MASK | R_ERR_CODE_ES_MAIN_SM_ERR_MASK | \
+     R_ERR_CODE_ES_CNTR_ERR_MASK | R_ERR_CODE_SHA3_STATE_ERR_MASK | \
+     R_ERR_CODE_SHA3_RST_STORAGE_ERR_MASK | R_ERR_CODE_FIFO_WRITE_ERR_MASK | \
+     R_ERR_CODE_FIFO_READ_ERR_MASK | R_ERR_CODE_FIFO_STATE_ERR_MASK)
 #define ERR_CODE_FATAL_ERROR_MASK \
     (R_ERR_CODE_ES_ACK_SM_ERR_MASK | R_ERR_CODE_ES_MAIN_SM_ERR_MASK | \
      R_ERR_CODE_ES_CNTR_ERR_MASK | R_ERR_CODE_SHA3_STATE_ERR_MASK | \
@@ -325,8 +335,17 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define ES_FINAL_FIFO_WORD_COUNT       (ES_WORD_COUNT * ES_FINAL_FIFO_DEPTH)
 #define ES_HEXBUF_SIZE                 ((8U * 2u + 1u) * ES_WORD_COUNT + 4u)
 
-/* see hw/ip/edn/doc/#multiple-edns-in-boot-time-request-mode */
-#define OT_ENTROPY_SRC_BOOT_DELAY_NS 2000000u /* 2 ms */
+/*
+ * see hw/ip/edn/doc/#multiple-edns-in-boot-time-request-mode
+ * reduce initial delay in QEMU since it takes time to manage the entropy
+ */
+#define OT_ENTROPY_SRC_BOOT_DELAY_NS 500000LL /* 500 us */
+/*
+ * default delay to pace the entropy src client (CSRNG) when no entropy is
+ * available. A better implementation would compute the remaining time before
+ * the next available entropy packet.
+ */
+#define OT_ENTROPY_SRC_WAIT_DELAY_NS 2000LL /* 2 us */
 
 enum {
     ALERT_RECOVERABLE,
@@ -506,19 +525,19 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
     case ENTROPY_SRC_STARTUP_PHASE1:
     case ENTROPY_SRC_STARTUP_PASS1:
     case ENTROPY_SRC_STARTUP_FAIL1: {
-        int wait_ns;
+        int64_t wait_ns;
         if (timer_pending(s->scheduler)) {
             /* computed delay fits into a 31-bit value */
-            wait_ns = (int)(timer_expire_time_ns(s->scheduler) -
-                            qemu_clock_get_ns(OT_VIRTUAL_CLOCK));
-            wait_ns = MAX(wait_ns, 1);
+            wait_ns = ((int64_t)timer_expire_time_ns(s->scheduler)) -
+                      qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+            wait_ns = MAX(wait_ns, OT_ENTROPY_SRC_WAIT_DELAY_NS);
         } else {
-            wait_ns = 1;
+            wait_ns = OT_ENTROPY_SRC_WAIT_DELAY_NS;
         }
         trace_ot_entropy_src_init_ongoing(STATE_NAME(s->state), s->state,
-                                          wait_ns);
+                                          (int)wait_ns);
         /* not ready */
-        return wait_ns;
+        return (int)wait_ns;
     }
     case ENTROPY_SRC_IDLE:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: module is not enabled\n", __func__);
@@ -542,7 +561,7 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
 
     if (ot_fifo32_num_used(&s->final_fifo) < ES_WORD_COUNT) {
         trace_ot_entropy_src_no_entropy(ot_fifo32_num_used(&s->final_fifo));
-        return 1;
+        return OT_ENTROPY_SRC_WAIT_DELAY_NS;
     }
 
     uint32_t *randu32 = (uint32_t *)random;
