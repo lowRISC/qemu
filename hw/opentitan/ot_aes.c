@@ -399,6 +399,8 @@ static inline void ot_aes_load_reseed_rate(OtAESState *s)
         break;
     }
 
+    trace_ot_aes_reseed_rate(reseed);
+
     s->reseed_count = reseed;
 }
 
