@@ -1,7 +1,8 @@
 /*
  * QEMU OpenTitan utilities
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -221,8 +222,7 @@ AddressSpace *ot_common_get_local_address_space(DeviceState *s)
     return cpu ? cpu->as : NULL;
 }
 
-static void
-ot_common_configure_device_opts(DeviceState **devices, unsigned count)
+void ot_common_configure_device_opts(DeviceState **devices, unsigned count)
 {
     // TODO need to use qemu_find_opts_err if no config is ok
     QemuOptsList *optlist = qemu_find_opts("ot_device");

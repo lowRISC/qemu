@@ -323,4 +323,6 @@ void ot_common_configure_devices_with_id(
     DeviceState **devices, BusState *bus, const char *id_value, bool id_prepend,
     const IbexDeviceDef *defs, size_t count);
 
+void ot_common_configure_device_opts(DeviceState **devices, unsigned count);
+
 #endif /* HW_OPENTITAN_OT_COMMON_H */
