@@ -128,6 +128,9 @@ See [`tools.md`](tools.md)
   update the vCPU reset vector at startup. When this option is used, with `-kernel` option for
   example, the application is loaded in memory but the default machine reset vector is used.
 
+* `verilator=true` can be appended to the machine option switch, to select Verilator lowered clocks:
+  _i.e._ `-M ot-earlgrey,verilator=true` to select Verilator reduced clock rates.
+
 * `-cpu lowrisc-ibex,x-zbr=false` can be used to force disable the Zbr experimental-and-deprecated
   RISC-V bitmap extension for CRC32 extension.
 

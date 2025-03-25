@@ -25,6 +25,8 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
+#include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qlist.h"
 #include "qom/object.h"
@@ -35,7 +37,6 @@
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
 #include "hw/misc/pulp_rv_dm.h"
-#include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_aon_timer.h"
@@ -183,9 +184,15 @@ enum OtEGBoardDevice {
 #define OT_EG_CORE_CLK_HZ 24000000u
 /* EarlGrey/CW310 Peripheral clock is 6 MHz */
 #define OT_EG_PERIPHERAL_CLK_HZ ((OT_EG_CORE_CLK_HZ) / 4u)
-
 /* EarlGrey/CW310 AON clock is 250 kHz */
 #define OT_EG_AON_CLK_HZ 250000u
+
+/* Verilator Core clock is 500 kHz */
+#define OT_EG_VERILATOR_CORE_CLK_HZ 500000u
+/* Verilator Peripheral clock is 125 kHz */
+#define OT_EG_VERILATOR_PERIPHERAL_CLK_HZ ((OT_EG_VERILATOR_CORE_CLK_HZ) / 4u)
+/* Verilator AON clock is 125 kHz */
+#define OT_EG_VERILATOR_AON_CLK_HZ OT_EG_VERILATOR_PERIPHERAL_CLK_HZ
 
 static const uint8_t ot_eg_pmp_cfgs[] = {
     /* clang-format off */
@@ -1217,6 +1224,7 @@ struct OtEGMachineState {
 
     bool no_epmp_cfg;
     bool ignore_elf_entry;
+    bool verilator;
 };
 
 struct OtEGMachineClass {
@@ -1397,6 +1405,59 @@ static void ot_eg_soc_reset_exit(Object *obj, ResetType type)
     resettable_release_reset(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]), type);
 }
 
+static void
+ot_earlgrey_update_device_clocks(DeviceState **devices, size_t count)
+{
+    for (unsigned ix = 0; ix < (unsigned)count; ix++) {
+        DeviceState *dev = devices[ix];
+        if (!dev) {
+            continue;
+        }
+        Error *errp = NULL;
+        uint64_t pclk = object_property_get_uint(OBJECT(dev), "pclk", &errp);
+        if (errp) {
+            error_free(errp);
+            continue;
+        }
+        switch (pclk) {
+        case 0:
+            /* PCLK property exists, but is not used, skip it */
+            continue;
+        case OT_EG_CORE_CLK_HZ:
+            pclk = OT_EG_VERILATOR_CORE_CLK_HZ;
+            break;
+        case OT_EG_PERIPHERAL_CLK_HZ:
+            pclk = OT_EG_VERILATOR_PERIPHERAL_CLK_HZ;
+            break;
+        case OT_EG_AON_CLK_HZ:
+            pclk = OT_EG_VERILATOR_AON_CLK_HZ;
+            break;
+        default:
+            warn_report("%s: OT device %s has invalid pclk value: %" PRIu64,
+                        __func__, object_get_typename(OBJECT(dev)), pclk);
+            continue;
+        }
+
+        if (!object_property_set_uint(OBJECT(dev), "pclk", pclk, &errp)) {
+            error_propagate(&error_fatal, errp);
+            g_assert_not_reached();
+        }
+    }
+}
+
+static void
+ot_earlgrey_configure_verilator_devices(DeviceState **devices, BusState *bus,
+                                        const IbexDeviceDef *defs, size_t count)
+{
+    ibex_link_devices(devices, defs, count);
+    ibex_define_device_props(devices, defs, count);
+    ibex_identify_devices(devices, OT_COMMON_DEV_ID, "soc", false, count);
+    ot_common_configure_device_opts(devices, count);
+    ot_earlgrey_update_device_clocks(devices, count);
+    ibex_realize_devices(devices, bus, defs, count);
+    ibex_connect_devices(devices, defs, count);
+}
+
 static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 {
     OtEGSoCState *s = RISCV_OT_EG_SOC(dev);
@@ -1404,9 +1465,19 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 
     /* Link, define properties and realize devices, then connect GPIOs */
     BusState *bus = sysbus_get_default();
-    ot_common_configure_devices_with_id(s->devices, bus, "soc", false,
-                                        ot_eg_soc_devices,
-                                        ARRAY_SIZE(ot_eg_soc_devices));
+    bool verilator_mode;
+
+    verilator_mode =
+        object_property_get_bool(qdev_get_machine(), "verilator", NULL);
+    if (!verilator_mode) {
+        ot_common_configure_devices_with_id(s->devices, bus, "soc", false,
+                                            ot_eg_soc_devices,
+                                            ARRAY_SIZE(ot_eg_soc_devices));
+    } else {
+        ot_earlgrey_configure_verilator_devices(s->devices, bus,
+                                                ot_eg_soc_devices,
+                                                ARRAY_SIZE(ot_eg_soc_devices));
+    }
 
     MemoryRegion *mrs[] = { get_system_memory(), NULL, NULL, NULL };
     ibex_map_devices(s->devices, mrs, ot_eg_soc_devices,
@@ -1624,6 +1695,22 @@ ot_eg_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
     s->ignore_elf_entry = value;
 }
 
+static bool ot_eg_machine_get_verilator(Object *obj, Error **errp)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
+    (void)errp;
+
+    return s->verilator;
+}
+
+static void ot_eg_machine_set_verilator(Object *obj, bool value, Error **errp)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
+    (void)errp;
+
+    s->verilator = value;
+}
+
 static ResettableState *ot_eg_get_reset_state(Object *obj)
 {
     OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
@@ -1669,6 +1756,9 @@ static void ot_eg_machine_instance_init(Object *obj)
                              &ot_eg_machine_set_ignore_elf_entry);
     object_property_set_description(obj, "ignore-elf-entry",
                                     "Do not set vCPU PC with ELF entry point");
+    object_property_add_bool(obj, "verilator", &ot_eg_machine_get_verilator,
+                             &ot_eg_machine_set_verilator);
+    object_property_set_description(obj, "verilator", "Use Verilator clocks");
 }
 
 static void ot_eg_machine_init(MachineState *state)
