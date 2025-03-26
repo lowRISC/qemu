@@ -303,7 +303,7 @@ typedef struct {
     unsigned rem_packet_count; /* remaining packets to generate */
     bool instantiated;
     bool seeded; /* ready to generate randomness */
-    bool fips;
+    bool no_fips;
     bool force_fips;
 } OtCSRNGDrng;
 
@@ -669,7 +669,7 @@ static OtCSRNDCmdResult ot_csrng_drng_instantiate(
     }
 
     memset(drng->v_counter, 0, sizeof(drng->v_counter));
-    drng->fips = false;
+    drng->no_fips = false;
 
     uint8_t key[OT_CSRNG_AES_KEY_SIZE];
     memset(key, 0, sizeof(key));
@@ -711,7 +711,7 @@ static void ot_csrng_drng_uninstantiate(OtCSRNGInstance *inst)
 
     drng->instantiated = false;
     drng->seeded = false;
-    drng->fips = false;
+    drng->no_fips = false;
     drng->rem_packet_count = 0;
 
     /* only to help debugging */
@@ -821,10 +821,10 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
         memcpy(drng->material, buffer, sizeof(entropy));
         drng->material_len = sizeof(entropy) / (sizeof(uint32_t));
         ot_csrng_drng_update(inst);
-        drng->fips = fips;
+        drng->no_fips |= !fips;
     } else {
         ot_csrng_drng_update(inst);
-        drng->fips = false;
+        drng->no_fips = true;
     }
 
     drng->reseed_counter = 0u;
@@ -851,7 +851,7 @@ static void ot_csrng_drng_generate(OtCSRNGInstance *inst, uint32_t *out,
     xtrace_ot_csrng_show_buffer(ot_csrng_get_slot(inst), "out", out,
                                 OT_CSRNG_AES_BLOCK_SIZE);
 
-    *fips = drng->fips || drng->force_fips;
+    *fips = (!drng->no_fips) || drng->force_fips;
 
     if (!ot_csrng_drng_remaining_count(inst)) {
         ot_csrng_drng_update(inst);
@@ -1698,7 +1698,7 @@ static uint32_t ot_csrng_read_state_db(OtCSRNGState *s)
         break;
     case 13u: /* Status + Compliance, only 8 LSBs matter */
         val32 = (uint32_t)((((uint8_t)drng->instantiated) << 0u) |
-                           (((uint8_t)drng->fips) << 1u));
+                           (((uint8_t)!drng->no_fips) << 1u));
         break;
     default:
         val32 = 0;
