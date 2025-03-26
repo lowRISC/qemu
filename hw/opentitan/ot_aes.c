@@ -201,6 +201,7 @@ typedef struct OtAESRegisters {
     DECLARE_BITMAP(data_in_bm, PARAM_NUM_REGS_DATA);
     DECLARE_BITMAP(data_out_bm, PARAM_NUM_REGS_DATA);
     uint32_t key[PARAM_NUM_REGS_KEY];
+    bool data_out_rdy; /* AES output data exist, not yet published */
 } OtAESRegisters;
 
 typedef struct OtAESContext {
@@ -805,9 +806,7 @@ static void ot_aes_push(OtAESState *s)
 
     memcpy(r->data_out, c->dst, sizeof(c->dst));
     memcpy(r->iv, c->iv, sizeof(c->iv));
-    bitmap_fill(r->data_out_bm, PARAM_NUM_REGS_DATA);
-
-    r->status |= R_STATUS_OUTPUT_VALID_MASK;
+    r->data_out_rdy = true;
 }
 
 static void ot_aes_process(OtAESState *s)
@@ -900,6 +899,15 @@ static void ot_aes_process(OtAESState *s)
     }
 }
 
+static void ot_aes_commit_data_out(OtAESRegisters *r)
+{
+    if (r->data_out_rdy) {
+        bitmap_fill(r->data_out_bm, PARAM_NUM_REGS_DATA);
+        r->status |= R_STATUS_OUTPUT_VALID_MASK;
+        r->data_out_rdy = false;
+    }
+}
+
 static inline void ot_aes_do_process(OtAESState *s)
 {
     ot_aes_process(s);
@@ -908,10 +916,18 @@ static inline void ot_aes_do_process(OtAESState *s)
         s->reseed_count -= 1u;
     }
     if (!s->reseed_count) {
+        /*
+         * delay availability of pushed data till completion of reseed
+         * otherwise, IDLE status may be false once the vCPU has read the data,
+         * which would not match the HW behavior
+         */
         trace_ot_aes_reseed("reseed_count reached");
         s->regs->trigger |= R_TRIGGER_PRNG_RESEED_MASK;
         ot_aes_trigger_reseed(s);
         ot_aes_load_reseed_rate(s);
+    } else {
+        /* flag pushed data as immediately available */
+        ot_aes_commit_data_out(s->regs);
     }
 
     OtAESRegisters *r = s->regs;
@@ -969,6 +985,13 @@ static void ot_aes_fill_entropy(void *opaque, uint32_t bits, bool fips)
     trace_ot_aes_fill_entropy(bits, fips);
     edn->scheduled = false;
     r->trigger &= ~R_TRIGGER_PRNG_RESEED_MASK;
+
+    /*
+     * if a previous AES data output generation had completed, flag the output
+     * as valid, as this state was delayed till entropy collection was
+     * completed to maintain a coherent IDLE state.
+     */
+    ot_aes_commit_data_out(r);
 
     ot_prng_reseed(s->prng, bits);
 
@@ -1272,6 +1295,7 @@ static void ot_aes_reset(DeviceState *dev)
     r->ctrl_aux_regwen = 1u;
     r->trigger = 0xeu;
     r->status = 0u;
+    r->data_out_rdy = false;
     e->scheduled = false;
     ot_aes_load_reseed_rate(s);
 
