@@ -51,11 +51,7 @@ enum OtOTBNStatus {
     OT_OTBN_STATUS_LOCKED = 0xFF,
 };
 
-enum OtOTBNRandomSource {
-    OT_OTBN_URND,
-    OT_OTBN_RND,
-    OT_OTBN_RND_COUNT
-};
+enum OtOTBNRandomSource { OT_OTBN_URND, OT_OTBN_RND, OT_OTBN_RND_COUNT };
 
 #define OT_OTBN_IMEM_SIZE (8U << 10U)
 #define OT_OTBN_DMEM_SIZE (3U << 10U)
@@ -64,17 +60,16 @@ enum OtOTBNRandomSource {
 #define OT_OTBN_RANDOM_WORD_COUNT \
     ((OT_OTBN_RANDOM_BIT_WIDTH) / (8u * sizeof(uint32_t)))
 
-extern OTBNProxy ot_otbn_proxy_new(ot_otbn_fetch_entropy_fn urnd_req_entropy,
-                                   void *urnd_opaque,
-                                   ot_otbn_fetch_entropy_fn rnd_req_entropy,
-                                   void *rnd_opaque,
-                                   ot_otbn_signal_completion_fn signal,
-                                   void *on_comp_opaque);
+extern OTBNProxy
+ot_otbn_proxy_new(ot_otbn_fetch_entropy_fn urnd_req_entropy, void *urnd_opaque,
+                  ot_otbn_fetch_entropy_fn rnd_req_entropy, void *rnd_opaque,
+                  ot_otbn_signal_completion_fn signal, void *on_comp_opaque);
 extern void ot_otbn_proxy_start(OTBNProxy proxy, bool test_mode,
-                                const char *logname);
+                                const char *logname, bool log_asm);
 extern void ot_otbn_proxy_terminate(OTBNProxy proxy);
 extern int ot_otbn_proxy_push_entropy(OTBNProxy proxy, uint32_t rndix,
-    const uint8_t *seed, uint32_t len, bool fips);
+                                      const uint8_t *seed, uint32_t len,
+                                      bool fips);
 extern int ot_otbn_proxy_execute(OTBNProxy proxy, bool dumpstate);
 extern int ot_otbn_proxy_wipe_memory(OTBNProxy proxy, bool doi);
 extern bool ot_otbn_proxy_acknowledge_execution(OTBNProxy proxy);

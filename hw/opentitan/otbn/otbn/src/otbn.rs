@@ -110,6 +110,7 @@ pub struct Executer {
     syncurnd: Arc<random::SyncUrnd>,
     on_complete: Option<Box<dyn comm::Callback>>,
     log_file: Option<Box<dyn io::Write>>,
+    log_asm: bool,
 }
 
 impl Executer {
@@ -123,6 +124,7 @@ impl Executer {
         rnd: Arc<random::Rnd>,
         on_complete: Option<Box<dyn comm::Callback>>,
         log_name: Option<String>,
+        log_asm: bool,
     ) -> Self {
         let log_file: Option<Box<dyn io::Write>>;
         if let Some(logname) = log_name {
@@ -143,6 +145,7 @@ impl Executer {
             syncurnd,
             on_complete,
             log_file,
+            log_asm,
         }
     }
 
@@ -156,6 +159,7 @@ impl Executer {
         rnd: Arc<random::Rnd>,
         on_complete: Option<Box<dyn comm::Callback>>,
         log_name: Option<String>,
+        log_asm: bool,
     ) {
         Self::new(
             channel,
@@ -166,6 +170,7 @@ impl Executer {
             rnd,
             on_complete,
             log_name,
+            log_asm,
         )
         .enter();
     }
@@ -316,32 +321,34 @@ impl Executer {
 
         loop {
             // Debug/traces
-            if let Some(log_file) = &mut self.log_file {
-                // Output current instruction disassembly to log
-                if let Some(insn_bits) = executor.imem.read_mem(executor.hart_state.pc) {
-                    let mut outputter = insn_disasm::InstructionStringOutputter {
-                        insn_pc: executor.hart_state.pc,
-                    };
-                    if let Some(inst) = insn_decode::decoder(&mut outputter, insn_bits) {
-                        writeln!(
-                            log_file,
-                            "{:04x}: {:08x} {}",
-                            executor.hart_state.pc, insn_bits, inst
-                        )
-                        .expect("Log file write failed");
+            if self.log_asm {
+                if let Some(log_file) = &mut self.log_file {
+                    // Output current instruction disassembly to log
+                    if let Some(insn_bits) = executor.imem.read_mem(executor.hart_state.pc) {
+                        let mut outputter = insn_disasm::InstructionStringOutputter {
+                            insn_pc: executor.hart_state.pc,
+                        };
+                        if let Some(inst) = insn_decode::decoder(&mut outputter, insn_bits) {
+                            writeln!(
+                                log_file,
+                                "{:04x}: {:08x} {}",
+                                executor.hart_state.pc, insn_bits, inst
+                            )
+                            .expect("Log file write failed");
+                        } else {
+                            let base = (insn_bits >> 2) & 0b11111;
+                            let funct3 = (insn_bits >> 12) & 0b111;
+                            writeln!(
+                                log_file,
+                                "Unable to decode instruction @ {:x}: {:x} [{:03b}..{:05b}]",
+                                executor.hart_state.pc, insn_bits, funct3, base
+                            )
+                            .expect("Log file write failed");
+                        }
                     } else {
-                        let base = (insn_bits >> 2) & 0b11111;
-                        let funct3 = (insn_bits >> 12) & 0b111;
-                        writeln!(
-                            log_file,
-                            "Unable to decode instruction @ {:x}: {:x} [{:03b}..{:05b}]",
-                            executor.hart_state.pc, insn_bits, funct3, base
-                        )
-                        .expect("Log file write failed");
+                        writeln!(log_file, "Could not read PC {:08x}", executor.hart_state.pc)
+                            .expect("Log file write failed");
                     }
-                } else {
-                    writeln!(log_file, "Could not read PC {:08x}", executor.hart_state.pc)
-                        .expect("Log file write failed");
                 }
             }
 
@@ -405,8 +412,10 @@ impl Executer {
 
             self.registers.insn_count.fetch_add(1, Ordering::Relaxed);
 
-            if let Some(log_file) = &mut self.log_file {
-                Executer::log_changes(executor.hart_state, log_file);
+            if self.log_asm {
+                if let Some(log_file) = &mut self.log_file {
+                    Executer::log_changes(executor.hart_state, log_file);
+                }
             }
         }
     }

@@ -165,7 +165,8 @@ struct OtOTBNState {
     enum OtOTBNCommand last_cmd;
 
     OtOTBNRandom rnds[OT_OTBN_RND_COUNT];
-    char *logfile;
+    char *log_file;
+    bool log_asm;
 };
 
 static void ot_otbn_request_entropy(OtOTBNRandom *rnd);
@@ -590,7 +591,8 @@ static Property ot_otbn_properties[] = {
     DEFINE_PROP_UINT8("edn-u-ep", OtOTBNState, rnds[OT_OTBN_URND].ep,
                       UINT8_MAX),
     DEFINE_PROP_UINT8("edn-r-ep", OtOTBNState, rnds[OT_OTBN_RND].ep, UINT8_MAX),
-    DEFINE_PROP_STRING("logfile", OtOTBNState, logfile),
+    DEFINE_PROP_STRING("logfile", OtOTBNState, log_file),
+    DEFINE_PROP_BOOL("logasm", OtOTBNState, log_asm, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -645,7 +647,11 @@ static void ot_otbn_reset(DeviceState *dev)
         ot_fifo32_reset(&rnd->packer);
     }
 
-    ot_otbn_proxy_start(s->proxy, false, s->logfile);
+    if (!s->log_file) {
+        s->log_asm = false;
+    }
+
+    ot_otbn_proxy_start(s->proxy, false, s->log_file, s->log_asm);
 }
 
 

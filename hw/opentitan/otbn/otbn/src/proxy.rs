@@ -112,7 +112,7 @@ impl Proxy {
     }
 
     /// Kick off the core executer, and create the communication channels
-    pub fn start(&mut self, test_mode: bool, log_name: Option<&str>) {
+    pub fn start(&mut self, test_mode: bool, log_name: Option<&str>, log_asm: bool) {
         if self.core_id.is_some() {
             // already started, only reset
             // hartstate is not reset, as it is done after each execution
@@ -155,6 +155,7 @@ impl Proxy {
                             rnd,
                             on_complete,
                             log_name,
+                            log_asm,
                         )
                     })
                     .unwrap(),
@@ -406,14 +407,15 @@ pub extern "C" fn ot_otbn_proxy_new(
 pub unsafe extern "C" fn ot_otbn_proxy_start(
     proxy: Option<&mut Proxy>,
     test_mode: bool,
-    logname: *const c_char,
+    log_name: *const c_char,
+    log_asm: bool,
 ) {
-    let log_name: Option<&str> = if !logname.is_null() {
-        Some(CStr::from_ptr(logname).to_str().unwrap())
+    let log_name: Option<&str> = if !log_name.is_null() {
+        Some(CStr::from_ptr(log_name).to_str().unwrap())
     } else {
         None
     };
-    proxy.unwrap().start(test_mode, log_name);
+    proxy.unwrap().start(test_mode, log_name, log_asm);
 }
 
 #[no_mangle]
