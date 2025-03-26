@@ -430,29 +430,29 @@ static const uint16_t OtEDNFsmStateCode[] = {
     [ENTROPY_SRC_ERROR] = 0b100111101,
 };
 
-#define STATE_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
+#define STATE_NAME_ENTRY(_st_) [ENTROPY_SRC_##_st_] = stringify(_st_)
 static const char *STATE_NAMES[] = {
-    STATE_NAME_ENTRY(ENTROPY_SRC_IDLE),
-    STATE_NAME_ENTRY(ENTROPY_SRC_BOOT_HT_RUNNING),
-    STATE_NAME_ENTRY(ENTROPY_SRC_BOOT_POST_HT_CHK),
-    STATE_NAME_ENTRY(ENTROPY_SRC_BOOT_PHASE_DONE),
-    STATE_NAME_ENTRY(ENTROPY_SRC_STARTUP_HT_START),
-    STATE_NAME_ENTRY(ENTROPY_SRC_STARTUP_PHASE1),
-    STATE_NAME_ENTRY(ENTROPY_SRC_STARTUP_PASS1),
-    STATE_NAME_ENTRY(ENTROPY_SRC_STARTUP_FAIL1),
-    STATE_NAME_ENTRY(ENTROPY_SRC_CONT_HT_START),
-    STATE_NAME_ENTRY(ENTROPY_SRC_CONT_HT_RUNNING),
-    STATE_NAME_ENTRY(ENTROPY_SRC_FW_INSERT_START),
-    STATE_NAME_ENTRY(ENTROPY_SRC_FW_INSERT_MSG),
-    STATE_NAME_ENTRY(ENTROPY_SRC_SHA3_MSGDONE),
-    STATE_NAME_ENTRY(ENTROPY_SRC_SHA3_PREP),
-    STATE_NAME_ENTRY(ENTROPY_SRC_SHA3_PROCESS),
-    STATE_NAME_ENTRY(ENTROPY_SRC_SHA3_VALID),
-    STATE_NAME_ENTRY(ENTROPY_SRC_SHA3_DONE),
-    STATE_NAME_ENTRY(ENTROPY_SRC_SHA3_QUIESCE),
-    STATE_NAME_ENTRY(ENTROPY_SRC_ALERT_STATE),
-    STATE_NAME_ENTRY(ENTROPY_SRC_ALERT_HANG),
-    STATE_NAME_ENTRY(ENTROPY_SRC_ERROR),
+    STATE_NAME_ENTRY(IDLE),
+    STATE_NAME_ENTRY(BOOT_HT_RUNNING),
+    STATE_NAME_ENTRY(BOOT_POST_HT_CHK),
+    STATE_NAME_ENTRY(BOOT_PHASE_DONE),
+    STATE_NAME_ENTRY(STARTUP_HT_START),
+    STATE_NAME_ENTRY(STARTUP_PHASE1),
+    STATE_NAME_ENTRY(STARTUP_PASS1),
+    STATE_NAME_ENTRY(STARTUP_FAIL1),
+    STATE_NAME_ENTRY(CONT_HT_START),
+    STATE_NAME_ENTRY(CONT_HT_RUNNING),
+    STATE_NAME_ENTRY(FW_INSERT_START),
+    STATE_NAME_ENTRY(FW_INSERT_MSG),
+    STATE_NAME_ENTRY(SHA3_MSGDONE),
+    STATE_NAME_ENTRY(SHA3_PREP),
+    STATE_NAME_ENTRY(SHA3_PROCESS),
+    STATE_NAME_ENTRY(SHA3_VALID),
+    STATE_NAME_ENTRY(SHA3_DONE),
+    STATE_NAME_ENTRY(SHA3_QUIESCE),
+    STATE_NAME_ENTRY(ALERT_STATE),
+    STATE_NAME_ENTRY(ALERT_HANG),
+    STATE_NAME_ENTRY(ERROR),
 };
 #undef STATE_NAME_ENTRY
 #define STATE_NAME(_st_) \
@@ -466,9 +466,10 @@ static const char *STATE_NAMES[] = {
 #define xtrace_ot_entropy_src_show_buffer(_msg_, _buf_, _len_) \
     ot_entropy_src_show_buffer(__func__, __LINE__, _msg_, _buf_, _len_)
 
-static bool ot_entropy_src_is_module_enabled(OtEntropySrcState *s);
-static bool ot_entropy_src_is_hw_route(OtEntropySrcState *s);
-static bool ot_entropy_src_is_fips_capable(OtEntropySrcState *s);
+static bool ot_entropy_src_is_module_enabled(const OtEntropySrcState *s);
+static bool ot_entropy_src_is_fips_enabled(const OtEntropySrcState *s);
+static bool ot_entropy_src_is_hw_route(const OtEntropySrcState *s);
+static bool ot_entropy_src_is_fips_capable(const OtEntropySrcState *s);
 static void ot_entropy_src_reset(DeviceState *dev);
 static void ot_entropy_src_update_alerts(OtEntropySrcState *s);
 static void ot_entropy_src_update_filler(OtEntropySrcState *s);
@@ -571,8 +572,17 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
         randu32[pos++] = ot_fifo32_pop(&s->final_fifo);
     }
 
+    bool fips_capable = ot_entropy_src_is_fips_capable(s);
+
     /* note: fips compliancy is only simulated here for now */
-    *fips = fips_compliant && ot_entropy_src_is_fips_capable(s);
+    *fips = fips_compliant && fips_capable;
+
+    trace_ot_entropy_src_get_random_fips(
+        STATE_NAME(s->state), ot_entropy_src_is_fips_enabled(s),
+        REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_ROUTE),
+        REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_TYPE),
+        REG_MB4_IS_FALSE(s, CONF, RNG_BIT_ENABLE), fips_capable, fips_compliant,
+        *fips);
 
     if (ot_fifo32_num_used(&s->final_fifo) < ES_WORD_COUNT) {
         ot_entropy_src_update_filler(s);
@@ -613,17 +623,17 @@ static void ot_entropy_src_show_buffer(
     }
 }
 
-static bool ot_entropy_src_is_module_enabled(OtEntropySrcState *s)
+static bool ot_entropy_src_is_module_enabled(const OtEntropySrcState *s)
 {
     return REG_MB4_IS_TRUE(s, MODULE_ENABLE, MODULE_ENABLE);
 }
 
-static bool ot_entropy_src_is_module_disabled(OtEntropySrcState *s)
+static bool ot_entropy_src_is_module_disabled(const OtEntropySrcState *s)
 {
     return REG_MB4_IS_FALSE(s, MODULE_ENABLE, MODULE_ENABLE);
 }
 
-static bool ot_entropy_src_is_fips_enabled(OtEntropySrcState *s)
+static bool ot_entropy_src_is_fips_enabled(const OtEntropySrcState *s)
 {
     return REG_MB4_IS_TRUE(s, CONF, FIPS_ENABLE);
 }
@@ -636,54 +646,48 @@ static void ot_entropy_src_update_irqs(OtEntropySrcState *s)
     }
 }
 
-static bool ot_entropy_src_is_final_fifo_slot_available(OtEntropySrcState *s)
+static bool
+ot_entropy_src_is_final_fifo_slot_available(const OtEntropySrcState *s)
 {
     return ot_fifo32_num_free(&s->final_fifo) >= ES_WORD_COUNT;
 }
 
-static bool ot_entropy_src_is_hw_route(OtEntropySrcState *s)
+static bool ot_entropy_src_is_hw_route(const OtEntropySrcState *s)
 {
     return REG_MB4_IS_FALSE(s, ENTROPY_CONTROL, ES_ROUTE);
 }
 
-static bool ot_entropy_src_is_fw_route(OtEntropySrcState *s)
+static bool ot_entropy_src_is_fw_route(const OtEntropySrcState *s)
 {
     return REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_ROUTE);
 }
 
-static bool ot_entropy_src_is_bypass_mode(OtEntropySrcState *s)
+static bool ot_entropy_src_is_bypass_mode(const OtEntropySrcState *s)
 {
     return !ot_entropy_src_is_fips_enabled(s) ||
            (ot_entropy_src_is_fw_route(s) &&
             REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_TYPE));
 }
 
-static bool ot_entropy_src_is_fw_ov_mode(OtEntropySrcState *s)
+static bool ot_entropy_src_is_fw_ov_mode(const OtEntropySrcState *s)
 {
     return REG_MB4_IS_TRUE(s, FW_OV_CONTROL, FW_OV_MODE);
 }
 
-static bool ot_entropy_src_is_fw_ov_entropy_insert(OtEntropySrcState *s)
+static bool ot_entropy_src_is_fw_ov_entropy_insert(const OtEntropySrcState *s)
 {
     return REG_MB4_IS_TRUE(s, FW_OV_CONTROL, FW_OV_ENTROPY_INSERT);
 }
 
-static bool ot_entropy_src_is_fips_capable(OtEntropySrcState *s)
+static bool ot_entropy_src_is_fips_capable(const OtEntropySrcState *s)
 {
-    bool fips_capable =
-        ot_entropy_src_is_fips_enabled(s) &&
-        !(REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_ROUTE) &&
-          REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_TYPE)) &&
-        REG_MB4_IS_FALSE(s, CONF, RNG_BIT_ENABLE);
-    trace_ot_entropy_src_is_fips_capable(
-        ot_entropy_src_is_fips_enabled(s),
-        REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_ROUTE),
-        REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_TYPE),
-        REG_MB4_IS_FALSE(s, CONF, RNG_BIT_ENABLE), fips_capable);
-    return fips_capable;
+    return ot_entropy_src_is_fips_enabled(s) &&
+           !(REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_ROUTE) &&
+             REG_MB4_IS_TRUE(s, ENTROPY_CONTROL, ES_TYPE)) &&
+           REG_MB4_IS_FALSE(s, CONF, RNG_BIT_ENABLE);
 }
 
-static unsigned ot_alert_get_alert_fail_count(OtEntropySrcState *s)
+static unsigned ot_alert_get_alert_fail_count(const OtEntropySrcState *s)
 {
     unsigned count;
 
@@ -725,8 +729,11 @@ static void ot_entropy_src_change_state_line(
         break;
     }
 
-    trace_ot_entropy_src_change_state(line, STATE_NAME(old_state), old_state,
-                                      STATE_NAME(s->state), s->state);
+    if (old_state != s->state) {
+        trace_ot_entropy_src_change_state(line, STATE_NAME(old_state),
+                                          old_state, STATE_NAME(s->state),
+                                          s->state);
+    }
 
     if (s->state == ENTROPY_SRC_ERROR) {
         s->regs[R_ERR_CODE] |= R_ERR_CODE_ES_MAIN_SM_ERR_MASK;
@@ -774,7 +781,7 @@ static bool ot_entropy_src_check_multibitboot(
     return false;
 }
 
-static bool ot_entropy_src_can_consume_entropy(OtEntropySrcState *s)
+static bool ot_entropy_src_can_consume_entropy(const OtEntropySrcState *s)
 {
     return ot_entropy_src_is_module_enabled(s) &&
            !(ot_entropy_src_is_fw_ov_entropy_insert(s) &&
@@ -811,7 +818,7 @@ static void ot_entropy_src_update_filler(OtEntropySrcState *s)
     }
 }
 
-static bool ot_entropy_src_can_condition_entropy(OtEntropySrcState *s)
+static bool ot_entropy_src_can_condition_entropy(const OtEntropySrcState *s)
 {
     if (!ot_fifo32_is_full(&s->precon_fifo)) {
         /* room in preconditioner packer */
@@ -825,7 +832,7 @@ static bool ot_entropy_src_can_condition_entropy(OtEntropySrcState *s)
     return false;
 }
 
-static bool ot_entropy_src_can_bypass_entropy(OtEntropySrcState *s)
+static bool ot_entropy_src_can_bypass_entropy(const OtEntropySrcState *s)
 {
     if (!ot_fifo32_is_full(&s->bypass_fifo)) {
         /* room in bypass packer */
@@ -873,7 +880,7 @@ ot_entropy_src_push_entropy_to_conditioner(OtEntropySrcState *s, uint32_t word)
     return true;
 }
 
-static bool ot_entropy_src_can_hash(OtEntropySrcState *s)
+static bool ot_entropy_src_can_hash(const OtEntropySrcState *s)
 {
     return ot_fifo32_is_empty(&s->precon_fifo) &&
            (s->cond_word >= (2048 / (8u * sizeof(uint32_t))));
