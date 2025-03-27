@@ -62,7 +62,6 @@
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
-#include "hw/opentitan/ot_sensor.h"
 #include "hw/opentitan/ot_soc_proxy.h"
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
@@ -1031,16 +1030,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
         ),
-    },
-    [OT_DJ_SOC_DEV_SENSOR_CTRL] = {
-        .type = TYPE_OT_SENSOR,
-        .memmap = MEMMAPENTRIES(
-            { .base = 0x30020000u }
-        ),
-        .gpio = IBEXGPIOCONNDEFS(
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 81),
-            OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 82)
-        )
     },
     [OT_DJ_SOC_DEV_I2C0] = {
         .type = TYPE_OT_I2C_DJ,
