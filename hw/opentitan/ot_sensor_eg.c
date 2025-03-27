@@ -40,7 +40,10 @@
 #include "hw/sysbus.h"
 #include "trace.h"
 
-#define NUM_ALERTS 2u
+#define NUM_ALERTS   2u
+#define NUM_IO_RAILS 2u
+
+#define NUM_ALERT_SENSOR_COUNT 11u
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
@@ -65,7 +68,19 @@ REG32(ALERT_TRIG, 0x14u)
     FIELD(ALERT_TRIG, VAL_8, 8u, 1u)
     FIELD(ALERT_TRIG, VAL_9, 9u, 1u)
     FIELD(ALERT_TRIG, VAL_10, 10u, 1u)
-REG32(FATAL_ALERT_EN, 0x18u)
+REG32(ALERT_EN_0, 0x18u)
+    SHARED_FIELD(ALERT_EN_VAL, 0u, 4u)
+REG32(ALERT_EN_1, 0x1cu)
+REG32(ALERT_EN_2, 0x20u)
+REG32(ALERT_EN_3, 0x24u)
+REG32(ALERT_EN_4, 0x28u)
+REG32(ALERT_EN_5, 0x2cu)
+REG32(ALERT_EN_6, 0x30u)
+REG32(ALERT_EN_7, 0x34u)
+REG32(ALERT_EN_8, 0x38u)
+REG32(ALERT_EN_9, 0x3cu)
+REG32(ALERT_EN_10, 0x40u)
+REG32(FATAL_ALERT_EN, 0x44u)
     FIELD(FATAL_ALERT_EN, VAL_0, 0u, 1u)
     FIELD(FATAL_ALERT_EN, VAL_1, 1u, 1u)
     FIELD(FATAL_ALERT_EN, VAL_2, 2u, 1u)
@@ -77,7 +92,7 @@ REG32(FATAL_ALERT_EN, 0x18u)
     FIELD(FATAL_ALERT_EN, VAL_8, 8u, 1u)
     FIELD(FATAL_ALERT_EN, VAL_9, 9u, 1u)
     FIELD(FATAL_ALERT_EN, VAL_10, 10u, 1u)
-REG32(RECOV_ALERT, 0x1cu)
+REG32(RECOV_ALERT, 0x48u)
     FIELD(RECOV_ALERT, VAL_0, 0u, 1u)
     FIELD(RECOV_ALERT, VAL_1, 1u, 1u)
     FIELD(RECOV_ALERT, VAL_2, 2u, 1u)
@@ -89,7 +104,7 @@ REG32(RECOV_ALERT, 0x1cu)
     FIELD(RECOV_ALERT, VAL_8, 8u, 1u)
     FIELD(RECOV_ALERT, VAL_9, 9u, 1u)
     FIELD(RECOV_ALERT, VAL_10, 10u, 1u)
-REG32(FATAL_ALERT, 0x20u)
+REG32(FATAL_ALERT, 0x4cu)
     FIELD(FATAL_ALERT, VAL_0, 0u, 1u)
     FIELD(FATAL_ALERT, VAL_1, 1u, 1u)
     FIELD(FATAL_ALERT, VAL_2, 2u, 1u)
@@ -102,33 +117,73 @@ REG32(FATAL_ALERT, 0x20u)
     FIELD(FATAL_ALERT, VAL_9, 9u, 1u)
     FIELD(FATAL_ALERT, VAL_10, 10u, 1u)
     FIELD(FATAL_ALERT, VAL_11, 11u, 1u)
-REG32(STATUS, 0x24u)
+REG32(STATUS, 0x50u)
     FIELD(STATUS, AST_INIT_DONE, 0u, 1u)
     FIELD(STATUS, IO_POK, 1u, 2u)
+REG32(MANUAL_PAD_ATTR_REGWEN_0, 0x54u)
+    SHARED_FIELD(MANUAL_PAD_ATTR_REGWEN_EN, 0u, 1u)
+REG32(MANUAL_PAD_ATTR_REGWEN_1, 0x58u)
+REG32(MANUAL_PAD_ATTR_REGWEN_2, 0x5cu)
+REG32(MANUAL_PAD_ATTR_REGWEN_3, 0x60u)
+REG32(MANUAL_PAD_ATTR_0, 0x64u)
+    SHARED_FIELD(MANUAL_PAD_ATTR_PULL_EN, 2u, 1u)
+    SHARED_FIELD(MANUAL_PAD_ATTR_PULL_SELECT, 3u, 1u)
+    SHARED_FIELD(MANUAL_PAD_ATTR_INPUT_DISABLE, 7u, 1u)
+REG32(MANUAL_PAD_ATTR_1, 0x68u)
+REG32(MANUAL_PAD_ATTR_2, 0x6cu)
+REG32(MANUAL_PAD_ATTR_3, 0x70u)
 /* clang-format on */
-
-#define PARAM_NUM_IO_RAILS 2
 
 #define INTR_MASK (INTR_IO_STATUS_CHANGE_MASK | INTR_INIT_STATUS_CHANGE_MASK)
 #define ALERT_TEST_MASK \
     (R_ALERT_TEST_RECOV_ALERT_MASK | R_ALERT_TEST_FATAL_ALERT_MASK)
+#define ALERT_SENSOR_MASK ((1u << NUM_ALERT_SENSOR_COUNT) - 1u)
+#define MANUAL_PAD_ATTR_MASK \
+    (MANUAL_PAD_ATTR_PULL_EN_MASK | MANUAL_PAD_ATTR_PULL_SELECT_MASK | \
+     MANUAL_PAD_ATTR_INPUT_DISABLE_MASK)
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
-#define R_LAST_REG (R_STATUS)
+#define R_LAST_REG (R_MANUAL_PAD_ATTR_3)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
+/* clang-format off */
 static const char *REG_NAMES[REGS_COUNT] = {
-    REG_NAME_ENTRY(INTR_STATE),     REG_NAME_ENTRY(INTR_ENABLE),
-    REG_NAME_ENTRY(INTR_TEST),      REG_NAME_ENTRY(ALERT_TEST),
-    REG_NAME_ENTRY(CFG_REGWEN),     REG_NAME_ENTRY(ALERT_TRIG),
-    REG_NAME_ENTRY(FATAL_ALERT_EN), REG_NAME_ENTRY(RECOV_ALERT),
-    REG_NAME_ENTRY(FATAL_ALERT),    REG_NAME_ENTRY(STATUS),
+    REG_NAME_ENTRY(INTR_STATE),
+    REG_NAME_ENTRY(INTR_ENABLE),
+    REG_NAME_ENTRY(INTR_TEST),
+    REG_NAME_ENTRY(ALERT_TEST),
+    REG_NAME_ENTRY(CFG_REGWEN),
+    REG_NAME_ENTRY(ALERT_TRIG),
+    REG_NAME_ENTRY(ALERT_EN_0),
+    REG_NAME_ENTRY(ALERT_EN_1),
+    REG_NAME_ENTRY(ALERT_EN_2),
+    REG_NAME_ENTRY(ALERT_EN_3),
+    REG_NAME_ENTRY(ALERT_EN_4),
+    REG_NAME_ENTRY(ALERT_EN_5),
+    REG_NAME_ENTRY(ALERT_EN_6),
+    REG_NAME_ENTRY(ALERT_EN_7),
+    REG_NAME_ENTRY(ALERT_EN_8),
+    REG_NAME_ENTRY(ALERT_EN_9),
+    REG_NAME_ENTRY(ALERT_EN_10),
+    REG_NAME_ENTRY(FATAL_ALERT_EN),
+    REG_NAME_ENTRY(RECOV_ALERT),
+    REG_NAME_ENTRY(FATAL_ALERT),
+    REG_NAME_ENTRY(STATUS),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_REGWEN_0),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_REGWEN_1),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_REGWEN_2),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_REGWEN_3),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_0),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_1),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_2),
+    REG_NAME_ENTRY(MANUAL_PAD_ATTR_3),
 };
+/* clang-format on */
 #undef REG_NAME_ENTRY
 
 struct OtSensorEgState {
@@ -173,9 +228,12 @@ static uint64_t ot_sensor_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_ENABLE:
     case R_CFG_REGWEN:
     case R_ALERT_TRIG:
+    case R_ALERT_EN_0 ... R_ALERT_EN_10:
     case R_FATAL_ALERT_EN:
     case R_RECOV_ALERT:
     case R_FATAL_ALERT:
+    case R_MANUAL_PAD_ATTR_REGWEN_0 ... R_MANUAL_PAD_ATTR_REGWEN_3:
+    case R_MANUAL_PAD_ATTR_0 ... R_MANUAL_PAD_ATTR_3:
         val32 = s->regs[reg];
         break;
     case R_STATUS:
@@ -237,12 +295,56 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= ALERT_TEST_MASK;
         s->regs[reg] = val32;
         ot_sensor_eg_update_alerts(s);
+        s->regs[reg] = 0u;
+        ot_sensor_eg_update_alerts(s);
         break;
     case R_CFG_REGWEN:
+        val32 &= R_CFG_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_ALERT_TRIG:
+        val32 &= ALERT_SENSOR_MASK;
+        s->regs[reg] = val32;
+        qemu_log_mask(LOG_UNIMP,
+                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
+                      addr, REG_NAME(reg));
+        break;
+    case R_ALERT_EN_0 ... R_ALERT_EN_10:
+        if (!s->regs[R_CFG_REGWEN]) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "Cannot change %s, CFG_REGWEN disabled",
+                          REG_NAME(reg));
+            break;
+        }
+        val32 &= ALERT_EN_VAL_MASK;
+        s->regs[reg] = val32;
+        qemu_log_mask(LOG_UNIMP,
+                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
+                      addr, REG_NAME(reg));
+        break;
     case R_FATAL_ALERT_EN:
+        if (!s->regs[R_CFG_REGWEN]) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "Cannot change %s, CFG_REGWEN disabled",
+                          REG_NAME(reg));
+            break;
+        }
+        val32 &= ALERT_SENSOR_MASK;
+        s->regs[reg] = val32;
+        qemu_log_mask(LOG_UNIMP,
+                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
+                      addr, REG_NAME(reg));
+        break;
     case R_RECOV_ALERT:
+        val32 &= ALERT_SENSOR_MASK;
+        s->regs[reg] = val32;
+        qemu_log_mask(LOG_UNIMP,
+                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
+                      addr, REG_NAME(reg));
+        break;
     case R_FATAL_ALERT:
+        val32 &= ALERT_SENSOR_MASK;
+        s->regs[reg] = val32;
         qemu_log_mask(LOG_UNIMP,
                       "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
                       addr, REG_NAME(reg));
@@ -250,6 +352,23 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
+                      addr, REG_NAME(reg));
+        break;
+    case R_MANUAL_PAD_ATTR_REGWEN_0 ... R_MANUAL_PAD_ATTR_REGWEN_3:
+        val32 &= MANUAL_PAD_ATTR_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
+    case R_MANUAL_PAD_ATTR_0 ... R_MANUAL_PAD_ATTR_3:
+        if (!s->regs[reg - R_MANUAL_PAD_ATTR_0 + R_MANUAL_PAD_ATTR_REGWEN_0]) {
+            qemu_log_mask(LOG_GUEST_ERROR, "Cannot change %s, %s disabled",
+                          REG_NAME(reg),
+                          REG_NAME(reg - R_MANUAL_PAD_ATTR_0 +
+                                   R_MANUAL_PAD_ATTR_REGWEN_0));
+        }
+        break;
+        val32 &= MANUAL_PAD_ATTR_MASK;
+        qemu_log_mask(LOG_UNIMP,
+                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
                       addr, REG_NAME(reg));
         break;
     default:
@@ -278,6 +397,13 @@ static void ot_sensor_eg_reset(DeviceState *dev)
     memset(s->regs, 0, REGS_SIZE);
 
     s->regs[R_CFG_REGWEN] = 0x1u;
+    for (unsigned rix = R_ALERT_EN_0; rix <= R_ALERT_EN_10; rix++) {
+        s->regs[rix] = 0x6u;
+    }
+    for (unsigned rix = R_MANUAL_PAD_ATTR_REGWEN_0;
+         rix <= R_MANUAL_PAD_ATTR_REGWEN_3; rix++) {
+        s->regs[rix] = 0x1u;
+    }
 
     ot_sensor_eg_update_irqs(s);
     ot_sensor_eg_update_alerts(s);
