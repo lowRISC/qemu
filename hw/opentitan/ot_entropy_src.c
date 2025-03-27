@@ -1180,6 +1180,7 @@ ot_entropy_src_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_EXTHT_FAIL_COUNTS:
     case R_FW_OV_CONTROL:
     case R_FW_OV_SHA3_START:
+    case R_FW_OV_RD_FIFO_OVERFLOW:
     case R_OBSERVE_FIFO_THRESH:
     case R_RECOV_ALERT_STS:
     case R_ERR_CODE:
