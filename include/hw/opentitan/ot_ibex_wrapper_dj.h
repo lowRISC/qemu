@@ -2,6 +2,7 @@
  * QEMU OpenTitan Darjeeling Ibex Wrapper device
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -32,7 +33,7 @@
 #include "hw/opentitan/ot_ibex_wrapper.h"
 
 #define TYPE_OT_IBEX_WRAPPER_DJ "ot-ibex_wrapper-dj"
-OBJECT_DECLARE_TYPE(OtIbexWrapperDjState, OtIbexWrapperStateClass,
+OBJECT_DECLARE_TYPE(OtIbexWrapperDjState, OtIbexWrapperClass,
                     OT_IBEX_WRAPPER_DJ)
 
 #endif /* HW_OPENTITAN_OT_IBEX_WRAPPER_DJ_H */

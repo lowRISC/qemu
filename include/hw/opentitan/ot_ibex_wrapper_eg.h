@@ -2,6 +2,7 @@
  * QEMU OpenTitan EarlGrey Ibex Wrapper device
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -33,7 +34,7 @@
 #include "hw/opentitan/ot_ibex_wrapper.h"
 
 #define TYPE_OT_IBEX_WRAPPER_EG "ot-ibex_wrapper-eg"
-OBJECT_DECLARE_TYPE(OtIbexWrapperEgState, OtIbexWrapperStateClass,
+OBJECT_DECLARE_TYPE(OtIbexWrapperEgState, OtIbexWrapperClass,
                     OT_IBEX_WRAPPER_EG)
 
 #endif /* HW_OPENTITAN_OT_IBEX_WRAPPER_EG_H */

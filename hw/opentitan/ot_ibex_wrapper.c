@@ -2,6 +2,7 @@
  * QEMU OpenTitan Ibex wrapper device
  *
  * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -26,10 +27,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
 
-OBJECT_DEFINE_ABSTRACT_TYPE(OtIbexWrapperState, ot_ibex_wrapper,
-                            OT_IBEX_WRAPPER, SYS_BUS_DEVICE)
+OT_OBJECT_DEFINE_ABSTRACT_TYPE(OtIbexWrapperState, OtIbexWrapperClass,
+                               ot_ibex_wrapper, OT_IBEX_WRAPPER, SYS_BUS_DEVICE)
 
 static void ot_ibex_wrapper_class_init(ObjectClass *oc, void *data) {}
 

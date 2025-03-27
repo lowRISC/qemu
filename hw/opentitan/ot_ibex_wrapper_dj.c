@@ -2,6 +2,7 @@
  * QEMU OpenTitan Darjeeling Ibex wrapper device
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -1606,11 +1607,11 @@ static void ot_ibex_wrapper_dj_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo ot_ibex_wrapper_dj_info = {
     .name = TYPE_OT_IBEX_WRAPPER_DJ,
-    .parent = TYPE_SYS_BUS_DEVICE,
+    .parent = TYPE_OT_IBEX_WRAPPER,
     .instance_size = sizeof(OtIbexWrapperDjState),
     .instance_init = &ot_ibex_wrapper_dj_init,
     .class_init = &ot_ibex_wrapper_dj_class_init,
-    .class_size = sizeof(OtIbexWrapperStateClass),
+    .class_size = sizeof(OtIbexWrapperClass),
 };
 
 static void ot_ibex_wrapper_dj_register_types(void)
