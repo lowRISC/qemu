@@ -2,6 +2,7 @@
  * QEMU OpenTitan Entropy Distribution Network device
  *
  * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,7 +32,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_EDN "ot-edn"
-OBJECT_DECLARE_SIMPLE_TYPE(OtEDNState, OT_EDN)
+OBJECT_DECLARE_TYPE(OtEDNState, OtEDNClass, OT_EDN)
 
 /*
  * Function called by the EDN instance whenever entropy has been requested

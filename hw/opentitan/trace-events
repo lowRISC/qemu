@@ -155,7 +155,7 @@ ot_edn_irqs(unsigned appid, uint32_t active, uint32_t mask, uint32_t eff) "a#%u 
 ot_edn_push_csrng_command(unsigned appid,  const char *mode, uint32_t value) "a#%u (%s) cmd:0x%08x"
 ot_edn_push_csrng_error(unsigned appid, int res) "a#%u res:%d"
 ot_edn_request_entropy(unsigned appid, unsigned epid) "a#%u:e#%u"
-ot_edn_reset(unsigned appid) "a#%u"
+ot_edn_reset(unsigned appid, const char *phase) "a#%u %s"
 ot_edn_reset_replay_fifos(unsigned appid) "a#%u"
 ot_edn_schedule(unsigned appid, const char *cause) "a#%u %s"
 ot_edn_update_genbits_ready(unsigned appid, unsigned rem, unsigned fslot, bool accept) "a#%u rem packet %u, free slot %u, accept? %u"
