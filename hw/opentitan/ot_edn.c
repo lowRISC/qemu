@@ -997,9 +997,7 @@ static void ot_edn_handle_ctrl(OtEDNState *s, uint32_t val32)
     }
 
     if (!ot_edn_update_mode(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %u: EDN in %s, write 0x%08x to CTRL is delayed\n",
-                      __func__, c->appid, STATE_NAME(s->state), val32);
+        trace_ot_edn_delay_mode_change(c->appid, STATE_NAME(s->state), val32);
     }
 }
 

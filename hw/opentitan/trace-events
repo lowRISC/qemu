@@ -140,6 +140,7 @@ ot_edn_change_state(unsigned appid, int line, const char *old, int nold, const c
 ot_edn_connect_endpoint(unsigned appid, unsigned epid) "a#%u:e#%u"
 ot_edn_csrng_ack(unsigned appid, const char *state, int level) "a#%u %s %d"
 ot_edn_ctrl_in_state(unsigned appid, const char *state, int nstate, bool en, bool boot, bool auto_, bool clr, bool dis) "a#%u [%s:%d] en:%u boot:%u auto:%u clr:%u dis:%u"
+ot_edn_delay_mode_change(unsigned appid, const char *state, uint32_t ctrl) "a#%u %s ctrl:0x%08x"
 ot_edn_dinfo(unsigned appid, const char *func, int line, const char *msg, uint32_t value) "a#%u %s:%d %s %u"
 ot_edn_enable(unsigned appid, const char *msg) "a#%u: %s"
 ot_edn_ep_fifo(unsigned appid, const char *msg, unsigned remwslot) "a#%u %s rem:%u"
