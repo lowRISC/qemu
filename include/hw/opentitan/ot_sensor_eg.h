@@ -1,7 +1,7 @@
 /*
- * QEMU OpenTitan Sensor controller device
+ * QEMU OpenTitan Sensor controller device for EarlGrey
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -25,12 +25,12 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_SENSOR_H
-#define HW_OPENTITAN_OT_SENSOR_H
+#ifndef HW_OPENTITAN_OT_SENSOR_EG_H
+#define HW_OPENTITAN_OT_SENSOR_EG_H
 
 #include "qom/object.h"
 
-#define TYPE_OT_SENSOR "ot-sensor"
-OBJECT_DECLARE_SIMPLE_TYPE(OtSensorState, OT_SENSOR)
+#define TYPE_OT_SENSOR_EG "ot-sensor-eg"
+OBJECT_DECLARE_SIMPLE_TYPE(OtSensorEgState, OT_SENSOR_EG)
 
-#endif /* HW_OPENTITAN_OT_SENSOR_H */
+#endif /* HW_OPENTITAN_OT_SENSOR_EG_H */

@@ -138,7 +138,7 @@ config OT_ROM_CTRL
 config OT_RSTMGR
     bool
 
-config OT_SENSOR
+config OT_SENSOR_EG
     bool
 
 config OT_SOC_PROXY

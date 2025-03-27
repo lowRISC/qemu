@@ -1,7 +1,7 @@
 /*
- * QEMU OpenTitan Sensor controller device
+ * QEMU OpenTitan Sensor controller device for EarlGrey
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -32,7 +32,7 @@
 #include "qemu/log.h"
 #include "qemu/typedefs.h"
 #include "hw/opentitan/ot_alert.h"
-#include "hw/opentitan/ot_sensor.h"
+#include "hw/opentitan/ot_sensor_eg.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -131,7 +131,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
-struct OtSensorState {
+struct OtSensorEgState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
@@ -141,7 +141,7 @@ struct OtSensorState {
     uint32_t *regs;
 };
 
-static void ot_sensor_update_irqs(OtSensorState *s)
+static void ot_sensor_eg_update_irqs(OtSensorEgState *s)
 {
     uint32_t levels = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
@@ -151,7 +151,7 @@ static void ot_sensor_update_irqs(OtSensorState *s)
     }
 }
 
-static void ot_sensor_update_alerts(OtSensorState *s)
+static void ot_sensor_eg_update_alerts(OtSensorEgState *s)
 {
     uint32_t level = s->regs[R_ALERT_TEST];
 
@@ -160,9 +160,9 @@ static void ot_sensor_update_alerts(OtSensorState *s)
     }
 }
 
-static uint64_t ot_sensor_regs_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_sensor_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
-    OtSensorState *s = opaque;
+    OtSensorEgState *s = opaque;
     (void)size;
     uint32_t val32;
 
@@ -205,10 +205,10 @@ static uint64_t ot_sensor_regs_read(void *opaque, hwaddr addr, unsigned size)
     return (uint64_t)val32;
 };
 
-static void ot_sensor_regs_write(void *opaque, hwaddr addr, uint64_t val64,
-                                 unsigned size)
+static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
+                                    unsigned size)
 {
-    OtSensorState *s = opaque;
+    OtSensorEgState *s = opaque;
     (void)size;
     uint32_t val32 = (uint32_t)val64;
 
@@ -221,22 +221,22 @@ static void ot_sensor_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_INTR_STATE:
         val32 &= INTR_MASK;
         s->regs[R_INTR_STATE] &= ~val32; /* RW1C */
-        ot_sensor_update_irqs(s);
+        ot_sensor_eg_update_irqs(s);
         break;
     case R_INTR_ENABLE:
         val32 &= INTR_MASK;
         s->regs[R_INTR_ENABLE] = val32;
-        ot_sensor_update_irqs(s);
+        ot_sensor_eg_update_irqs(s);
         break;
     case R_INTR_TEST:
         val32 &= INTR_MASK;
         s->regs[R_INTR_STATE] |= val32;
-        ot_sensor_update_irqs(s);
+        ot_sensor_eg_update_irqs(s);
         break;
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
         s->regs[reg] = val32;
-        ot_sensor_update_alerts(s);
+        ot_sensor_eg_update_alerts(s);
         break;
     case R_CFG_REGWEN:
     case R_ALERT_TRIG:
@@ -259,36 +259,36 @@ static void ot_sensor_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_sensor_properties[] = {
+static Property ot_sensor_eg_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps ot_sensor_regs_ops = {
-    .read = &ot_sensor_regs_read,
-    .write = &ot_sensor_regs_write,
+static const MemoryRegionOps ot_sensor_eg_regs_ops = {
+    .read = &ot_sensor_eg_regs_read,
+    .write = &ot_sensor_eg_regs_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
 
-static void ot_sensor_reset(DeviceState *dev)
+static void ot_sensor_eg_reset(DeviceState *dev)
 {
-    OtSensorState *s = OT_SENSOR(dev);
+    OtSensorEgState *s = OT_SENSOR_EG(dev);
 
     memset(s->regs, 0, REGS_SIZE);
 
     s->regs[R_CFG_REGWEN] = 0x1u;
 
-    ot_sensor_update_irqs(s);
-    ot_sensor_update_alerts(s);
+    ot_sensor_eg_update_irqs(s);
+    ot_sensor_eg_update_alerts(s);
 }
 
-static void ot_sensor_init(Object *obj)
+static void ot_sensor_eg_init(Object *obj)
 {
-    OtSensorState *s = OT_SENSOR(obj);
+    OtSensorEgState *s = OT_SENSOR_EG(obj);
 
-    memory_region_init_io(&s->mmio, obj, &ot_sensor_regs_ops, s, TYPE_OT_SENSOR,
-                          REGS_SIZE);
+    memory_region_init_io(&s->mmio, obj, &ot_sensor_eg_regs_ops, s,
+                          TYPE_OT_SENSOR_EG, REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
@@ -300,27 +300,27 @@ static void ot_sensor_init(Object *obj)
     }
 }
 
-static void ot_sensor_class_init(ObjectClass *klass, void *data)
+static void ot_sensor_eg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_sensor_reset);
-    device_class_set_props(dc, ot_sensor_properties);
+    device_class_set_legacy_reset(dc, &ot_sensor_eg_reset);
+    device_class_set_props(dc, ot_sensor_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
-static const TypeInfo ot_sensor_info = {
-    .name = TYPE_OT_SENSOR,
+static const TypeInfo ot_sensor_eg_info = {
+    .name = TYPE_OT_SENSOR_EG,
     .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(OtSensorState),
-    .instance_init = &ot_sensor_init,
-    .class_init = &ot_sensor_class_init,
+    .instance_size = sizeof(OtSensorEgState),
+    .instance_init = &ot_sensor_eg_init,
+    .class_init = &ot_sensor_eg_class_init,
 };
 
-static void ot_sensor_register_types(void)
+static void ot_sensor_eg_register_types(void)
 {
-    type_register_static(&ot_sensor_info);
+    type_register_static(&ot_sensor_eg_info);
 }
 
-type_init(ot_sensor_register_types);
+type_init(ot_sensor_eg_register_types);

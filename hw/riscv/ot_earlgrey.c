@@ -60,7 +60,7 @@
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
-#include "hw/opentitan/ot_sensor.h"
+#include "hw/opentitan/ot_sensor_eg.h"
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
@@ -876,7 +876,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_SENSOR_CTRL] = {
-        .type = TYPE_OT_SENSOR,
+        .type = TYPE_OT_SENSOR_EG,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40490000u }
         ),
