@@ -325,4 +325,29 @@ void ot_common_configure_devices_with_id(
 
 void ot_common_configure_device_opts(DeviceState **devices, unsigned count);
 
+/* ------------------------------------------------------------------------ */
+/* OBJECT macros */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * OBJECT_DEFINE_TYPE_EXTENDED with explicit class name
+ */
+#define OT_OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, ModuleClassName, \
+                                       module_obj_name, MODULE_OBJ_NAME, \
+                                       PARENT_MODULE_OBJ_NAME, ABSTRACT, ...) \
+    DO_OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                   MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
+                                   ABSTRACT, sizeof(ModuleClassName), \
+                                   __VA_ARGS__)
+
+/*
+ * OBJECT_DEFINE_ABSTRACT_TYPE with explicit class name
+ */
+#define OT_OBJECT_DEFINE_ABSTRACT_TYPE(ModuleObjName, ModuleClassName, \
+                                       module_obj_name, MODULE_OBJ_NAME, \
+                                       PARENT_MODULE_OBJ_NAME) \
+    OT_OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, ModuleClassName, \
+                                   module_obj_name, MODULE_OBJ_NAME, \
+                                   PARENT_MODULE_OBJ_NAME, true, { NULL })
+
 #endif /* HW_OPENTITAN_OT_COMMON_H */
