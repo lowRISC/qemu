@@ -967,11 +967,16 @@ static const MemoryRegionOps ot_ibex_wrapper_eg_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_ibex_wrapper_eg_reset(DeviceState *dev)
+static void ot_ibex_wrapper_eg_reset_enter(Object *obj, ResetType type)
 {
-    OtIbexWrapperEgState *s = OT_IBEX_WRAPPER_EG(dev);
+    OtIbexWrapperClass *c = OT_IBEX_WRAPPER_EG_GET_CLASS(obj);
+    OtIbexWrapperEgState *s = OT_IBEX_WRAPPER_EG(obj);
 
-    trace_ot_ibex_wrapper_reset(s->ot_id);
+    trace_ot_ibex_wrapper_reset(s->ot_id, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     g_assert(s->ot_id);
     g_assert(s->edn);
@@ -1004,9 +1009,8 @@ static void ot_ibex_wrapper_eg_reset(DeviceState *dev)
     s->cpu_en_bm = 1u << OT_IBEX_LC_CTRL_CPU_EN;
 
     memset(s->log_engine, 0, sizeof(*s->log_engine));
-    s->log_engine->as = ot_common_get_local_address_space(dev);
+    s->log_engine->as = ot_common_get_local_address_space(DEVICE(s));
 }
-
 
 static void ot_ibex_wrapper_eg_init(Object *obj)
 {
@@ -1033,9 +1037,13 @@ static void ot_ibex_wrapper_eg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_ibex_wrapper_eg_reset);
     device_class_set_props(dc, ot_ibex_wrapper_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtIbexWrapperClass *ic = OT_IBEX_WRAPPER_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_ibex_wrapper_eg_reset_enter,
+                                       NULL, NULL, &ic->parent_phases);
 }
 
 static const TypeInfo ot_ibex_wrapper_eg_info = {

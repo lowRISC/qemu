@@ -31,6 +31,7 @@
 #define HW_OPENTITAN_OT_IBEX_WRAPPER_H
 
 #include "qom/object.h"
+#include "hw/resettable.h"
 #include "hw/sysbus.h"
 
 #define TYPE_OT_IBEX_WRAPPER "ot-ibex_wrapper"
@@ -42,6 +43,7 @@ struct OtIbexWrapperState {
 
 struct OtIbexWrapperClass {
     SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 #define OT_IBEX_WRAPPER_CPU_EN TYPE_OT_IBEX_WRAPPER "-cpu-en"
