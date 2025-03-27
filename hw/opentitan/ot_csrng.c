@@ -439,7 +439,7 @@ ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
     OtCSRNGInstance *inst = &s->instances[app_id];
 
     if (!filler_fn) {
-        if (inst->hw.filler) {
+        if (!inst->hw.filler) {
             xtrace_ot_csrng_info("HW app was not connected", app_id);
             return NULL;
         }
@@ -1027,7 +1027,7 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
         /* skip SW instance */
         for (unsigned ix = 0u; ix < OT_CSRNG_HW_APP_MAX; ix++) {
             OtCSRNGInstance *inst = &s->instances[ix];
-            if (ot_csrng_drng_is_instantiated(inst)) {
+            if (inst->hw.filler) {
                 qemu_log_mask(LOG_GUEST_ERROR,
                               "%s: Forcing CSRNG disablement while EDN #%u "
                               "still active\n",
