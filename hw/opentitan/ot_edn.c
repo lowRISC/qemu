@@ -605,7 +605,7 @@ static bool ot_edn_update_genbits_ready(OtEDNState *s)
 }
 
 static OtCSRNGCmdStatus
-ot_edn_push_csrng_request(OtEDNState *s, uint32_t length)
+ot_edn_push_csrng_request(OtEDNState *s, bool auto_mode, uint32_t length)
 {
     ot_edn_connect_csrng(s);
 
@@ -614,7 +614,8 @@ ot_edn_push_csrng_request(OtEDNState *s, uint32_t length)
     OtCSRNGCmdStatus res = CSRNG_STATUS_INVALID_ACMD;
 
     for (unsigned cix = 0; cix < length; cix++) {
-        trace_ot_edn_push_csrng_command(c->appid, c->buffer[cix]);
+        trace_ot_edn_push_csrng_command(c->appid, auto_mode ? "auto" : "boot",
+                                        c->buffer[cix]);
         res = ot_csrng_push_command(c->device, c->appid, c->buffer[cix]);
         if (res != CSRNG_STATUS_SUCCESS) {
             trace_ot_edn_push_csrng_error(c->appid, (int)res);
@@ -667,7 +668,7 @@ static void ot_edn_send_boot_req(OtEDNState *s, unsigned reg)
     }
 
     c->hw_cmd_type = (uint8_t)FIELD_EX32(command, OT_CSNRG_CMD, ACMD);
-    c->hw_cmd_status = ot_edn_push_csrng_request(s, 1u);
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, false, 1u);
     if (c->hw_cmd_status) {
         return;
     }
@@ -678,6 +679,7 @@ static void ot_edn_send_boot_req(OtEDNState *s, unsigned reg)
      */
     switch (command) {
     case OT_CSRNG_CMD_INSTANTIATE:
+        c->no_fips = false;
         ot_edn_change_state(s, EDN_BOOT_INS_ACK_WAIT);
         break;
     case OT_CSRNG_CMD_GENERATE:
@@ -729,10 +731,11 @@ static void ot_edn_send_auto_reseed_cmd(OtEDNState *s)
     ot_edn_change_state(s, EDN_AUTO_SEND_RESEED_CMD);
 
     c->hw_cmd_type = (uint8_t)FIELD_EX32(command, OT_CSNRG_CMD, ACMD);
-    c->hw_cmd_status = ot_edn_push_csrng_request(s, length);
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, true, length);
     if (c->hw_cmd_status) {
         return;
     }
+    c->no_fips = false;
 
     ot_edn_change_state(s, EDN_AUTO_ACK_WAIT);
 }
@@ -787,7 +790,7 @@ static void ot_edn_send_auto_generate_cmd(OtEDNState *s)
     }
 
     c->hw_cmd_type = (uint8_t)FIELD_EX32(command, OT_CSNRG_CMD, ACMD);
-    c->hw_cmd_status = ot_edn_push_csrng_request(s, length);
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, true, length);
     if (c->hw_cmd_status) {
         return;
     }
@@ -810,7 +813,7 @@ static void ot_edn_send_boot_uninstanciate_cmd(OtEDNState *s)
         FIELD_DP32(0, OT_CSNRG_CMD, ACMD, OT_CSRNG_CMD_UNINSTANTIATE);
 
     c->hw_cmd_type = (uint8_t)OT_CSRNG_CMD_UNINSTANTIATE;
-    c->hw_cmd_status = ot_edn_push_csrng_request(s, 1u);
+    c->hw_cmd_status = ot_edn_push_csrng_request(s, false, 1u);
     if (c->hw_cmd_status) {
         return;
     }
@@ -998,7 +1001,7 @@ static void ot_edn_handle_sw_cmd_req(OtEDNState *s, uint32_t value)
 
     c->sw_ack = false;
 
-    trace_ot_edn_push_csrng_command(c->appid, value);
+    trace_ot_edn_push_csrng_command(c->appid, "sw", value);
     OtCSRNGCmdStatus res = ot_csrng_push_command(c->device, c->appid, value);
     if (res != CSRNG_STATUS_SUCCESS) {
         xtrace_ot_edn_error(c->appid, "CSRNG rejected command");
@@ -1019,7 +1022,12 @@ static void ot_edn_handle_sw_cmd_req(OtEDNState *s, uint32_t value)
              */
             s->sw_cmd_ready = false;
             uint32_t command = FIELD_EX32(value, OT_CSNRG_CMD, ACMD);
-            if (command == OT_CSRNG_CMD_GENERATE) {
+            switch (command) {
+            case OT_CSRNG_CMD_INSTANTIATE:
+            case OT_CSRNG_CMD_RESEED:
+                c->no_fips = false;
+                break;
+            case OT_CSRNG_CMD_GENERATE:
                 c->rem_packet_count = FIELD_EX32(value, OT_CSNRG_CMD, GLEN);
                 xtrace_ot_edn_dinfo(c->appid, "SW generation w/ packets",
                                     c->rem_packet_count);
@@ -1028,6 +1036,9 @@ static void ot_edn_handle_sw_cmd_req(OtEDNState *s, uint32_t value)
                      epix++) {
                     s->endpoints[epix].gen_count = 0;
                 }
+                break;
+            default:
+                break;
             }
         }
     }
