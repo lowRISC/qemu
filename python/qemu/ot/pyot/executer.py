@@ -273,6 +273,8 @@ class QEMUExecuter:
             -> tuple[str, Optional[str], list[str], Optional[str]]:
         rom_exec = bool(args.rom_exec)
         roms = args.rom or []
+        if isinstance(roms, str):
+            roms = [roms]
         multi_rom = (len(roms) + int(rom_exec)) > 1
         # generate pre-application ROM option
         fw_args: list[str] = []
