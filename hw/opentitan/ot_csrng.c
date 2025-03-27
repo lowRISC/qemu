@@ -160,12 +160,12 @@ REG32(MAIN_SM_STATE, 0x5cu)
     (R_RECOV_ALERT_STS_ENABLE_FIELD_ALERT_MASK | \
      R_RECOV_ALERT_STS_SW_APP_ENABLE_FIELD_ALERT_MASK | \
      R_RECOV_ALERT_STS_READ_INT_STATE_FIELD_ALERT_MASK | \
-     R_RECOV_ALERT_STS_FIPS_FORCE_ENABLE_FIELD_ALERT | \
-     R_RECOV_ALERT_STS_ACMD_FLAG0_FIELD_ALERT | \
+     R_RECOV_ALERT_STS_FIPS_FORCE_ENABLE_FIELD_ALERT_MASK | \
+     R_RECOV_ALERT_STS_ACMD_FLAG0_FIELD_ALERT_MASK | \
      R_RECOV_ALERT_STS_CS_BUS_CMP_ALERT_MASK | \
-     R_RECOV_ALERT_STS_CMD_STAGE_INVALID_ACMD_ALERT | \
-     R_RECOV_ALERT_STS_CMD_STAGE_INVALID_CMD_SEQ_ALERT | \
-     R_RECOV_ALERT_STS_CMD_STAGE_RESEED_CNT_ALERT)
+     R_RECOV_ALERT_STS_CMD_STAGE_INVALID_ACMD_ALERT_MASK | \
+     R_RECOV_ALERT_STS_CMD_STAGE_INVALID_CMD_SEQ_ALERT_MASK | \
+     R_RECOV_ALERT_STS_CMD_STAGE_INVALID_RESEED_CNT_ALERT_MASK)
 #define ERR_CODE_MASK 0x77e0ffffu
 
 #define OT_CSRNG_AES_KEY_SIZE   32u /* 256 bits */
@@ -885,7 +885,7 @@ static void ot_csrng_update_alerts(OtCSRNGState *s)
     uint32_t level = s->regs[R_ALERT_TEST];
     s->regs[R_ALERT_TEST] = 0u;
 
-    if (__builtin_popcount(s->regs[R_RECOV_ALERT_STS])) {
+    if (s->regs[R_RECOV_ALERT_STS]) {
         level |= 1u << ALERT_RECOVERABLE;
     }
 
@@ -1944,6 +1944,15 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= R_FIPS_FORCE_VAL_MASK;
         s->regs[reg] = val32;
+        break;
+    case R_HW_EXC_STS:
+        val32 &= R_HW_EXC_STS_VAL_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
+    case R_RECOV_ALERT_STS:
+        val32 &= RECOV_ALERT_STS_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        ot_csrng_update_alerts(s);
         break;
     case R_ERR_CODE_TEST:
         if (!s->regs[R_REGWEN]) {
