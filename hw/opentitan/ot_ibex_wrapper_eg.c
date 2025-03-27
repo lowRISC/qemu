@@ -1009,7 +1009,23 @@ static void ot_ibex_wrapper_eg_reset_enter(Object *obj, ResetType type)
     s->cpu_en_bm = 1u << OT_IBEX_LC_CTRL_CPU_EN;
 
     memset(s->log_engine, 0, sizeof(*s->log_engine));
+}
+
+static void ot_ibex_wrapper_eg_reset_exit(Object *obj, ResetType type)
+{
+    OtIbexWrapperClass *c = OT_IBEX_WRAPPER_EG_GET_CLASS(obj);
+    OtIbexWrapperEgState *s = OT_IBEX_WRAPPER_EG(obj);
+
+    trace_ot_ibex_wrapper_reset(s->ot_id, "exit");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
     s->log_engine->as = ot_common_get_local_address_space(DEVICE(s));
+
+    /* "Upon reset the data will be invalid with a new EDN request pending." */
+    ot_ibex_wrapper_eg_request_entropy(s);
 }
 
 static void ot_ibex_wrapper_eg_init(Object *obj)
@@ -1043,7 +1059,8 @@ static void ot_ibex_wrapper_eg_class_init(ObjectClass *klass, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtIbexWrapperClass *ic = OT_IBEX_WRAPPER_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_ibex_wrapper_eg_reset_enter,
-                                       NULL, NULL, &ic->parent_phases);
+                                       NULL, &ot_ibex_wrapper_eg_reset_exit,
+                                       &ic->parent_phases);
 }
 
 static const TypeInfo ot_ibex_wrapper_eg_info = {

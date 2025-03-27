@@ -1567,7 +1567,23 @@ static void ot_ibex_wrapper_dj_reset_enter(Object *obj, ResetType type)
     s->cpu_en_bm = s->lc_ignore ? (1u << OT_IBEX_LC_CTRL_CPU_EN) : 0;
 
     memset(s->log_engine, 0, sizeof(*s->log_engine));
+}
+
+static void ot_ibex_wrapper_dj_reset_exit(Object *obj, ResetType type)
+{
+    OtIbexWrapperClass *c = OT_IBEX_WRAPPER_DJ_GET_CLASS(obj);
+    OtIbexWrapperDjState *s = OT_IBEX_WRAPPER_DJ(obj);
+
+    trace_ot_ibex_wrapper_reset(s->ot_id, "exit");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
     s->log_engine->as = ot_common_get_local_address_space(DEVICE(s));
+
+    /* "Upon reset the data will be invalid with a new EDN request pending." */
+    ot_ibex_wrapper_dj_request_entropy(s);
 }
 
 static void ot_ibex_wrapper_dj_realize(DeviceState *dev, Error **errp)
@@ -1611,7 +1627,8 @@ static void ot_ibex_wrapper_dj_class_init(ObjectClass *klass, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtIbexWrapperClass *ic = OT_IBEX_WRAPPER_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_ibex_wrapper_dj_reset_enter,
-                                       NULL, NULL, &ic->parent_phases);
+                                       NULL, &ot_ibex_wrapper_dj_reset_exit,
+                                       &ic->parent_phases);
 }
 
 static const TypeInfo ot_ibex_wrapper_dj_info = {
