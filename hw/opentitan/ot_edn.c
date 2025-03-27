@@ -911,16 +911,22 @@ static void ot_edn_clean_up(OtEDNState *s, bool discard_requests)
     bool accept_entropy = ot_edn_update_genbits_ready(s);
     g_assert(!accept_entropy);
     c->genbits_ready = NULL;
-
-    ot_edn_change_state(s, EDN_IDLE);
 }
 
 static bool ot_edn_update_mode(OtEDNState *s)
 {
+    /*
+     * CTRL may have disabled EDN, while the EDN was in an active state.
+     * If disablement has been requested, now is time to handle it, if not
+     * already done or in a fatal error state.
+     */
     if (!ot_edn_is_enabled(s)) {
-        if (s->state != EDN_IDLE && s->state != EDN_ERROR) {
-            ot_edn_change_state(s, EDN_IDLE);
+        if (s->state != EDN_IDLE) {
             ot_edn_handle_disable(s);
+            ot_edn_clean_up(s, true);
+            if (s->state != EDN_ERROR) {
+                ot_edn_change_state(s, EDN_IDLE);
+            }
         }
         return true;
     }
@@ -959,6 +965,13 @@ static bool ot_edn_update_mode(OtEDNState *s)
 
 static void ot_edn_handle_ctrl(OtEDNState *s, uint32_t val32)
 {
+    OtEDNCSRNG *c = &s->rng;
+
+    bool enabled =
+        FIELD_EX32(s->regs[R_CTRL], CTRL, EDN_ENABLE) == OT_MULTIBITBOOL4_TRUE;
+
+    s->regs[R_CTRL] = val32;
+
 #define CHECK_MULTIBOOT(_s_, _r_, _b_) \
     ot_edn_check_multibitboot((_s_), FIELD_EX32(val32, _r_, _b_), \
                               ALERT_STATUS_BIT(_b_));
@@ -966,25 +979,16 @@ static void ot_edn_handle_ctrl(OtEDNState *s, uint32_t val32)
     bool boot_req_mode = CHECK_MULTIBOOT(s, CTRL, BOOT_REQ_MODE);
     bool auto_req_mode = CHECK_MULTIBOOT(s, CTRL, AUTO_REQ_MODE);
     bool cmd_fifo_rst = CHECK_MULTIBOOT(s, CTRL, CMD_FIFO_RST);
-
-    bool disabling = (s->regs[R_CTRL] & R_CTRL_EDN_ENABLE_MASK) &&
-                     !(val32 & R_CTRL_EDN_ENABLE_MASK);
-
-    s->regs[R_CTRL] = val32;
-
-    OtEDNCSRNG *c = &s->rng;
+    bool disabling = !enable && enabled;
 
     trace_ot_edn_ctrl_in_state(c->appid, STATE_NAME(s->state), s->state, enable,
-                               boot_req_mode, auto_req_mode, cmd_fifo_rst);
+                               boot_req_mode, auto_req_mode, cmd_fifo_rst,
+                               disabling);
 
     if ((FIELD_EX32(s->regs[R_CTRL], CTRL, CMD_FIFO_RST) ==
          OT_MULTIBITBOOL4_TRUE) ||
         disabling) {
         ot_edn_reset_replay_fifos(s);
-    }
-
-    if (disabling) {
-        ot_edn_clean_up(s, true);
     }
 
     if (!ot_edn_update_mode(s)) {
@@ -1497,6 +1501,8 @@ static void ot_edn_reset(DeviceState *dev)
     s->regs[R_BOOT_GEN_CMD] = 0xfff003u;
 
     ot_edn_clean_up(s, true);
+    ot_edn_change_state(s, EDN_IDLE);
+
 
     ot_fifo32_reset(&c->cmd_gen_fifo);
     ot_fifo32_reset(&c->cmd_reseed_fifo);
