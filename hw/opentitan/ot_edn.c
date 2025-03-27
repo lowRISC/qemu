@@ -631,20 +631,30 @@ ot_edn_push_csrng_request(OtEDNState *s, bool auto_mode, uint32_t length)
     return res;
 }
 
-static void ot_edn_send_boot_req(OtEDNState *s, unsigned reg)
+static bool ot_edn_check_command_ready(OtEDNState *s)
 {
-    OtEDNCSRNG *c = &s->rng;
-
+    const OtEDNCSRNG *c = &s->rng;
     uint32_t command = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, ACMD);
     if (command != OT_CSRNG_CMD_NONE) {
         xtrace_ot_edn_error(c->appid, "Another command is already scheduled");
         s->regs[R_ERR_CODE] |= R_ERR_CODE_EDN_MAIN_SM_ERR_MASK;
         ot_edn_change_state(s, EDN_ERROR);
+        return false;
+    }
+
+    return true;
+}
+
+static void ot_edn_send_boot_req(OtEDNState *s, unsigned reg)
+{
+    OtEDNCSRNG *c = &s->rng;
+
+    if (!ot_edn_check_command_ready(s)) {
         return;
     }
 
     c->buffer[0u] = s->regs[reg];
-    command = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, ACMD);
+    uint32_t command = FIELD_EX32(c->buffer[0], OT_CSNRG_CMD, ACMD);
     uint32_t clen = FIELD_EX32(command, OT_CSNRG_CMD, CLEN);
     if (clen) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -694,11 +704,14 @@ static void ot_edn_send_auto_reseed_cmd(OtEDNState *s)
 {
     OtEDNCSRNG *c = &s->rng;
 
+    if (!ot_edn_check_command_ready(s)) {
+        return;
+    }
+
     bool fatal_error = false;
     uint32_t command;
     uint32_t length;
 
-    memset(c->buffer, 0, sizeof(c->buffer));
     if (ot_fifo32_is_empty(&c->cmd_reseed_fifo)) {
         s->regs[R_ERR_CODE] |=
             R_ERR_CODE_SFIFO_RESCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
@@ -744,11 +757,14 @@ static void ot_edn_send_auto_generate_cmd(OtEDNState *s)
 {
     OtEDNCSRNG *c = &s->rng;
 
+    if (!ot_edn_check_command_ready(s)) {
+        return;
+    }
+
     bool fatal_error = false;
     uint32_t command;
     uint32_t length;
 
-    memset(c->buffer, 0, sizeof(c->buffer));
     if (ot_fifo32_is_empty(&c->cmd_gen_fifo)) {
         s->regs[R_ERR_CODE] |=
             R_ERR_CODE_SFIFO_GENCMD_ERR_MASK | R_ERR_CODE_FIFO_READ_ERR_MASK;
@@ -808,7 +824,10 @@ static void ot_edn_send_boot_uninstanciate_cmd(OtEDNState *s)
 
     g_assert(s->state == EDN_BOOT_LOAD_UNI);
 
-    memset(c->buffer, 0, sizeof(c->buffer));
+    if (!ot_edn_check_command_ready(s)) {
+        return;
+    }
+
     c->buffer[0u] =
         FIELD_DP32(0, OT_CSNRG_CMD, ACMD, OT_CSRNG_CMD_UNINSTANTIATE);
 
