@@ -16,7 +16,6 @@ use super::random;
 use super::{CSR, WSR};
 use crate::{ExceptionCause, CSRNG, PRNG};
 
-
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[repr(u32)]
 #[allow(non_camel_case_types)]
@@ -406,7 +405,7 @@ impl CSRSet {
             key_s0_h: CSRWideGeneric::default(),
             key_s1_l: CSRWideGeneric::default(),
             key_s1_h: CSRWideGeneric::default(),
-            shared_flags: SharedFlags::default()
+            shared_flags: SharedFlags::default(),
         };
         csrs.fg0.plug(&csrs.shared_flags, FlagMode::Fg0);
         csrs.fg1.plug(&csrs.shared_flags, FlagMode::Fg1);

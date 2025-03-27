@@ -97,8 +97,11 @@ impl Proxy {
     }
 
     /// Register a callback for requesting entropy from EDN
-    pub fn register_entropy_req_cb(&mut self, urnd_entropy_req: Box<dyn comm::Callback>,
-                                   rnd_entropy_req: Box<dyn comm::Callback>) {
+    pub fn register_entropy_req_cb(
+        &mut self,
+        urnd_entropy_req: Box<dyn comm::Callback>,
+        rnd_entropy_req: Box<dyn comm::Callback>,
+    ) {
         self.syncurnd.register_entropy_req_cb(urnd_entropy_req);
         self.rnd.register_entropy_req_cb(rnd_entropy_req);
     }
@@ -382,13 +385,18 @@ impl comm::Callback for CCallback {
 
 #[no_mangle]
 pub extern "C" fn ot_otbn_proxy_new(
-    urnd_entropy_req: CCallbackFunc, urnd_opaque: CCallbackArg,
-    rnd_entropy_req: CCallbackFunc, rnd_opaque: CCallbackArg,
-    on_complete: CCallbackFunc, on_comp_opaque: CCallbackArg,
+    urnd_entropy_req: CCallbackFunc,
+    urnd_opaque: CCallbackArg,
+    rnd_entropy_req: CCallbackFunc,
+    rnd_opaque: CCallbackArg,
+    on_complete: CCallbackFunc,
+    on_comp_opaque: CCallbackArg,
 ) -> Box<Proxy> {
     let mut proxy = Box::new(Proxy::new());
-    proxy.register_entropy_req_cb(Box::new(CCallback::new(urnd_entropy_req, urnd_opaque)),
-                                  Box::new(CCallback::new(rnd_entropy_req, rnd_opaque)));
+    proxy.register_entropy_req_cb(
+        Box::new(CCallback::new(urnd_entropy_req, urnd_opaque)),
+        Box::new(CCallback::new(rnd_entropy_req, rnd_opaque)),
+    );
     proxy.register_signal_cb(Box::new(CCallback::new(on_complete, on_comp_opaque)));
     proxy
 }

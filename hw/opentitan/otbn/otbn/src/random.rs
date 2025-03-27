@@ -16,7 +16,7 @@ pub struct RndCache {
     value: u256,
     available: bool,
     fips: bool,
-    repeat: bool
+    repeat: bool,
 }
 
 pub struct Rnd {
@@ -117,7 +117,6 @@ impl CSRNG for Rnd {
     }
 }
 
-
 #[derive(Default)]
 pub struct Urnd {
     xoshiro: Xoshiro256PlusPlus,
@@ -146,7 +145,6 @@ impl Urnd {
         self.xoshiro.reseed(seed)
     }
 }
-
 
 pub struct SyncUrnd {
     urnd: Arc<Mutex<Urnd>>,
@@ -213,4 +211,3 @@ impl SyncUrnd {
         self.wait.notify_one();
     }
 }
-
