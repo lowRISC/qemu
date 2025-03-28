@@ -328,6 +328,7 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
         break;
     }
     ot_fifo32_reset(&rnd->packer);
+    rnd->no_fips = false;
     if (res) {
         trace_ot_otbn_error("cannot push entropy");
     }
