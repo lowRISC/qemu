@@ -180,7 +180,6 @@ ot_entropy_src_push_bypass_entropy(unsigned slot) "final FIFO depth: %u"
 ot_entropy_src_reset(void) ""
 ot_entropy_src_show_buffer(const char *func, int line, const char *msg, const char *hexstr) "%s:%u %s: %s"
 ot_entropy_src_update_filler(bool iok, bool ook, bool pok, bool all) "in %u, out %u, proc %u -> %u"
-ot_entropy_src_update_generation(unsigned gennum) "%u"
 
 # ot_flash.c
 

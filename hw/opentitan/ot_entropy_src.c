@@ -396,7 +396,6 @@ struct OtEntropySrcState {
     OtFifo32 final_fifo; /* output FIFO */
     hash_state sha3_state; /* libtomcrypt hash state */
     OtEntropySrcFsmState state;
-    unsigned gennum;
     unsigned cond_word; /* count of words processed with SHA3 till hash */
     unsigned noise_count; /* count of consumed noise words since enabled */
     unsigned packet_count; /* count of output packets since enabled */
@@ -478,7 +477,7 @@ static int ot_entropy_src_get_generation(OtRandomSrcIf *dev)
 {
     OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
 
-    return ot_entropy_src_is_module_enabled(s) ? (int)s->gennum : 0;
+    return ot_entropy_src_is_module_enabled(s) ? -1 : 0;
 }
 
 static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
@@ -486,23 +485,11 @@ static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
                                      bool *fips)
 {
     OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
+    (void)genid; /* accept any generation identifier */
 
     if (!ot_entropy_src_is_module_enabled(s)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: entropy_src is down\n", __func__);
         return -2;
-    }
-
-    if (genid != (int)s->gennum) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: entropy_src gennum mismatch req:%d cur:%u\n",
-                      __func__, genid, s->gennum);
-        /*
-         * Continue anyway as it seems HW does not enforce what is documented.
-         * Force the generation id so the warning message is only shown once.
-         */
-        if (genid != 0) {
-            s->gennum = (unsigned)genid;
-        }
     }
 
     bool fips_compliant;
@@ -1354,8 +1341,6 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 break;
             }
             if ((old ^ s->regs[reg]) && ot_entropy_src_is_module_enabled(s)) {
-                s->gennum += 1;
-                trace_ot_entropy_src_update_generation(s->gennum);
                 if (ot_entropy_src_is_fips_enabled(s)) {
                     /* start up phase */
                     ot_entropy_src_change_state(s,
@@ -1364,7 +1349,6 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                     /* boot phase */
                     ot_entropy_src_change_state(s, ENTROPY_SRC_BOOT_HT_RUNNING);
                 }
-                trace_ot_entropy_src_info("initial schedule");
                 uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
                 timer_mod(s->scheduler,
                           (int64_t)(now +
@@ -1616,7 +1600,7 @@ static void ot_entropy_src_reset(DeviceState *dev)
     ot_fifo32_reset(&s->observe_fifo);
     ot_fifo32_reset(&s->swread_fifo);
     ot_fifo32_reset(&s->final_fifo);
-    /* note: s->gennum should not be updated on reset */
+
     s->cond_word = 0u;
     s->noise_count = 0u;
     s->packet_count = 0u;
