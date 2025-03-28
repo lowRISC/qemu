@@ -301,7 +301,7 @@ class FlashGen:
         elif elfpath and not no_header:
             self._log.warning('Discarding ELF as input binary file is invalid')
             elfpath = None
-        if elfpath and not no_header:
+        if elfpath and isfile(dfp.name) and not no_header:
             elftime = stat(elfpath).st_mtime
             bintime = stat(dfp.name).st_mtime
             if bintime < elftime:
