@@ -1334,8 +1334,6 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             s->regs[reg] = val32;
             CHECK_MULTIBOOT(s, MODULE_ENABLE, MODULE_ENABLE);
             if (ot_entropy_src_is_module_disabled(s)) {
-                /* change state in disable mode can discard an error state */
-                ot_entropy_src_change_state(s, ENTROPY_SRC_IDLE);
                 /* reset takes care of cancelling the scheduler timer */
                 ot_entropy_src_reset(DEVICE(s));
                 break;
@@ -1576,7 +1574,7 @@ static void ot_entropy_src_reset(DeviceState *dev)
     s->regs[R_REGWEN] = 0x1u;
     s->regs[R_REV] = 0x10303u;
     s->regs[R_MODULE_ENABLE] = 0x9u;
-    s->regs[R_CONF] = 0x909099u;
+    s->regs[R_CONF] = 0x2649999u;
     s->regs[R_ENTROPY_CONTROL] = 0x99u;
     s->regs[R_HEALTH_TEST_WINDOWS] = 0x600200u;
     s->regs[R_REPCNT_THRESHOLDS] = 0xffffffffu;
@@ -1591,7 +1589,7 @@ static void ot_entropy_src_reset(DeviceState *dev)
     s->regs[R_ALERT_THRESHOLD] = 0xfffd0002u;
     s->regs[R_FW_OV_CONTROL] = 0x99u;
     s->regs[R_FW_OV_SHA3_START] = 0x9u;
-    s->regs[R_OBSERVE_FIFO_THRESH] = 0x20u;
+    s->regs[R_OBSERVE_FIFO_THRESH] = 0x10u;
     s->regs[R_DEBUG_STATUS] = 0x10000u;
 
     ot_fifo32_reset(&s->input_fifo);
@@ -1604,6 +1602,7 @@ static void ot_entropy_src_reset(DeviceState *dev)
     s->cond_word = 0u;
     s->noise_count = 0u;
     s->packet_count = 0u;
+    s->obs_fifo_en = false;
 
     ot_entropy_src_update_irqs(s);
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
@@ -1614,8 +1613,6 @@ static void ot_entropy_src_reset(DeviceState *dev)
         OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
     const OtOTPEntropyCfg *entropy_cfg = oc->get_entropy_cfg(s->otp_ctrl);
     g_assert(entropy_cfg);
-
-    s->obs_fifo_en = false;
 
     ot_entropy_src_change_state(s, ENTROPY_SRC_IDLE);
 }
