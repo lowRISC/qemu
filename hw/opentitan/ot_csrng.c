@@ -343,12 +343,10 @@ struct OtCSRNGState {
     bool enabled;
     bool sw_app_granted;
     bool read_int_granted;
-    bool es_available; /* guest warning if entropy power cycling is invalid */
     uint32_t scheduled_cmd;
     unsigned entropy_delay;
     unsigned es_retry_count;
     unsigned state_db_ix;
-    int entropy_gennum;
     int aes_cipher; /* AES handle for tomcrypt */
     OtCSRNGFsmState state;
     OtCSRNGInstance *instances;
@@ -777,18 +775,6 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
     drng->seeded = false;
 
     if (!flag0) {
-        if (!s->es_available) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Requesting entropy w/o power cycling ES\n",
-                          __func__);
-            /*
-             * Continue anyway as it seems HW does not enforce what is
-             * documented. Force the flag so the warning message is only
-             * shown once (it does not serve any other purpose).
-             */
-            s->es_available = true;
-        }
-
         uint64_t buffer[OT_RANDOM_SRC_DWORD_COUNT];
         memset(buffer, 0, sizeof(buffer));
         unsigned len = drng->material_len * sizeof(uint32_t);
@@ -798,20 +784,21 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
         uint64_t entropy[OT_RANDOM_SRC_DWORD_COUNT];
         int res;
         bool fips;
-        trace_ot_csrng_request_entropy(slot, s->entropy_gennum);
+        trace_ot_csrng_request_entropy(slot);
         OtRandomSrcIfClass *cls = OT_RANDOM_SRC_IF_GET_CLASS(rand_dev);
         OtRandomSrcIf *randif = OT_RANDOM_SRC_IF(rand_dev);
-        res = cls->get_random_values(randif, s->entropy_gennum, entropy, &fips);
-        if (res) {
+        res = cls->get_random_values(randif, entropy, &fips);
+
+        if (res < 0) {
+            s->entropy_delay = 0;
+            trace_ot_csrng_entropy_rejected(slot, "error", res);
+            return CSRNG_CMD_STALLED;
+        }
+
+        if (res > 0) {
             s->entropy_delay = (res > 1) ? (unsigned)res : 0;
-            trace_ot_csrng_entropy_rejected(slot,
-                                            res < 0 ? (res == -2 ? "stalled" :
-                                                                   "error") :
-                                                      "not ready",
-                                            res);
-            return res < 0 ? (res == -2 ? CSRNG_CMD_STALLED :
-                                          CSRNG_CMD_RESEED_CNT_EXCEEDED) :
-                             CSRNG_CMD_RETRY;
+            trace_ot_csrng_entropy_rejected(slot, "not ready", res);
+            return CSRNG_CMD_RETRY;
         }
 
         /* always perform XOR which is a no-op if material_len is zero */
@@ -987,39 +974,11 @@ static void ot_csrng_release_hw_app(OtCSRNGInstance *inst)
 
 static void ot_csrng_handle_enable(OtCSRNGState *s)
 {
-    /*
-     * As per EarlGrey 2.5.2-rc0:
-     * "CSRNG may only be enabled if ENTROPY_SRC is enabled. CSRNG may only be
-     *  disabled if all EDNs are disabled. Once disabled, CSRNG may only be
-     *  re-enabled after ENTROPY_SRC has been disabled and re-enabled."
-     */
-    OtRandomSrcIfClass *cls = OT_RANDOM_SRC_IF_GET_CLASS(s->random_src);
-    OtRandomSrcIf *randif = OT_RANDOM_SRC_IF(s->random_src);
-
     if (ot_csrng_is_ctrl_enabled(s)) {
         xtrace_ot_csrng_info("enabling CSRNG", 0);
-        int gennum = cls->get_random_generation(randif);
-        if (gennum >= 0) {
-            /*
-             * however it is not re-enabling CSRNG w/o cycling the entropy_src
-             * that is prohibited, but to request entropy from it. The check is
-             * therefore deferred to the reseed handling which makes use of the
-             * entropy_src only if flag0 is not set.
-             */
-            s->es_available = gennum > s->entropy_gennum;
-            xtrace_ot_csrng_info("enable: new ES generation", gennum);
-        } else {
-            /*
-             * tracking enablement/disablement order is not supported by the
-             * entropy source (such as on Darjeeling)
-             */
-            s->es_available = true;
-            xtrace_ot_csrng_info("enable: no ES gen tracking", gennum);
-        }
         s->enabled = true;
         s->regs[R_SW_CMD_STS] |= R_SW_CMD_STS_CMD_RDY_MASK;
         s->es_retry_count = ENTROPY_SRC_INITIAL_REQUEST_COUNT;
-        s->entropy_gennum = gennum;
     }
 
     if (ot_csrng_is_ctrl_disabled(s)) {
@@ -1040,8 +999,6 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
         s->enabled = false;
         s->regs[R_SW_CMD_STS] &= ~R_SW_CMD_STS_CMD_RDY_MASK;
         s->es_retry_count = 0;
-        s->entropy_gennum = cls->get_random_generation(randif);
-        xtrace_ot_csrng_info("disable: last RS generation", s->entropy_gennum);
 
         /* cancel any outstanding asynchronous request */
         qemu_bh_cancel(s->cmd_scheduler);
@@ -2024,8 +1981,6 @@ static void ot_csrng_reset(DeviceState *dev)
     s->regs[R_INT_STATE_READ_ENABLE] = 0x7u;
     s->regs[R_MAIN_SM_STATE] = 0x4eu;
     s->enabled = false;
-    s->es_available = false;
-    s->entropy_gennum = 0;
     s->sw_app_granted = false;
     s->read_int_granted = false;
     s->es_retry_count = 0;

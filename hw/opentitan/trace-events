@@ -83,7 +83,7 @@ ot_csrng_irqs(uint32_t active, uint32_t mask, uint32_t eff) "act:0x%08x msk:0x%0
 ot_csrng_push_command(unsigned slot, const char *cmd, unsigned acmd, char code, unsigned len) "#%u: %s(%u) %clen: %u"
 ot_csrng_read_state_db(unsigned slot, unsigned pos, uint32_t val) "#%u [%u] = 0x%08x"
 ot_csrng_reject_command(unsigned slot, uint32_t command, int res) "#%u: cmd: 0x%08x res: %d"
-ot_csrng_request_entropy(unsigned slot, int gen) "#%u gen %d"
+ot_csrng_request_entropy(unsigned slot) "#%u"
 ot_csrng_reset(void) ""
 ot_csrng_retry_es_init(unsigned retry_count) "rescheduling initial ES request: %u to go"
 ot_csrng_schedule(unsigned slot, const char *kind) "#%u: %s"

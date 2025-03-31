@@ -1,7 +1,9 @@
 /*
  * QEMU OpenTitan Random Source interface
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
+ *
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -49,38 +51,19 @@ struct OtRandomSrcIfClass {
     InterfaceClass parent_class;
 
     /*
-     * Tell whether the random source is available, i.e. whether the random
-     * source module has been enabled.
-     *
-     * @dev the random source instance
-     * @return 0 if the random_src is disabled, otherwise:
-     *   * a positive, monotonic increase generation number which indicates the
-     *     number of time the random_src has been cycled (enabled from a
-     *     disable state). This generation identifier should be passed on any
-     *     subsequent #get_random_values request, or
-     *   * a negative number, which indicates that the random source is enabled,
-     *     but the generation number should be simply ignored.
-     */
-    int (*get_random_generation)(OtRandomSrcIf *dev);
-
-    /*
      * Fill up a buffer with random values
      *
      * @dev the random source instance
-     * @genid the generation identifier, from #get_random_generation
      * @random the buffer to fill in with random data
      * @fips on success, updated to @true if random data are FIPS-compliant
      * @return 0 on success,
-     *         >=1 if the source is initializing, if >1, indicates the hint on
-     *         how many ns to wait before retrying,
+     *         >=1 if the random source is still initializing or not enough
+     *           entropy is available to fill the output buffer;
+     *           if >1, indicates a hint on how many ns to wait before retrying,
      *         -1 if the random source is not available, i.e. if the module is
      *          not enabled or if the selected route is not the HW one,
-     *         -2 if the generation ID does not match and execution cannot
-     *          process any further, 1 if the random source is still
-     *          initializing or not enough entropy is available to fill the
-     *          output buffer.
      */
-    int (*get_random_values)(OtRandomSrcIf *dev, int genid,
+    int (*get_random_values)(OtRandomSrcIf *dev,
                              uint64_t random[OT_RANDOM_SRC_DWORD_COUNT],
                              bool *fips);
 };

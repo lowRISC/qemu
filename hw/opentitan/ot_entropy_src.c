@@ -473,23 +473,14 @@ static void ot_entropy_src_reset(DeviceState *dev);
 static void ot_entropy_src_update_alerts(OtEntropySrcState *s);
 static void ot_entropy_src_update_filler(OtEntropySrcState *s);
 
-static int ot_entropy_src_get_generation(OtRandomSrcIf *dev)
+static int ot_entropy_src_get_random(
+    OtRandomSrcIf *dev, uint64_t random[OT_RANDOM_SRC_DWORD_COUNT], bool *fips)
 {
     OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
-
-    return ot_entropy_src_is_module_enabled(s) ? -1 : 0;
-}
-
-static int ot_entropy_src_get_random(OtRandomSrcIf *dev, int genid,
-                                     uint64_t random[OT_RANDOM_SRC_DWORD_COUNT],
-                                     bool *fips)
-{
-    OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
-    (void)genid; /* accept any generation identifier */
 
     if (!ot_entropy_src_is_module_enabled(s)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: entropy_src is down\n", __func__);
-        return -2;
+        return -1;
     }
 
     bool fips_compliant;
@@ -1653,7 +1644,6 @@ static void ot_entropy_src_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
-    rdc->get_random_generation = &ot_entropy_src_get_generation;
     rdc->get_random_values = &ot_entropy_src_get_random;
 }
 

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Darjeeling Analog Sensor Top device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -152,25 +152,11 @@ struct OtASTDjState {
 /* Private implementation */
 /* -------------------------------------------------------------------------- */
 
-static int ot_ast_dj_get_generation(OtRandomSrcIf *dev)
-{
-    (void)dev;
-
-    return -1;
-}
-
-static int ot_ast_dj_get_random(OtRandomSrcIf *dev, int genid,
-                                uint64_t random[OT_RANDOM_SRC_DWORD_COUNT],
-                                bool *fips)
+static int ot_ast_dj_get_random(
+    OtRandomSrcIf *dev, uint64_t random[OT_RANDOM_SRC_DWORD_COUNT], bool *fips)
 {
     OtASTDjState *s = OT_AST_DJ(dev);
     OtASTDjRandom *rnd = &s->random;
-
-    if (genid != -1) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: AST gennum mismatch req:%d\n",
-                      __func__, genid);
-        return -2;
-    }
 
     if (!rnd->avail) {
         /* not ready */
@@ -441,7 +427,6 @@ static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
-    rdc->get_random_generation = &ot_ast_dj_get_generation;
     rdc->get_random_values = &ot_ast_dj_get_random;
 }
 
