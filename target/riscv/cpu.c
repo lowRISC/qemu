@@ -2765,6 +2765,7 @@ static void riscv_cpu_common_class_init(ObjectClass *c, const void *data)
 #ifndef CONFIG_USER_ONLY
     cc->sysemu_ops = &riscv_sysemu_ops;
     cc->get_arch_id = riscv_get_arch_id;
+    mcc->riscv_get_physical_address = riscv_get_physical_address;
 #endif
     cc->gdb_arch_name = riscv_gdb_arch_name;
 #ifdef CONFIG_TCG

@@ -407,6 +407,10 @@ struct CPUArchState {
      * translation active.
      */
     bool two_stage_lookup;
+
+    /* Whether to use virtual address for PMP (default: physical address) */
+    bool vaddr_pmp;
+
     /*
      * Signals whether the current exception occurred while doing two-stage
      * address translation for the VS-stage page table walk.
@@ -580,6 +584,14 @@ struct RISCVCPUClass {
 
     DeviceRealize parent_realize;
     ResettablePhases parent_phases;
+
+    int (*riscv_get_physical_address)(CPURISCVState *env, hwaddr *physical,
+                                      int *ret_prot, vaddr addr,
+                                      target_ulong *fault_pte_addr,
+                                      int access_type, int mmu_idx,
+                                      bool first_stage, bool two_stage,
+                                      bool is_debug, bool is_probe);
+
     RISCVCPUDef *def;
 };
 
@@ -626,6 +638,12 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
 char *riscv_isa_string(RISCVCPU *cpu);
 int riscv_cpu_max_xlen(RISCVCPUClass *mcc);
 bool riscv_cpu_option_set(const char *optname);
+int riscv_get_physical_address(CPURISCVState *env, hwaddr *physical,
+                               int *ret_prot, vaddr addr,
+                               target_ulong *fault_pte_addr,
+                               int access_type, int mmu_idx,
+                               bool first_stage, bool two_stage,
+                               bool is_debug, bool is_probe);
 
 #ifndef CONFIG_USER_ONLY
 void riscv_cpu_do_interrupt(CPUState *cpu);
