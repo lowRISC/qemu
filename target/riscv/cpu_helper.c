@@ -864,7 +864,8 @@ static int get_physical_address_pmp(CPURISCVState *env, int *prot, hwaddr addr,
 }
 
 /*
- * get_physical_address - get the physical address for this virtual address
+ * riscv_get_physical_address - get the physical address for this virtual
+ * address
  *
  * Do a page table walk to obtain the physical address corresponding to a
  * virtual address. Returns 0 if the translation was successful
@@ -885,12 +886,12 @@ static int get_physical_address_pmp(CPURISCVState *env, int *prot, hwaddr addr,
  * @two_stage: Are we going to perform two stage translation
  * @is_debug: Is this access from a debugger or the monitor?
  */
-static int get_physical_address(CPURISCVState *env, hwaddr *physical,
-                                int *ret_prot, vaddr addr,
-                                target_ulong *fault_pte_addr,
-                                int access_type, int mmu_idx,
-                                bool first_stage, bool two_stage,
-                                bool is_debug, bool is_probe)
+int riscv_get_physical_address(CPURISCVState *env, hwaddr *physical,
+                               int *ret_prot, vaddr addr,
+                               target_ulong *fault_pte_addr,
+                               int access_type, int mmu_idx,
+                               bool first_stage, bool two_stage,
+                               bool is_debug, bool is_probe)
 {
     /*
      * NOTE: the env->pc value visible here will not be
@@ -1035,10 +1036,10 @@ restart:
             hwaddr vbase;
 
             /* Do the second stage translation on the base PTE address. */
-            int vbase_ret = get_physical_address(env, &vbase, &vbase_prot,
-                                                 base, NULL, MMU_DATA_LOAD,
-                                                 MMUIdx_U, false, true,
-                                                 is_debug, false);
+            int vbase_ret = riscv_get_physical_address(env, &vbase, &vbase_prot,
+                                                       base, NULL, MMU_DATA_LOAD,
+                                                       MMUIdx_U, false, true,
+                                                       is_debug, false);
 
             if (vbase_ret != TRANSLATE_SUCCESS) {
                 if (fault_pte_addr) {
@@ -1425,19 +1426,22 @@ void riscv_cpu_store_debug_cause(CPUState *cs, unsigned cause)
 hwaddr riscv_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);
+    RISCVCPUClass *cc = RISCV_CPU_CLASS(cs->cc);
     CPURISCVState *env = &cpu->env;
     hwaddr phys_addr;
     int prot;
     int mmu_idx = riscv_env_mmu_index(&cpu->env, false);
 
-    if (get_physical_address(env, &phys_addr, &prot, addr, NULL, 0, mmu_idx,
-                             true, env->virt_enabled, true, false)) {
+    if (cc->riscv_get_physical_address(env, &phys_addr, &prot, addr, NULL, 0,
+                                       mmu_idx, true, env->virt_enabled, true,
+                                       false)) {
         return -1;
     }
 
     if (env->virt_enabled) {
-        if (get_physical_address(env, &phys_addr, &prot, phys_addr, NULL,
-                                 0, MMUIdx_U, false, true, true, false)) {
+        if (cc->riscv_get_physical_address(env, &phys_addr, &prot, phys_addr,
+                                           NULL, 0, MMUIdx_U, false, true, true,
+                                           false)) {
             return -1;
         }
     }
@@ -1528,6 +1532,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                         bool probe, uintptr_t retaddr)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);
+    RISCVCPUClass *cc = RISCV_CPU_CLASS(cs->cc);
     CPURISCVState *env = &cpu->env;
     vaddr im_address;
     hwaddr pa = 0;
@@ -1549,9 +1554,10 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     pmu_tlb_fill_incr_ctr(cpu, access_type);
     if (two_stage_lookup) {
         /* Two stage lookup */
-        ret = get_physical_address(env, &pa, &prot, address,
-                                   &env->guest_phys_fault_addr, access_type,
-                                   mmu_idx, true, true, false, probe);
+        ret = cc->riscv_get_physical_address(env, &pa, &prot, address,
+                                             &env->guest_phys_fault_addr,
+                                             access_type, mmu_idx, true, true,
+                                             false, probe);
 
         /*
          * A G-stage exception may be triggered during two state lookup.
@@ -1572,9 +1578,10 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             /* Second stage lookup */
             im_address = pa;
 
-            ret = get_physical_address(env, &pa, &prot2, im_address, NULL,
-                                       access_type, MMUIdx_U, false, true,
-                                       false, probe);
+            ret = cc->riscv_get_physical_address(env, &pa, &prot2, im_address,
+                                                 NULL, access_type, MMUIdx_U,
+                                                 false, true,
+                                                 false, probe);
 
             qemu_log_mask(CPU_LOG_MMU,
                           "%s 2nd-stage address=%" VADDR_PRIx
@@ -1610,9 +1617,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         }
     } else {
         /* Single stage lookup */
-        ret = get_physical_address(env, &pa, &prot, address, NULL,
-                                   access_type, mmu_idx, true, false, false,
-                                   probe);
+        ret = cc->riscv_get_physical_address(env, &pa, &prot, address, NULL,
+                                             access_type, mmu_idx, true, false,
+                                             false, probe);
 
         qemu_log_mask(CPU_LOG_MMU,
                       "%s address=%" VADDR_PRIx " ret %d physical "
