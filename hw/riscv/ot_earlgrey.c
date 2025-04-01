@@ -67,6 +67,7 @@
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/opentitan/ot_unimp.h"
+#include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/dm.h"
 #include "hw/riscv/dtm.h"
@@ -151,6 +152,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_UART2,
     OT_EG_SOC_DEV_UART3,
     OT_EG_SOC_DEV_USBDEV,
+    OT_EG_SOC_DEV_VMAPPER,
 };
 
 enum OtEgResetRequest {
@@ -194,7 +196,7 @@ enum OtEGBoardDevice {
 /* Verilator AON clock is 125 kHz */
 #define OT_EG_VERILATOR_AON_CLK_HZ OT_EG_VERILATOR_PERIPHERAL_CLK_HZ
 
-#define OT_IBEX_WRAPPER_NUM_REGIONS 2u
+#define OT_EG_IBEX_WRAPPER_NUM_REGIONS 2u
 
 static const uint8_t ot_eg_pmp_cfgs[] = {
     /* clang-format off */
@@ -1140,11 +1142,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(3, 64)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0),
+            OT_EG_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 7u),
-            IBEX_DEV_UINT_PROP("num-regions", OT_IBEX_WRAPPER_NUM_REGIONS),
+            IBEX_DEV_UINT_PROP("num-regions", OT_EG_IBEX_WRAPPER_NUM_REGIONS),
             /* remove the following line once LC state is implemented */
             IBEX_DEV_BOOL_PROP("lc-ignore", true)
         ),
@@ -1196,6 +1199,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 41)
         ),
     },
+    [OT_EG_SOC_DEV_VMAPPER] = {
+        .type = TYPE_OT_VMAPPER,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "soc"),
+            IBEX_DEV_UINT_PROP("trans_count", OT_EG_IBEX_WRAPPER_NUM_REGIONS)
+        ),
+    }
     /* clang-format on */
 };
 
@@ -1376,11 +1386,9 @@ static void ot_eg_soc_reset_hold(Object *obj, ResetType type)
         c->parent_phases.hold(obj, type);
     }
 
-    Object *dtm = OBJECT(s->devices[OT_EG_SOC_DEV_DTM]);
-    resettable_reset(dtm, type);
-
-    Object *dm = OBJECT(s->devices[OT_EG_SOC_DEV_DM]);
-    resettable_reset(dm, type);
+    resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_DTM]), type);
+    resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_DM]), type);
+    resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_VMAPPER]), type);
 
     /* keep ROM_CTRL in reset, we'll release it last */
     resettable_assert_reset(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]), type);

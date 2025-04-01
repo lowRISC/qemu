@@ -68,6 +68,7 @@
 #include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
+#include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/dm.h"
 #include "hw/riscv/dtm.h"
@@ -159,6 +160,7 @@ enum OtDjSocDevice {
     OT_DJ_SOC_DEV_TAP_CTRL,
     OT_DJ_SOC_DEV_TIMER,
     OT_DJ_SOC_DEV_UART0,
+    OT_DJ_SOC_DEV_VMAPPER,
     /* IRQ splitters, i.e. 1-to-N signal dispatchers */
     OT_DJ_SOC_SPLITTER_LC_HW_DEBUG,
     OT_DJ_SOC_SPLITTER_LC_ESCALATE,
@@ -277,7 +279,7 @@ enum OtDjPinmuxMioOut {
 #define OT_DJ_PRIVATE_REGION_OFFSET 0x00000000u
 #define OT_DJ_PRIVATE_REGION_SIZE   (1u << 30u)
 
-#define OT_IBEX_WRAPPER_NUM_REGIONS 32u
+#define OT_DJ_IBEX_WRAPPER_NUM_REGIONS 32u
 
 /* CTN address space */
 #define OT_DJ_CTN_REGION_OFFSET 0x40000000u
@@ -797,11 +799,12 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(3, 98)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("edn", EDN0)
+            OT_DJ_SOC_DEVLINK("edn", EDN0),
+            OT_DJ_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 7u),
-            IBEX_DEV_UINT_PROP("num-regions", OT_IBEX_WRAPPER_NUM_REGIONS)
+            IBEX_DEV_UINT_PROP("num-regions", OT_DJ_IBEX_WRAPPER_NUM_REGIONS)
         ),
     },
     [OT_DJ_SOC_DEV_RV_DM] = {
@@ -1356,6 +1359,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_STRING_PROP("ot_id", "ret")
         ),
     },
+    [OT_DJ_SOC_DEV_VMAPPER] = {
+        .type = TYPE_OT_VMAPPER,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("ot_id", "soc"),
+            IBEX_DEV_UINT_PROP("trans_count", OT_DJ_IBEX_WRAPPER_NUM_REGIONS)
+        ),
+    },
     /* IRQ splitters */
     [OT_DJ_SOC_SPLITTER_LC_HW_DEBUG] = {
         .type = TYPE_SPLIT_IRQ,
@@ -1544,15 +1554,12 @@ static void ot_dj_soc_reset_hold(Object *obj, ResetType type)
         c->parent_phases.hold(obj, type);
     }
 
-    Object *dmi = OBJECT(s->devices[OT_DJ_SOC_DEV_DTM]);
-    resettable_reset(dmi, type);
-
-    // TODO: not sure where Reset is plugged here...
     resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_LC_CTRL]), type);
     resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_MBX]), type);
+    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DTM]), type);
+    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM]), type);
+    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_VMAPPER]), type);
 
-    Object *dm = OBJECT(s->devices[OT_DJ_SOC_DEV_DM]);
-    resettable_reset(dm, type);
 
     /* keep ROM_CTRLs in reset, we'll release them last */
     resettable_assert_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_ROM0]), type);
