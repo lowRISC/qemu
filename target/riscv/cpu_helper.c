@@ -1592,14 +1592,16 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             prot &= prot2;
 
             if (ret == TRANSLATE_SUCCESS) {
-                ret = get_physical_address_pmp(env, &prot_pmp, pa,
+                hwaddr pmp_addr = env->vaddr_pmp ? address : pa;
+
+                ret = get_physical_address_pmp(env, &prot_pmp, pmp_addr,
                                                size, access_type, mode);
-                tlb_size = pmp_get_tlb_size(env, pa);
+                tlb_size = pmp_get_tlb_size(env, pmp_addr);
 
                 qemu_log_mask(CPU_LOG_MMU,
                               "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
                               " %d tlb_size %" HWADDR_PRIu "\n",
-                              __func__, pa, ret, prot_pmp, tlb_size);
+                              __func__, pmp_addr, ret, prot_pmp, tlb_size);
 
                 prot &= prot_pmp;
             } else {
@@ -1627,14 +1629,16 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       __func__, address, ret, pa, prot);
 
         if (ret == TRANSLATE_SUCCESS) {
-            ret = get_physical_address_pmp(env, &prot_pmp, pa,
+            hwaddr pmp_addr = env->vaddr_pmp ? address : pa;
+
+            ret = get_physical_address_pmp(env, &prot_pmp, pmp_addr,
                                            size, access_type, mode);
-            tlb_size = pmp_get_tlb_size(env, pa);
+            tlb_size = pmp_get_tlb_size(env, pmp_addr);
 
             qemu_log_mask(CPU_LOG_MMU,
                           "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
                           " %d tlb_size %" HWADDR_PRIu "\n",
-                          __func__, pa, ret, prot_pmp, tlb_size);
+                          __func__, pmp_addr, ret, prot_pmp, tlb_size);
 
             prot &= prot_pmp;
         }

@@ -377,6 +377,10 @@ struct CPUArchState {
      * translation active.
      */
     bool two_stage_lookup;
+
+    /* Whether to use virtual address for PMP (default: physical address) */
+    bool vaddr_pmp;
+
     /*
      * Signals whether the current exception occurred while doing two-stage
      * address translation for the VS-stage page table walk.
