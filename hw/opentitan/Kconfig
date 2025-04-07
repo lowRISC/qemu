@@ -65,14 +65,6 @@ config OT_I2C_DJ
 config OT_IBEX_WRAPPER
     bool
 
-config OT_IBEX_WRAPPER_DJ
-    select OT_IBEX_WRAPPER
-    bool
-
-config OT_IBEX_WRAPPER_EG
-    select OT_IBEX_WRAPPER
-    bool
-
 config OT_KMAC
     bool
 
