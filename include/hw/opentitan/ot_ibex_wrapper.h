@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Ibex Wrapper device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -36,15 +36,6 @@
 
 #define TYPE_OT_IBEX_WRAPPER "ot-ibex_wrapper"
 OBJECT_DECLARE_TYPE(OtIbexWrapperState, OtIbexWrapperClass, OT_IBEX_WRAPPER)
-
-struct OtIbexWrapperState {
-    SysBusDevice parent_obj;
-};
-
-struct OtIbexWrapperClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
-};
 
 #define OT_IBEX_WRAPPER_CPU_EN TYPE_OT_IBEX_WRAPPER "-cpu-en"
 
