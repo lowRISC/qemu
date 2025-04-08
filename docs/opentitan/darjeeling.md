@@ -205,6 +205,20 @@ virtual machine. It contains three ASCII chars `QMU` followed with a configurabl
 the MSB, whose meaning is not defined. It can be any 8-byte value, and defaults to 0x0. To configure
 this version field, use the `qemu_version` property of the Ibex Wrapper device.
 
+There are two modes to handle address remapping, with different limitations:
+
+- default mode: use an MMU-like implementation (via ot_vmapper) to remap addresses. This mode
+  enables to remap instruction accesses and data accesses independently, as the real HW. However,
+  due to QEMU limitations, addresses and mapped region sizes should be aligned and multiple of 4096
+  bytes, i.e. a standard MMU page size. This is the recommended mode.
+
+- legacy mode: This mode has no address nor size limitations, however it cannot distinguish
+  instruction accesses from data accesses, which means that both kind of accesses must be defined
+  for each active remapping slot for the remapping to be enabled. Moreover it relies on MemoryRegion
+  aliasing and may not be as robust as the default mode. It is recommended to use the default mode
+  whenever possible. To enable this legacy mode, set the `alias-mode` property to true:
+  `-global ot-ibex_wrapper.alias-mode=true`
+
 ### OTBN
 
 * `-global ot-otbn.logfile=<filename>` dumps executed instructions on OTBN core into the specified
