@@ -50,7 +50,7 @@
 #include "hw/opentitan/ot_gpio_dj.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_i2c_dj.h"
-#include "hw/opentitan/ot_ibex_wrapper_dj.h"
+#include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_mbx.h"
@@ -276,6 +276,8 @@ enum OtDjPinmuxMioOut {
 
 #define OT_DJ_PRIVATE_REGION_OFFSET 0x00000000u
 #define OT_DJ_PRIVATE_REGION_SIZE   (1u << 30u)
+
+#define OT_IBEX_WRAPPER_NUM_REGIONS 32u
 
 /* CTN address space */
 #define OT_DJ_CTN_REGION_OFFSET 0x40000000u
@@ -784,7 +786,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_IBEX_WRAPPER] = {
-        .type = TYPE_OT_IBEX_WRAPPER_DJ,
+        .type = TYPE_OT_IBEX_WRAPPER,
         .memmap = MEMMAPENTRIES(
             { .base = 0x211f0000u }
         ),
@@ -798,7 +800,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("edn-ep", 7u)
+            IBEX_DEV_UINT_PROP("edn-ep", 7u),
+            IBEX_DEV_UINT_PROP("num-regions", OT_IBEX_WRAPPER_NUM_REGIONS)
         ),
     },
     [OT_DJ_SOC_DEV_RV_DM] = {

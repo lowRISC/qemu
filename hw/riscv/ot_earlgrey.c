@@ -49,7 +49,7 @@
 #include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_hmac.h"
-#include "hw/opentitan/ot_ibex_wrapper_eg.h"
+#include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
@@ -193,6 +193,8 @@ enum OtEGBoardDevice {
 #define OT_EG_VERILATOR_PERIPHERAL_CLK_HZ ((OT_EG_VERILATOR_CORE_CLK_HZ) / 4u)
 /* Verilator AON clock is 125 kHz */
 #define OT_EG_VERILATOR_AON_CLK_HZ OT_EG_VERILATOR_PERIPHERAL_CLK_HZ
+
+#define OT_IBEX_WRAPPER_NUM_REGIONS 2u
 
 static const uint8_t ot_eg_pmp_cfgs[] = {
     /* clang-format off */
@@ -1127,7 +1129,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_IBEX_WRAPPER] = {
-        .type = TYPE_OT_IBEX_WRAPPER_EG,
+        .type = TYPE_OT_IBEX_WRAPPER,
         .memmap = MEMMAPENTRIES(
             { .base = 0x411f0000u }
         ),
@@ -1141,7 +1143,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("edn-ep", 7u)
+            IBEX_DEV_UINT_PROP("edn-ep", 7u),
+            IBEX_DEV_UINT_PROP("num-regions", OT_IBEX_WRAPPER_NUM_REGIONS),
         ),
     },
     [OT_EG_SOC_DEV_RV_DM] = {

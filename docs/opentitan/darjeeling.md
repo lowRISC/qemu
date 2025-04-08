@@ -104,10 +104,10 @@ any useful feature (only allow guest test code to execute as expected).
 
 ````sh
 qemu-system-riscv32 -M ot-darjeeling,no_epmp_cfg=true -display none -serial mon:stdio \
-  -global ot-ibex_wrapper-dj.lc-ignore=on -kernel hello.elf
+  -global ot-ibex_wrapper.lc-ignore=on -kernel hello.elf
 ````
 See the section "Useful execution options" for documentation about the `no_epmp_cfg` and
-`ot-ibex_wrapper-dj.lc-ignore=on` option.
+`ot-ibex_wrapper.lc-ignore=on` option.
 
 ### Boot sequence ROM, ROM_EXT, BLO
 
@@ -149,14 +149,14 @@ See [`tools.md`](tools.md)
   to update the vCPU reset vector at startup. When this option is used, with `-kernel` option for
   example, the application is loaded in memory but the default machine reset vector is used.
 
-* `-global ot-ibex_wrapper-dj.lc-ignore=on` should be used whenever no OTP image is provided, or if
+* `-global ot-ibex_wrapper.lc-ignore=on` should be used whenever no OTP image is provided, or if
   the current LifeCycle state stored in the OTP image does not allow the Ibex core to fetch data.
   This switch forces the Ibex core to execute whatever the LifeCycle broadcasted signal, which
   departs from the HW behavior but maybe helpful to run the machine without a full OTP set up. The
   alternative to allow the Ibex core to execute guest code is to provide a valid OTP image with one
   of the expected LifeCycle state, such as TestUnlock*, Dev, Prod or RMA.
 
-* `-global ot-ibex_wrapper-dj.lc-ignore-ids=<ids>` acts as `lc-ignore`, enabling the selection of
+* `-global ot-ibex_wrapper.lc-ignore-ids=<ids>` acts as `lc-ignore`, enabling the selection of
   specific ibex wrapper instance based on their unique identifiers. See `ot_id` property in the
   machine definition file for a list of valid identifiers. `<ids>` should be defined as a comma-
   separated list of valid identifiers. It is only possible to ignore LifeCycle states with this
