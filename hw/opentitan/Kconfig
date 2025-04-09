@@ -63,6 +63,7 @@ config OT_I2C_DJ
     bool
 
 config OT_IBEX_WRAPPER
+    select OT_VMAPPER
     bool
 
 config OT_KMAC
@@ -157,6 +158,9 @@ config OT_UART
     bool
 
 config OT_UNIMP
+    bool
+
+config OT_VMAPPER
     bool
 
 source otbn/Kconfig

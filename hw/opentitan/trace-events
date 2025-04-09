@@ -542,3 +542,10 @@ ot_uart_irqs(const char *id, uint32_t active, uint32_t mask, uint32_t eff) "%s: 
 
 ot_unimp_irq(const char *id, unsigned ix, bool lvl) "%s: #%u = %u"
 ot_unimp_alert(const char *id, unsigned ix) "%s: #%u"
+
+# ot_vmapper.c
+
+ot_vmapper_new_phy_addr(char *id, bool insn, uint32_t vaddr, uint32_t paddr) "%s: i:%u v:0x%08x p:0x%08x"
+ot_vmapper_override_vcpu_config(char *id) "%s: redirect address resolution and force PMP to use virtual addresses"
+ot_vmapper_translate_enable(char *id, bool insn, unsigned slot, uint32_t src, uint32_t dst, unsigned size) "%s: i:%u s:%u src:0x%08x dst:0x%08x size:0x%x"
+ot_vmapper_translate_disable(char *id, bool insn, unsigned slot) "%s: i:%u s:%u"

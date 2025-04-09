@@ -53,4 +53,6 @@ system_ss.add(when: 'CONFIG_OT_TIMER', if_true: files('ot_timer.c'))
 system_ss.add(when: 'CONFIG_OT_UART', if_true: files('ot_uart.c'))
 system_ss.add(when: 'CONFIG_OT_UNIMP', if_true: files('ot_unimp.c'))
 
+riscv_ss.add(when: 'CONFIG_OT_VMAPPER', if_true: files('ot_vmapper.c'))
+
 subdir('otbn')
