@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan DMA device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -599,22 +599,20 @@ ot_dma_check_device(OtDMAState *s, bool d_or_s, OtDMAAddrSpace *asix,
                       "addr: 0x%" HWADDR_PRIx " size: 0x%" HWADDR_PRIx "\n",
                       __func__, s->ot_id, d_or_s ? "dest" : "src", AS_NAME(aix),
                       start, size);
-        ot_dma_set_xerror(s, d_or_s ? ERR_DEST_ADDR : ERR_SRC_ADDR);
-        return NULL;
+        /* the HW cannot detect this case; inform the guest and resume */
     }
 
     if (mrs.offset_within_region + int128_getlo(mrs.size) < size) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid size\n", __func__,
                       s->ot_id);
-        ot_dma_set_xerror(s, ERR_SIZE);
-        memory_region_unref(mrs.mr);
-        return NULL;
+        /* the HW cannot detect this case; inform the guest and resume */
     }
 
     trace_ot_dma_check_device(s->ot_id, d_or_s ? "Dest" : "Src", AS_NAME(aix),
-                              start, size, mrs.mr->name, mrs.mr->ram);
+                              start, size, mrs.mr ? mrs.mr->name : "invalid",
+                              mrs.mr ? mrs.mr->ram : false);
     *asix = aix;
-    *is_dev = !mrs.mr->ram;
+    *is_dev = mrs.mr ? !mrs.mr->ram : false; /* neither RAM nor device... */
     *offset = mrs.offset_within_region;
 
     /* caller should invoke memory_region_unref(mrs.mr) once done with mr */
@@ -661,8 +659,7 @@ static bool ot_dma_go(OtDMAState *s)
     case TRANSACTION_WIDTH_WORD:
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Invalid transaction width for hashing\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid transaction width\n",
                       __func__, s->ot_id);
         ot_dma_set_xerror(s, ERR_SIZE);
     }
@@ -871,6 +868,20 @@ static bool ot_dma_go(OtDMAState *s)
                           __func__, s->ot_id, twidth, dwidth);
             ot_dma_set_xerror(s, ERR_DEST_ADDR);
         }
+    }
+
+
+    if (!smr || !dmr) {
+        /*
+         * Real HW would start a DMA transaction and receive a bus error.
+         * Here it is impossible to start a transaction as memory buffer would
+         * not be valid, so trigger the error ealier.
+         * When device-to-device DMA is implemented, it might be possible to
+         * use a dummy, invalid region similar with no ops (see the default
+         * QEMU unassigned_mem_ops) to start a DMA operation and handle the
+         * error once it fails.
+         */
+        ot_dma_set_xerror(s, ERR_BUS);
     }
 
     if (s->state == SM_ERROR) {
