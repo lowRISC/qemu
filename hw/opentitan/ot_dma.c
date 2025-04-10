@@ -1020,9 +1020,7 @@ static void ot_dma_complete(OtDMAState *s)
 
             unsigned md_count = sha->desc->hashsize / sizeof(uint32_t);
             for (unsigned ix = 0; ix < md_count; ix++) {
-                // it is likely some shuffling (little endian, etc) is required
-                // here, but for now the bit order of the HW is not known.
-                s->regs[R_SHA2_DIGEST_0 + ix] = md[ix];
+                stl_be_p(&s->regs[R_SHA2_DIGEST_0 + ix], md[ix]);
             }
 
             s->regs[R_STATUS] |= R_STATUS_SHA2_DIGEST_VALID_MASK;
