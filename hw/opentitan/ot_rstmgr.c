@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Reset Manager device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -520,23 +520,24 @@ static void ot_rstmgr_reset(DeviceState *dev)
         s->cpu = cpu;
     }
 
-    s->regs[R_RESET_REQ] = OT_MULTIBITBOOL4_FALSE;
+    uint32_t reset_info = s->regs[R_RESET_INFO];
+
+    memset(s->regs, 0, REGS_SIZE);
+
     if (s->por) {
-        memset(s->regs, 0, REGS_SIZE);
         s->regs[R_RESET_INFO] = R_RESET_INFO_POR_MASK;
         s->por = false;
     } else {
-        /* TODO: need to check which registers are actually reset when !PoR */
-        s->regs[R_ALERT_TEST] = 0u;
+        s->regs[R_RESET_INFO] = reset_info;
     }
-
-    s->regs[R_ALERT_REGWEN] = 0x1u;
-    s->regs[R_CPU_REGWEN] = 0x1u;
+    s->regs[R_RESET_REQ] = OT_MULTIBITBOOL4_FALSE;
+    s->regs[R_ALERT_REGWEN] = R_ALERT_REGWEN_EN_MASK;
+    s->regs[R_CPU_REGWEN] = R_CPU_REGWEN_EN_MASK;
     for (unsigned ix = 0; ix < PARAM_NUM_SW_RESETS; ix++) {
-        s->regs[R_SW_RST_REGWEN_0 + ix] = 0x1u;
+        s->regs[R_SW_RST_REGWEN_0 + ix] = SW_RST_REGWEN_EN_MASK;
     }
     for (unsigned ix = 0; ix < PARAM_NUM_SW_RESETS; ix++) {
-        s->regs[R_SW_RST_CTRL_N_0 + ix] = 0x1u;
+        s->regs[R_SW_RST_CTRL_N_0 + ix] = SW_RST_CTRL_VAL_MASK;
     }
 
     ibex_irq_lower(&s->soc_reset);
