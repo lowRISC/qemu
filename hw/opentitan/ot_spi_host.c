@@ -1145,25 +1145,28 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             REG_UPDATE(s, ERROR_STATUS, CMDINVAL, 1u);
         }
 
-        if (!(s->regs[R_CSID] < s->num_cs)) {
+        unsigned csid = s->regs[R_CSID];
+
+        if (!(csid < s->num_cs)) {
             /* CSID exceeds max num_cs */
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid csid\n", __func__,
-                          s->ot_id);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid csid: %u\n",
+                          __func__, s->ot_id, csid);
             REG_UPDATE(s, ERROR_STATUS, CSIDINVAL, 1u);
+            csid = 0;
         }
 
         CmdFifoSlot slot = {
             .opts = s->regs[R_CONFIGOPTS],
             .command = val32,
-            .cs = s->regs[R_CSID],
+            .cs = csid,
             .id = s->last_command_id++,
         };
 
         trace_ot_spi_host_new_command(
             s->ot_id, slot.id,
             F_COMMAND_DIRECTION[FIELD_EX32(slot.command, COMMAND, DIRECTION)],
-            F_COMMAND_SPEED[FIELD_EX32(slot.command, COMMAND, SPEED)],
-            s->regs[R_CSID], (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
+            F_COMMAND_SPEED[FIELD_EX32(slot.command, COMMAND, SPEED)], csid,
+            (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
             FIELD_EX32(slot.command, COMMAND, LEN) + 1u);
 
         cmdfifo_push(s->cmd_fifo, &slot);
