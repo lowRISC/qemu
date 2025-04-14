@@ -1016,6 +1016,11 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
     case ACK_EXCEPTION:
         /* level value is meaningless */
         hart = dm->hart;
+        if (!hart) {
+            /* likely a more serious issue */
+            qemu_log("%s: no selected hart\n", __func__);
+            break;
+        }
         dm->cmd_err = CMD_ERR_EXCEPTION;
         riscv_dm_set_cs(dm, false);
         riscv_dm_set_busy(dm, false);
