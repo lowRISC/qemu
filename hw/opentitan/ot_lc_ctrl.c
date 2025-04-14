@@ -2033,7 +2033,7 @@ static void ot_lc_ctrl_configure_transitions(
          tix++, lcval += tdesc->word_count) {
         memcpy(&lcval[0], &last[0], tix * sizeof(uint16_t));
         memcpy(&lcval[tix], &first[tix],
-               (tdesc->step_count - tix) * sizeof(uint16_t));
+               (tdesc->word_count - tix) * sizeof(uint16_t));
     }
 
     g_free(last);
