@@ -25,6 +25,20 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ *
+ * Note: there are two modes to handle address remapping:
+ *   - default mode: use an MMU-like implementation (via ot_vmapper) to remap
+ *     addresses. This mode enables to remap instruction accesses and data
+ *     accesses independently, as the real HW. However, due to QEMU limitations,
+ *     addresses and mapped region sizes should be aligned and multiple of 4096
+ *     bytes, i.e. a standard MMU page size. This is the recommended mode.
+ *   - legacy mode: This mode has no address nor size limitations, however it
+ *     cannot distinguish instruction accesses from data accesses, which means
+ *     that both kind of accesses must be defined for each active remapping slot
+ *     for the remapping to be enabled. Moreover it relies on MemoryRegion
+ *     aliasing and may not be as robust as the default mode. It is recommended
+ *     to use the default mode whenever possible. To enable this legacy mode,
+ *     set the "alias-mode" property to true.
  */
 
 #include "qemu/osdep.h"
@@ -223,6 +237,7 @@ struct OtIbexWrapperState {
     uint8_t edn_ep;
     uint8_t qemu_version;
     bool lc_ignore;
+    bool alias_mode;
     CharBackend chr;
 };
 
@@ -475,6 +490,29 @@ static void ot_ibex_wrapper_update_remap_mr(
         ot_ibex_wrapper_remapper_create(s, slot, (hwaddr)dst_base,
                                         (hwaddr)src_base, (size_t)map_size);
     }
+}
+
+static void ot_ibex_wrapper_update_remap_vmap(
+    OtIbexWrapperState *s, OtIbexRemapAccess access, unsigned slot)
+
+{
+    g_assert(slot < s->num_regions);
+    g_assert(s->vmapper);
+    g_assert(access < ACCESS_COUNT);
+
+    bool enable = s->regs.remap[access][slot].addr_en;
+    uint32_t match_addr = s->regs.remap[access][slot].addr_matching;
+    uint32_t remap_addr = s->regs.remap[access][slot].remap_addr;
+
+    uint32_t map_size = (-match_addr & (match_addr + 1u)) << 1u;
+    uint32_t map_mask = ~(map_size - 1u);
+    uint32_t src_base = match_addr & map_mask;
+    uint32_t dst_base = remap_addr & map_mask;
+
+    OtVMapperClass *vc = OT_VMAPPER_GET_CLASS(s->vmapper);
+
+    vc->translate(s->vmapper, access == ACCESS_INSN, slot, src_base, dst_base,
+                  enable ? map_size : 0);
 }
 
 /*
@@ -1049,7 +1087,12 @@ ot_ibex_wrapper_write_remap(OtIbexWrapperState *s, unsigned reg, uint32_t value)
         return;
     }
 
-    ot_ibex_wrapper_update_remap_mr(s, (OtIbexRemapAccess)access, region);
+    if (s->alias_mode) {
+        ot_ibex_wrapper_update_remap_mr(s, (OtIbexRemapAccess)access, region);
+
+    } else {
+        ot_ibex_wrapper_update_remap_vmap(s, (OtIbexRemapAccess)access, region);
+    }
 }
 
 static void ot_ibex_wrapper_write_nmi_enable(OtIbexWrapperState *s,
@@ -1330,6 +1373,7 @@ static Property ot_ibex_wrapper_properties[] = {
     DEFINE_PROP_UINT8("num-regions", OtIbexWrapperState, num_regions, 0),
     DEFINE_PROP_UINT8("edn-ep", OtIbexWrapperState, edn_ep, UINT8_MAX),
     DEFINE_PROP_BOOL("lc-ignore", OtIbexWrapperState, lc_ignore, false),
+    DEFINE_PROP_BOOL("alias-mode", OtIbexWrapperState, alias_mode, false),
     DEFINE_PROP_UINT8("qemu_version", OtIbexWrapperState, qemu_version, 0),
     DEFINE_PROP_STRING("lc-ignore-ids", OtIbexWrapperState, lc_ignore_ids),
     DEFINE_PROP_CHR("logdev", OtIbexWrapperState, chr),
@@ -1429,6 +1473,8 @@ static void ot_ibex_wrapper_realize(DeviceState *dev, Error **errp)
     g_assert(s->num_regions);
     /* if EDN mode is enabled, EDN endpoint must be set */
     g_assert(!s->edn || s->edn_ep != UINT8_MAX);
+    /* if legacy alias_mode is disabled, vmapper must be set */
+    g_assert(!s->alias_mode || s->vmapper);
 
     s->remap_reg_count =
         s->num_regions * ACCESS_COUNT * sizeof(OtIbexRemap) / sizeof(uint32_t);
