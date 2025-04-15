@@ -115,7 +115,7 @@ REG32(JEDEC_CC, 0x2cu)
     FIELD(JEDEC_CC, CC, 0u, 8u)
     FIELD(JEDEC_CC, NUM_CC, 8u, 8u)
 REG32(JEDEC_ID, 0x30u)
-    FIELD(JEDEC_ID, ID, 0u, 16u)
+    FIELD(JEDEC_ID, DEVICE, 0u, 16u)
     FIELD(JEDEC_ID, MF, 16u, 8u)
 REG32(READ_THRESHOLD, 0x34u)
     FIELD(READ_THRESHOLD, THRESHOLD, 0u, 10u)
@@ -580,7 +580,7 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
      R_FLASH_STATUS_DRV1_MASK | R_FLASH_STATUS_HOLD_NRST_MASK)
 #define FLASH_STATUS_MASK (R_FLASH_STATUS_BUSY_MASK | FLASH_STATUS_STATUS_MASK)
 #define JEDEC_CC_MASK     (R_JEDEC_CC_CC_MASK | R_JEDEC_CC_NUM_CC_MASK)
-#define JEDEC_ID_MASK     (R_JEDEC_ID_ID_MASK | R_JEDEC_ID_MF_MASK)
+#define JEDEC_ID_MASK     (R_JEDEC_ID_DEVICE_MASK | R_JEDEC_ID_MF_MASK)
 
 #define COMMAND_OPCODE(_cmd_info_) \
     ((uint8_t)((_cmd_info_) & CMD_INFO_OPCODE_MASK))
@@ -924,14 +924,19 @@ static void ot_spi_device_flash_decode_read_jedec(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    f->len = 3u;
-    uint32_t cc_count = FIELD_EX32(s->spi_regs[R_JEDEC_CC], JEDEC_CC, NUM_CC);
-    uint32_t cc_code = FIELD_EX32(s->spi_regs[R_JEDEC_CC], JEDEC_CC, CC);
-    uint32_t jedec = s->spi_regs[R_JEDEC_ID];
-    /* use len field to count continuation code */
-    memset(f->buffer, (int)cc_code, cc_count);
-    stl_le_p(&f->buffer[cc_count], bswap32(jedec << 8));
-    f->len += cc_count;
+    uint8_t cc_count =
+        (uint8_t)FIELD_EX32(s->spi_regs[R_JEDEC_CC], JEDEC_CC, NUM_CC);
+    uint8_t cc_code =
+        (uint8_t)FIELD_EX32(s->spi_regs[R_JEDEC_CC], JEDEC_CC, CC);
+    uint8_t jedec_manuf =
+        (uint8_t)FIELD_EX32(s->spi_regs[R_JEDEC_ID], JEDEC_ID, MF);
+    uint16_t jedec_device =
+        (uint16_t)FIELD_EX32(s->spi_regs[R_JEDEC_ID], JEDEC_ID, DEVICE);
+    memset(f->buffer, (int)(uint8_t)cc_code, (size_t)cc_count);
+    f->len = cc_count;
+    f->buffer[f->len++] = jedec_manuf;
+    f->buffer[f->len++] = (uint8_t)(jedec_device >> 8u);
+    f->buffer[f->len++] = (uint8_t)(jedec_device >> 0u);
     memset(&f->buffer[f->len], (int)SPI_DEFAULT_TX_VALUE,
            SPI_FLASH_BUFFER_SIZE - f->len);
     f->src = f->buffer;
