@@ -112,6 +112,7 @@ typedef void (*ot_otp_program_ack_fn)(void *opaque, bool ack);
 
 struct OtOTPClass {
     SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 
     /*
      * Provide OTP lifecycle information.

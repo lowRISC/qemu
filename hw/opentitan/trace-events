@@ -354,7 +354,7 @@ ot_otp_load_backend(const char * id, unsigned ver, const char *mode, unsigned ec
 ot_otp_load_token(const char * id, const char *token, unsigned tkx, uint64_t hi, uint64_t lo, const char *valid) "%s: %s (%u) 0x%016" PRIx64 "%016" PRIx64 ": %svalid"
 ot_otp_mismatch_digest(const char * id, const char* part, unsigned pix, uint64_t sdig, uint64_t ldig) "%s: mismatch digest on %s (#%u), computed 0x%" PRIx64 " stored 0x%" PRIx64
 ot_otp_pwr_otp_req(const char * id, const char *where) "%s: %s"
-ot_otp_reset(const char * id) "%s"
+ot_otp_reset(const char * id, const char *phase) "%s: %s"
 ot_otp_set_error(const char * id, const char *part, unsigned pix, const char* err, unsigned eix) "%s: %s (#%u): %s (%u)"
 ot_otp_skip_digest(const char * id, const char* part, unsigned pix) "%s: skipping empty digest on %s (#%u)"
 

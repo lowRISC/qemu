@@ -3809,19 +3809,21 @@ static const MemoryRegionOps ot_otp_dj_swcfg_ops = {
     .impl.max_access_size = 4,
 };
 
-static void ot_otp_dj_reset(DeviceState *dev)
+static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
 {
-    OtOTPDjState *s = OT_OTP_DJ(dev);
+    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPDjState *s = OT_OTP_DJ(obj);
 
-    trace_ot_otp_reset(s->ot_id);
+    trace_ot_otp_reset(s->ot_id, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     timer_del(s->dai->delay);
     timer_del(s->lci->prog_delay);
     qemu_bh_cancel(s->keygen->entropy_bh);
     s->keygen->edn_sched = false;
-
-    ot_edn_connect_endpoint(s->edn, s->edn_ep, &ot_otp_dj_keygen_push_entropy,
-                            s);
 
     memset(s->regs, 0, REGS_COUNT * sizeof(uint32_t));
 
@@ -3872,6 +3874,21 @@ static void ot_otp_dj_reset(DeviceState *dev)
     }
     DAI_CHANGE_STATE(s, OTP_DAI_RESET);
     LCI_CHANGE_STATE(s, OTP_LCI_RESET);
+}
+
+static void ot_otp_dj_reset_exit(Object *obj, ResetType type)
+{
+    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPDjState *s = OT_OTP_DJ(obj);
+
+    trace_ot_otp_reset(s->ot_id, "exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    ot_edn_connect_endpoint(s->edn, s->edn_ep, &ot_otp_dj_keygen_push_entropy,
+                            s);
 
     qemu_bh_schedule(s->keygen->entropy_bh);
 }
@@ -3975,12 +3992,15 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
     g_assert(OTP_PART_LIFE_CYCLE_SIZE ==
              OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size);
 
-    device_class_set_legacy_reset(dc, &ot_otp_dj_reset);
     dc->realize = &ot_otp_dj_realize;
     device_class_set_props(dc, ot_otp_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtOTPClass *oc = OT_OTP_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_otp_dj_reset_enter, NULL,
+                                       &ot_otp_dj_reset_exit,
+                                       &oc->parent_phases);
 
     oc->get_lc_info = &ot_otp_dj_get_lc_info;
     oc->get_hw_cfg = &ot_otp_dj_get_hw_cfg;

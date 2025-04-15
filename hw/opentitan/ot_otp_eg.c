@@ -1353,11 +1353,16 @@ static void ot_otp_eg_load(OtOTPEgState *s, Error **errp)
     ot_otp_eg_load_hw_cfg(s);
 }
 
-static void ot_otp_eg_reset(DeviceState *dev)
+static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
 {
-    OtOTPEgState *s = OT_OTP_EG(dev);
+    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPEgState *s = OT_OTP_EG(obj);
 
-    trace_ot_otp_reset(s->ot_id);
+    trace_ot_otp_reset(s->ot_id, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     timer_del(s->dai_delay);
 
@@ -1376,6 +1381,18 @@ static void ot_otp_eg_reset(DeviceState *dev)
 
     ot_otp_eg_update_irqs(s);
     ot_otp_eg_update_alerts(s);
+}
+
+static void ot_otp_eg_reset_exit(Object *obj, ResetType type)
+{
+    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPEgState *s = OT_OTP_EG(obj);
+
+    trace_ot_otp_reset(s->ot_id, "exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
 }
 
 static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
@@ -1422,12 +1439,15 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_otp_eg_reset);
     dc->realize = &ot_otp_eg_realize;
     device_class_set_props(dc, ot_otp_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtOTPClass *oc = OT_OTP_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_otp_eg_reset_enter, NULL,
+                                       &ot_otp_eg_reset_exit,
+                                       &oc->parent_phases);
 
     oc->get_lc_info = &ot_otp_eg_ctrl_get_lc_info;
     oc->get_hw_cfg = &ot_otp_eg_ctrl_get_hw_cfg;
