@@ -1770,31 +1770,6 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
     }
 }
 
-static void ot_otp_dj_initialize_partitions(OtOTPDjState *s)
-{
-    for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-        if (ot_otp_dj_is_ecc_enabled(s) && OtOTPPartDescs[ix].integrity) {
-            if (ot_otp_dj_apply_ecc(s, ix)) {
-                continue;
-            }
-        }
-
-        if (OtOTPPartDescs[ix].sw_digest) {
-            uint64_t digest = ot_otp_dj_get_part_digest(s, (int)ix);
-            s->partctrls[ix].locked = digest != 0;
-            continue;
-        }
-
-        if (OtOTPPartDescs[ix].buffered) {
-            ot_otp_dj_bufferize_partition(s, ix);
-            if (OtOTPPartDescs[ix].hw_digest) {
-                ot_otp_dj_check_partition_integrity(s, ix);
-            }
-            continue;
-        }
-    }
-}
-
 static bool ot_otp_dj_is_backend_writable(OtOTPDjState *s)
 {
     return (s->blk != NULL) && blk_is_writable(s->blk);
@@ -3041,64 +3016,6 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     return MEMTX_OK;
 }
 
-static void ot_otp_dj_load_hw_cfg(OtOTPDjState *s)
-{
-    OtOTPStorage *otp = s->otp;
-    OtOTPHWCfg *hw_cfg = s->hw_cfg;
-
-    memcpy(hw_cfg->device_id, &otp->data[R_HW_CFG0_DEVICE_ID],
-           sizeof(*hw_cfg->device_id));
-    memcpy(hw_cfg->manuf_state, &otp->data[R_HW_CFG0_MANUF_STATE],
-           sizeof(*hw_cfg->manuf_state));
-    memcpy(&hw_cfg->soc_dbg_state[0], &otp->data[R_HW_CFG1_SOC_DBG_STATE],
-           sizeof(uint32_t));
-    hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH];
-}
-
-static void ot_otp_dj_load_tokens(OtOTPDjState *s)
-{
-    memset(s->tokens, 0, sizeof(*s->tokens));
-
-    const uint32_t *data = s->otp->data;
-    OtOTPTokens *tokens = s->tokens;
-
-    static_assert(sizeof(OtOTPTokenValue) == 16u, "Invalid token size");
-
-    for (unsigned tkx = 0; tkx < OTP_TOKEN_COUNT; tkx++) {
-        unsigned partition;
-        uint32_t reg;
-
-        switch (tkx) {
-        case OTP_TOKEN_TEST_UNLOCK:
-            partition = OTP_PART_SECRET0;
-            reg = R_SECRET0_TEST_UNLOCK_TOKEN;
-            break;
-        case OTP_TOKEN_TEST_EXIT:
-            partition = OTP_PART_SECRET0;
-            reg = R_SECRET0_TEST_EXIT_TOKEN;
-            break;
-        case OTP_TOKEN_RMA:
-            partition = OTP_PART_SECRET2;
-            reg = R_SECRET2_RMA_TOKEN;
-            break;
-        default:
-            g_assert_not_reached();
-            break;
-        }
-
-        OtOTPTokenValue value;
-        memcpy(&value, &data[reg], sizeof(OtOTPTokenValue));
-        if (s->partctrls[partition].locked) {
-            tokens->values[tkx] = value;
-            tokens->valid_bm |= 1u << tkx;
-        }
-        trace_ot_otp_load_token(s->ot_id, OTP_TOKEN_NAME(tkx), tkx, value.hi,
-                                value.lo,
-                                (s->tokens->valid_bm & (1u << tkx)) ? "" :
-                                                                      "in");
-    }
-}
-
 static void ot_otp_dj_get_lc_info(
     const OtOTPState *s, uint16_t *lc_tcount, uint16_t *lc_state,
     uint8_t *lc_valid, uint8_t *secret_valid, const OtOTPTokens **tokens)
@@ -3497,15 +3414,243 @@ static void ot_otp_dj_pwr_otp_req(void *opaque, int n, int level)
     }
 }
 
+static void ot_otp_dj_pwr_load(OtOTPDjState *s)
+{
+    /*
+     * HEADER_FORMAT
+     *
+     *  | magic    |     4 char | "vOFTP"                                |
+     *  | hlength  |   uint32_t | count of header bytes after this point |
+     *  | version  |   uint32_t | version of the header (v2)             |
+     *  | eccbits  |   uint16_t | ECC size in bits                       |
+     *  | eccgran  |   uint16_t | ECC granule                            |
+     *  | dlength  |   uint32_t | count of data bytes (% uint64_t)       |
+     *  | elength  |   uint32_t | count of ecc bytes (% uint64_t)        |
+     *  | -------- | ---------- | only in V2                             |
+     *  | dig_iv   |  8 uint8_t | Present digest initialization vector   |
+     *  | dig_iv   | 16 uint8_t | Present digest initialization vector   |
+     */
+
+    struct otp_header {
+        char magic[4];
+        uint32_t hlength;
+        uint32_t version;
+        uint16_t eccbits;
+        uint16_t eccgran;
+        uint32_t data_len;
+        uint32_t ecc_len;
+        /* added in V2 */
+        uint8_t digest_iv[8u];
+        uint8_t digest_constant[16u];
+    };
+
+    static_assert(sizeof(struct otp_header) == 48u, "Invalid header size");
+
+    /* data following header should always be 64-bit aligned */
+    static_assert((sizeof(struct otp_header) % sizeof(uint64_t)) == 0,
+                  "invalid header definition");
+
+    size_t header_size = sizeof(struct otp_header);
+    size_t data_size = 0u;
+    size_t ecc_size = 0u;
+
+    for (unsigned ix = 0u; ix < OTP_PART_COUNT; ix++) {
+        size_t psize = (size_t)OtOTPPartDescs[ix].size;
+        size_t dsize = ROUND_UP(psize, sizeof(uint64_t));
+        data_size += dsize;
+        /* up to 1 ECC byte for 2 data bytes */
+        ecc_size += DIV_ROUND_UP(dsize, 2u);
+    }
+    size_t otp_size = header_size + data_size + ecc_size;
+
+    otp_size = ROUND_UP(otp_size, 4096u);
+
+    OtOTPStorage *otp = s->otp;
+
+    /* always allocates the requested size even if blk is NULL */
+    if (!otp->storage) {
+        /* only allocated once on PoR */
+        otp->storage = blk_blockalign(s->blk, otp_size);
+    }
+
+    uintptr_t base = (uintptr_t)otp->storage;
+    g_assert(!(base & (sizeof(uint64_t) - 1u)));
+
+    memset(otp->storage, 0, otp_size);
+
+    otp->data = (uint32_t *)(base + sizeof(struct otp_header));
+    otp->ecc = (uint32_t *)(base + sizeof(struct otp_header) + data_size);
+    otp->ecc_bit_count = 0u;
+    otp->ecc_granule = 0u;
+
+    if (s->blk) {
+        bool write = blk_supports_write_perm(s->blk);
+        uint64_t perm = BLK_PERM_CONSISTENT_READ | (write ? BLK_PERM_WRITE : 0);
+        if (blk_set_perm(s->blk, perm, perm, &error_fatal)) {
+            warn_report("%s: OTP backend is R/O", __func__);
+            write = false;
+        }
+
+        int rc = blk_pread(s->blk, 0, (int64_t)otp_size, otp->storage, 0);
+        if (rc < 0) {
+            error_setg(&error_fatal,
+                       "failed to read the initial OTP content: %d", rc);
+            return;
+        }
+
+        const struct otp_header *otp_hdr = (const struct otp_header *)base;
+
+        if (memcmp(otp_hdr->magic, "vOTP", sizeof(otp_hdr->magic)) != 0) {
+            error_setg(&error_fatal, "OTP file is not a valid OTP backend");
+            return;
+        }
+        if (otp_hdr->version != 1u && otp_hdr->version != 2u) {
+            error_setg(&error_fatal, "OTP file version %u is not supported",
+                       otp_hdr->version);
+            return;
+        }
+
+        uintptr_t data_offset = otp_hdr->hlength + 8u; /* magic & length */
+        uintptr_t ecc_offset = data_offset + otp_hdr->data_len;
+
+        otp->data = (uint32_t *)(base + data_offset);
+        otp->ecc = (uint32_t *)(base + ecc_offset);
+        otp->ecc_bit_count = otp_hdr->eccbits;
+        otp->ecc_granule = otp_hdr->eccgran;
+
+        if (otp->ecc_bit_count != 6u || !ot_otp_dj_is_ecc_enabled(s)) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: support for ECC %u/%u not implemented\n",
+                          __func__, otp->ecc_granule, otp->ecc_bit_count);
+        }
+
+        trace_ot_otp_load_backend(s->ot_id, otp_hdr->version,
+                                  write ? "R/W" : "R/O", otp->ecc_bit_count,
+                                  otp->ecc_granule);
+
+        if (otp_hdr->version == 2u) {
+            /*
+             * Version 2 is deprecated and digest const/IV are now ignored.
+             * Nonetheless, keep checking for inconsistencies.
+             */
+            if (s->digest_iv != ldq_le_p(otp_hdr->digest_iv)) {
+                error_report("%s: %s: OTP file digest IV mismatch", __func__,
+                             s->ot_id);
+            }
+            if (memcmp(s->digest_const, otp_hdr->digest_constant,
+                       sizeof(s->digest_const)) != 0) {
+                error_report("%s: %s: OTP file digest const mismatch", __func__,
+                             s->ot_id);
+            }
+        }
+    }
+
+    otp->data_size = data_size;
+    otp->ecc_size = ecc_size;
+    otp->size = otp_size;
+}
+
+static void ot_otp_dj_pwr_load_hw_cfg(OtOTPDjState *s)
+{
+    OtOTPStorage *otp = s->otp;
+    OtOTPHWCfg *hw_cfg = s->hw_cfg;
+
+    memcpy(hw_cfg->device_id, &otp->data[R_HW_CFG0_DEVICE_ID],
+           sizeof(*hw_cfg->device_id));
+    memcpy(hw_cfg->manuf_state, &otp->data[R_HW_CFG0_MANUF_STATE],
+           sizeof(*hw_cfg->manuf_state));
+    memcpy(&hw_cfg->soc_dbg_state[0], &otp->data[R_HW_CFG1_SOC_DBG_STATE],
+           sizeof(uint32_t));
+    hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH];
+}
+
+static void ot_otp_dj_pwr_load_tokens(OtOTPDjState *s)
+{
+    memset(s->tokens, 0, sizeof(*s->tokens));
+
+    const uint32_t *data = s->otp->data;
+    OtOTPTokens *tokens = s->tokens;
+
+    static_assert(sizeof(OtOTPTokenValue) == 16u, "Invalid token size");
+
+    for (unsigned tkx = 0; tkx < OTP_TOKEN_COUNT; tkx++) {
+        unsigned partition;
+        uint32_t reg;
+
+        switch (tkx) {
+        case OTP_TOKEN_TEST_UNLOCK:
+            partition = OTP_PART_SECRET0;
+            reg = R_SECRET0_TEST_UNLOCK_TOKEN;
+            break;
+        case OTP_TOKEN_TEST_EXIT:
+            partition = OTP_PART_SECRET0;
+            reg = R_SECRET0_TEST_EXIT_TOKEN;
+            break;
+        case OTP_TOKEN_RMA:
+            partition = OTP_PART_SECRET2;
+            reg = R_SECRET2_RMA_TOKEN;
+            break;
+        default:
+            g_assert_not_reached();
+            break;
+        }
+
+        OtOTPTokenValue value;
+        memcpy(&value, &data[reg], sizeof(OtOTPTokenValue));
+        if (s->partctrls[partition].locked) {
+            tokens->values[tkx] = value;
+            tokens->valid_bm |= 1u << tkx;
+        }
+        trace_ot_otp_load_token(s->ot_id, OTP_TOKEN_NAME(tkx), tkx, value.hi,
+                                value.lo,
+                                (s->tokens->valid_bm & (1u << tkx)) ? "" :
+                                                                      "in");
+    }
+}
+
+static void ot_otp_dj_pwr_initialize_partitions(OtOTPDjState *s)
+{
+    for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
+        if (ot_otp_dj_is_ecc_enabled(s) && OtOTPPartDescs[ix].integrity) {
+            if (ot_otp_dj_apply_ecc(s, ix)) {
+                continue;
+            }
+        }
+
+        if (OtOTPPartDescs[ix].sw_digest) {
+            uint64_t digest = ot_otp_dj_get_part_digest(s, (int)ix);
+            s->partctrls[ix].locked = digest != 0;
+            continue;
+        }
+
+        if (OtOTPPartDescs[ix].buffered) {
+            ot_otp_dj_bufferize_partition(s, ix);
+            if (OtOTPPartDescs[ix].hw_digest) {
+                ot_otp_dj_check_partition_integrity(s, ix);
+            }
+            continue;
+        }
+    }
+}
+
 static void ot_otp_dj_pwr_otp_bh(void *opaque)
 {
     OtOTPDjState *s = opaque;
 
+    /*
+     * This sequence is triggered from the Power Manager, in the early boot
+     * sequence while the OT IPs are maintained in reset.
+     * This means that all ot_otp_dj_pwr_* functions are called before the OTP
+     * IP is relased from reset.
+     *
+     * The QEMU reset is not a 1:1 mapping to the actual HW.
+     */
     trace_ot_otp_pwr_otp_req(s->ot_id, "initialize");
 
-    ot_otp_dj_initialize_partitions(s);
-    ot_otp_dj_load_hw_cfg(s);
-    ot_otp_dj_load_tokens(s);
+    ot_otp_dj_pwr_load(s);
+    ot_otp_dj_pwr_initialize_partitions(s);
+    ot_otp_dj_pwr_load_hw_cfg(s);
+    ot_otp_dj_pwr_load_tokens(s);
 
     ot_otp_dj_dai_init(s);
     ot_otp_dj_lci_init(s);
@@ -3647,138 +3792,6 @@ static void ot_otp_dj_configure_sram(OtOTPDjState *s)
     s->sram_iv = ldq_le_p(sram_iv);
 }
 
-static void ot_otp_dj_load(OtOTPDjState *s)
-{
-    /*
-     * HEADER_FORMAT
-     *
-     *  | magic    |     4 char | "vOFTP"                                |
-     *  | hlength  |   uint32_t | count of header bytes after this point |
-     *  | version  |   uint32_t | version of the header (v2)             |
-     *  | eccbits  |   uint16_t | ECC size in bits                       |
-     *  | eccgran  |   uint16_t | ECC granule                            |
-     *  | dlength  |   uint32_t | count of data bytes (% uint64_t)       |
-     *  | elength  |   uint32_t | count of ecc bytes (% uint64_t)        |
-     *  | -------- | ---------- | only in V2                             |
-     *  | dig_iv   |  8 uint8_t | Present digest initialization vector   |
-     *  | dig_iv   | 16 uint8_t | Present digest initialization vector   |
-     */
-
-    struct otp_header {
-        char magic[4];
-        uint32_t hlength;
-        uint32_t version;
-        uint16_t eccbits;
-        uint16_t eccgran;
-        uint32_t data_len;
-        uint32_t ecc_len;
-        /* added in V2 */
-        uint8_t digest_iv[8u];
-        uint8_t digest_constant[16u];
-    };
-
-    static_assert(sizeof(struct otp_header) == 48u, "Invalid header size");
-
-    /* data following header should always be 64-bit aligned */
-    static_assert((sizeof(struct otp_header) % sizeof(uint64_t)) == 0,
-                  "invalid header definition");
-
-    size_t header_size = sizeof(struct otp_header);
-    size_t data_size = 0u;
-    size_t ecc_size = 0u;
-
-    for (unsigned ix = 0u; ix < OTP_PART_COUNT; ix++) {
-        size_t psize = (size_t)OtOTPPartDescs[ix].size;
-        size_t dsize = ROUND_UP(psize, sizeof(uint64_t));
-        data_size += dsize;
-        /* up to 1 ECC byte for 2 data bytes */
-        ecc_size += DIV_ROUND_UP(dsize, 2u);
-    }
-    size_t otp_size = header_size + data_size + ecc_size;
-
-    otp_size = ROUND_UP(otp_size, 4096u);
-
-    OtOTPStorage *otp = s->otp;
-
-    /* always allocates the requested size even if blk is NULL */
-    otp->storage = blk_blockalign(s->blk, otp_size);
-    uintptr_t base = (uintptr_t)otp->storage;
-    g_assert(!(base & (sizeof(uint64_t) - 1u)));
-
-    memset(otp->storage, 0, otp_size);
-
-    otp->data = (uint32_t *)(base + sizeof(struct otp_header));
-    otp->ecc = (uint32_t *)(base + sizeof(struct otp_header) + data_size);
-    otp->ecc_bit_count = 0u;
-    otp->ecc_granule = 0u;
-
-    if (s->blk) {
-        bool write = blk_supports_write_perm(s->blk);
-        uint64_t perm = BLK_PERM_CONSISTENT_READ | (write ? BLK_PERM_WRITE : 0);
-        if (blk_set_perm(s->blk, perm, perm, &error_fatal)) {
-            warn_report("%s: OTP backend is R/O", __func__);
-            write = false;
-        }
-
-        int rc = blk_pread(s->blk, 0, (int64_t)otp_size, otp->storage, 0);
-        if (rc < 0) {
-            error_setg(&error_fatal,
-                       "failed to read the initial OTP content: %d", rc);
-            return;
-        }
-
-        const struct otp_header *otp_hdr = (const struct otp_header *)base;
-
-        if (memcmp(otp_hdr->magic, "vOTP", sizeof(otp_hdr->magic)) != 0) {
-            error_setg(&error_fatal, "OTP file is not a valid OTP backend");
-            return;
-        }
-        if (otp_hdr->version != 1u && otp_hdr->version != 2u) {
-            error_setg(&error_fatal, "OTP file version %u is not supported",
-                       otp_hdr->version);
-            return;
-        }
-
-        uintptr_t data_offset = otp_hdr->hlength + 8u; /* magic & length */
-        uintptr_t ecc_offset = data_offset + otp_hdr->data_len;
-
-        otp->data = (uint32_t *)(base + data_offset);
-        otp->ecc = (uint32_t *)(base + ecc_offset);
-        otp->ecc_bit_count = otp_hdr->eccbits;
-        otp->ecc_granule = otp_hdr->eccgran;
-
-        if (otp->ecc_bit_count != 6u || !ot_otp_dj_is_ecc_enabled(s)) {
-            qemu_log_mask(LOG_UNIMP,
-                          "%s: support for ECC %u/%u not implemented\n",
-                          __func__, otp->ecc_granule, otp->ecc_bit_count);
-        }
-
-        trace_ot_otp_load_backend(s->ot_id, otp_hdr->version,
-                                  write ? "R/W" : "R/O", otp->ecc_bit_count,
-                                  otp->ecc_granule);
-
-        if (otp_hdr->version == 2u) {
-            /*
-             * Version 2 is deprecated and digest const/IV are now ignored.
-             * Nonetheless, keep checking for inconsistencies.
-             */
-            if (s->digest_iv != ldq_le_p(otp_hdr->digest_iv)) {
-                error_report("%s: %s: OTP file digest IV mismatch", __func__,
-                             s->ot_id);
-            }
-            if (memcmp(s->digest_const, otp_hdr->digest_constant,
-                       sizeof(s->digest_const)) != 0) {
-                error_report("%s: %s: OTP file digest const mismatch", __func__,
-                             s->ot_id);
-            }
-        }
-    }
-
-    otp->data_size = data_size;
-    otp->ecc_size = ecc_size;
-    otp->size = otp_size;
-}
-
 static Property ot_otp_dj_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtOTPDjState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPDjState, blk),
@@ -3814,6 +3827,26 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
     OtOTPClass *c = OT_OTP_GET_CLASS(obj);
     OtOTPDjState *s = OT_OTP_DJ(obj);
 
+    /*
+     * Note: beware of the special reset sequence for the OTP controller,
+     * see comments from ot_otp_dj_pwr_otp_bh, as this very QEMU reset may be
+     * called after ot_otp_dj_pwr_otp_bh is invoked, hereby changing the usual
+     * realize-reset sequence.
+     *
+     * File back-end storage (loading) is processed from
+     * the ot_otp_dj_pwr_otp_bh handler, to ensure data are reloaded from the
+     * backend on each reset, prior to this very reset fuction. This reset
+     * function should not alter the storage content.
+     *
+     * Ideally the OTP reset functions should be decoupled from the regular
+     * IP reset, which are exercised automatically from the SoC, since all the
+     * OT SysBysDevice IPs are connected to the private system bus of the Ibex.
+     * This is by-design in QEMU. The reset management is already far too
+     * complex to create a special case for the OTP. Kind in mind that the OTP
+     * reset_enter/reset_exit functions are QEMU regular reset functions called
+     * as part of the private bus reset and do not represent the actual OTP HW
+     * reset. Part of this reset is handled in the Power Manager handler.
+     */
     trace_ot_otp_reset(s->ot_id, "enter");
 
     if (c->parent_phases.enter) {
@@ -3906,7 +3939,6 @@ static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
     ot_otp_dj_configure_scrmbl_key(s);
     ot_otp_dj_configure_digest(s);
     ot_otp_dj_configure_sram(s);
-    ot_otp_dj_load(s);
 }
 
 static void ot_otp_dj_init(Object *obj)
