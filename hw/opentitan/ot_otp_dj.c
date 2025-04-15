@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Darjeeling One Time Programmable (OTP) memory controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -1807,6 +1807,8 @@ static inline int ot_otp_dj_write_backend(OtOTPDjState *s, const void *buffer,
      * the blk_pwrite API is awful, isolate it so that linter exceptions are
      * are not repeated over and over
      */
+    g_assert(offset + size <= s->otp->size);
+
     // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange)
     return blk_pwrite(s->blk, (int64_t)(intptr_t)offset, (int64_t)size, buffer,
                       /* a bitfield of enum is not an enum item */
@@ -3365,7 +3367,7 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
         }
         if (ot_otp_dj_is_ecc_enabled(s)) {
             offset = (uintptr_t)s->otp->ecc - (uintptr_t)s->otp->storage;
-            if (ot_otp_dj_write_backend(s, &((uint16_t *)&s->otp->ecc)[lc_off],
+            if (ot_otp_dj_write_backend(s, &((uint16_t *)s->otp->ecc)[lc_off],
                                         (unsigned)(offset +
                                                    (lcdesc->offset >> 1u)),
                                         lcdesc->size >> 1u)) {
@@ -3774,6 +3776,7 @@ static void ot_otp_dj_load(OtOTPDjState *s)
 
     otp->data_size = data_size;
     otp->ecc_size = ecc_size;
+    otp->size = otp_size;
 }
 
 static Property ot_otp_dj_properties[] = {
