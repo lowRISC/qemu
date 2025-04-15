@@ -1115,8 +1115,7 @@ static void ot_lc_ctrl_kmac_handle_resp(void *opaque, const OtKMACAppRsp *rsp)
 
 static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
 {
-    OtOTPStateClass *oc =
-        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
     OtLcCtrlStateValue lc_state;
     OtLcCtrlTransitionCountValue lc_tcount;
     uint8_t lc_valid;
@@ -1195,8 +1194,7 @@ static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
 
 static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
 {
-    OtOTPStateClass *oc =
-        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
     const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(s->otp_ctrl);
 
     memcpy(&s->regs[R_DEVICE_ID_0], &hw_cfg->device_id[0],
@@ -1262,8 +1260,7 @@ static void ot_lc_ctrl_handle_otp_ack(void *opaque, bool ack)
 static void ot_lc_ctrl_program_otp(OtLcCtrlState *s, unsigned lc_tcount,
                                    OtLcState lc_state)
 {
-    OtOTPStateClass *oc =
-        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
 
     if (!oc->program_req) {
         qemu_log_mask(LOG_UNIMP,

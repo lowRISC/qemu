@@ -1600,8 +1600,7 @@ static void ot_entropy_src_reset(DeviceState *dev)
         ibex_irq_set(&s->alerts[ix], 0);
     }
 
-    OtOTPStateClass *oc =
-        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
     const OtOTPEntropyCfg *entropy_cfg = oc->get_entropy_cfg(s->otp_ctrl);
     g_assert(entropy_cfg);
 

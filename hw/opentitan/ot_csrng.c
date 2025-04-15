@@ -1825,8 +1825,8 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             xtrace_ot_csrng_info("handling CTRL change", val32);
             ot_csrng_handle_enable(s);
             bool granted;
-            OtOTPStateClass *oc =
-                OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+            OtOTPClass *oc =
+                OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
             const OtOTPEntropyCfg *entropy_cfg =
                 oc->get_entropy_cfg(s->otp_ctrl);
             if (entropy_cfg) {

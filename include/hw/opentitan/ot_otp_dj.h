@@ -32,6 +32,6 @@
 #include "hw/opentitan/ot_otp.h"
 
 #define TYPE_OT_OTP_DJ "ot-otp-dj"
-OBJECT_DECLARE_TYPE(OtOTPDjState, OtOTPStateClass, OT_OTP_DJ)
+OBJECT_DECLARE_TYPE(OtOTPDjState, OtOTPClass, OT_OTP_DJ)
 
 #endif /* HW_OPENTITAN_OT_OTP_DJ_H */

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan EarlGrey One Time Programmable (OTP) memory controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -1427,11 +1427,11 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, ot_otp_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
-    OtOTPStateClass *odc = OT_OTP_CLASS(klass);
+    OtOTPClass *oc = OT_OTP_CLASS(klass);
 
-    odc->get_lc_info = &ot_otp_eg_ctrl_get_lc_info;
-    odc->get_hw_cfg = &ot_otp_eg_ctrl_get_hw_cfg;
-    odc->get_entropy_cfg = &ot_otp_eg_ctrl_get_entropy_cfg;
+    oc->get_lc_info = &ot_otp_eg_ctrl_get_lc_info;
+    oc->get_hw_cfg = &ot_otp_eg_ctrl_get_hw_cfg;
+    oc->get_entropy_cfg = &ot_otp_eg_ctrl_get_entropy_cfg;
 }
 
 static const TypeInfo ot_otp_eg_info = {
@@ -1439,7 +1439,7 @@ static const TypeInfo ot_otp_eg_info = {
     .parent = TYPE_OT_OTP,
     .instance_size = sizeof(OtOTPEgState),
     .instance_init = &ot_otp_eg_init,
-    .class_size = sizeof(OtOTPStateClass),
+    .class_size = sizeof(OtOTPClass),
     .class_init = &ot_otp_eg_class_init,
 };
 

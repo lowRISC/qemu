@@ -280,8 +280,7 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
      *       neither PRINCE block cipher nor shallow substitution-permutation.
      *       Seed and Nonce are combined to initialize a QEMU PRNG instance.
      */
-    OtOTPStateClass *oc =
-        OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
     if (!oc->get_otp_key) {
         /* on EarlGrey, OTP key handing has not been implemented */
         qemu_log_mask(LOG_UNIMP, "%s: %s OTP does not support key generation\n",
@@ -690,8 +689,7 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
     s->regs[R_READBACK] = OT_MULTIBITBOOL4_FALSE;
 
     if (s->otp_ctrl) {
-        OtOTPStateClass *oc =
-            OBJECT_GET_CLASS(OtOTPStateClass, s->otp_ctrl, TYPE_OT_OTP);
+        OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
         s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch ==
                         OT_MULTIBITBOOL8_TRUE;
     } else {

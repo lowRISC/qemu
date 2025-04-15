@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan One Time Programmable (OTP) memory controller
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -26,9 +26,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_otp.h"
 
-OBJECT_DEFINE_ABSTRACT_TYPE(OtOTPState, ot_otp, OT_OTP, SYS_BUS_DEVICE)
+OT_OBJECT_DEFINE_ABSTRACT_TYPE(OtOTPState, OtOTPClass, ot_otp, OT_OTP,
+                               SYS_BUS_DEVICE)
 
 static void ot_otp_class_init(ObjectClass *oc, void *data) {}
 

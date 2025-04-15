@@ -3980,13 +3980,13 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, ot_otp_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
-    OtOTPStateClass *odc = OT_OTP_CLASS(klass);
+    OtOTPClass *oc = OT_OTP_CLASS(klass);
 
-    odc->get_lc_info = &ot_otp_dj_get_lc_info;
-    odc->get_hw_cfg = &ot_otp_dj_get_hw_cfg;
-    odc->get_entropy_cfg = &ot_otp_dj_get_entropy_cfg;
-    odc->get_otp_key = &ot_otp_dj_get_otp_key;
-    odc->program_req = &ot_otp_dj_program_req;
+    oc->get_lc_info = &ot_otp_dj_get_lc_info;
+    oc->get_hw_cfg = &ot_otp_dj_get_hw_cfg;
+    oc->get_entropy_cfg = &ot_otp_dj_get_entropy_cfg;
+    oc->get_otp_key = &ot_otp_dj_get_otp_key;
+    oc->program_req = &ot_otp_dj_program_req;
 }
 
 static const TypeInfo ot_otp_dj_info = {
@@ -3994,7 +3994,7 @@ static const TypeInfo ot_otp_dj_info = {
     .parent = TYPE_OT_OTP,
     .instance_size = sizeof(OtOTPDjState),
     .instance_init = &ot_otp_dj_init,
-    .class_size = sizeof(OtOTPStateClass),
+    .class_size = sizeof(OtOTPClass),
     .class_init = &ot_otp_dj_class_init,
 };
 

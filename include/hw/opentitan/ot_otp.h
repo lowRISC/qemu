@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan One Time Programmable (OTP) memory controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -33,7 +33,7 @@
 #include "hw/sysbus.h"
 
 #define TYPE_OT_OTP "ot-otp"
-OBJECT_DECLARE_TYPE(OtOTPState, OtOTPStateClass, OT_OTP)
+OBJECT_DECLARE_TYPE(OtOTPState, OtOTPClass, OT_OTP)
 
 /* Input signals from life cycle */
 typedef enum {
@@ -110,7 +110,7 @@ struct OtOTPState {
 
 typedef void (*ot_otp_program_ack_fn)(void *opaque, bool ack);
 
-struct OtOTPStateClass {
+struct OtOTPClass {
     SysBusDeviceClass parent_class;
 
     /*

@@ -32,6 +32,6 @@
 #include "hw/opentitan/ot_otp.h"
 
 #define TYPE_OT_OTP_EG "ot-otp-eg"
-OBJECT_DECLARE_TYPE(OtOTPEgState, OtOTPStateClass, OT_OTP_EG)
+OBJECT_DECLARE_TYPE(OtOTPEgState, OtOTPClass, OT_OTP_EG)
 
 #endif /* HW_OPENTITAN_OT_OTP_EG_H */
