@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Debug Module to TileLink bridge
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -55,6 +55,11 @@ struct OtDMTLState {
     unsigned dmi_size;
     bool enable;
     uint8_t role;
+};
+
+struct OtDMTLClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -142,30 +147,35 @@ static Property ot_dm_tl_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_dm_tl_reset(DeviceState *dev)
+static void ot_dm_tl_reset_exit(Object *obj, ResetType type)
 {
-    OtDMTLState *dmtl = OT_DM_TL(dev);
+    OtDMTLClass *c = OT_DM_TL_GET_CLASS(obj);
+    OtDMTLState *dmtl = OT_DM_TL(obj);
 
     g_assert(dmtl->dtm != NULL);
     g_assert(dmtl->dmi_size);
 
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
     if (!dmtl->dtm_ok) {
         RISCVDTMClass *dtmc = RISCV_DTM_GET_CLASS(OBJECT(dmtl->dtm));
         dmtl->dtm_ok =
-            (*dtmc->register_dm)(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(dev),
+            (*dtmc->register_dm)(DEVICE(dmtl->dtm), RISCV_DEBUG_DEVICE(obj),
                                  dmtl->dmi_addr, dmtl->dmi_size, dmtl->enable);
         trace_ot_dm_tl_register(dmtl->dev_name, dmtl->dmi_addr, dmtl->dmi_size,
                                 dmtl->enable, dmtl->dtm_ok);
     }
 
     if (dmtl->dtm_ok) {
-        Object *soc = OBJECT(dev)->parent;
-        Object *obj;
+        Object *soc = obj->parent;
+        Object *as;
         OtAddressSpaceState *oas;
 
         g_assert(dmtl->tl_as_name);
-        obj = object_property_get_link(soc, dmtl->tl_as_name, &error_fatal);
-        oas = OBJECT_CHECK(OtAddressSpaceState, obj, TYPE_OT_ADDRESS_SPACE);
+        as = object_property_get_link(soc, dmtl->tl_as_name, &error_fatal);
+        oas = OBJECT_CHECK(OtAddressSpaceState, as, TYPE_OT_ADDRESS_SPACE);
         dmtl->as = ot_address_space_get(oas);
         g_assert(dmtl->as);
     }
@@ -205,10 +215,14 @@ static void ot_dm_tl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_dm_tl_reset);
     dc->realize = &ot_dm_tl_realize;
     device_class_set_props(dc, ot_dm_tl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtDMTLClass *tc = OT_DM_TL_CLASS(klass);
+    resettable_class_set_parent_phases(rc, NULL, NULL, &ot_dm_tl_reset_exit,
+                                       &tc->parent_phases);
 
     RISCVDebugDeviceClass *dmc = RISCV_DEBUG_DEVICE_CLASS(klass);
     dmc->write_rq = &ot_dm_tl_write_rq;
@@ -221,6 +235,7 @@ static const TypeInfo ot_dm_tl_info = {
     .parent = TYPE_RISCV_DEBUG_DEVICE,
     .instance_init = &ot_dm_tl_init,
     .instance_size = sizeof(OtDMTLState),
+    .class_size = sizeof(OtDMTLClass),
     .class_init = &ot_dm_tl_class_init,
 };
 
