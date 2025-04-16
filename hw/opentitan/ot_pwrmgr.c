@@ -969,6 +969,8 @@ static void ot_pwrmgr_reset_exit(Object *obj, ResetType type)
         c->parent_phases.exit(obj, type);
     }
 
+    qemu_bh_cancel(s->fsm_tick_bh);
+
     ot_pwrmgr_schedule_fsm(s);
 }
 
