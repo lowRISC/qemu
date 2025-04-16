@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan I2C Darjeeling device
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Duncan Laurie <duncan@rivosinc.com>
@@ -291,6 +291,11 @@ struct OtI2CDjState {
 
     char *ot_id;
     uint32_t pclk;
+};
+
+struct OtI2CDjClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 struct OtI2CDjTarget {
@@ -937,8 +942,8 @@ static const TypeInfo ot_i2c_dj_target_info = {
     .name = TYPE_OT_I2C_DJ_TARGET,
     .parent = TYPE_I2C_SLAVE,
     .instance_size = sizeof(OtI2CDjState),
-    .class_init = &ot_i2c_dj_target_class_init,
     .class_size = sizeof(I2CSlaveClass),
+    .class_init = &ot_i2c_dj_target_class_init,
 };
 
 static const MemoryRegionOps ot_i2c_dj_ops = {
@@ -955,9 +960,14 @@ static Property ot_i2c_dj_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_i2c_dj_reset(DeviceState *dev)
+static void ot_i2c_dj_reset_enter(Object *obj, ResetType type)
 {
-    OtI2CDjState *s = OT_I2C_DJ(dev);
+    OtI2CDjClass *c = OT_I2C_DJ_GET_CLASS(obj);
+    OtI2CDjState *s = OT_I2C_DJ(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     i2c_end_transfer(s->bus);
 
@@ -1012,10 +1022,13 @@ static void ot_i2c_dj_class_init(ObjectClass *klass, void *data)
 
     dc->desc = "OpenTitan I2C Host";
     dc->realize = ot_i2c_dj_realize;
-    device_class_set_legacy_reset(dc, ot_i2c_dj_reset);
-
     device_class_set_props(dc, ot_i2c_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtI2CDjClass *ic = OT_I2C_DJ_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_i2c_dj_reset_enter, NULL, NULL,
+                                       &ic->parent_phases);
 }
 
 static const TypeInfo ot_i2c_dj_info = {
@@ -1023,6 +1036,7 @@ static const TypeInfo ot_i2c_dj_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtI2CDjState),
     .instance_init = &ot_i2c_dj_init,
+    .class_size = sizeof(OtI2CDjClass),
     .class_init = &ot_i2c_dj_class_init,
 };
 

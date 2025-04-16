@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan I2C Darjeeling device
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Duncan Laurie <duncan@rivosinc.com>
@@ -32,9 +32,9 @@
 #include "hw/sysbus.h"
 
 #define TYPE_OT_I2C_DJ "ot-i2c-dj"
-OBJECT_DECLARE_SIMPLE_TYPE(OtI2CDjState, OT_I2C_DJ)
+OBJECT_DECLARE_TYPE(OtI2CDjState, OtI2CDjClass, OT_I2C_DJ)
 
-#define TYPE_OT_I2C_DJ_TARGET "ot-i2c-dj-target"
+#define TYPE_OT_I2C_DJ_TARGET TYPE_OT_I2C_DJ "-target"
 OBJECT_DECLARE_SIMPLE_TYPE(OtI2CDjTarget, OT_I2C_DJ_TARGET)
 
 #endif /* HW_OPENTITAN_OT_I2C_DJ_H */
