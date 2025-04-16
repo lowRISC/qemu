@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Device Proxy
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -148,6 +148,11 @@ struct OtDevProxyState {
 
     CharBackend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
+};
+
+struct OtDevProxyClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 typedef void ot_dev_proxy_register_device_fn(GArray *array, Object *obj);
@@ -1887,9 +1892,14 @@ static Property ot_dev_proxy_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_dev_proxy_reset(DeviceState *dev)
+static void ot_dev_proxy_reset_enter(Object *obj, ResetType type)
 {
-    OtDevProxyState *s = OT_DEV_PROXY(dev);
+    OtDevProxyClass *c = OT_DEV_PROXY_GET_CLASS(obj);
+    OtDevProxyState *s = OT_DEV_PROXY(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     if (!s->items) {
         /* only done once */
@@ -1926,10 +1936,14 @@ static void ot_dev_proxy_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_dev_proxy_reset);
     dc->realize = &ot_dev_proxy_realize;
     device_class_set_props(dc, ot_dev_proxy_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtDevProxyClass *pc = OT_DEV_PROXY_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_dev_proxy_reset_enter, NULL,
+                                       NULL, &pc->parent_phases);
 }
 
 static const TypeInfo ot_dev_proxy_info = {
@@ -1937,6 +1951,7 @@ static const TypeInfo ot_dev_proxy_info = {
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(OtDevProxyState),
     .instance_init = &ot_dev_proxy_init,
+    .class_size = sizeof(OtDevProxyClass),
     .class_init = &ot_dev_proxy_class_init,
 };
 

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Device Proxy
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_DEV_PROXY "ot-dev_proxy"
-OBJECT_DECLARE_SIMPLE_TYPE(OtDevProxyState, OT_DEV_PROXY)
+OBJECT_DECLARE_TYPE(OtDevProxyState, OtDevProxyClass, OT_DEV_PROXY)
 
 #define TYPE_OT_DEV_PROXY_WATCHER "ot-dev_proxy_watcher"
 OBJECT_DECLARE_SIMPLE_TYPE(OtDevProxyWatcherState, OT_DEV_PROXY_WATCHER)
