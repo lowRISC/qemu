@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SPI Device controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_SPI_DEVICE "ot-spi_device"
-OBJECT_DECLARE_SIMPLE_TYPE(OtSPIDeviceState, OT_SPI_DEVICE)
+OBJECT_DECLARE_TYPE(OtSPIDeviceState, OtSPIDeviceClass, OT_SPI_DEVICE)
 
 #endif /* HW_OPENTITAN_OT_SPI_DEVICE_H */

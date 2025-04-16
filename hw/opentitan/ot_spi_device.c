@@ -447,6 +447,11 @@ struct OtSPIDeviceState {
     guint watch_tag; /* tracker for comm device change */
 };
 
+struct OtSPIDeviceClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_SPI_LAST_REG (R_CMD_INFO_WRDI)
@@ -2106,13 +2111,18 @@ static const MemoryRegionOps ot_spi_device_buf_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_spi_device_reset(DeviceState *dev)
+static void ot_spi_device_reset_enter(Object *obj, ResetType type)
 {
-    OtSPIDeviceState *s = OT_SPI_DEVICE(dev);
+    OtSPIDeviceClass *c = OT_SPI_DEVICE_GET_CLASS(obj);
+    OtSPIDeviceState *s = OT_SPI_DEVICE(obj);
     SpiDeviceFlash *f = &s->flash;
     SpiDeviceBus *bus = &s->bus;
 
     trace_ot_spi_device_reset(s->ot_id, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     ot_spi_device_clear_modes(s);
 
@@ -2138,8 +2148,6 @@ static void ot_spi_device_reset(DeviceState *dev)
 
     ot_spi_device_update_irqs(s);
     ot_spi_device_update_alerts(s);
-
-    trace_ot_spi_device_reset(s->ot_id, "exit");
 }
 
 static void ot_spi_device_realize(DeviceState *dev, Error **errp)
@@ -2209,10 +2217,14 @@ static void ot_spi_device_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_spi_device_reset);
     dc->realize = &ot_spi_device_realize;
     device_class_set_props(dc, ot_spi_device_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtSPIDeviceClass *sc = OT_SPI_DEVICE_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_spi_device_reset_enter, NULL,
+                                       NULL, &sc->parent_phases);
 }
 
 static const TypeInfo ot_spi_device_info = {
@@ -2220,6 +2232,7 @@ static const TypeInfo ot_spi_device_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtSPIDeviceState),
     .instance_init = &ot_spi_device_init,
+    .class_size = sizeof(OtSPIDeviceClass),
     .class_init = &ot_spi_device_class_init,
 };
 
