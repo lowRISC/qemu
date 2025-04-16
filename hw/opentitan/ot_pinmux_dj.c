@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Darjeeling PinMux device
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -198,6 +198,11 @@ struct OtPinmuxDjState {
     IbexIRQ *mios;
 
     OtPinmuxDjStateRegs *regs;
+};
+
+struct OtPinmuxDjClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static uint32_t ot_pinmux_dj_sel_mask(unsigned val)
@@ -495,10 +500,14 @@ static const MemoryRegionOps ot_pinmux_dj_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_pinmux_dj_reset(DeviceState *dev)
+static void ot_pinmux_dj_reset_enter(Object *obj, ResetType type)
 {
-    OtPinmuxDjState *s = OT_PINMUX_DJ(dev);
+    OtPinmuxDjClass *c = OT_PINMUX_DJ_GET_CLASS(obj);
+    OtPinmuxDjState *s = OT_PINMUX_DJ(obj);
 
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
     OtPinmuxDjStateRegs *regs = s->regs;
     memset(regs, 0, sizeof(*regs));
 
@@ -548,9 +557,13 @@ static void ot_pinmux_dj_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_pinmux_dj_reset);
     device_class_set_props(dc, ot_pinmux_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtPinmuxDjClass *pc = OT_PINMUX_DJ_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_pinmux_dj_reset_enter, NULL,
+                                       NULL, &pc->parent_phases);
 }
 
 static const TypeInfo ot_pinmux_info = {
@@ -558,6 +571,7 @@ static const TypeInfo ot_pinmux_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtPinmuxDjState),
     .instance_init = &ot_pinmux_dj_init,
+    .class_size = sizeof(OtPinmuxDjClass),
     .class_init = &ot_pinmux_dj_class_init,
 };
 

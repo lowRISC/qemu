@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Darjeeling PinMux device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "hw/opentitan/ot_pinmux.h"
 
 #define TYPE_OT_PINMUX_DJ TYPE_OT_PINMUX "-dj"
-OBJECT_DECLARE_SIMPLE_TYPE(OtPinmuxDjState, OT_PINMUX_DJ)
+OBJECT_DECLARE_TYPE(OtPinmuxDjState, OtPinmuxDjClass, OT_PINMUX_DJ)
 
 #endif /* HW_OPENTITAN_OT_PINMUX_DJ_H */
