@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Entropy Distribution Network device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -231,11 +231,6 @@ typedef struct OtEDNEndPoint {
 
 typedef QSIMPLEQ_HEAD(OtEndpointQueue, OtEDNEndPoint) OtEndpointQueue;
 
-struct OtEDNClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
-};
-
 struct OtEDNState {
     SysBusDevice parent_obj;
 
@@ -253,6 +248,11 @@ struct OtEDNState {
     OtEDNEndPoint endpoints[ENDPOINT_COUNT_MAX];
     OtEndpointQueue ep_requests;
     bool sw_cmd_ready; /* ready to receive command in SW port mode */
+};
+
+struct OtEDNClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static const uint16_t OtEDNFsmStateCode[] = {
@@ -1492,15 +1492,17 @@ static const MemoryRegionOps ot_edn_regs_ops = {
 
 static void ot_edn_reset_enter(Object *obj, ResetType type)
 {
-    OtEDNClass *k = OT_EDN_GET_CLASS(obj);
+    OtEDNClass *c = OT_EDN_GET_CLASS(obj);
     OtEDNState *s = OT_EDN(obj);
-    OtEDNCSRNG *c = &s->rng;
+    OtEDNCSRNG *r = &s->rng;
 
     trace_ot_edn_reset(s->rng.appid, "enter");
 
-    if (k->parent_phases.enter) {
-        k->parent_phases.enter(obj, type);
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
     }
+
+    qemu_bh_cancel(s->ep_bh);
 
     memset(s->regs, 0, REGS_SIZE);
     s->regs[R_REGWEN] = 0x1u;
@@ -1511,13 +1513,22 @@ static void ot_edn_reset_enter(Object *obj, ResetType type)
     ot_edn_clean_up(s, true);
     ot_edn_change_state(s, EDN_IDLE);
 
+    /* do not reset connection info since reset order is not known */
+    (void)r->genbits_ready;
+    ot_fifo32_reset(&r->cmd_gen_fifo);
+    ot_fifo32_reset(&r->cmd_reseed_fifo);
+}
 
-    ot_fifo32_reset(&c->cmd_gen_fifo);
-    ot_fifo32_reset(&c->cmd_reseed_fifo);
+static void ot_edn_realize(DeviceState *dev, Error **errp)
+{
+    OtEDNState *s = OT_EDN(dev);
+    OtEDNCSRNG *r = &s->rng;
+
+    (void)errp;
 
     /* check that properties have been initialized */
-    g_assert(c->device);
-    g_assert(c->appid < OT_CSRNG_HW_APP_MAX);
+    g_assert(r->device);
+    g_assert(r->appid < OT_CSRNG_HW_APP_MAX);
 }
 
 static void ot_edn_init(Object *obj)
@@ -1558,13 +1569,14 @@ static void ot_edn_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
+    dc->realize = &ot_edn_realize;
     device_class_set_props(dc, ot_edn_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
-    OtEDNClass *uc = OT_EDN_CLASS(klass);
+    OtEDNClass *ec = OT_EDN_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_edn_reset_enter, NULL, NULL,
-                                       &uc->parent_phases);
+                                       &ec->parent_phases);
 }
 
 static const TypeInfo ot_edn_info = {
