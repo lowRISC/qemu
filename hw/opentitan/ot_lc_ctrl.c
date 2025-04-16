@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Life Cycle controller device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -410,6 +410,11 @@ struct OtLcCtrlState {
     uint8_t kmac_app;
     bool volatile_raw_unlock;
     bool socdbg; /* whether this instance use SoCDbg state */
+};
+
+struct OtLcCtrlClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 typedef struct {
@@ -2095,46 +2100,19 @@ static const MemoryRegionOps ot_lc_ctrl_dmi_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_lc_ctrl_reset(DeviceState *dev)
+static void ot_lc_ctrl_reset_enter(Object *obj, ResetType type)
 {
-    OtLcCtrlState *s = OT_LC_CTRL(dev);
+    OtLcCtrlClass *c = OT_LC_CTRL_GET_CLASS(obj);
+    OtLcCtrlState *s = OT_LC_CTRL(obj);
 
     trace_ot_lc_ctrl_reset(s->ot_id);
 
-    g_assert(s->otp_ctrl);
-    g_assert(s->kmac);
-    g_assert(s->kmac_app != UINT8_MAX);
-
-    /*
-     * "ID of the silicon creator. Assigned by the OpenTitan project.
-     * 0x0000: invalid value
-     * 0x0001 - 0x3FFF: reserved for use in the open-source OpenTitan project
-     * 0x4000 - 0x7FFF: reserved for real integrations of OpenTitan
-     * 0x8000 - 0xFFFF: reserved for future use"
-     */
-    if (s->silicon_creator_id == 0 || s->silicon_creator_id > 0x8000) {
-        error_setg(&error_fatal, "Invalid silicon_creator_id: 0x%04x",
-                   s->silicon_creator_id);
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
     }
 
-    /*
-     * "Used to identify a class of devices. Assigned by the Silicon Creator
-     * 0x0000: invalid value
-     * 0x0001 - 0x3FFF: reserved for discrete chip products
-     * 0x4000 - 0x7FFF: reserved for integrated IP products
-     * 0x8000 - 0xFFFF: reserved for future use"
-     */
-    if (s->product_id == 0 || s->product_id > 0x8000) {
-        error_setg(&error_fatal, "Invalid product_id: 0x%04x", s->product_id);
-    }
-
-    /*
-     * "Product revision ID. Assigned by the Silicon Creator
-     * Zero is an invalid value."
-     */
-    if (s->revision_id == 0) {
-        error_setg(&error_fatal, "Invalid revision_id: 0x%02x", s->revision_id);
-    }
+    qemu_bh_cancel(s->escalate_bh);
+    qemu_bh_cancel(s->pwc_lc_bh);
 
     memset(s->regs, 0, REGS_SIZE);
     memset(s->xregs, 0, sizeof(s->xregs));
@@ -2172,10 +2150,44 @@ static void ot_lc_ctrl_reset(DeviceState *dev)
 
 static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
 {
-    (void)errp;
     OtLcCtrlState *s = OT_LC_CTRL(dev);
+    (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->otp_ctrl);
+    g_assert(s->kmac);
+    g_assert(s->kmac_app != UINT8_MAX);
+
+    /*
+     * "ID of the silicon creator. Assigned by the OpenTitan project.
+     * 0x0000: invalid value
+     * 0x0001 - 0x3FFF: reserved for use in the open-source OpenTitan project
+     * 0x4000 - 0x7FFF: reserved for real integrations of OpenTitan
+     * 0x8000 - 0xFFFF: reserved for future use"
+     */
+    if (s->silicon_creator_id == 0 || s->silicon_creator_id > 0x8000) {
+        error_setg(&error_fatal, "Invalid silicon_creator_id: 0x%04x",
+                   s->silicon_creator_id);
+    }
+
+    /*
+     * "Used to identify a class of devices. Assigned by the Silicon Creator
+     * 0x0000: invalid value
+     * 0x0001 - 0x3FFF: reserved for discrete chip products
+     * 0x4000 - 0x7FFF: reserved for integrated IP products
+     * 0x8000 - 0xFFFF: reserved for future use"
+     */
+    if (s->product_id == 0 || s->product_id > 0x8000) {
+        error_setg(&error_fatal, "Invalid product_id: 0x%04x", s->product_id);
+    }
+
+    /*
+     * "Product revision ID. Assigned by the Silicon Creator
+     * Zero is an invalid value."
+     */
+    if (s->revision_id == 0) {
+        error_setg(&error_fatal, "Invalid revision_id: 0x%02x", s->revision_id);
+    }
 
     ot_lc_ctrl_configure_lc_states(s);
     ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_LC_TCOUNT,
@@ -2237,10 +2249,14 @@ static void ot_lc_ctrl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_lc_ctrl_reset);
     dc->realize = &ot_lc_ctrl_realize;
     device_class_set_props(dc, ot_lc_ctrl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtLcCtrlClass *lc = OT_LC_CTRL_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_lc_ctrl_reset_enter, NULL, NULL,
+                                       &lc->parent_phases);
 }
 
 static const TypeInfo ot_lc_ctrl_info = {
@@ -2248,6 +2264,7 @@ static const TypeInfo ot_lc_ctrl_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtLcCtrlState),
     .instance_init = &ot_lc_ctrl_init,
+    .class_size = sizeof(OtLcCtrlClass),
     .class_init = &ot_lc_ctrl_class_init,
 };
 

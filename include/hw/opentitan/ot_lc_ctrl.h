@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Life Cycle controller device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_LC_CTRL "ot-lc_ctrl"
-OBJECT_DECLARE_SIMPLE_TYPE(OtLcCtrlState, OT_LC_CTRL)
+OBJECT_DECLARE_TYPE(OtLcCtrlState, OtLcCtrlClass, OT_LC_CTRL)
 
 /* input lines */
 #define OT_LC_PWR          TYPE_OT_LC_CTRL "-pwr"
