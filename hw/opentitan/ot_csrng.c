@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Cryptographically Secure Random Number Generator
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -354,6 +354,11 @@ struct OtCSRNGState {
 
     DeviceState *random_src;
     OtOTPState *otp_ctrl;
+};
+
+struct OtCSRNGClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 /* clang-format off */
@@ -1959,17 +1964,24 @@ static const MemoryRegionOps ot_csrng_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_csrng_reset(DeviceState *dev)
+static void ot_csrng_reset_enter(Object *obj, ResetType type)
 {
-    OtCSRNGState *s = OT_CSRNG(dev);
+    OtCSRNGClass *c = OT_CSRNG_GET_CLASS(obj);
+    OtCSRNGState *s = OT_CSRNG(obj);
 
     trace_ot_csrng_reset();
 
-    g_assert(s->random_src);
-    OBJECT_CHECK(OtRandomSrcIf, s->random_src, TYPE_OT_RANDOM_SRC_IF);
-    g_assert(s->otp_ctrl);
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
+    qemu_bh_cancel(s->cmd_scheduler);
     timer_del(s->entropy_scheduler);
+    for (unsigned ix = 0; ix < OT_CSRNG_HW_APP_MAX; ix++) {
+        g_assert(ix != SW_INSTANCE_ID);
+        OtCSRNGInstance *inst = &s->instances[ix];
+        qemu_bh_cancel(inst->hw.filler_bh);
+    }
     s->entropy_delay = 0;
 
     memset(s->regs, 0, REGS_SIZE);
@@ -2005,6 +2017,16 @@ static void ot_csrng_reset(DeviceState *dev)
     while (!QSIMPLEQ_EMPTY(&s->cmd_requests)) {
         QSIMPLEQ_REMOVE_HEAD(&s->cmd_requests, cmd_request);
     }
+}
+
+static void ot_csrng_realize(DeviceState *dev, Error **errp)
+{
+    OtCSRNGState *s = OT_CSRNG(dev);
+    (void)errp;
+
+    g_assert(s->random_src);
+    OBJECT_CHECK(OtRandomSrcIf, s->random_src, TYPE_OT_RANDOM_SRC_IF);
+    g_assert(s->otp_ctrl);
 }
 
 static void ot_csrng_init(Object *obj)
@@ -2061,9 +2083,14 @@ static void ot_csrng_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_csrng_reset);
+    dc->realize = &ot_csrng_realize;
     device_class_set_props(dc, ot_csrng_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtCSRNGClass *cc = OT_CSRNG_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_csrng_reset_enter, NULL, NULL,
+                                       &cc->parent_phases);
 }
 
 static const TypeInfo ot_csrng_info = {
@@ -2071,6 +2098,7 @@ static const TypeInfo ot_csrng_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtCSRNGState),
     .instance_init = &ot_csrng_init,
+    .class_size = sizeof(OtCSRNGClass),
     .class_init = &ot_csrng_class_init,
 };
 
