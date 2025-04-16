@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan EarlGrey PinMux device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "hw/opentitan/ot_pinmux.h"
 
 #define TYPE_OT_PINMUX_EG TYPE_OT_PINMUX "-eg"
-OBJECT_DECLARE_SIMPLE_TYPE(OtPinmuxEgState, OT_PINMUX_EG)
+OBJECT_DECLARE_TYPE(OtPinmuxEgState, OtPinmuxEgClass, OT_PINMUX_EG)
 
 #endif /* HW_OPENTITAN_OT_PINMUX_EG_H */
