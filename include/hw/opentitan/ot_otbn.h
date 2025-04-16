@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Big Number device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_OTBN "ot-otbn"
-OBJECT_DECLARE_SIMPLE_TYPE(OtOTBNState, OT_OTBN)
+OBJECT_DECLARE_TYPE(OtOTBNState, OtOTBNClass, OT_OTBN)
 
 #endif /* HW_OPENTITAN_OT_OTBN_H */

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Big Number device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -167,6 +167,11 @@ struct OtOTBNState {
     OtOTBNRandom rnds[OT_OTBN_RND_COUNT];
     char *log_file;
     bool log_asm;
+};
+
+struct OtOTBNClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static void ot_otbn_request_entropy(OtOTBNRandom *rnd);
@@ -621,9 +626,14 @@ static const MemoryRegionOps ot_otbn_dmem_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_otbn_reset(DeviceState *dev)
+static void ot_otbn_reset_enter(Object *obj, ResetType type)
 {
-    OtOTBNState *s = OT_OTBN(dev);
+    OtOTBNClass *c = OT_OTBN_GET_CLASS(obj);
+    OtOTBNState *s = OT_OTBN(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     timer_del(s->proxy_defer);
 
@@ -647,6 +657,16 @@ static void ot_otbn_reset(DeviceState *dev)
         rnd->entropy_requested = false;
         ot_fifo32_reset(&rnd->packer);
     }
+}
+
+static void ot_otbn_reset_exit(Object *obj, ResetType type)
+{
+    OtOTBNClass *c = OT_OTBN_GET_CLASS(obj);
+    OtOTBNState *s = OT_OTBN(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
 
     if (!s->log_file) {
         s->log_asm = false;
@@ -655,6 +675,17 @@ static void ot_otbn_reset(DeviceState *dev)
     ot_otbn_proxy_start(s->proxy, false, s->log_file, s->log_asm);
 }
 
+static void ot_otbn_realize(DeviceState *dev, Error **errp)
+{
+    (void)errp;
+
+    OtOTBNState *s = OT_OTBN(dev);
+
+    g_assert(s->rnds[OT_OTBN_URND].device);
+    g_assert(s->rnds[OT_OTBN_RND].device);
+    g_assert(s->rnds[OT_OTBN_URND].ep != UINT8_MAX);
+    g_assert(s->rnds[OT_OTBN_RND].ep != UINT8_MAX);
+}
 
 static void ot_otbn_init(Object *obj)
 {
@@ -701,21 +732,19 @@ static void ot_otbn_init(Object *obj)
                           &ot_otbn_signal_on_completion, s);
 }
 
-static void ot_otbn_realize(DeviceState *dev, Error **errp)
-{
-    (void)dev;
-    (void)errp;
-}
-
 static void ot_otbn_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_otbn_reset);
     dc->realize = &ot_otbn_realize;
     device_class_set_props(dc, ot_otbn_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtOTBNClass *oc = OT_OTBN_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_otbn_reset_enter, NULL,
+                                       &ot_otbn_reset_exit, &oc->parent_phases);
 }
 
 static const TypeInfo ot_otbn_info = {
@@ -723,6 +752,7 @@ static const TypeInfo ot_otbn_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtOTBNState),
     .instance_init = &ot_otbn_init,
+    .class_size = sizeof(OtOTBNClass),
     .class_init = &ot_otbn_class_init,
 };
 
