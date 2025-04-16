@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Data Object Exchange Mailbox
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -208,6 +208,11 @@ struct OtMbxState {
 
     char *ot_id;
     char *ram_as_name;
+};
+
+struct OtMbxClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static void ot_mbx_host_update_irqs(OtMbxState *s)
@@ -746,11 +751,14 @@ static const MemoryRegionOps ot_mbx_sys_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_mbx_reset(DeviceState *dev)
+static void ot_mbx_reset_enter(Object *obj, ResetType type)
 {
-    OtMbxState *s = OT_MBX(dev);
+    OtMbxClass *c = OT_MBX_GET_CLASS(obj);
+    OtMbxState *s = OT_MBX(obj);
 
-    g_assert(s->ot_id);
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     OtMbxHost *host = &s->host;
     OtMbxSys *sys = &s->sys;
@@ -760,22 +768,43 @@ static void ot_mbx_reset(DeviceState *dev)
     host->regs[R_HOST_ADDRESS_RANGE_REGWEN] = OT_MULTIBITBOOL4_TRUE;
     host->regs[R_HOST_STATUS] = R_SYS_STATUS_BUSY_MASK;
 
-    if (!sys->ram_as) {
-        Object *soc = OBJECT(dev)->parent;
-        Object *obj =
-            object_property_get_link(soc, s->ram_as_name, &error_fatal);
-        OtAddressSpaceState *oas =
-            OBJECT_CHECK(OtAddressSpaceState, obj, TYPE_OT_ADDRESS_SPACE);
-        sys->ram_as = ot_address_space_get(oas);
-        g_assert(sys->ram_as);
-    }
-
     ot_mbx_host_update_irqs(s);
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->host.alerts[ix], 0);
     }
 
     xtrace_ot_mbx_status(s);
+}
+
+static void ot_mbx_reset_exit(Object *obj, ResetType type)
+{
+    OtMbxClass *c = OT_MBX_GET_CLASS(obj);
+    OtMbxState *s = OT_MBX(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    OtMbxSys *sys = &s->sys;
+
+    if (!sys->ram_as) {
+        Object *soc = obj->parent;
+        Object *as =
+            object_property_get_link(soc, s->ram_as_name, &error_fatal);
+        OtAddressSpaceState *oas =
+            OBJECT_CHECK(OtAddressSpaceState, as, TYPE_OT_ADDRESS_SPACE);
+        sys->ram_as = ot_address_space_get(oas);
+        g_assert(sys->ram_as);
+    }
+}
+
+static void ot_mbx_realize(DeviceState *dev, Error **errp)
+{
+    OtMbxState *s = OT_MBX(dev);
+    (void)errp;
+
+    g_assert(s->ot_id);
+    g_assert(s->ram_as_name);
 }
 
 static void ot_mbx_init(Object *obj)
@@ -802,9 +831,14 @@ static void ot_mbx_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_mbx_reset);
+    dc->realize = &ot_mbx_realize;
     device_class_set_props(dc, ot_mbx_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtMbxClass *mc = OT_MBX_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_mbx_reset_enter, NULL,
+                                       &ot_mbx_reset_exit, &mc->parent_phases);
 }
 
 static const TypeInfo ot_mbx_info = {
@@ -812,6 +846,7 @@ static const TypeInfo ot_mbx_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtMbxState),
     .instance_init = &ot_mbx_init,
+    .class_size = sizeof(OtMbxClass),
     .class_init = &ot_mbx_class_init,
 };
 

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Data Object Exchange Mailbox
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_MBX "ot-mbx"
-OBJECT_DECLARE_SIMPLE_TYPE(OtMbxState, OT_MBX)
+OBJECT_DECLARE_TYPE(OtMbxState, OtMbxClass, OT_MBX)
 
 #define OT_MBX_HOST_REGS_COUNT 17u
 #define OT_MBX_SYS_REGS_COUNT  8u
