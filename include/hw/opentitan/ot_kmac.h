@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan KMAC device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -34,7 +34,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_KMAC "ot-kmac"
-OBJECT_DECLARE_SIMPLE_TYPE(OtKMACState, OT_KMAC)
+OBJECT_DECLARE_TYPE(OtKMACState, OtKMACClass, OT_KMAC)
 
 enum OtKMACMode {
     OT_KMAC_MODE_NONE,

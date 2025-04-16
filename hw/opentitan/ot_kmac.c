@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan KMAC device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -48,7 +48,6 @@
 #include "hw/riscv/ibex_irq.h"
 #include "tomcrypt.h"
 #include "trace.h"
-
 
 #define KMAC_PARAM_NUM_ALERTS 2u
 
@@ -404,6 +403,11 @@ struct OtKMACState {
     OtEDNState *edn;
     uint8_t edn_ep;
     uint8_t num_app;
+};
+
+struct OtKMACClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static void
@@ -1572,13 +1576,19 @@ static const MemoryRegionOps ot_kmac_msgfifo_ops = {
     },
 };
 
-static void ot_kmac_reset(DeviceState *dev)
+static void ot_kmac_reset_enter(Object *obj, ResetType type)
 {
-    OtKMACState *s = OT_KMAC(dev);
+    OtKMACClass *c = OT_KMAC_GET_CLASS(obj);
+    OtKMACState *s = OT_KMAC(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    ot_kmac_cancel_bh(s);
 
     ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
     ot_kmac_reset_state(s);
-    ot_kmac_cancel_bh(s);
     memset(&s->sw_cfg, 0, sizeof(OtKMACAppCfg));
     s->current_app = NULL;
     s->pending_apps = 0;
@@ -1651,9 +1661,13 @@ static void ot_kmac_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->realize = &ot_kmac_realize;
-    device_class_set_legacy_reset(dc, &ot_kmac_reset);
     device_class_set_props(dc, ot_kmac_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtKMACClass *kc = OT_KMAC_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_kmac_reset_enter, NULL, NULL,
+                                       &kc->parent_phases);
 }
 
 static const TypeInfo ot_kmac_info = {
@@ -1661,6 +1675,7 @@ static const TypeInfo ot_kmac_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtKMACState),
     .instance_init = &ot_kmac_init,
+    .class_size = sizeof(OtKMACClass),
     .class_init = &ot_kmac_class_init,
 };
 
