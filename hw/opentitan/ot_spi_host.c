@@ -2,7 +2,7 @@
  * QEMU OpenTitan SPI Host controller
  *
  * Copyright (C) 2022 Western Digital
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -1322,6 +1322,10 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->pclk);
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
 
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 
@@ -1371,6 +1375,7 @@ static void ot_spi_host_class_init(ObjectClass *klass, void *data)
 
     dc->realize = ot_spi_host_realize;
     device_class_set_props(dc, ot_spi_host_properties);
+
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtSPIHostClass *sc = OT_SPI_HOST_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_spi_host_reset_enter, NULL,
