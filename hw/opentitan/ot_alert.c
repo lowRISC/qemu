@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Alert handler device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -235,6 +235,11 @@ struct OtAlertState {
     uint8_t edn_ep;
     uint8_t n_low_power_groups;
     uint8_t n_classes;
+};
+
+struct OtAlertClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 /* clang-format off */
@@ -973,11 +978,17 @@ static const MemoryRegionOps ot_alert_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_alert_reset(DeviceState *dev)
+static void ot_alert_reset_enter(Object *obj, ResetType type)
 {
-    OtAlertState *s = OT_ALERT(dev);
+    OtAlertClass *c = OT_ALERT_GET_CLASS(obj);
+    OtAlertState *s = OT_ALERT(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     for (unsigned ix = 0; ix < s->n_classes; ix++) {
+        qemu_bh_cancel(s->schedulers[ix].esc_releaser);
         timer_del(&s->schedulers[ix].timer);
     }
 
@@ -1150,16 +1161,21 @@ static void ot_alert_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_alert_reset);
     dc->realize = &ot_alert_realize;
     device_class_set_props(dc, ot_alert_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtAlertClass *ac = OT_ALERT_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_alert_reset_enter, NULL, NULL,
+                                       &ac->parent_phases);
 }
 
 static const TypeInfo ot_alert_info = {
     .name = TYPE_OT_ALERT,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtAlertState),
+    .class_size = sizeof(OtAlertClass),
     .class_init = &ot_alert_class_init,
 };
 
