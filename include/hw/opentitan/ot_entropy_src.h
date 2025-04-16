@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Entropy Source device
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_ENTROPY_SRC "ot-entropy_src"
-OBJECT_DECLARE_SIMPLE_TYPE(OtEntropySrcState, OT_ENTROPY_SRC)
+OBJECT_DECLARE_TYPE(OtEntropySrcState, OtEntropySrcClass, OT_ENTROPY_SRC)
 
 #endif /* HW_OPENTITAN_OT_ENTROPY_SRC_H */

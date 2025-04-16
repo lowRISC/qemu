@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Entropy Source device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -405,6 +405,11 @@ struct OtEntropySrcState {
     OtOTPState *otp_ctrl;
 };
 
+struct OtEntropySrcClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 static const uint16_t OtEDNFsmStateCode[] = {
     [ENTROPY_SRC_IDLE] = 0b011110101,
     [ENTROPY_SRC_BOOT_HT_RUNNING] = 0b111010010,
@@ -469,7 +474,6 @@ static bool ot_entropy_src_is_module_enabled(const OtEntropySrcState *s);
 static bool ot_entropy_src_is_fips_enabled(const OtEntropySrcState *s);
 static bool ot_entropy_src_is_hw_route(const OtEntropySrcState *s);
 static bool ot_entropy_src_is_fips_capable(const OtEntropySrcState *s);
-static void ot_entropy_src_reset(DeviceState *dev);
 static void ot_entropy_src_update_alerts(OtEntropySrcState *s);
 static void ot_entropy_src_update_filler(OtEntropySrcState *s);
 
@@ -1326,7 +1330,7 @@ static void ot_entropy_src_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             CHECK_MULTIBOOT(s, MODULE_ENABLE, MODULE_ENABLE);
             if (ot_entropy_src_is_module_disabled(s)) {
                 /* reset takes care of cancelling the scheduler timer */
-                ot_entropy_src_reset(DEVICE(s));
+                resettable_reset(OBJECT(s), RESET_TYPE_COLD);
                 break;
             }
             if ((old ^ s->regs[reg]) && ot_entropy_src_is_module_enabled(s)) {
@@ -1547,14 +1551,16 @@ static const MemoryRegionOps ot_entropy_src_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_entropy_src_reset(DeviceState *dev)
+static void ot_entropy_src_reset_enter(Object *obj, ResetType type)
 {
-    OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
+    OtEntropySrcClass *c = OT_ENTROPY_SRC_GET_CLASS(obj);
+    OtEntropySrcState *s = OT_ENTROPY_SRC(obj);
 
     trace_ot_entropy_src_reset();
 
-    g_assert(s->ast);
-    g_assert(s->otp_ctrl);
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     timer_del(s->scheduler);
 
@@ -1607,6 +1613,16 @@ static void ot_entropy_src_reset(DeviceState *dev)
     ot_entropy_src_change_state(s, ENTROPY_SRC_IDLE);
 }
 
+static void ot_entropy_src_realize(DeviceState *dev, Error **errp)
+{
+    (void)errp;
+
+    OtEntropySrcState *s = OT_ENTROPY_SRC(dev);
+
+    g_assert(s->ast);
+    g_assert(s->otp_ctrl);
+}
+
 static void ot_entropy_src_init(Object *obj)
 {
     OtEntropySrcState *s = OT_ENTROPY_SRC(obj);
@@ -1638,9 +1654,14 @@ static void ot_entropy_src_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_entropy_src_reset);
+    dc->realize = &ot_entropy_src_realize;
     device_class_set_props(dc, ot_entropy_src_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtEntropySrcClass *ec = OT_ENTROPY_SRC_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_entropy_src_reset_enter, NULL,
+                                       NULL, &ec->parent_phases);
 
     OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
     rdc->get_random_values = &ot_entropy_src_get_random;
@@ -1651,6 +1672,7 @@ static const TypeInfo ot_entropy_src_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtEntropySrcState),
     .instance_init = &ot_entropy_src_init,
+    .class_size = sizeof(OtEntropySrcClass),
     .class_init = &ot_entropy_src_class_init,
     .interfaces =
         (InterfaceInfo[]){
