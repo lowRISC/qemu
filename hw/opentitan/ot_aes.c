@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan AES device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -254,6 +254,11 @@ struct OtAESState {
     OtPrngState *prng;
     unsigned reseed_count;
     bool fast_mode;
+};
+
+struct OtAESClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 #ifdef DEBUG_AES
@@ -1284,18 +1289,18 @@ static const MemoryRegionOps ot_aes_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_aes_reset(DeviceState *dev)
+static void ot_aes_reset_enter(Object *obj, ResetType type)
 {
-    OtAESState *s = OT_AES(dev);
-    OtAESRegisters *r = s->regs;
+    OtAESClass *c = OT_AES_GET_CLASS(obj);
+    OtAESState *s = OT_AES(obj);
     OtAESEDN *e = &s->edn;
+    OtAESRegisters *r = s->regs;
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     timer_del(s->retard_timer);
-
-    g_assert(e->device);
-    g_assert(e->ep != UINT8_MAX);
-
-    s->prng = ot_prng_allocate();
 
     memset(s->ctx, 0, sizeof(*s->ctx));
     memset(r, 0, sizeof(*r));
@@ -1312,9 +1317,34 @@ static void ot_aes_reset(DeviceState *dev)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], 0);
     }
+}
+
+static void ot_aes_reset_exit(Object *obj, ResetType type)
+{
+    OtAESClass *c = OT_AES_GET_CLASS(obj);
+    OtAESState *s = OT_AES(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    qemu_bh_cancel(s->process_bh);
 
     trace_ot_aes_reseed("reset");
     ot_aes_handle_trigger(s);
+}
+
+static void ot_aes_realize(DeviceState *dev, Error **errp)
+{
+    OtAESState *s = OT_AES(dev);
+    OtAESEDN *e = &s->edn;
+
+    (void)errp;
+
+    g_assert(e->device);
+    g_assert(e->ep != UINT8_MAX);
+
+    s->prng = ot_prng_allocate();
 }
 
 static void ot_aes_init(Object *obj)
@@ -1349,9 +1379,14 @@ static void ot_aes_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_aes_reset);
+    dc->realize = &ot_aes_realize;
     device_class_set_props(dc, ot_aes_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtAESClass *ac = OT_AES_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_aes_reset_enter, NULL,
+                                       &ot_aes_reset_exit, &ac->parent_phases);
 }
 
 static const TypeInfo ot_aes_info = {
@@ -1359,6 +1394,7 @@ static const TypeInfo ot_aes_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtAESState),
     .instance_init = &ot_aes_init,
+    .class_size = sizeof(OtAESClass),
     .class_init = &ot_aes_class_init,
 };
 

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan AES device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_AES "ot-aes"
-OBJECT_DECLARE_SIMPLE_TYPE(OtAESState, OT_AES)
+OBJECT_DECLARE_TYPE(OtAESState, OtAESClass, OT_AES)
 
 #endif /* HW_OPENTITAN_OT_AES_H */
