@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan DMA device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_DMA "ot-dma"
-OBJECT_DECLARE_SIMPLE_TYPE(OtDMAState, OT_DMA)
+OBJECT_DECLARE_TYPE(OtDMAState, OtDMAClass, OT_DMA)
 
 #endif /* HW_OPENTITAN_OT_DMA_H */

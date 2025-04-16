@@ -271,6 +271,11 @@ struct OtDMAState {
 #endif
 };
 
+struct OtDMAClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_LAST_REG (R_INT_SRC_WR_VAL_10)
@@ -1342,38 +1347,20 @@ static const MemoryRegionOps ot_dma_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_dma_reset(DeviceState *dev)
+static void ot_dma_reset_enter(Object *obj, ResetType type)
 {
-    OtDMAState *s = OT_DMA(dev);
+    OtDMAClass *c = OT_DMA_GET_CLASS(obj);
+    OtDMAState *s = OT_DMA(obj);
 
     g_assert(s->ot_id);
 
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
     timer_del(s->timer);
 
-    Object *soc = OBJECT(dev)->parent;
-
-    Object *obj;
-    OtAddressSpaceState *oas;
-
     CHANGE_STATE(s, IDLE);
-
-    if (!s->ases[AS_OT]) {
-        obj = object_property_get_link(soc, s->ot_as_name, &error_fatal);
-        oas = OBJECT_CHECK(OtAddressSpaceState, obj, TYPE_OT_ADDRESS_SPACE);
-        s->ases[AS_OT] = ot_address_space_get(oas);
-    }
-
-    if (!s->ases[AS_CTN] && s->ctn_as_name) {
-        obj = object_property_get_link(soc, s->ctn_as_name, &error_fatal);
-        oas = OBJECT_CHECK(OtAddressSpaceState, obj, TYPE_OT_ADDRESS_SPACE);
-        s->ases[AS_CTN] = ot_address_space_get(oas);
-    }
-
-    if (!s->ases[AS_SYS] && s->sys_as_name) {
-        obj = object_property_get_link(soc, s->sys_as_name, &error_fatal);
-        oas = OBJECT_CHECK(OtAddressSpaceState, obj, TYPE_OT_ADDRESS_SPACE);
-        s->ases[AS_SYS] = ot_address_space_get(oas);
-    }
 
     memset(s->regs, 0, REGS_SIZE);
     memset(&s->control, 0, sizeof(s->control));
@@ -1388,6 +1375,40 @@ static void ot_dma_reset(DeviceState *dev)
     ot_dma_update_irqs(s);
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], 0);
+    }
+}
+
+static void ot_dma_reset_exit(Object *obj, ResetType type)
+{
+    OtDMAClass *c = OT_DMA_GET_CLASS(obj);
+    OtDMAState *s = OT_DMA(obj);
+
+    g_assert(s->ot_id);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    Object *soc = obj->parent;
+    Object *as;
+    OtAddressSpaceState *oas;
+
+    if (!s->ases[AS_OT]) {
+        as = object_property_get_link(soc, s->ot_as_name, &error_fatal);
+        oas = OBJECT_CHECK(OtAddressSpaceState, as, TYPE_OT_ADDRESS_SPACE);
+        s->ases[AS_OT] = ot_address_space_get(oas);
+    }
+
+    if (!s->ases[AS_CTN] && s->ctn_as_name) {
+        as = object_property_get_link(soc, s->ctn_as_name, &error_fatal);
+        oas = OBJECT_CHECK(OtAddressSpaceState, as, TYPE_OT_ADDRESS_SPACE);
+        s->ases[AS_CTN] = ot_address_space_get(oas);
+    }
+
+    if (!s->ases[AS_SYS] && s->sys_as_name) {
+        as = object_property_get_link(soc, s->sys_as_name, &error_fatal);
+        oas = OBJECT_CHECK(OtAddressSpaceState, as, TYPE_OT_ADDRESS_SPACE);
+        s->ases[AS_SYS] = ot_address_space_get(oas);
     }
 }
 
@@ -1431,9 +1452,13 @@ static void ot_dma_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->realize = &ot_dma_realize;
-    device_class_set_legacy_reset(dc, &ot_dma_reset);
     device_class_set_props(dc, ot_dma_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtDMAClass *mc = OT_DMA_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_dma_reset_enter, NULL,
+                                       &ot_dma_reset_exit, &mc->parent_phases);
 }
 
 static const TypeInfo ot_dma_info = {
@@ -1441,6 +1466,7 @@ static const TypeInfo ot_dma_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtDMAState),
     .instance_init = &ot_dma_init,
+    .class_size = sizeof(OtDMAClass),
     .class_init = &ot_dma_class_init,
 };
 
