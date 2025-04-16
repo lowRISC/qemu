@@ -146,6 +146,11 @@ struct OtASTDjState {
     uint32_t *regsb;
 };
 
+struct OtASTDjClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 #define OT_AST_DJ_RANDOM_FILL_RATE_NS 1000000ull /* arbitrary: 1 ms */
 
 /* -------------------------------------------------------------------------- */
@@ -345,10 +350,15 @@ static const MemoryRegionOps ot_ast_dj_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_ast_dj_reset(DeviceState *dev)
+static void ot_ast_dj_reset_enter(Object *obj, ResetType type)
 {
-    OtASTDjState *s = OT_AST_DJ(dev);
+    OtASTDjClass *c = OT_AST_DJ_GET_CLASS(obj);
+    OtASTDjState *s = OT_AST_DJ(obj);
     OtASTDjRandom *rnd = &s->random;
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     timer_del(rnd->timer);
     memset(rnd->buffer, 0, OT_RANDOM_SRC_DWORD_COUNT * sizeof(uint64_t));
@@ -395,6 +405,17 @@ static void ot_ast_dj_reset(DeviceState *dev)
     s->regsa[R_REGA36] = 0x24u;
     s->regsa[R_REGA37] = 0x25u;
     s->regsa[R_REGAL] = 0x26u;
+}
+
+static void ot_ast_dj_reset_exit(Object *obj, ResetType type)
+{
+    OtASTDjClass *c = OT_AST_DJ_GET_CLASS(obj);
+    OtASTDjState *s = OT_AST_DJ(obj);
+    OtASTDjRandom *rnd = &s->random;
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
 
     uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
@@ -422,9 +443,14 @@ static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_ast_dj_reset);
     device_class_set_props(dc, ot_ast_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtASTDjClass *ac = OT_AST_DJ_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_ast_dj_reset_enter, NULL,
+                                       &ot_ast_dj_reset_exit,
+                                       &ac->parent_phases);
 
     OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
     rdc->get_random_values = &ot_ast_dj_get_random;
@@ -435,6 +461,7 @@ static const TypeInfo ot_ast_dj_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtASTDjState),
     .instance_init = &ot_ast_dj_init,
+    .class_size = sizeof(OtASTDjClass),
     .class_init = &ot_ast_dj_class_init,
     .interfaces =
         (InterfaceInfo[]){
