@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Flash controller device
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_FLASH "ot-flash"
-OBJECT_DECLARE_SIMPLE_TYPE(OtFlashState, OT_FLASH)
+OBJECT_DECLARE_TYPE(OtFlashState, OtFlashClass, OT_FLASH)
 
 #endif /* HW_OPENTITAN_OT_FLASH_H */

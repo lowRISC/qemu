@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Flash controller device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -764,6 +764,11 @@ struct OtFlashState {
 
     BlockBackend *blk; /* Flash backend */
     bool no_mem_prot; /* Flag to disable mem protection features */
+};
+
+struct OtFlashClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static void ot_flash_update_irqs(OtFlashState *s)
@@ -2245,102 +2250,6 @@ static const MemoryRegionOps ot_flash_csrs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_flash_reset(DeviceState *dev)
-{
-    OtFlashState *s = OT_FLASH(dev);
-
-    timer_del(s->op_delay);
-    s->op.kind = OP_NONE;
-
-    memset(s->regs, 0, REGS_SIZE);
-    s->regs[R_INTR_STATE] = 0x3u;
-    s->regs[R_DIS] = 0x9u;
-    s->regs[R_CTRL_REGWEN] = 0x1u;
-    s->regs[R_PROG_TYPE_EN] = 0x3u;
-    s->regs[R_REGION_CFG_REGWEN_0] = 0x1u;
-    s->regs[R_REGION_CFG_REGWEN_1] = 0x1u;
-    s->regs[R_REGION_CFG_REGWEN_2] = 0x1u;
-    s->regs[R_REGION_CFG_REGWEN_3] = 0x1u;
-    s->regs[R_REGION_CFG_REGWEN_4] = 0x1u;
-    s->regs[R_REGION_CFG_REGWEN_5] = 0x1u;
-    s->regs[R_REGION_CFG_REGWEN_6] = 0x1u;
-    s->regs[R_REGION_CFG_REGWEN_7] = 0x1u;
-    s->regs[R_MP_REGION_CFG_0] = 0x9999999u;
-    s->regs[R_MP_REGION_CFG_1] = 0x9999999u;
-    s->regs[R_MP_REGION_CFG_2] = 0x9999999u;
-    s->regs[R_MP_REGION_CFG_3] = 0x9999999u;
-    s->regs[R_MP_REGION_CFG_4] = 0x9999999u;
-    s->regs[R_MP_REGION_CFG_5] = 0x9999999u;
-    s->regs[R_MP_REGION_CFG_6] = 0x9999999u;
-    s->regs[R_MP_REGION_CFG_7] = 0x9999999u;
-    s->regs[R_DEFAULT_REGION] = 0x999999u;
-    s->regs[R_BANK0_INFO0_REGWEN_0] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_1] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_2] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_3] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_4] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_5] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_6] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_7] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_8] = 0x1u;
-    s->regs[R_BANK0_INFO0_REGWEN_9] = 0x1u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_0] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_1] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_2] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_3] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_4] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_5] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_6] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_7] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_8] = 0x9999999u;
-    s->regs[R_BANK0_INFO0_PAGE_CFG_9] = 0x9999999u;
-    s->regs[R_BANK0_INFO1_REGWEN] = 0x1u;
-    s->regs[R_BANK0_INFO1_PAGE_CFG] = 0x9999999u;
-    s->regs[R_BANK0_INFO2_REGWEN_0] = 0x1u;
-    s->regs[R_BANK0_INFO2_REGWEN_1] = 0x1u;
-    s->regs[R_BANK0_INFO2_PAGE_CFG_0] = 0x9999999u;
-    s->regs[R_BANK0_INFO2_PAGE_CFG_1] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_REGWEN_0] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_1] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_2] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_3] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_4] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_5] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_6] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_7] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_8] = 0x1u;
-    s->regs[R_BANK1_INFO0_REGWEN_9] = 0x1u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_0] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_1] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_2] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_3] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_4] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_5] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_6] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_7] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_8] = 0x9999999u;
-    s->regs[R_BANK1_INFO0_PAGE_CFG_9] = 0x9999999u;
-    s->regs[R_BANK1_INFO1_REGWEN] = 0x1u;
-    s->regs[R_BANK1_INFO1_PAGE_CFG] = 0x9999999u;
-    s->regs[R_BANK1_INFO2_REGWEN_0] = 0x1u;
-    s->regs[R_BANK1_INFO2_REGWEN_1] = 0x1u;
-    s->regs[R_BANK1_INFO2_PAGE_CFG_0] = 0x9999999u;
-    s->regs[R_BANK1_INFO2_PAGE_CFG_1] = 0x9999999u;
-    s->regs[R_HW_INFO_CFG_OVERRIDE] = 0x99u;
-    s->regs[R_BANK_CFG_REGWEN] = 0x1u;
-    s->regs[R_STATUS] = 0xau;
-    s->regs[R_PHY_STATUS] = 0x6u;
-    s->regs[R_FIFO_LVL] = 0xf0fu;
-
-    s->csrs[R_CSR0_REGWEN] = 0x1u;
-
-    ot_flash_update_irqs(s);
-    ot_flash_update_alerts(s);
-
-    ot_flash_reset_rd_fifo(s);
-    ot_flash_reset_prog_fifo(s);
-}
-
 #ifdef USE_HEXDUMP
 static char dbg_hexbuf[256];
 static const char *ot_flash_hexdump(const uint8_t *buf, size_t size)
@@ -2571,6 +2480,107 @@ static const MemoryRegionOps ot_flash_mem_ops = {
 #endif
 #endif /* DATA_PART_USE_IO_OPS */
 
+static void ot_flash_reset_enter(Object *obj, ResetType type)
+{
+    OtFlashClass *c = OT_FLASH_GET_CLASS(obj);
+    OtFlashState *s = OT_FLASH(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    timer_del(s->op_delay);
+    s->op.kind = OP_NONE;
+
+    memset(s->regs, 0, REGS_SIZE);
+    s->regs[R_INTR_STATE] = 0x3u;
+    s->regs[R_DIS] = 0x9u;
+    s->regs[R_CTRL_REGWEN] = 0x1u;
+    s->regs[R_PROG_TYPE_EN] = 0x3u;
+    s->regs[R_REGION_CFG_REGWEN_0] = 0x1u;
+    s->regs[R_REGION_CFG_REGWEN_1] = 0x1u;
+    s->regs[R_REGION_CFG_REGWEN_2] = 0x1u;
+    s->regs[R_REGION_CFG_REGWEN_3] = 0x1u;
+    s->regs[R_REGION_CFG_REGWEN_4] = 0x1u;
+    s->regs[R_REGION_CFG_REGWEN_5] = 0x1u;
+    s->regs[R_REGION_CFG_REGWEN_6] = 0x1u;
+    s->regs[R_REGION_CFG_REGWEN_7] = 0x1u;
+    s->regs[R_MP_REGION_CFG_0] = 0x9999999u;
+    s->regs[R_MP_REGION_CFG_1] = 0x9999999u;
+    s->regs[R_MP_REGION_CFG_2] = 0x9999999u;
+    s->regs[R_MP_REGION_CFG_3] = 0x9999999u;
+    s->regs[R_MP_REGION_CFG_4] = 0x9999999u;
+    s->regs[R_MP_REGION_CFG_5] = 0x9999999u;
+    s->regs[R_MP_REGION_CFG_6] = 0x9999999u;
+    s->regs[R_MP_REGION_CFG_7] = 0x9999999u;
+    s->regs[R_DEFAULT_REGION] = 0x999999u;
+    s->regs[R_BANK0_INFO0_REGWEN_0] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_1] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_2] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_3] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_4] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_5] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_6] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_7] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_8] = 0x1u;
+    s->regs[R_BANK0_INFO0_REGWEN_9] = 0x1u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_0] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_1] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_2] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_3] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_4] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_5] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_6] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_7] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_8] = 0x9999999u;
+    s->regs[R_BANK0_INFO0_PAGE_CFG_9] = 0x9999999u;
+    s->regs[R_BANK0_INFO1_REGWEN] = 0x1u;
+    s->regs[R_BANK0_INFO1_PAGE_CFG] = 0x9999999u;
+    s->regs[R_BANK0_INFO2_REGWEN_0] = 0x1u;
+    s->regs[R_BANK0_INFO2_REGWEN_1] = 0x1u;
+    s->regs[R_BANK0_INFO2_PAGE_CFG_0] = 0x9999999u;
+    s->regs[R_BANK0_INFO2_PAGE_CFG_1] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_REGWEN_0] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_1] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_2] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_3] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_4] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_5] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_6] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_7] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_8] = 0x1u;
+    s->regs[R_BANK1_INFO0_REGWEN_9] = 0x1u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_0] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_1] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_2] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_3] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_4] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_5] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_6] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_7] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_8] = 0x9999999u;
+    s->regs[R_BANK1_INFO0_PAGE_CFG_9] = 0x9999999u;
+    s->regs[R_BANK1_INFO1_REGWEN] = 0x1u;
+    s->regs[R_BANK1_INFO1_PAGE_CFG] = 0x9999999u;
+    s->regs[R_BANK1_INFO2_REGWEN_0] = 0x1u;
+    s->regs[R_BANK1_INFO2_REGWEN_1] = 0x1u;
+    s->regs[R_BANK1_INFO2_PAGE_CFG_0] = 0x9999999u;
+    s->regs[R_BANK1_INFO2_PAGE_CFG_1] = 0x9999999u;
+    s->regs[R_HW_INFO_CFG_OVERRIDE] = 0x99u;
+    s->regs[R_BANK_CFG_REGWEN] = 0x1u;
+    s->regs[R_STATUS] = 0xau;
+    s->regs[R_PHY_STATUS] = 0x6u;
+    s->regs[R_FIFO_LVL] = 0xf0fu;
+
+    s->csrs[R_CSR0_REGWEN] = 0x1u;
+
+    ot_flash_update_irqs(s);
+    ot_flash_update_alerts(s);
+
+    ot_flash_reset_rd_fifo(s);
+    ot_flash_reset_prog_fifo(s);
+}
+
 static void ot_flash_realize(DeviceState *dev, Error **errp)
 {
     OtFlashState *s = OT_FLASH(dev);
@@ -2625,10 +2635,14 @@ static void ot_flash_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_flash_reset);
     dc->realize = &ot_flash_realize;
     device_class_set_props(dc, ot_flash_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtFlashClass *fc = OT_FLASH_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_flash_reset_enter, NULL, NULL,
+                                       &fc->parent_phases);
 }
 
 static const TypeInfo ot_flash_info = {
@@ -2636,6 +2650,7 @@ static const TypeInfo ot_flash_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtFlashState),
     .instance_init = &ot_flash_init,
+    .class_size = sizeof(OtFlashClass),
     .class_init = &ot_flash_class_init,
 };
 
