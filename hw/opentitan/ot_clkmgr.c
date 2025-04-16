@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Clock manager device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -195,6 +195,11 @@ struct OtClkMgrState {
     uint32_t clock_states; /* bit set: active, reset: clock is idle */
     uint32_t regs[REGS_COUNT]; /* shadowed slots are not used */
     OtClkMgrRegisters sdw_regs;
+};
+
+struct OtClkMgrClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static const char *CLOCK_NAMES[OT_CLKMGR_HINT_COUNT] = {
@@ -538,9 +543,14 @@ static const MemoryRegionOps ot_clkmgr_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_clkmgr_reset(DeviceState *dev)
+static void ot_clkmgr_reset_enter(Object *obj, ResetType type)
 {
-    OtClkMgrState *s = OT_CLKMGR(dev);
+    OtClkMgrClass *c = OT_CLKMGR_GET_CLASS(obj);
+    OtClkMgrState *s = OT_CLKMGR(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     memset(s->regs, 0, sizeof(s->regs));
 
@@ -590,9 +600,13 @@ static void ot_clkmgr_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_clkmgr_reset);
     device_class_set_props(dc, ot_clkmgr_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtClkMgrClass *cc = OT_CLKMGR_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_clkmgr_reset_enter, NULL, NULL,
+                                       &cc->parent_phases);
 }
 
 static const TypeInfo ot_clkmgr_info = {
@@ -600,6 +614,7 @@ static const TypeInfo ot_clkmgr_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtClkMgrState),
     .instance_init = &ot_clkmgr_init,
+    .class_size = sizeof(OtClkMgrClass),
     .class_init = &ot_clkmgr_class_init,
 };
 

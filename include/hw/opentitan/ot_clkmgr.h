@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Clock manager device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_CLKMGR "ot-clkmgr"
-OBJECT_DECLARE_SIMPLE_TYPE(OtClkMgrState, OT_CLKMGR)
+OBJECT_DECLARE_TYPE(OtClkMgrState, OtClkMgrClass, OT_CLKMGR)
 
 typedef enum {
     OT_CLKMGR_HINT_AES,
