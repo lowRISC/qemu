@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan EarlGrey Analog Sensor Top device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -134,6 +134,11 @@ struct OtASTEgState {
 
     uint32_t *regsa;
     uint32_t *regsb;
+};
+
+struct OtASTEgClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -299,9 +304,14 @@ static const MemoryRegionOps ot_ast_eg_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_ast_eg_reset(DeviceState *dev)
+static void ot_ast_eg_reset_enter(Object *obj, ResetType type)
 {
-    OtASTEgState *s = OT_AST_EG(dev);
+    OtASTEgClass *c = OT_AST_EG_GET_CLASS(obj);
+    OtASTEgState *s = OT_AST_EG(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     memset(s->regsa, 0, REGSA_SIZE);
     memset(s->regsb, 0, REGSB_SIZE);
@@ -363,9 +373,13 @@ static void ot_ast_eg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_ast_eg_reset);
     device_class_set_props(dc, ot_ast_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtASTEgClass *ac = OT_AST_EG_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_ast_eg_reset_enter, NULL, NULL,
+                                       &ac->parent_phases);
 }
 
 static const TypeInfo ot_ast_eg_info = {
@@ -373,6 +387,7 @@ static const TypeInfo ot_ast_eg_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtASTEgState),
     .instance_init = &ot_ast_eg_init,
+    .class_size = sizeof(OtASTEgClass),
     .class_init = &ot_ast_eg_class_init,
 };
 

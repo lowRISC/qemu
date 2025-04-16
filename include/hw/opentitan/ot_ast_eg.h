@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan EarlGrey Analog Sensor Top device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_AST_EG "ot-ast-eg"
-OBJECT_DECLARE_SIMPLE_TYPE(OtASTEgState, OT_AST_EG)
+OBJECT_DECLARE_TYPE(OtASTEgState, OtASTEgClass, OT_AST_EG)
 
 #define OT_AST_EG_RANDOM_4BIT_RATE 50000u /* 50 kHz */
 
