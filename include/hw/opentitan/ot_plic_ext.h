@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan PLIC extension
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_PLIC_EXT "ot-plic_ext"
-OBJECT_DECLARE_SIMPLE_TYPE(OtPlicExtState, OT_PLIC_EXT)
+OBJECT_DECLARE_TYPE(OtPlicExtState, OtPlicExtClass, OT_PLIC_EXT)
 
 #endif /* HW_OPENTITAN_OT_PLIC_EXT_H */

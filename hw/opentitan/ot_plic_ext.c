@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan PLIC extension
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -82,6 +82,11 @@ struct OtPlicExtState {
     uint32_t msip_regs[MSIP_REGS_COUNT];
 
     char *ot_id;
+};
+
+struct OtPlicExtClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
@@ -229,12 +234,25 @@ static const MemoryRegionOps ot_plic_ext_alert_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_plic_ext_reset(DeviceState *dev)
+static void ot_plic_ext_reset_enter(Object *obj, ResetType type)
 {
-    OtPlicExtState *s = OT_PLIC_EXT(dev);
+    OtPlicExtClass *c = OT_PLIC_EXT_GET_CLASS(obj);
+    OtPlicExtState *s = OT_PLIC_EXT(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     ibex_irq_set(&s->irq, 0);
     ibex_irq_set(&s->alert, 0);
+}
+
+static void ot_plic_ext_realize(DeviceState *dev, Error **errp)
+{
+    OtPlicExtState *s = OT_PLIC_EXT(dev);
+    (void)errp;
+
+    g_assert(s->ot_id);
 }
 
 static void ot_plic_ext_init(Object *obj)
@@ -263,9 +281,14 @@ static void ot_plic_ext_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_plic_ext_reset);
+    dc->realize = &ot_plic_ext_realize;
     device_class_set_props(dc, ot_plic_ext_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtPlicExtClass *pc = OT_PLIC_EXT_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_plic_ext_reset_enter, NULL, NULL,
+                                       &pc->parent_phases);
 }
 
 static const TypeInfo ot_plic_ext_info = {
@@ -273,6 +296,7 @@ static const TypeInfo ot_plic_ext_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtPlicExtState),
     .instance_init = &ot_plic_ext_init,
+    .class_size = sizeof(OtPlicExtClass),
     .class_init = &ot_plic_ext_class_init,
 };
 
