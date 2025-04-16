@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SRAM controller
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_SRAM_CTRL "ot-sram_ctrl"
-OBJECT_DECLARE_SIMPLE_TYPE(OtSramCtrlState, OT_SRAM_CTRL)
+OBJECT_DECLARE_TYPE(OtSramCtrlState, OtSramCtrlClass, OT_SRAM_CTRL)
 
 #endif /* HW_OPENTITAN_OT_SRAM_CTRL */

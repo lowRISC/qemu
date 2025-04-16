@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SRAM controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -143,6 +143,11 @@ struct OtSramCtrlState {
     bool ifetch; /* only used when no otp_ctrl is defined */
     bool noinit; /* discard initialization emulation feature */
     bool noswitch; /* do not switch to performance/host RAM after init */
+};
+
+struct OtSramCtrlClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 #ifdef OT_SRAM_CTRL_DEBUG
@@ -673,9 +678,17 @@ static const MemoryRegionOps ot_sram_ctrl_mem_init_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_sram_ctrl_reset(DeviceState *dev)
+static void ot_sram_ctrl_reset_enter(Object *obj, ResetType type)
 {
-    OtSramCtrlState *s = OT_SRAM_CTRL(dev);
+    OtSramCtrlClass *c = OT_SRAM_CTRL_GET_CLASS(obj);
+    OtSramCtrlState *s = OT_SRAM_CTRL(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    timer_del(s->init_timer);
+    qemu_bh_cancel(s->switch_mr_bh);
 
     memset(s->regs, 0, REGS_SIZE);
 
@@ -688,6 +701,20 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
     s->regs[R_READBACK_REGWEN] = 0x1u;
     s->regs[R_READBACK] = OT_MULTIBITBOOL4_FALSE;
 
+    s->cfg_ifetch = 0u; /* not used for now */
+
+    ibex_irq_set(&s->alert, (int)(bool)s->regs[R_ALERT_TEST]);
+}
+
+static void ot_sram_ctrl_reset_exit(Object *obj, ResetType type)
+{
+    OtSramCtrlClass *c = OT_SRAM_CTRL_GET_CLASS(obj);
+    OtSramCtrlState *s = OT_SRAM_CTRL(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
     if (s->otp_ctrl) {
         OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
         s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch ==
@@ -695,9 +722,6 @@ static void ot_sram_ctrl_reset(DeviceState *dev)
     } else {
         s->otp_ifetch = s->ifetch;
     }
-    s->cfg_ifetch = 0u; /* not used for now */
-
-    ibex_irq_set(&s->alert, (int)(bool)s->regs[R_ALERT_TEST]);
 
     int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     ot_prng_reseed(s->prng, (uint32_t)now);
@@ -819,10 +843,15 @@ static void ot_sram_ctrl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_sram_ctrl_reset);
     dc->realize = &ot_sram_ctrl_realize;
     device_class_set_props(dc, ot_sram_ctrl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtSramCtrlClass *sc = OT_SRAM_CTRL_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_sram_ctrl_reset_enter, NULL,
+                                       &ot_sram_ctrl_reset_exit,
+                                       &sc->parent_phases);
 }
 
 static const TypeInfo ot_sram_ctrl_info = {
@@ -830,6 +859,7 @@ static const TypeInfo ot_sram_ctrl_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtSramCtrlState),
     .instance_init = &ot_sram_ctrl_init,
+    .class_size = sizeof(OtSramCtrlClass),
     .class_init = &ot_sram_ctrl_class_init,
 };
 
