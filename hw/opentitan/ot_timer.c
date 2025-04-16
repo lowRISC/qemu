@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Timer device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -93,6 +93,11 @@ struct OtTimerState {
 
     char *ot_id;
     uint32_t pclk;
+};
+
+struct OtTimerClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static uint64_t ot_timer_ns_to_ticks(OtTimerState *s, int64_t ns)
@@ -356,11 +361,14 @@ static Property ot_timer_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_timer_reset(DeviceState *dev)
+static void ot_timer_reset_enter(Object *obj, ResetType type)
 {
-    OtTimerState *s = OT_TIMER(dev);
+    OtTimerClass *c = OT_TIMER_GET_CLASS(obj);
+    OtTimerState *s = OT_TIMER(obj);
 
-    g_assert(s->pclk > 0);
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     timer_del(s->timer);
 
@@ -379,6 +387,7 @@ static void ot_timer_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->pclk > 0);
 }
 
 static void ot_timer_init(Object *obj)
@@ -401,9 +410,13 @@ static void ot_timer_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_timer_reset);
     dc->realize = &ot_timer_realize;
     device_class_set_props(dc, ot_timer_properties);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtTimerClass *tc = OT_TIMER_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_timer_reset_enter, NULL, NULL,
+                                       &tc->parent_phases);
 }
 
 static const TypeInfo ot_timer_info = {
@@ -411,6 +424,7 @@ static const TypeInfo ot_timer_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtTimerState),
     .instance_init = &ot_timer_init,
+    .class_size = sizeof(OtTimerClass),
     .class_init = &ot_timer_class_init,
 };
 

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Timer device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_TIMER "ot-timer"
-OBJECT_DECLARE_SIMPLE_TYPE(OtTimerState, OT_TIMER)
+OBJECT_DECLARE_TYPE(OtTimerState, OtTimerClass, OT_TIMER)
 
 #endif /* HW_OPENTITAN_OT_TIMER_H */
