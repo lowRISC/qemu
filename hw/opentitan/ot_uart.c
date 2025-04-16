@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan UART device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
@@ -160,6 +160,11 @@ struct OtUARTState {
     char *ot_id;
     uint32_t pclk;
     CharBackend chr;
+};
+
+struct OtUARTClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static uint32_t ot_uart_get_tx_watermark_level(OtUARTState *s)
@@ -583,9 +588,14 @@ static int ot_uart_be_change(void *opaque)
     return 0;
 }
 
-static void ot_uart_reset(DeviceState *dev)
+static void ot_uart_reset_enter(Object *obj, ResetType type)
 {
-    OtUARTState *s = OT_UART(dev);
+    OtUARTClass *c = OT_UART_GET_CLASS(obj);
+    OtUARTState *s = OT_UART(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     memset(&s->regs[0], 0, sizeof(s->regs));
 
@@ -606,6 +616,7 @@ static void ot_uart_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->pclk);
 
     fifo8_create(&s->tx_fifo, OT_UART_TX_FIFO_SIZE);
     fifo8_create(&s->rx_fifo, OT_UART_RX_FIFO_SIZE);
@@ -634,9 +645,13 @@ static void ot_uart_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->realize = ot_uart_realize;
-    device_class_set_legacy_reset(dc, ot_uart_reset);
     device_class_set_props(dc, ot_uart_properties);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtUARTClass *uc = OT_UART_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_uart_reset_enter, NULL, NULL,
+                                       &uc->parent_phases);
 }
 
 static const TypeInfo ot_uart_info = {
@@ -644,6 +659,7 @@ static const TypeInfo ot_uart_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtUARTState),
     .instance_init = ot_uart_init,
+    .class_size = sizeof(OtUARTClass),
     .class_init = ot_uart_class_init,
 };
 

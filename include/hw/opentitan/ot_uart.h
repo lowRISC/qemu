@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan UART device
  *
- * Copyright (c) 2022-2023 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_UART "ot-uart"
-OBJECT_DECLARE_SIMPLE_TYPE(OtUARTState, OT_UART)
+OBJECT_DECLARE_TYPE(OtUARTState, OtUARTClass, OT_UART)
 
 #endif /* HW_OPENTITAN_OT_UART_H */
