@@ -196,6 +196,11 @@ struct OtSensorEgState {
     uint32_t *regs;
 };
 
+struct OtSensorEgClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 static void ot_sensor_eg_update_irqs(OtSensorEgState *s)
 {
     uint32_t levels = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
@@ -390,9 +395,14 @@ static const MemoryRegionOps ot_sensor_eg_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_sensor_eg_reset(DeviceState *dev)
+static void ot_sensor_eg_reset_enter(Object *obj, ResetType type)
 {
-    OtSensorEgState *s = OT_SENSOR_EG(dev);
+    OtSensorEgClass *c = OT_SENSOR_EG_GET_CLASS(obj);
+    OtSensorEgState *s = OT_SENSOR_EG(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     memset(s->regs, 0, REGS_SIZE);
 
@@ -431,9 +441,13 @@ static void ot_sensor_eg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_sensor_eg_reset);
     device_class_set_props(dc, ot_sensor_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtSensorEgClass *sc = OT_SENSOR_EG_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_sensor_eg_reset_enter, NULL,
+                                       NULL, &sc->parent_phases);
 }
 
 static const TypeInfo ot_sensor_eg_info = {
@@ -441,6 +455,7 @@ static const TypeInfo ot_sensor_eg_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtSensorEgState),
     .instance_init = &ot_sensor_eg_init,
+    .class_size = sizeof(OtSensorEgClass),
     .class_init = &ot_sensor_eg_class_init,
 };
 

@@ -31,6 +31,6 @@
 #include "qom/object.h"
 
 #define TYPE_OT_SENSOR_EG "ot-sensor-eg"
-OBJECT_DECLARE_SIMPLE_TYPE(OtSensorEgState, OT_SENSOR_EG)
+OBJECT_DECLARE_TYPE(OtSensorEgState, OtSensorEgClass, OT_SENSOR_EG)
 
 #endif /* HW_OPENTITAN_OT_SENSOR_EG_H */
