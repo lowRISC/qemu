@@ -935,8 +935,17 @@ static void ot_spi_device_flash_decode_read_jedec(OtSPIDeviceState *s)
     memset(f->buffer, (int)(uint8_t)cc_code, (size_t)cc_count);
     f->len = cc_count;
     f->buffer[f->len++] = jedec_manuf;
-    f->buffer[f->len++] = (uint8_t)(jedec_device >> 8u);
+    /*
+     * For some reason, OpenTitan device byte-swaps the device field.
+     * This is not documented, but the "flash density" field is sent first
+     *
+     * JEDEC_ID register:  |  00  |  MF  |  DEVICE_ID  |  content
+     *                     |31..24|23..16|   15 .. 0   |  bits
+     *                     |  B3  |  B2  |  B1  |  B0  |  bytes
+     * is sent in the following order: B2-B0-B1
+     */
     f->buffer[f->len++] = (uint8_t)(jedec_device >> 0u);
+    f->buffer[f->len++] = (uint8_t)(jedec_device >> 8u);
     memset(&f->buffer[f->len], (int)SPI_DEFAULT_TX_VALUE,
            SPI_FLASH_BUFFER_SIZE - f->len);
     f->src = f->buffer;
