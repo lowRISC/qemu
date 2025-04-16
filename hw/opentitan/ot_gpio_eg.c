@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Earlgrey GPIO device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -141,6 +141,12 @@ struct OtGpioEgState {
     guint watch_tag; /* tracker for comm device change */
     bool wipe; /* whether to wipe the backend at reset */
 };
+
+struct OtGpioEgClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 
 static const char DEFAULT_OT_ID[] = "";
 
@@ -700,12 +706,18 @@ static Property ot_gpio_eg_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_gpio_eg_reset(DeviceState *dev)
+static void ot_gpio_eg_reset_enter(Object *obj, ResetType type)
 {
-    OtGpioEgState *s = OT_GPIO_EG(dev);
+    OtGpioEgClass *c = OT_GPIO_EG_GET_CLASS(obj);
+    OtGpioEgState *s = OT_GPIO_EG(obj);
 
     if (!s->ot_id) {
         s->ot_id = g_strdup(DEFAULT_OT_ID);
+    }
+
+    trace_ot_gpio_reset(s->ot_id, "> enter");
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
     }
 
     memset(s->regs, 0, sizeof(s->regs));
@@ -731,14 +743,33 @@ static void ot_gpio_eg_reset(DeviceState *dev)
     ot_gpio_eg_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
 
+    trace_ot_gpio_reset(s->ot_id, "< enter");
+}
+
+static void ot_gpio_eg_reset_exit(Object *obj, ResetType type)
+{
+    /*
+     * use of a Resettable full API enables performing I/O updates only once
+     * the pinmux configuration has been received (from its own reset stage)
+     */
+    OtGpioEgClass *c = OT_GPIO_EG_GET_CLASS(obj);
+    OtGpioEgState *s = OT_GPIO_EG(obj);
+
+    trace_ot_gpio_reset(s->ot_id, "> exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
     ot_gpio_eg_init_backend(s);
     ot_gpio_eg_update_data_out(s);
     ot_gpio_eg_update_backend(s, true);
 
     /*
-     * do not reset the input backed buffer as external GPIO changes is fully
+     * do not reset the input backend buffer as external GPIO changes is fully
      * async with OT reset. However, it should be reset when the backend changes
      */
+    trace_ot_gpio_reset(s->ot_id, "< exit");
 }
 
 static void ot_gpio_eg_realize(DeviceState *dev, Error **errp)
@@ -779,10 +810,15 @@ static void ot_gpio_eg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_gpio_eg_reset);
     dc->realize = &ot_gpio_eg_realize;
     device_class_set_props(dc, ot_gpio_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(dc);
+    OtGpioEgClass *gc = OT_GPIO_EG_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_gpio_eg_reset_enter, NULL,
+                                       &ot_gpio_eg_reset_exit,
+                                       &gc->parent_phases);
 }
 
 static const TypeInfo ot_gpio_eg_info = {
@@ -790,6 +826,7 @@ static const TypeInfo ot_gpio_eg_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtGpioEgState),
     .instance_init = &ot_gpio_eg_init,
+    .class_size = sizeof(OtGpioEgClass),
     .class_init = &ot_gpio_eg_class_init,
 };
 

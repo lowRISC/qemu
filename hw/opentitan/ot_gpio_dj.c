@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Darjeeling GPIO device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Samuel Ortiz <sameo@rivosinc.com>
@@ -935,10 +935,10 @@ static void ot_gpio_dj_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(dc);
-    OtGpioDjClass *pc = OT_GPIO_DJ_CLASS(klass);
+    OtGpioDjClass *gc = OT_GPIO_DJ_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_gpio_dj_reset_enter, NULL,
                                        &ot_gpio_dj_reset_exit,
-                                       &pc->parent_phases);
+                                       &gc->parent_phases);
 }
 
 static const TypeInfo ot_gpio_dj_info = {
@@ -946,8 +946,8 @@ static const TypeInfo ot_gpio_dj_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtGpioDjState),
     .instance_init = &ot_gpio_dj_init,
+    .class_size = sizeof(OtGpioDjClass),
     .class_init = &ot_gpio_dj_class_init,
-    .class_size = sizeof(OtGpioDjClass)
 };
 
 static void ot_gpio_dj_register_types(void)

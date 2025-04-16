@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan EarlGrey GPIO device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,6 +31,6 @@
 #include "hw/opentitan/ot_gpio.h"
 
 #define TYPE_OT_GPIO_EG "ot-gpio-eg"
-OBJECT_DECLARE_SIMPLE_TYPE(OtGpioEgState, OT_GPIO_EG)
+OBJECT_DECLARE_TYPE(OtGpioEgState, OtGpioEgClass, OT_GPIO_EG)
 
 #endif /* HW_OPENTITAN_OT_GPIO_EG_H */
