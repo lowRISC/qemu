@@ -159,6 +159,11 @@ struct OtRstMgrState {
     bool por; /* Power-On Reset property */
 };
 
+struct OtRstMgrClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 typedef struct {
     const char *typename;
     unsigned idx;
@@ -233,6 +238,7 @@ static void ot_rstmgr_reset_bus(void *opaque)
 
 static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
 {
+    OtRstMgrState *s = OT_RSTMGR(dev);
     OtRstMgrResetDesc *desc = opaque;
 
     int match =
@@ -243,7 +249,7 @@ static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
         return 0;
     }
 
-    trace_ot_rstmgr_sw_rst(desc->path, desc->reset);
+    trace_ot_rstmgr_sw_rst(s->ot_id, desc->path, desc->reset);
 
     if (desc->reset) {
         resettable_assert_reset(OBJECT(dev), RESET_TYPE_COLD);
@@ -261,8 +267,9 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
 
     const OtRstMgrResettable *rst = &SW_RESETTABLE_DEVICES[devix];
     if (!rst->typename) {
-        qemu_log_mask(LOG_UNIMP, "%s: %s Reset for slot %u not yet implemented",
-                      __func__, s->ot_id, devix);
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: %s: Reset for slot %u not yet implemented", __func__,
+                      s->ot_id, devix);
         return;
     }
 
@@ -271,7 +278,7 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
     desc.path = g_strdup_printf("%s[%d]", rst->typename, rst->idx);
     desc.reset = !s->regs[R_SW_RST_CTRL_N_0 + devix];
 
-    trace_ot_rstmgr_sw_reset(desc.path);
+    trace_ot_rstmgr_sw_reset(s->ot_id, desc.path);
 
     /* search for the device on the same local bus */
     int res =
@@ -304,7 +311,7 @@ static void ot_rstmgr_reset_req(void *opaque, int irq, int level)
     OtRstMgrResetReq req = (OtRstMgrResetReq)level;
     s->regs[R_RESET_INFO] = 1u << req;
 
-    trace_ot_rstmgr_reset_req(REQ_NAME(req), req, fastclk);
+    trace_ot_rstmgr_reset_req(s->ot_id, REQ_NAME(req), req, fastclk);
 
     qemu_bh_schedule(s->bus_reset_bh);
 }
@@ -362,7 +369,8 @@ static uint64_t ot_rstmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_rstmgr_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_rstmgr_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                                pc);
 
     return (uint64_t)val32;
 };
@@ -377,7 +385,8 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_rstmgr_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_rstmgr_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                             pc);
 
     switch (reg) {
     case R_RESET_REQ:
@@ -392,7 +401,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             if (s->fatal_reset) {
                 s->fatal_reset--;
                 if (!s->fatal_reset) {
-                    error_report("fatal reset triggered");
+                    error_report("%s: fatal reset triggered", s->ot_id);
                     qemu_system_shutdown_request_with_code(
                         SHUTDOWN_CAUSE_GUEST_SHUTDOWN, 1);
                 }
@@ -499,26 +508,18 @@ static const MemoryRegionOps ot_rstmgr_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_rstmgr_reset(DeviceState *dev)
+static void ot_rstmgr_reset_enter(Object *obj, ResetType type)
 {
-    OtRstMgrState *s = OT_RSTMGR(dev);
+    OtRstMgrClass *c = OT_RSTMGR_GET_CLASS(obj);
+    OtRstMgrState *s = OT_RSTMGR(obj);
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    trace_ot_rstmgr_reset(s->ot_id, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
     }
 
-    trace_ot_rstmgr_reset();
-
-    if (!s->cpu) {
-        CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));
-        if (!cpu) {
-            error_setg(&error_fatal, "%s: Could not find the associated vCPU",
-                       s->ot_id);
-            g_assert_not_reached();
-        }
-        s->cpu = cpu;
-    }
+    qemu_bh_cancel(s->bus_reset_bh);
 
     uint32_t reset_info = s->regs[R_RESET_INFO];
 
@@ -543,6 +544,39 @@ static void ot_rstmgr_reset(DeviceState *dev)
     ibex_irq_lower(&s->soc_reset);
     ibex_irq_lower(&s->sw_reset);
     ot_rstmgr_update_alerts(s);
+}
+
+static void ot_rstmgr_reset_exit(Object *obj, ResetType type)
+{
+    OtRstMgrClass *c = OT_RSTMGR_GET_CLASS(obj);
+    OtRstMgrState *s = OT_RSTMGR(obj);
+
+    trace_ot_rstmgr_reset(s->ot_id, "exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    if (!s->cpu) {
+        CPUState *cpu = ot_common_get_local_cpu(DEVICE(s));
+        if (!cpu) {
+            error_setg(&error_fatal, "%s: Could not find the associated vCPU",
+                       s->ot_id);
+            g_assert_not_reached();
+        }
+        s->cpu = cpu;
+    }
+}
+
+static void ot_rstmgr_realize(DeviceState *dev, Error **errp)
+{
+    OtRstMgrState *s = OT_RSTMGR(dev);
+    (void)errp;
+
+    if (!s->ot_id) {
+        s->ot_id =
+            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
+    }
 }
 
 static void ot_rstmgr_init(Object *obj)
@@ -570,9 +604,15 @@ static void ot_rstmgr_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_rstmgr_reset);
+    dc->realize = &ot_rstmgr_realize;
     device_class_set_props(dc, ot_rstmgr_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtRstMgrClass *mc = OT_RSTMGR_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_rstmgr_reset_enter, NULL,
+                                       &ot_rstmgr_reset_exit,
+                                       &mc->parent_phases);
 }
 
 static const TypeInfo ot_rstmgr_info = {
@@ -580,6 +620,7 @@ static const TypeInfo ot_rstmgr_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtRstMgrState),
     .instance_init = &ot_rstmgr_init,
+    .class_size = sizeof(OtRstMgrClass),
     .class_init = &ot_rstmgr_class_init,
 };
 
