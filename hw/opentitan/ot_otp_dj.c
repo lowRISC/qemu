@@ -3853,6 +3853,11 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
+    qemu_bh_cancel(s->dai->digest_bh);
+    qemu_bh_cancel(s->lci->prog_bh);
+    qemu_bh_cancel(s->lc_broadcast.bh);
+    qemu_bh_cancel(s->pwr_otp_bh);
+
     timer_del(s->dai->delay);
     timer_del(s->lci->prog_delay);
     qemu_bh_cancel(s->keygen->entropy_bh);
