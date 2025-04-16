@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SocProxy
  *
- * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_SOC_PROXY "ot-soc_proxy"
-OBJECT_DECLARE_SIMPLE_TYPE(OtSoCProxyState, OT_SOC_PROXY)
+OBJECT_DECLARE_TYPE(OtSoCProxyState, OtSoCProxyClass, OT_SOC_PROXY)
 
 #define OT_SOC_PROXY_REGS_COUNT 4u
 

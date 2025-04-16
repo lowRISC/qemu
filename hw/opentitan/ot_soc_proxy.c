@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SocProxy
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -108,6 +108,11 @@ struct OtSoCProxyState {
     uint32_t regs[REGS_COUNT];
 
     char *ot_id;
+};
+
+struct OtSoCProxyClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static void ot_soc_proxy_update_irqs(OtSoCProxyState *s)
@@ -234,16 +239,27 @@ static const MemoryRegionOps ot_soc_proxy_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_soc_proxy_reset(DeviceState *dev)
+static void ot_soc_proxy_reset_enter(Object *obj, ResetType type)
 {
-    OtSoCProxyState *s = OT_SOC_PROXY(dev);
+    OtSoCProxyClass *c = OT_SOC_PROXY_GET_CLASS(obj);
+    OtSoCProxyState *s = OT_SOC_PROXY(obj);
 
-    g_assert(s->ot_id);
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     memset(s->regs, 0, sizeof(s->regs));
 
     ot_soc_proxy_update_irqs(s);
     ot_soc_proxy_update_alerts(s);
+}
+
+static void ot_soc_proxy_realize(DeviceState *dev, Error **errp)
+{
+    OtSoCProxyState *s = OT_SOC_PROXY(dev);
+    (void)errp;
+
+    g_assert(s->ot_id);
 }
 
 static void ot_soc_proxy_init(Object *obj)
@@ -271,9 +287,14 @@ static void ot_soc_proxy_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_soc_proxy_reset);
+    dc->realize = &ot_soc_proxy_realize;
     device_class_set_props(dc, ot_soc_proxy_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtSoCProxyClass *sc = OT_SOC_PROXY_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_soc_proxy_reset_enter, NULL,
+                                       NULL, &sc->parent_phases);
 }
 
 static const TypeInfo ot_soc_proxy_info = {
@@ -281,6 +302,7 @@ static const TypeInfo ot_soc_proxy_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtSoCProxyState),
     .instance_init = &ot_soc_proxy_init,
+    .class_size = sizeof(OtSoCProxyClass),
     .class_init = &ot_soc_proxy_class_init,
 };
 
