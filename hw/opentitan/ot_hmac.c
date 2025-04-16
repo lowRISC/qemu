@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan HMAC device
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Copyright (c) 2024-2025 lowRISC contributors.
  *
  * Author(s):
@@ -282,6 +282,11 @@ struct OtHMACState {
     Fifo8 input_fifo;
 
     char *ot_id;
+};
+
+struct OtHMACClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 static inline OtHMACDigestSize ot_hmac_get_digest_size(uint32_t cfg_reg)
@@ -1244,10 +1249,15 @@ static void ot_hmac_realize(DeviceState *dev, Error **errp)
     g_assert(s->ot_id);
 }
 
-static void ot_hmac_reset(DeviceState *dev)
+static void ot_hmac_reset_enter(Object *obj, ResetType type)
 {
-    OtHMACState *s = OT_HMAC(dev);
+    OtHMACClass *c = OT_HMAC_GET_CLASS(obj);
+    OtHMACState *s = OT_HMAC(obj);
     OtHMACRegisters *r = s->regs;
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     ibex_irq_set(&s->clkmgr, false);
 
@@ -1267,10 +1277,14 @@ static void ot_hmac_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_hmac_reset);
     dc->realize = &ot_hmac_realize;
     device_class_set_props(dc, ot_hmac_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtHMACClass *hc = OT_HMAC_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_hmac_reset_enter, NULL, NULL,
+                                       &hc->parent_phases);
 }
 
 static const TypeInfo ot_hmac_info = {
@@ -1278,6 +1292,7 @@ static const TypeInfo ot_hmac_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtHMACState),
     .instance_init = &ot_hmac_init,
+    .class_size = sizeof(OtHMACClass),
     .class_init = &ot_hmac_class_init,
 };
 
