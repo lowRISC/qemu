@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan AON Timer device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_AON_TIMER "ot-aon_timer"
-OBJECT_DECLARE_SIMPLE_TYPE(OtAonTimerState, OT_AON_TIMER)
+OBJECT_DECLARE_TYPE(OtAonTimerState, OtAonTimerClass, OT_AON_TIMER)
 
 #define OT_AON_TIMER_WKUP TYPE_OT_AON_TIMER "-wkup"
 #define OT_AON_TIMER_BARK TYPE_OT_AON_TIMER "-bark"
