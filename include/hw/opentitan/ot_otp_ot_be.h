@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan OTP backend
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -29,6 +29,6 @@
 #define HW_OPENTITAN_OT_OTP_OT_BE_H
 
 #define TYPE_OT_OTP_OT_BE "ot-otp_ot_be"
-OBJECT_DECLARE_SIMPLE_TYPE(OtOtpOtBeState, OT_OTP_OT_BE)
+OBJECT_DECLARE_TYPE(OtOtpOtBeState, OtOtpOtBeClass, OT_OTP_OT_BE)
 
 #endif /* HW_OPENTITAN_OT_OTP_OT_BE_H */

@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan OTP backend
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -123,6 +123,11 @@ struct OtOtpOtBeState {
     DeviceState *parent;
 };
 
+struct OtOtpOtBeClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 static uint64_t ot_otp_ot_be_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtOtpOtBeState *s = opaque;
@@ -190,6 +195,13 @@ static void ot_otp_ot_be_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
+static bool ot_otp_ot_be_is_ecc_enabled(OtOtpBeIf *beif)
+{
+    (void)beif;
+
+    return true;
+}
+
 static Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
@@ -205,11 +217,16 @@ static const MemoryRegionOps ot_otp_ot_be_ops = {
     .impl.max_access_size = 4,
 };
 
-static bool ot_otp_ot_be_is_ecc_enabled(OtOtpBeIf *beif)
+static void ot_otp_ot_be_reset_enter(Object *obj, ResetType type)
 {
-    (void)beif;
+    OtOtpOtBeClass *c = OT_OTP_OT_BE_GET_CLASS(obj);
+    OtOtpOtBeState *s = OT_OTP_OT_BE(obj);
 
-    return true;
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    memset(s->regs, 0, sizeof(s->regs));
 }
 
 static void ot_otp_ot_be_init(Object *obj)
@@ -229,6 +246,11 @@ static void ot_otp_ot_be_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, ot_otp_ot_be_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtOtpOtBeClass *oc = OT_OTP_OT_BE_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_otp_ot_be_reset_enter, NULL,
+                                       NULL, &oc->parent_phases);
+
     OtOtpBeIfClass *bec = OT_OTP_BE_IF_CLASS(klass);
     bec->is_ecc_enabled = &ot_otp_ot_be_is_ecc_enabled;
 }
@@ -238,6 +260,7 @@ static const TypeInfo ot_otp_ot_be_init_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtOtpOtBeState),
     .instance_init = &ot_otp_ot_be_init,
+    .class_size = sizeof(OtOtpOtBeClass),
     .class_init = &ot_otp_ot_be_class_init,
     .interfaces =
         (InterfaceInfo[]){
