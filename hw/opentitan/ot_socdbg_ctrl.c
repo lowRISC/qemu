@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SoC Debug Controller
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -158,6 +158,11 @@ struct OtSoCDbgCtrlState {
     uint8_t dbg_unlocked;
     bool halt_function;
     bool dft_ignore;
+};
+
+struct OtSoCDbgCtrlClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 #define ROM_MASK ((1u << (R_BOOT_STATUS_ROM_CTRL_DONE_LENGTH - 1u)) - 1u)
@@ -731,10 +736,14 @@ static const MemoryRegionOps ot_socdbg_ctrl_dmi_ops = {
     .impl.max_access_size = 4u,
 };
 
-static void ot_socdbg_ctrl_reset_enter(Object *dev, ResetType type)
+static void ot_socdbg_ctrl_reset_enter(Object *obj, ResetType type)
 {
-    OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(dev);
-    (void)type;
+    OtSoCDbgCtrlClass *c = OT_SOCDBG_CTRL_GET_CLASS(obj);
+    OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     memset(s->regs, 0, sizeof(s->regs));
 
@@ -756,8 +765,14 @@ static void ot_socdbg_ctrl_reset_enter(Object *dev, ResetType type)
 
 static void ot_socdbg_ctrl_reset_exit(Object *obj, ResetType type)
 {
+    OtSoCDbgCtrlClass *c = OT_SOCDBG_CTRL_GET_CLASS(obj);
     OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(obj);
-    (void)type;
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    qemu_bh_cancel(s->fsm_tick_bh);
 
     /*
      * ROM signal which does not comes from a ROM but from this device to
@@ -825,9 +840,11 @@ static void ot_socdbg_ctrl_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, ot_socdbg_ctrl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
-    ResettableClass *rc = RESETTABLE_CLASS(dc);
-    rc->phases.enter = &ot_socdbg_ctrl_reset_enter;
-    rc->phases.exit = &ot_socdbg_ctrl_reset_exit;
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    OtSoCDbgCtrlClass *sc = OT_SOCDBG_CTRL_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_socdbg_ctrl_reset_enter, NULL,
+                                       &ot_socdbg_ctrl_reset_exit,
+                                       &sc->parent_phases);
 }
 
 static const TypeInfo ot_socdbg_ctrl_info = {
@@ -835,6 +852,7 @@ static const TypeInfo ot_socdbg_ctrl_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtSoCDbgCtrlState),
     .instance_init = &ot_socdbg_ctrl_init,
+    .class_size = sizeof(OtSoCDbgCtrlClass),
     .class_init = &ot_socdbg_ctrl_class_init,
 };
 

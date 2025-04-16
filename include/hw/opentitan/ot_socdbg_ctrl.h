@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan SoC Debug Controller
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -31,7 +31,7 @@
 #include "qom/object.h"
 
 #define TYPE_OT_SOCDBG_CTRL "ot-socdbg_ctrl"
-OBJECT_DECLARE_SIMPLE_TYPE(OtSoCDbgCtrlState, OT_SOCDBG_CTRL)
+OBJECT_DECLARE_TYPE(OtSoCDbgCtrlState, OtSoCDbgCtrlClass, OT_SOCDBG_CTRL)
 
 /* SocDbg controller states */
 typedef enum {
