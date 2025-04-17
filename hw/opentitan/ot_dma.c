@@ -948,19 +948,19 @@ static bool ot_dma_go(OtDMAState *s)
 
 static void ot_dma_abort(OtDMAState *s)
 {
-    if (!ot_dma_is_busy(s)) {
-        /* nothing to do, but ABORTED be signaled? */
-        return;
-    }
-
     trace_ot_dma_abort(s->ot_id);
 
     s->abort = true;
 
-    /* simulate a delayed response */
     timer_del(s->timer);
+
     uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-    timer_mod(s->timer, (int64_t)(now + s->pace_delay));
+    if (ot_dma_is_busy(s)) {
+        /* simulate a delayed response */
+        now += s->pace_delay;
+    }
+
+    timer_mod(s->timer, (int64_t)now);
 }
 
 static void ot_dma_complete(OtDMAState *s)
