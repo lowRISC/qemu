@@ -1464,7 +1464,6 @@ ot_earlgrey_configure_verilator_devices(DeviceState **devices, BusState *bus,
 {
     ibex_link_devices(devices, defs, count);
     ibex_define_device_props(devices, defs, count);
-    ibex_identify_devices(devices, OT_COMMON_DEV_ID, "soc", false, count);
     ot_common_configure_device_opts(devices, count);
     ot_earlgrey_update_device_clocks(devices, count);
     ibex_realize_devices(devices, bus, defs, count);
