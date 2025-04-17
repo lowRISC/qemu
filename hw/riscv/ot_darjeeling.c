@@ -417,7 +417,8 @@ static const uint32_t ot_dj_pmp_addrs[] = {
                              OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u), \
                              OT_DJ_SOC_GPIO_ALERT(0, (_alert_)), \
                              OT_DJ_SOC_GPIO_ALERT(1, (_alert_) + 1)), \
-    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)), \
+    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, \
+                                                    stringify(_ix_)), \
                                IBEX_DEV_STRING_PROP("ram_as_name", _asname_))
 
 #define OT_DJ_SOC_DEV_MBX_DUAL(_ix_, _addr_, _asname_, _irq_, _alert_, \
@@ -429,7 +430,8 @@ static const uint32_t ot_dj_pmp_addrs[] = {
                              OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, (_irq_) + 2u), \
                              OT_DJ_SOC_GPIO_ALERT(0, (_alert_)), \
                              OT_DJ_SOC_GPIO_ALERT(1, (_alert_) + 1)), \
-    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP("ot_id", stringify(_ix_)), \
+    .prop = IBEXDEVICEPROPDEFS(IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, \
+                                                    stringify(_ix_)), \
                                IBEX_DEV_STRING_PROP("ram_as_name", _asname_))
 
 #define OT_DJ_PINMUX_LINK(_type_, _name_, _tgt_, _num_) \
@@ -719,7 +721,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x10000u),
-            IBEX_DEV_STRING_PROP("ot_id", "ram")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ram")
         ),
     },
     [OT_DJ_SOC_DEV_SRAM_MBX] = {
@@ -736,7 +738,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x1000u),
-            IBEX_DEV_STRING_PROP("ot_id", "mbx")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "mbx")
         ),
     },
     [OT_DJ_SOC_DEV_ROM0] = {
@@ -756,7 +758,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("kmac", KMAC)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "rom0"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "rom0"),
             IBEX_DEV_UINT_PROP("size", 0x8000u),
             IBEX_DEV_UINT_PROP("kmac-app", 2u),
             IBEX_DEV_STRING_PROP("nonce", "a7bdb05fe921615b"),
@@ -780,7 +782,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("kmac", KMAC)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "rom1"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "rom1"),
             IBEX_DEV_UINT_PROP("size", 0x10000u),
             IBEX_DEV_UINT_PROP("kmac-app", 3u),
             IBEX_DEV_STRING_PROP("nonce", "ed2ed45545e927f6"),
@@ -932,7 +934,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(28, 51)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "0")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "0")
         ),
     },
     [OT_DJ_SOC_DEV_MBX_PCIE0] = {
@@ -1206,7 +1208,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(0, 13)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "spi0"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
             IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
         ),
@@ -1356,13 +1358,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x1000u),
-            IBEX_DEV_STRING_PROP("ot_id", "ret")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ret")
         ),
     },
     [OT_DJ_SOC_DEV_VMAPPER] = {
         .type = TYPE_OT_VMAPPER,
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "soc"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "soc"),
             IBEX_DEV_UINT_PROP("trans_count", OT_DJ_IBEX_WRAPPER_NUM_REGIONS)
         ),
     },

@@ -390,7 +390,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "u0"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u0"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
@@ -414,7 +414,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 1)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "u1"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u1"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
@@ -438,7 +438,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 2)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "u2"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u2"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
@@ -462,7 +462,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 3)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "u3"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u3"),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
         ),
     },
@@ -532,7 +532,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40080000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "i2c0"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "i2c0"),
             IBEX_DEV_UINT_PROP("size", 0x80u),
             IBEX_DEV_UINT_PROP("irq-count", 15u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
@@ -549,7 +549,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40090000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "i2c1"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "i2c1"),
             IBEX_DEV_UINT_PROP("size", 0x80u),
             IBEX_DEV_UINT_PROP("irq-count", 15u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
@@ -566,7 +566,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x400a0000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "i2c2"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "i2c2"),
             IBEX_DEV_UINT_PROP("size", 0x80u),
             IBEX_DEV_UINT_PROP("irq-count", 15u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
@@ -583,7 +583,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x400e0000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "pattgen"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pattgen"),
             IBEX_DEV_UINT_PROP("size", 0x40u),
             IBEX_DEV_UINT_PROP("irq-count", 2u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
@@ -713,7 +713,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 19)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "spi0"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_CORE_CLK_HZ)
         ),
@@ -729,7 +729,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 20)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "spi1"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi1"),
             IBEX_DEV_UINT_PROP("bus-num", 1),
             IBEX_DEV_UINT_PROP("pclk", OT_EG_CORE_CLK_HZ)
         ),
@@ -741,7 +741,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40320000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "usbdev"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "usbdev"),
             IBEX_DEV_UINT_PROP("size", 0x1000u),
             IBEX_DEV_UINT_PROP("irq-count", 18u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
@@ -803,7 +803,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40430000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "sysrst_ctrl"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "sysrst_ctrl"),
             IBEX_DEV_UINT_PROP("size", 0x100u),
             IBEX_DEV_UINT_PROP("irq-count", 1u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
@@ -820,7 +820,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40440000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "adc_ctrl"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "adc_ctrl"),
             IBEX_DEV_UINT_PROP("size", 0x80u),
             IBEX_DEV_UINT_PROP("irq-count", 1u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
@@ -837,7 +837,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40450000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "pwm"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pwm"),
             IBEX_DEV_UINT_PROP("size", 0x80u),
             IBEX_DEV_UINT_PROP("alert-count", 1u),
             IBEX_DEV_BOOL_PROP("warn-once", true)
@@ -903,7 +903,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x1000u),
-            IBEX_DEV_STRING_PROP("ot_id", "ret")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ret")
         ),
     },
     [OT_EG_SOC_DEV_FLASH_CTRL] = {
@@ -1005,7 +1005,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41140000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "keymgr"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "keymgr"),
             IBEX_DEV_UINT_PROP("size", 0x100u),
             IBEX_DEV_UINT_PROP("irq-count", 1u),
             IBEX_DEV_UINT_PROP("alert-count", 2u),
@@ -1102,7 +1102,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", SRAM_MAIN_SIZE),
-            IBEX_DEV_STRING_PROP("ot_id", "ram")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ram")
         ),
     },
     [OT_EG_SOC_DEV_ROM_CTRL] = {
@@ -1122,7 +1122,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DEVLINK("kmac", KMAC)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "rom"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "rom"),
             IBEX_DEV_UINT_PROP("size", 0x8000u),
             IBEX_DEV_UINT_PROP("kmac-app", 2u),
             /* Earlgrey-M2.5.2-RC0 */
@@ -1202,7 +1202,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_VMAPPER] = {
         .type = TYPE_OT_VMAPPER,
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("ot_id", "soc"),
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "soc"),
             IBEX_DEV_UINT_PROP("trans_count", OT_EG_IBEX_WRAPPER_NUM_REGIONS)
         ),
     }
