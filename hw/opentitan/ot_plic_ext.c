@@ -214,7 +214,7 @@ static void ot_plic_ext_alert_write(void *opaque, hwaddr addr, uint64_t val64,
 }
 
 static Property ot_plic_ext_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtPlicExtState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtPlicExtState, ot_id),
     DEFINE_PROP_END_OF_LIST(),
 };
 

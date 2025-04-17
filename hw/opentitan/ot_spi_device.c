@@ -2082,7 +2082,7 @@ static int ot_spi_device_chr_be_change(void *opaque)
 }
 
 static Property ot_spi_device_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtSPIDeviceState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSPIDeviceState, ot_id),
     DEFINE_PROP_CHR("chardev", OtSPIDeviceState, chr),
     DEFINE_PROP_END_OF_LIST(),
 };

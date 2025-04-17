@@ -369,7 +369,8 @@ static void ot_dev_proxy_enumerate_devices(OtDevProxyState *s)
         for (unsigned dix = 0; dix < ARRAY_SIZE(SUPPORTED_DEVICES); dix++) {
             if (object_dynamic_cast(item->obj,
                                     SUPPORTED_DEVICES[dix].typename)) {
-                oid = object_property_get_str(item->obj, "ot_id", &error_fatal);
+                oid = object_property_get_str(item->obj, OT_COMMON_DEV_ID,
+                                              &error_fatal);
                 (void)snprintf(desc, sizeof(desc), "%s%s", item->prefix, oid);
                 break;
             }
@@ -1031,7 +1032,7 @@ ot_dev_proxy_route_interrupt(OtDevProxyState *s, OtDevProxyItem *item,
                              const char *group, unsigned grp_n, unsigned irq_n)
 {
     const char *dev_name = object_get_typename(item->obj);
-    char *dev_id = object_property_get_str(item->obj, "ot_id", NULL);
+    char *dev_id = object_property_get_str(item->obj, OT_COMMON_DEV_ID, NULL);
     char *irq_name = g_strdup_printf("%s[%u]", group, irq_n);
 
     OtDevProxyIrq *proxy_irq =
@@ -1084,7 +1085,7 @@ static void ot_dev_proxy_restore_interrupt(OtDevProxyItem *item,
                                            const char *group, unsigned irq_n)
 {
     const char *dev_name = object_get_typename(item->obj);
-    char *dev_id = object_property_get_str(item->obj, "ot_id", NULL);
+    char *dev_id = object_property_get_str(item->obj, OT_COMMON_DEV_ID, NULL);
     char *irq_name = g_strdup_printf("%s[%u]", group, irq_n);
 
     if (!item->iirq_ht) {
@@ -1271,7 +1272,7 @@ static void ot_dev_proxy_signal_interrupt(OtDevProxyState *s)
 
     const char *dev_name = object_get_typename(item->obj);
     Error *errp = NULL;
-    char *dev_id = object_property_get_str(item->obj, "ot_id", &errp);
+    char *dev_id = object_property_get_str(item->obj, OT_COMMON_DEV_ID, &errp);
     if (errp) {
         error_free(errp);
     }
@@ -1444,7 +1445,7 @@ static void ot_dev_proxy_intercepted_irq(void *opaque, int irq, int level)
 
     const char *dev_name = object_get_typename(item->obj);
     Error *errp = NULL;
-    char *dev_id = object_property_get_str(item->obj, "ot_id", &errp);
+    char *dev_id = object_property_get_str(item->obj, OT_COMMON_DEV_ID, &errp);
     if (errp) {
         error_free(errp);
     }

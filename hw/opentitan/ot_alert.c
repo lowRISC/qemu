@@ -960,7 +960,7 @@ static void ot_alert_fill_access_table(OtAlertState *s)
 }
 
 static Property ot_alert_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtAlertState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAlertState, ot_id),
     DEFINE_PROP_UINT16("n_alerts", OtAlertState, n_alerts, 0),
     DEFINE_PROP_UINT8("n_lpg", OtAlertState, n_low_power_groups, 1u),
     DEFINE_PROP_UINT8("n_classes", OtAlertState, n_classes, 4u),

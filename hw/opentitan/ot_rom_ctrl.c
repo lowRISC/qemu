@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan ROM controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -1041,7 +1041,7 @@ static void ot_rom_ctrl_parse_hexstr(const char *name, uint8_t **buf,
 }
 
 static Property ot_rom_ctrl_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtRomCtrlState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtRomCtrlState, ot_id),
     DEFINE_PROP_UINT32("size", OtRomCtrlState, size, 0u),
     DEFINE_PROP_LINK("kmac", OtRomCtrlState, kmac, TYPE_OT_KMAC, OtKMACState *),
     DEFINE_PROP_UINT8("kmac-app", OtRomCtrlState, kmac_app, UINT8_MAX),

@@ -3793,7 +3793,7 @@ static void ot_otp_dj_configure_sram(OtOTPDjState *s)
 }
 
 static Property ot_otp_dj_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtOTPDjState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTPDjState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPDjState, blk),
     DEFINE_PROP_LINK("backend", OtOTPDjState, otp_backend, TYPE_OT_OTP_BE_IF,
                      OtOtpBeIf *),

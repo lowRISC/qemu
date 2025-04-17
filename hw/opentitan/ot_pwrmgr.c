@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Power Manager device
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -899,7 +899,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_pwrmgr_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtPwrMgrState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtPwrMgrState, ot_id),
     DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
     DEFINE_PROP_UINT8("version", OtPwrMgrState, version, UINT8_MAX),
     DEFINE_PROP_BOOL("fetch-ctrl", OtPwrMgrState, fetch_ctrl, false),

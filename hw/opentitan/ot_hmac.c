@@ -1188,7 +1188,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
 }
 
 static Property ot_hmac_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtHMACState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtHMACState, ot_id),
     DEFINE_PROP_END_OF_LIST(),
 };
 

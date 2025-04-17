@@ -1326,7 +1326,7 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_dma_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtDMAState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtDMAState, ot_id),
     DEFINE_PROP_STRING("ot_as_name", OtDMAState, ot_as_name),
     DEFINE_PROP_STRING("ctn_as_name", OtDMAState, ctn_as_name),
     DEFINE_PROP_STRING("sys_as_name", OtDMAState, sys_as_name),

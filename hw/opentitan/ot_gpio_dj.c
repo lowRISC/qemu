@@ -798,7 +798,7 @@ static const MemoryRegionOps ot_gpio_dj_regs_ops = {
 };
 
 static Property ot_gpio_dj_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtGpioDjState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtGpioDjState, ot_id),
     DEFINE_PROP_STRING("log_id", OtGpioDjState, log_id),
     DEFINE_PROP_UINT32("in", OtGpioDjState, reset_in, 0u),
     DEFINE_PROP_UINT32("out", OtGpioDjState, reset_out, 0u),

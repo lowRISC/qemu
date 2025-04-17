@@ -31,6 +31,7 @@
 #include "exec/exec-all.h"
 #include "exec/page-protection.h"
 #include "hw/boards.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
@@ -712,7 +713,7 @@ static void ot_vmapper_override_vcpu_config(OtVMapperState *s)
 }
 
 static Property ot_vmapper_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtVMapperState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtVMapperState, ot_id),
     DEFINE_PROP_UINT8("cpu_index", OtVMapperState, cpu_idx, UINT8_MAX),
     DEFINE_PROP_UINT8("trans_count", OtVMapperState, trans_count, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),

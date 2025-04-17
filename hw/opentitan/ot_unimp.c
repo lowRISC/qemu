@@ -222,7 +222,7 @@ static const MemoryRegionOps ot_unimp_ops = {
 /* clang-format on */
 
 static Property ot_unimp_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtUnimpState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtUnimpState, ot_id),
     DEFINE_PROP_UINT32("size", OtUnimpState, size, 0),
     DEFINE_PROP_UINT32("irq-ro-mask", OtUnimpState, irq_ro_mask, 0),
     DEFINE_PROP_UINT8("irq-count", OtUnimpState, irq_count, 0),

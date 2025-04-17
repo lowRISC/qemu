@@ -35,6 +35,7 @@
 #include "qemu/log.h"
 #include "exec/memory.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_soc_proxy.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -227,7 +228,7 @@ static void ot_soc_proxy_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 }
 
 static Property ot_soc_proxy_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtSoCProxyState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSoCProxyState, ot_id),
     DEFINE_PROP_END_OF_LIST(),
 };
 

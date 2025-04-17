@@ -651,7 +651,7 @@ static MemTxResult ot_sram_ctrl_mem_init_write_with_attrs(
 }
 
 static Property ot_sram_ctrl_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtSramCtrlState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSramCtrlState, ot_id),
     DEFINE_PROP_LINK("otp_ctrl", OtSramCtrlState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_UINT32("size", OtSramCtrlState, size, 0u),

@@ -1366,7 +1366,7 @@ static void ot_ibex_wrapper_fill_tables(OtIbexWrapperState *s)
 
 /* all properties are optional */
 static Property ot_ibex_wrapper_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtIbexWrapperState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtIbexWrapperState, ot_id),
     DEFINE_PROP_LINK("edn", OtIbexWrapperState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_LINK("vmapper", OtIbexWrapperState, vmapper, TYPE_OT_VMAPPER,
                      OtVMapperState *),

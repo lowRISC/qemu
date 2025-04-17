@@ -55,6 +55,7 @@
 #include "qemu/log.h"
 #include "hw/i2c/i2c.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_i2c_dj.h"
 #include "hw/qdev-clock.h"
@@ -955,7 +956,7 @@ static const MemoryRegionOps ot_i2c_dj_ops = {
 };
 
 static Property ot_i2c_dj_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtI2CDjState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtI2CDjState, ot_id),
     DEFINE_PROP_UINT32("pclk", OtI2CDjState, pclk, 0u),
     DEFINE_PROP_END_OF_LIST(),
 };

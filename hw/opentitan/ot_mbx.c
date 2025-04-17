@@ -730,7 +730,7 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
 }
 
 static Property ot_mbx_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtMbxState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtMbxState, ot_id),
     DEFINE_PROP_STRING("ram_as_name", OtMbxState, ram_as_name),
     DEFINE_PROP_END_OF_LIST(),
 };

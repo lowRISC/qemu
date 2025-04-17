@@ -30,6 +30,7 @@
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_socdbg_ctrl.h"
@@ -710,7 +711,7 @@ static void ot_socdbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
 }
 
 static Property ot_socdbg_ctrl_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtSoCDbgCtrlState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSoCDbgCtrlState, ot_id),
     DEFINE_PROP_UINT8("dbg_unlocked", OtSoCDbgCtrlState, dbg_unlocked,
                       DEFAULT_DBG_UNLOCKED),
     DEFINE_PROP_UINT8("dbg_locked", OtSoCDbgCtrlState, dbg_locked,

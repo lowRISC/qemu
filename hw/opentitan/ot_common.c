@@ -160,8 +160,8 @@ unsigned ot_common_check_rom_configuration(void)
         OtCommonObjectNode *ctrl_node, *ctrl_next;
         QSIMPLEQ_FOREACH_SAFE(ctrl_node, &ctrl_nodes.list, node, ctrl_next) {
             Error *errp;
-            char *ot_id =
-                object_property_get_str(ctrl_node->obj, "ot_id", &errp);
+            char *ot_id = object_property_get_str(ctrl_node->obj,
+                                                  OT_COMMON_DEV_ID, &errp);
             bool remove_img = !ot_id;
             bool remove_ctrl = false;
             if (ot_id) {

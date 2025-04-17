@@ -30,6 +30,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_otp_be_if.h"
 #include "hw/opentitan/ot_otp_ot_be.h"
@@ -203,7 +204,7 @@ static bool ot_otp_ot_be_is_ecc_enabled(OtOtpBeIf *beif)
 }
 
 static Property ot_otp_ot_be_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtOtpOtBeState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
                     DeviceState*),
     DEFINE_PROP_END_OF_LIST(),

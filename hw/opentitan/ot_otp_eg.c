@@ -1226,7 +1226,7 @@ ot_otp_eg_ctrl_get_entropy_cfg(const OtOTPState *s)
 }
 
 static Property ot_otp_eg_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtOTPEgState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTPEgState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPEgState, blk),
     DEFINE_PROP_LINK("backend", OtOTPEgState, otp_backend, TYPE_OT_OTP_BE_IF,
                      OtOtpBeIf *),

@@ -493,7 +493,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_rstmgr_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtRstMgrState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtRstMgrState, ot_id),
     DEFINE_PROP_UINT32("fatal_reset", OtRstMgrState, fatal_reset, 0),
     /* this property is only used to store initial reset reason state */
     DEFINE_PROP_BOOL("por", OtRstMgrState, por, true),

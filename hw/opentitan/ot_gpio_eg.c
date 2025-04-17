@@ -697,7 +697,7 @@ static const MemoryRegionOps ot_gpio_eg_regs_ops = {
 };
 
 static Property ot_gpio_eg_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtGpioEgState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtGpioEgState, ot_id),
     DEFINE_PROP_UINT32("in", OtGpioEgState, reset_in, 0u),
     DEFINE_PROP_UINT32("out", OtGpioEgState, reset_out, 0u),
     DEFINE_PROP_UINT32("oe", OtGpioEgState, reset_oe, 0u),

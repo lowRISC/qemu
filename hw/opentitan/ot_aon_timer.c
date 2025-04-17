@@ -510,7 +510,7 @@ static const MemoryRegionOps ot_aon_timer_ops = {
 };
 
 static Property ot_aon_timer_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtAonTimerState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAonTimerState, ot_id),
     DEFINE_PROP_UINT32("pclk", OtAonTimerState, pclk, 0u),
     DEFINE_PROP_END_OF_LIST(),
 };

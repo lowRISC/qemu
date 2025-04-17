@@ -1269,7 +1269,7 @@ static const MemoryRegionOps ot_spi_host_ops = {
 /* clang-format on */
 
 static Property ot_spi_host_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtSPIHostState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSPIHostState, ot_id),
     DEFINE_PROP_UINT32("num-cs", OtSPIHostState, num_cs, 1u),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0u),
     DEFINE_PROP_UINT32("pclk", OtSPIHostState, pclk, 0u),

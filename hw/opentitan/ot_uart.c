@@ -36,6 +36,7 @@
 #include "qemu/module.h"
 #include "chardev/char-fe.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -565,7 +566,7 @@ static const MemoryRegionOps ot_uart_ops = {
 };
 
 static Property ot_uart_properties[] = {
-    DEFINE_PROP_STRING("ot_id", OtUARTState, ot_id),
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtUARTState, ot_id),
     DEFINE_PROP_CHR("chardev", OtUARTState, chr),
     DEFINE_PROP_UINT32("pclk", OtUARTState, pclk, 0u),
     DEFINE_PROP_END_OF_LIST(),
