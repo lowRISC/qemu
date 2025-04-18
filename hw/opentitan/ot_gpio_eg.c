@@ -147,9 +147,6 @@ struct OtGpioEgClass {
     ResettablePhases parent_phases;
 };
 
-
-static const char DEFAULT_OT_ID[] = "";
-
 static void ot_gpio_eg_update_backend(OtGpioEgState *s, bool force);
 
 static void ot_gpio_eg_update_irqs(OtGpioEgState *s)
@@ -711,10 +708,6 @@ static void ot_gpio_eg_reset_enter(Object *obj, ResetType type)
     OtGpioEgClass *c = OT_GPIO_EG_GET_CLASS(obj);
     OtGpioEgState *s = OT_GPIO_EG(obj);
 
-    if (!s->ot_id) {
-        s->ot_id = g_strdup(DEFAULT_OT_ID);
-    }
-
     trace_ot_gpio_reset(s->ot_id, "> enter");
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
@@ -776,6 +769,8 @@ static void ot_gpio_eg_realize(DeviceState *dev, Error **errp)
 {
     OtGpioEgState *s = OT_GPIO_EG(dev);
     (void)errp;
+
+    g_assert(s->ot_id);
 
     qemu_chr_fe_set_handlers(&s->chr, &ot_gpio_eg_chr_can_receive,
                              &ot_gpio_eg_chr_receive,

@@ -3933,13 +3933,10 @@ static void ot_otp_dj_reset_exit(Object *obj, ResetType type)
 
 static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
 {
-    (void)errp;
     OtOTPDjState *s = OT_OTP_DJ(dev);
+    (void)errp;
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 
     ot_otp_dj_configure_scrmbl_key(s);
     ot_otp_dj_configure_digest(s);

@@ -258,10 +258,7 @@ static void ot_unimp_realize(DeviceState *dev, Error **errp)
 {
     OtUnimpState *s = OT_UNIMP(dev);
 
-    if (!s->ot_id) {
-        error_setg(errp, "ot_id property required for " TYPE_OT_UNIMP);
-        return;
-    }
+    g_assert(s->ot_id);
 
     if (!s->size || (s->size & 3u)) {
         error_setg(errp, "%s: invalid size", s->ot_id);

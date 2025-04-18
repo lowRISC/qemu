@@ -573,10 +573,7 @@ static void ot_rstmgr_realize(DeviceState *dev, Error **errp)
     OtRstMgrState *s = OT_RSTMGR(dev);
     (void)errp;
 
-    if (!s->ot_id) {
-        s->ot_id =
-            g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
-    }
+    g_assert(s->ot_id);
 }
 
 static void ot_rstmgr_init(Object *obj)
