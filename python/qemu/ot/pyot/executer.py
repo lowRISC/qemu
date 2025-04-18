@@ -68,6 +68,7 @@ class QEMUExecuter:
         'E': 'exec',
         'G': 'guest_errors',
         'I': 'int',
+        'M': 'mmu',
         'U': 'unimp',
     }
     """Shortcut names for QEMU log sources."""
