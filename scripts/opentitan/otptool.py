@@ -71,6 +71,8 @@ def main():
                            help='output filename (default to stdout)')
         files.add_argument('-r', '--raw',
                            help='QEMU OTP raw image file')
+        files.add_argument('-x', '--export',
+                           help='Export data to a VMEM file')
         params = argparser.add_argument_group(title='Parameters')
         # pylint: disable=unsubscriptable-object
         params.add_argument('-k', '--kind',
@@ -130,6 +132,9 @@ def main():
                               help='set a bit at specified location')
         commands.add_argument('--toggle-bit', action='append',  default=[],
                               help='toggle a bit at specified location')
+        commands.add_argument('--write', action='append',
+                              metavar='ADDR/HEXBYTES', default=[],
+                              help='write bytes at specified location')
         commands.add_argument('--patch-token', action='append',
                               metavar='NAME=VALUE', default=[],
                               help='change a LC hashed token, using Rust file')
@@ -149,8 +154,8 @@ def main():
 
         if not (args.vmem or args.raw):
             if any((args.show, args.digest, args.ecc_recover, args.clear_bit,
-                    args.set_bit, args.toggle_bit, args.change, args.erase,
-                    args.fix_digest)):
+                    args.set_bit, args.toggle_bit, args.write, args.change,
+                    args.erase, args.fix_digest)):
                 argparser.error('At least one raw or vmem file is required')
 
         if not args.vmem and args.kind:
@@ -172,7 +177,13 @@ def main():
             alter_bits.append([])
             for bitdef in bitdefs:
                 try:
-                    offset, bit = (HexInt.parse(x) for x in bitdef.split('/'))
+                    soff, sdata = bitdef.split('/', 1)
+                    if soff[1] == 'h':
+                        offset = HexInt.parse(soff.replace('h', 'x'))
+                        offset *= 2
+                    else:
+                        offset = HexInt.parse(soff)
+                    bit = HexInt.parse(sdata)
                 except ValueError as exc:
                     argparser.error(f"Invalid bit specifier '{bitdef}', should "
                                     f"be <offset>/<bit_num> format: {exc}")
@@ -367,6 +378,19 @@ def main():
                     getattr(otp, f'{bitact}_bits')(alter_bits[pos])
                 check_update = True
 
+            for write in args.write:
+                try:
+                    saddr, sdata = write.split('/', 1)
+                    if saddr[1] == 'h':
+                        addr = HexInt.parse(saddr.replace('h', 'x'))
+                        addr *= 2
+                    else:
+                        addr = HexInt.parse(saddr)
+                    data = unhexlify(sdata)
+                except ValueError as exc:
+                    argparser.error(f'Invalid write syntax: {write} {exc}')
+                otp.change_data(addr, data)
+
             if args.fix_ecc:
                 otp.fix_ecc()
                 check_update = True
@@ -382,6 +406,10 @@ def main():
             if args.raw and not args.vmem:
                 if not args.update and check_update:
                     log.warning('OTP content modified, image file not updated')
+
+            if args.export:
+                with open(args.export, 'wt') as xfp:
+                    otp.save_vmem(xfp)
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)

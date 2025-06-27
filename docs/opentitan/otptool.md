@@ -7,13 +7,13 @@ controller virtual device.
 
 ````text
 usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
-                  [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG] [-c INT] [-i INT]
-                  [-w] [-n] [-f PART:FIELD] [--no-version] [-s] [-E] [-D] [-U]
-                  [-g {LCVAL,LCTPL,PARTS,REGS}] [-F] [-G PART]
-                  [--change PART:FIELD=VALUE] [--empty PARTITION]
+                  [-x EXPORT] [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG]
+                  [-c INT] [-i INT] [-w] [-n] [-f PART:FIELD] [--no-version]
+                  [-s] [-E] [-D] [-U] [-g {LCVAL,LCTPL,PARTS,REGS}] [-F]
+                  [-G PART] [--change PART:FIELD=VALUE] [--empty PARTITION]
                   [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
                   [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT]
-                  [--patch-token NAME=VALUE] [-v] [-d]
+                  [--write ADDR/HEXBYTES] [--patch-token NAME=VALUE] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -26,6 +26,7 @@ Files:
   -l, --lifecycle SV    input lifecycle system verilog file
   -o, --output FILE     output filename (default to stdout)
   -r, --raw RAW         QEMU OTP raw image file
+  -x, --export EXPORT   Export data to a VMEM file
 
 Parameters:
   -k, --kind {auto,otp,fuz}
@@ -60,6 +61,8 @@ Commands:
   --set-bit SET_BIT     set a bit at specified location
   --toggle-bit TOGGLE_BIT
                         toggle a bit at specified location
+  --write ADDR/HEXBYTES
+                        write bytes at specified location
   --patch-token NAME=VALUE
                         change a LC hashed token, using Rust file
 
@@ -172,6 +175,10 @@ Fuse RAW images only use the v1 type.
   contain long sequence of bytes. If repeated, the empty long fields are also printed in full, as
   a sequence of empty bytes.
 
+* `-x` export the current data and ECC content into a text file using the VMEM 24 encoding format,
+  _i.e._ 24-bit hex chunks where the first byte depicts the 6-bit ECC and the remaining two bytes
+  contain a 16-bit value.
+
 * `--clear-bit` clears the specified bit in the OTP data. This flag may be repeated. This option is
   only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
   a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
@@ -216,6 +223,12 @@ Fuse RAW images only use the v1 type.
   is only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
   a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
 
+* `--write` overrides any data (not ECC). If can be combined with `--fix-ecc` to automatically
+  rebuild the ECC of the data slot that have been altered. This option may be repeated. The argument
+  should comply with the `offset/hexdata` syntax, where the _offset_ part is defined in the
+  [Bit position syntax](#bit-syntax) and _hexdata_ is a byte sequence specified as a hexadecimal
+  string.
+
 All modification features can only be performed on RAW image, VMEM images are never modified. To
 modify RAW file content, either a VMEM file is required in addition to the RAW file as the data
 source, or the `-U` is required to tell that the RAW file should be read, modified and written back.
@@ -233,6 +246,10 @@ a bit is defined as `<offset>/<bit>` where `offset` is the byte offset in the OT
 
 The address is rounded down to the granule size, _e.g._ if OTP fuses are organized as 16-bit slots,
 address 2N and 2N+1 are considered the same.
+
+As a special syntax, offset may be specified as `0h...`, in which case the offset value is doubled,
+which enables to directly specify the half-word offset encoded in the input VMEM 24 file. For
+example, to write at @0006, either use `0xc` or `0h6` as the offset specifier.
 
 If the bit is larger than the data slot, it indicates the location with the ECC part, _e.g._ if OTP
 fuses are organized as 16-bit slots wtih 6-bit ECC, bit 0 to 15 indicates a bit into the data slot,

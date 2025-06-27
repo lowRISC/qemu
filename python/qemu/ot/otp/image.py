@@ -10,7 +10,8 @@ from binascii import unhexlify
 from configparser import ConfigParser, NoOptionError
 from io import BytesIO
 from logging import getLogger
-from struct import calcsize as scalc, pack as spack, unpack as sunpack
+from struct import (calcsize as scalc, iter_unpack as iunpack, pack as spack,
+                    unpack as sunpack)
 from typing import Any, BinaryIO, Optional, Sequence, TextIO, Union
 import re
 
@@ -73,6 +74,7 @@ class OtpImage:
         self._partitions: list[OtpPartition] = []
         self._part_offsets: list[int] = []
         self._dirty_offsets: list[int] = []
+        self._header_comments: list[str] = []
 
     @property
     def version(self) -> int:
@@ -157,11 +159,14 @@ class OtpImage:
             if vkind is None:
                 kmo = re.match(self.RE_VMEMDESC, line)
                 if kmo:
+                    self._header_comments.append(line.rstrip())
                     vkind = kmo.group(1)
                     row_count = int(kmo.group(2))
                     bits = int(kmo.group(3))
                     byte_count = bits // 8
                     continue
+            if line.startswith('// '):
+                self._header_comments.append(line.rstrip())
             line = re.sub(r'//.*', '', line)
             line = line.strip()
             if not line:
@@ -213,6 +218,14 @@ class OtpImage:
             raise ValueError('Unable to detect VMEM find, please specify')
         self._magic = f'v{vkind[:3].upper()}'.encode()
         self._changed = False
+
+    def save_vmem(self, vfp: TextIO) -> None:
+        """Save a VMEM '24' text stream."""
+        dsrc = iunpack('<H', self._data)
+        if self._header_comments:
+            print('\n'.join(self._header_comments), file=vfp)
+        for addr, (dword, ecc) in enumerate(zip(dsrc, self._ecc)):
+            print(f'@{addr:06x} {ecc:02x}{dword[0]:04x}', file=vfp)
 
     def load_lifecycle(self, lcext: OtpLifecycleExtension) -> None:
         """Load lifecyle values."""
@@ -456,6 +469,22 @@ class OtpImage:
         part.erase_field(field)
         self._reload(partix, True)
 
+    def change_data(self, addr: int, value: bytes) -> None:
+        """Change an arbitrary sequence of data bytes.
+
+           :param addr: address of the first byte to change
+           :param value: the new data bytes (full replacement)
+        """
+        end = addr + len(value)
+        if end > len(self._data):
+            raise ValueError(f'Invalid address/length: [0x{addr:x}..0x{end:x}] '
+                             f'beyond 0x{len(self._data):x}')
+        self._data[addr:end] = value
+        addr &= ~(self._ecc_granule - 1)
+        for pos in range(addr, end, self._ecc_granule):
+            self._dirty_offsets.append(pos)
+        self._changed = True
+
     def build_digest(self, partition: Union[int, str], erase: bool) -> None:
         """Rebuild the digest of a partition from its content.
 
@@ -494,7 +523,7 @@ class OtpImage:
             self._log.critical('Incoherent ECC size w/ granule %d',
                                granule)
         try:
-            ecc_fn = getattr(self, f'_decode_ecc_{bitcount}_{bitgran}')
+            ecc_fn = getattr(self.__class__, f'decode_ecc_{bitcount}_{bitgran}')
         except AttributeError as exc:
             raise NotImplementedError('ECC function for {self._ecc.bits}'
                                       'not supported') from exc
@@ -570,7 +599,8 @@ class OtpImage:
         bitgran = granule * 8
         bitcount = bitgran + self._ecc_bits
         try:
-            ecc_fn = getattr(self, f'_compute_ecc_{bitcount}_{bitgran}')
+            ecc_fn = getattr(self.__class__,
+                             f'compute_ecc_{bitcount}_{bitgran}')
         except AttributeError as exc:
             raise NotImplementedError('ECC function for {self._ecc.bits}'
                                       'not supported') from exc
@@ -587,18 +617,24 @@ class OtpImage:
         self._dirty_offsets.clear()
         return dirty_len
 
-    def _compute_ecc_22_16(self, data: int) -> int:
+    @classmethod
+    def compute_ecc_22_16(cls, data: int) -> int:
+        """Generate the 6-bit ECC value from a 16-bit word.
 
-        data |= self.bit_parity(data & 0x00ad5b) << 16
-        data |= self.bit_parity(data & 0x00366d) << 17
-        data |= self.bit_parity(data & 0x00c78e) << 18
-        data |= self.bit_parity(data & 0x0007f0) << 19
-        data |= self.bit_parity(data & 0x00f800) << 20
-        data |= self.bit_parity(data & 0x1fffff) << 21
+           :param data: 16-bit word
+           :return: 6-bit ECC
+        """
+        data |= cls.bit_parity(data & 0x00ad5b) << 16
+        data |= cls.bit_parity(data & 0x00366d) << 17
+        data |= cls.bit_parity(data & 0x00c78e) << 18
+        data |= cls.bit_parity(data & 0x0007f0) << 19
+        data |= cls.bit_parity(data & 0x00f800) << 20
+        data |= cls.bit_parity(data & 0x1fffff) << 21
 
         return (data & 0x3f0000) >> 16
 
-    def _decode_ecc_22_16(self, data: int, ecc: int) -> tuple[int, int]:
+    @classmethod
+    def decode_ecc_22_16(cls, data: int, ecc: int) -> tuple[int, int]:
         """Check and fix 16-bit data with 6 bits ECC.
 
            :param data: a 16-bit integer
@@ -611,10 +647,10 @@ class OtpImage:
 
         idata = data | (ecc << 16)
 
-        synd_mask, synd_code = self.SYNDROME_HAMMING_22_16
+        synd_mask, synd_code = cls.SYNDROME_HAMMING_22_16
 
         syndrome = sum(1 << b for b, m in enumerate(synd_mask)
-                       if self.bit_parity(idata & m))
+                       if cls.bit_parity(idata & m))
 
         err = (syndrome >> 5) & 1
         if not err:
