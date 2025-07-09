@@ -25,3 +25,5 @@ subprojects/packagecache/
 !subprojects/packagefiles/**/*.patch
 hw/opentitan/otbn/otbn/Cargo.lock
 hw/opentitan/otbn/otbn/target/
+.clangd
+.zed
