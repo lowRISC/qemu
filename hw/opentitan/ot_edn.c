@@ -960,7 +960,7 @@ static bool ot_edn_update_mode(OtEDNState *s)
         return true;
     }
 
-    if (s->state == EDN_BOOT_DONE) {
+    if (s->state == EDN_BOOT_DONE && !ot_edn_is_boot_req_mode(s)) {
         trace_ot_edn_enable(c->appid, "boot uninstantiate");
         ot_edn_change_state(s, EDN_BOOT_LOAD_UNI);
         ot_edn_send_boot_uninstanciate_cmd(s);
