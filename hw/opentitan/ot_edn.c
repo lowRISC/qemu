@@ -930,7 +930,7 @@ static bool ot_edn_update_mode(OtEDNState *s)
     if (!ot_edn_is_enabled(s)) {
         if (s->state != EDN_IDLE) {
             ot_edn_handle_disable(s);
-            ot_edn_clean_up(s, true);
+            ot_edn_clean_up(s, false);
             if (s->state != EDN_ERROR) {
                 ot_edn_change_state(s, EDN_IDLE);
             }
