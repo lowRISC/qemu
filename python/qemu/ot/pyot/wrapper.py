@@ -30,8 +30,8 @@ from .util import ExecTime, LogMessageClassifier
 class QEMUWrapper:
     """A small engine to run tests with QEMU.
 
-       :param tcpdev: a host, port pair that defines how to access the TCP
-                      Virtual Com Port of QEMU first UART
+       :param log_classifiers: a map of loglevel, list of RE-compatible strings
+                               to match messages
        :param debug: whether running in debug mode
     """
     # pylint: disable=too-few-public-methods
@@ -81,7 +81,7 @@ class QEMUWrapper:
                 - expect_result, the expected outcome of QEMU (exit code). Some
                            tests may expect that QEMU terminates with a non-zero
                            exit code
-                - context, an option QEMUContextWorker instance, to execute
+                - context, an option ContextWorker instance, to execute
                            concurrently with the QEMU process. Many tests
                            expect to communicate with the QEMU process.
                 - trigger, a string to match on the QEMU virtual comm port
@@ -138,9 +138,9 @@ class QEMUWrapper:
             log.debug('Executing QEMU as %s', ' '.join(tdef.command))
             env = dict(environ)
             if tdef.asan:
-                # note cannot use a QEMUFileManager temp file here, as the full
+                # note cannot use a FileManager temp file here, as the full
                 # pathname is built by the ASAN tool once QEMU has started.
-                # store this temporary file in the QEMUFileManager-managed
+                # store this temporary file in the FileManager-managed
                 # work directory
                 asan_prefix = joinpath(workdir, self.ASAN_LOGFILE_PREFIX)
                 env['ASAN_OPTIONS'] = f'log_path={asan_prefix}'

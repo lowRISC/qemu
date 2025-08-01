@@ -1,7 +1,7 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-"""Test executer for QEMU unit test sequencer.
+"""Test executer for OpenTitan unit test sequencer.
 
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
@@ -17,9 +17,9 @@ from typing import Optional
 from .util import LogMessageClassifier
 
 
-class QEMUContextWorker:
+class ContextWorker:
 
-    """Background task for QEMU context.
+    """Background task for test executer context.
     """
 
     def __init__(self, cmd: str, env: dict[str, str],

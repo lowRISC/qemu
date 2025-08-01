@@ -1,7 +1,7 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-"""Test context for QEMU unit test sequencer.
+"""Test context for OpenTitan unit test sequencer.
 
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
@@ -15,30 +15,27 @@ from typing import Optional
 
 import re
 
-from .filemgr import QEMUFileManager
 from .util import LogMessageClassifier
-from .worker import QEMUContextWorker
+from .worker import ContextWorker
 
 
-class QEMUContext:
-    """Execution context for QEMU session.
+class ExecContext:
+    """Execution context for test executer session.
 
-       Execute commands before, while and after QEMU executes.
+       Execute commands before, while and after test executer runs.
 
-       :param test_name: the name of the test QEMU should execute
-       :param qfm: the file manager
-       :param qemu_cmd: the command and argument to execute QEMU
+       :param test_name: the name of the test executer should execute
+       :param ex_cmd: the host command and argument to execute the test
        :param context: the contex configuration for the current test
     """
 
-    def __init__(self, test_name: str, qfm: QEMUFileManager,
-                 qemu_cmd: list[str], context: dict[str, list[str]],
+    def __init__(self, test_name: str, ex_cmd: list[str],
+                 context: dict[str, list[str]],
                  env: Optional[dict[str, str]] = None):
         # pylint: disable=too-many-arguments
         self._clog = getLogger('pyot.ctx')
         self._test_name = test_name
-        self._qfm = qfm
-        self._qemu_cmd = qemu_cmd
+        self._ex_cmd = ex_cmd
         self._context = context
         self._env = env or {}
         self._workers: list[Popen] = []
@@ -72,8 +69,8 @@ class QEMUContext:
             return
         env = dict(environ)
         env.update(self._env)
-        if self._qemu_cmd:
-            env['PATH'] = ':'.join((env['PATH'], dirname(self._qemu_cmd[0])))
+        if self._ex_cmd:
+            env['PATH'] = ':'.join((env['PATH'], dirname(self._ex_cmd[0])))
         if ctx:
             for cmd in ctx:
                 bkgnd = ctx_name == 'with'
@@ -100,7 +97,7 @@ class QEMUContext:
                                     for p in rcmd.split(' '))
                     self._clog.info('Execute "%s" in background for [%s] '
                                     'context', rcmd, ctx_name)
-                    worker = QEMUContextWorker(cmd, env, sync)
+                    worker = ContextWorker(cmd, env, sync)
                     worker.run()
                     self._workers.append(worker)
                 else:

@@ -1,7 +1,7 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-"""File manager for QEMU unit test sequencer.
+"""File manager for OpenTitan unit test sequencer.
 
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
@@ -21,13 +21,11 @@ from ot.util.elf import ElfBlob
 from ot.util.file import guess_file_type
 
 
-class QEMUFileManager:
+class FileManager:
     """Simple file manager to generate and track temporary files.
 
        :param keep_temp: do not automatically discard generated files on exit
     """
-
-    DEFAULT_OTP_ECC_BITS = 6
 
     def __init__(self, keep_temp: bool = False):
         self._log = getLogger('pyot.file')

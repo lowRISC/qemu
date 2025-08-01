@@ -103,6 +103,11 @@ class EasyDict(dict):
         yield from sorted(items)
 
 
+def flatten(lst: list) -> list:
+    """Flatten a list."""
+    return [item for sublist in lst for item in sublist]
+
+
 def group(lst, count):
     """Group a list into consecutive count-tuples. Incomplete tuples are
     discarded.

@@ -23,11 +23,11 @@ import sys
 
 from ot.util.file import guess_file_type
 from ot.util.log import flush_memory_loggers
-from ot.util.misc import EasyDict
+from ot.util.misc import EasyDict, flatten
 
 from . import DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_FACTOR
-from .context import QEMUContext
-from .filemgr import QEMUFileManager
+from .context import ExecContext
+from .filemgr import FileManager
 from .util import TestResult
 from .wrapper import QEMUWrapper
 
@@ -35,7 +35,7 @@ from .wrapper import QEMUWrapper
 class QEMUExecuter:
     """Test execution sequencer.
 
-       :param qfm: file manager that tracks temporary files
+       :param tfm: file manager that tracks temporary files
        :param config: configuration dictionary
        :param args: parsed arguments
     """
@@ -75,10 +75,10 @@ class QEMUExecuter:
     }
     """Shortcut names for QEMU log sources."""
 
-    def __init__(self, qfm: QEMUFileManager, config: dict[str, any],
+    def __init__(self, tfm: FileManager, config: dict[str, any],
                  args: Namespace):
         self._log = getLogger('pyot.exec')
-        self._qfm = qfm
+        self._tfm = tfm
         self._config = config
         self._args = args
         self._argdict: dict[str, Any] = {}
@@ -163,7 +163,7 @@ class QEMUExecuter:
                                tpos, tcount)
                 vcplogfile = None
                 try:
-                    self._qfm.define_transient({
+                    self._tfm.define_transient({
                         'UTPATH': test,
                         'UTDIR': normpath(dirname(test)),
                         'UTFILE': basename(test),
@@ -199,9 +199,9 @@ class QEMUExecuter:
                     err = str(exc)
                 finally:
                     self._discard_vcp_log(vcplogfile)
-                    self._qfm.cleanup_transient()
-                    if not self._qfm.keep_temporary:
-                        self._qfm.delete_default_dir(test_name)
+                    self._tfm.cleanup_transient()
+                    if not self._tfm.keep_temporary:
+                        self._tfm.delete_default_dir(test_name)
                     flush_memory_loggers(['pyot', 'pyot.vcp', 'pyot.ctx',
                                           'pyot.file'], LOG_INFO)
                 results[tret] += 1
@@ -262,12 +262,6 @@ class QEMUExecuter:
         return args.__dict__.get(name)
 
     @staticmethod
-    def flatten(lst: list) -> list:
-        """Flatten a list.
-        """
-        return [item for sublist in lst for item in sublist]
-
-    @staticmethod
     def abspath(path: str) -> str:
         """Build absolute path"""
         if isabs(path):
@@ -275,10 +269,10 @@ class QEMUExecuter:
         return normpath(joinpath(getcwd(), path))
 
     def _cleanup_temp_files(self, storage: dict[str, set[str]]) -> None:
-        if self._qfm.keep_temporary:
+        if self._tfm.keep_temporary:
             return
         for kind, files in storage.items():
-            delete_file = getattr(self._qfm, f'delete_{kind}_image')
+            delete_file = getattr(self._tfm, f'delete_{kind}_image')
             for filename in files:
                 delete_file(filename)
 
@@ -311,7 +305,7 @@ class QEMUExecuter:
                     # special marker to disable a specific ROM
                     rom_count += 1
                     continue
-                rom_path = self._qfm.interpolate(rom)
+                rom_path = self._tfm.interpolate(rom)
                 if not isfile(rom_path):
                     raise ValueError(f'Unable to find ROM file {rom_path}')
                 rom_ids = []
@@ -438,7 +432,7 @@ class QEMUExecuter:
         if args.otp:
             if not isfile(args.otp):
                 raise ValueError(f'No such OTP file: {args.otp}')
-            otp_file = self._qfm.create_otp_image(args.otp)
+            otp_file = self._tfm.create_otp_image(args.otp)
             temp_files['otp'].add(otp_file)
             qemu_args.extend(('-drive',
                               f'if=pflash,file={otp_file},format=raw'))
@@ -467,7 +461,7 @@ class QEMUExecuter:
                 raise ValueError(f'No such bootloader file: {args.boot}')
             if args.embedded_flash is not None:
                 no_flash_header = args.no_flash_header
-                flash_file = self._qfm.create_eflash_image(xexec, args.boot,
+                flash_file = self._tfm.create_eflash_image(xexec, args.boot,
                                                            no_flash_header)
                 temp_files['flash'].add(flash_file)
                 qemu_args.extend(('-drive', f'if=mtd,id=eflash,'
@@ -525,9 +519,9 @@ class QEMUExecuter:
 
     def _build_test_list(self, alphasort: bool = True) -> list[str]:
         pathnames = set()
-        testdir = normpath(self._qfm.interpolate(self._config.get('testdir',
+        testdir = normpath(self._tfm.interpolate(self._config.get('testdir',
                                                                   curdir)))
-        self._qfm.define({'testdir': testdir})
+        self._tfm.define({'testdir': testdir})
         cfilters = self._args.filter or []
         pfilters = [f for f in cfilters if not f.startswith('!')]
         if not pfilters:
@@ -545,7 +539,7 @@ class QEMUExecuter:
             if sep in vname:
                 raise ValueError(f"Virtual test name cannot contain directory "
                                  f"specifier: '{vname}'")
-            rpath = normpath(self._qfm.interpolate(vpath))
+            rpath = normpath(self._tfm.interpolate(vpath))
             if not isfile(rpath):
                 raise ValueError(f"Invalid virtual test '{vname}': "
                                  f"missing file '{rpath}'")
@@ -603,7 +597,7 @@ class QEMUExecuter:
         incf_filters = self._build_config_list(config_entry)
         if incf_filters:
             for incf in incf_filters:
-                incf = normpath(self._qfm.interpolate(incf))
+                incf = normpath(self._tfm.interpolate(incf))
                 if not isfile(incf):
                     raise ValueError(f'Invalid test file: "{incf}"')
                 self._log.debug('Loading test list from %s', incf)
@@ -613,7 +607,7 @@ class QEMUExecuter:
                         testfile = re.sub('#.*$', '', testfile).strip()
                         if not testfile:
                             continue
-                        testfile = self._qfm.interpolate(testfile)
+                        testfile = self._tfm.interpolate(testfile)
                         if not testfile.startswith(sep):
                             testfile = joinpath(incf_dir, testfile)
                         yield normpath(testfile)
@@ -674,10 +668,10 @@ class QEMUExecuter:
             opts = kwargs.get('opts')
             if opts and not isinstance(opts, list):
                 raise ValueError('fInvalid QEMU options for {test_name}')
-            opts = self.flatten([opt.split(' ') for opt in opts])
-            opts = [self._qfm.interpolate(opt) for opt in opts]
-            opts = self.flatten([opt.split(' ') for opt in opts])
-            opts = [self._qfm.interpolate_dirs(opt, test_name) for opt in opts]
+            opts = flatten([opt.split(' ') for opt in opts])
+            opts = [self._tfm.interpolate(opt) for opt in opts]
+            opts = flatten([opt.split(' ') for opt in opts])
+            opts = [self._tfm.interpolate_dirs(opt, test_name) for opt in opts]
         timeout = float(kwargs.get('timeout', DEFAULT_TIMEOUT))
         tmfactor = float(kwargs.get('timeout_factor', DEFAULT_TIMEOUT_FACTOR))
         itimeout = int(timeout * tmfactor)
@@ -692,7 +686,7 @@ class QEMUExecuter:
                 raise ValueError(f'Unsupported expect: {texpect}') from exc
         return Namespace(**kwargs), opts or [], itimeout, texp
 
-    def _build_test_context(self, test_name: str) -> QEMUContext:
+    def _build_test_context(self, test_name: str) -> ExecContext:
         context = defaultdict(list)
         tests_cfg = self._config.get('tests', {})
         test_cfg = tests_cfg.get(test_name, {})
@@ -711,23 +705,22 @@ class QEMUExecuter:
                                          f'"{ctx_name}" for test {test_name}')
                     cmd = re.sub(r'[\n\r]', ' ', cmd.strip())
                     cmd = re.sub(r'\s{2,}', ' ', cmd)
-                    cmd = self._qfm.interpolate(cmd)
-                    cmd = self._qfm.interpolate_dirs(cmd, test_name)
+                    cmd = self._tfm.interpolate(cmd)
+                    cmd = self._tfm.interpolate_dirs(cmd, test_name)
                     context[ctx_name].append(cmd)
             env = test_cfg.get('env')
             if env:
                 if not isinstance(env, dict):
                     raise ValueError('Invalid context environment')
-                test_env = {k: self._qfm.interpolate(v) for k, v in env.items()}
-        return QEMUContext(test_name, self._qfm, self._qemu_cmd, dict(context),
-                           test_env)
+                test_env = {k: self._tfm.interpolate(v) for k, v in env.items()}
+        return ExecContext(test_name, self._qemu_cmd, dict(context), test_env)
 
     def _log_vcp_streams(self, exec_info: EasyDict[str, Any]) -> str:
         logfile = exec_info.get('logfile', None)
         if not logfile:
             return None
         assert exec_info.test_name
-        logfile = self._qfm.interpolate_dirs(logfile, exec_info.test_name)
+        logfile = self._tfm.interpolate_dirs(logfile, exec_info.test_name)
         vcplog = getLogger('pyot.vcp')
         logfh = FileHandler(logfile, 'w')
         # log everything

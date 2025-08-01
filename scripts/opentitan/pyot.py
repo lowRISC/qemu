@@ -36,9 +36,10 @@ sys.path.append(QEMU_PYPATH)
 
 from ot.pyot import DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_FACTOR
 from ot.pyot.executer import QEMUExecuter
-from ot.pyot.filemgr import QEMUFileManager
+from ot.pyot.filemgr import FileManager
 from ot.pyot.util import ResultFormatter
 from ot.util.log import ColorLogFormatter, RemoteLogService, configure_loggers
+from ot.util.misc import flatten
 
 DEFAULT_MACHINE = 'ot-earlgrey'
 DEFAULT_DEVICE = 'localhost:8000'
@@ -207,7 +208,7 @@ def main():
                                 debug=args.debug, info=args.info,
                                 warning=args.warn)[0]
 
-        qfm = QEMUFileManager(args.keep_tmp)
+        qfm = FileManager(args.keep_tmp)
         qfm.set_qemu_src_dir(qemu_dir)
 
         if args.log_udp != 0:
@@ -243,7 +244,7 @@ def main():
                         continue
                 optname = f'--{arg}' if len(arg) > 1 else f'-{arg}'
                 if isinstance(val, list):
-                    val = QEMUExecuter.flatten(v.split() for v in val)
+                    val = flatten(v.split() for v in val)
                     for valit in val:
                         jargs.append(f'{optname}={qfm.interpolate(valit)}')
                 else:

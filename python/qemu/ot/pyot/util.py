@@ -1,7 +1,7 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-"""Utilities for QEMU unit test sequencer.
+"""Utilities for OpenTitan unit test sequencer.
 
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
