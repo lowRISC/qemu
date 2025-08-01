@@ -1,7 +1,7 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-"""QEMU wrapper for QEMU unit test sequencer.
+"""Host executer wrapper for OpentTitan unit test sequencer.
 
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
@@ -27,8 +27,8 @@ from ot.util.misc import EasyDict
 from .util import ExecTime, LogMessageClassifier
 
 
-class QEMUWrapper:
-    """A small engine to run tests with QEMU.
+class Wrapper:
+    """A small engine to run OpenTitan tests.
 
        :param log_classifiers: a map of loglevel, list of RE-compatible strings
                                to match messages
@@ -41,16 +41,13 @@ class QEMUWrapper:
 
        The return code of the script is the position plus the GUEST_ERROR_OFFSET
        in the above RE group when matched, except first item which is always 0.
-       This offset is used to differentiate from QEMU own return codes. QEMU may
-       return negative values, which are the negative value of POSIX signals,
-       such as SIGABRT.
+       This offset is used to differentiate from host app own return codes.
+       Host app may return negative values, which are the negative value of
+       POSIX signals, such as SIGABRT.
     """
 
     ANSI_CRE = re.compile(rb'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
     """ANSI escape sequences."""
-
-    USELESS_ERR_CRE = re.compile(r'^\*{1,4}$')
-    """Useless error stuff from QEMU."""
 
     GUEST_ERROR_OFFSET = 40
     """Offset for guest errors. Should be larger than the host max signal value.
@@ -62,41 +59,46 @@ class QEMUWrapper:
     ASAN_LOGFILE_PREFIX = 'asan.log'
     """Address sanitizer log prefix."""
 
+    NAME = 'generic'
+    """Wrapper name."""
+
     def __init__(self, log_classifiers: dict[str, list[str]], debug: bool):
         self._log_classifiers = log_classifiers
         self._debug = debug
         self._log = logging.getLogger('pyot')
-        self._qlog = logging.getLogger('pyot.qemu')
+        self._wlog = logging.getLogger(f'pyot.{self.NAME.lower()}')
 
     def run(self, tdef: EasyDict[str, Any]) -> tuple[int, ExecTime, str]:
-        """Execute the specified QEMU command, aborting execution if QEMU does
-           not exit after the specified timeout.
+        """Execute the specified host app command, aborting execution if the
+           host app does not exit after the specified timeout.
 
            :param tdef: test definition and parameters
-                - command, a list of strings defining the QEMU command to
+                - command, a list of strings defining the host app command to
                            execute with all its options
-                - vcp_map: how to connect to QEMU virtual communication ports
+                - vcp_map: how to connect to host app virtual communication
+                           ports
                 - timeout, the allowed time for the command to execute,
                            specified as a real number
-                - expect_result, the expected outcome of QEMU (exit code). Some
-                           tests may expect that QEMU terminates with a non-zero
-                           exit code
+                - expect_result, the expected outcome of the host app, i.e. its
+                           exit code. Some tests may expect that host app
+                           terminates with a non-zero exit code
                 - context, an option ContextWorker instance, to execute
-                           concurrently with the QEMU process. Many tests
-                           expect to communicate with the QEMU process.
-                - trigger, a string to match on the QEMU virtual comm port
+                           concurrently with the host app process. Many tests
+                           expect to communicate with the host app process.
+                - trigger, a string to match on the host app virtual comm port
                            output to trigger the context execution. It may be
                            defined as a regular expression.
-                - validate, a string to match on the QEMU virtual comm port
+                - validate, a string to match on the host app virtual comm port
                            output to early exit. It may be defined as a regular
                            expression.
                 - start_delay, the delay to wait before starting the execution
-                           of the context once QEMU command has been started.
+                           of the context once the host app command has been
+                           started.
                 - asan, whether to redirect and post-process AddressSanitizer
                            output log
            :return: a 3-uple of exit code, execution time, and last guest error
         """
-        # stdout and stderr belongs to QEMU VM
+        # stdout and stderr belongs to host app
         # OT's UART0 is redirected to a TCP stream that can be accessed through
         # self._device. The VM pauses till the TCP socket is connected
         xre = re.compile(self.EXIT_ON)
@@ -130,16 +132,16 @@ class QEMUWrapper:
         vcp_ctxs: dict[int, list[str, socket, bytearray, logging.Logger]] = {}
         asan_file = None
         log_q = deque()
-        qemu_exec = f'{basename(tdef.command[0])}: '
+        host_app_exec = f'{basename(tdef.command[0])}: '
         classifier = LogMessageClassifier(classifiers=self._log_classifiers,
-                                          qemux=qemu_exec)
+                                          app_exec=host_app_exec)
         try:
             workdir = dirname(tdef.command[0])
-            log.debug('Executing QEMU as %s', ' '.join(tdef.command))
+            log.debug('Executing %s as %s', self.NAME, ' '.join(tdef.command))
             env = dict(environ)
             if tdef.asan:
                 # note cannot use a FileManager temp file here, as the full
-                # pathname is built by the ASAN tool once QEMU has started.
+                # pathname is built by the ASAN tool once host app has started.
                 # store this temporary file in the FileManager-managed
                 # work directory
                 asan_prefix = joinpath(workdir, self.ASAN_LOGFILE_PREFIX)
@@ -156,28 +158,30 @@ class QEMUWrapper:
                 pass
             else:
                 ret = proc.returncode
-                log.fatal('QEMU bailed out: %d for "%s"', ret, tdef.test_name)
+                log.fatal('%s bailed out: %d for "%s"',
+                          self.NAME, ret, tdef.test_name)
                 raise OSError()
-            log.debug('Execute QEMU for %.0f secs', tdef.timeout)
+            log.debug('Execute %s for %.0f secs', self.NAME, tdef.timeout)
             if asan_prefix:
                 asan_file = f'{asan_prefix}.{proc.pid}'
             # unfortunately, subprocess's stdout calls are blocking, so the
-            # only way to get near real-time output from QEMU is to use a
-            # dedicated thread that may block whenever no output is available
+            # only way to get near real-time output from the host app is to use
+            # a dedicated thread that may block whenever no output is available
             # from the VM. This thread reads and pushes back lines to a local
             # queue, which is popped and logged to the local logger on each
             # loop. Note that Popen's communicate() also relies on threads to
             # perform stdout/stderr read out.
-            Thread(target=self._qemu_logger, name='qemu_out_logger',
+            logname = self.NAME.lower()
+            Thread(target=self._log_worker, name=f'{logname}_out_logger',
                    args=(proc, log_q, True), daemon=True).start()
-            Thread(target=self._qemu_logger, name='qemu_err_logger',
+            Thread(target=self._log_worker, name=f'{logname}_err_logger',
                    args=(proc, log_q, False), daemon=True).start()
             poller = spoll()
             connect_map = vcp_map.copy()
             timeout = now() + tdef.start_delay
-            # ensure that QEMU starts and give some time for it to set up
+            # ensure that host app starts and give some time for it to set up
             # when multiple VCPs are set to 'wait', one VCP can be connected at
-            # a time, i.e. QEMU does not open all connections at once.
+            # a time, i.e. host app does not open all connections at once.
             vcp_lognames = []
             vcplogname = 'pyot.vcp'
             while connect_map:
@@ -186,7 +190,8 @@ class QEMUWrapper:
                                       for d, r in connect_map.items())
                     if proc.poll():
                         raise OSError(proc.returncode)
-                    raise TimeoutError(f'Cannot connect to QEMU VCPs: {minfo}')
+                    raise TimeoutError(f'Cannot connect to {self.NAME} '
+                                       f'VCPs: {minfo}')
                 connected = []
                 for vcpid, (host, port) in connect_map.items():
                     try:
@@ -206,8 +211,8 @@ class QEMUWrapper:
                     except ConnectionRefusedError:
                         continue
                     except OSError as exc:
-                        log.error('Cannot setup QEMU VCP connection %s: %s',
-                                  vcpid, exc)
+                        log.error('Cannot setup {%s} VCP connection %s: %s',
+                                  self.NAME, vcpid, exc)
                         print(format_exc(chain=False), file=sys.stderr)
                         raise
                 # removal from dictionary cannot be done while iterating it
@@ -250,8 +255,8 @@ class QEMUWrapper:
                             logfn = getattr(log, 'critical')
                         else:
                             logfn = getattr(log, 'warning')
-                        logfn('Abnormal QEMU termination: %d for "%s"',
-                              ret, tdef.test_name)
+                        logfn('Abnormal %s termination: %d for "%s"',
+                              self.NAME, ret, tdef.test_name)
                     break
                 for vfd, event in poller.poll(0.01):
                     if event in (POLLERR, POLLHUP):
@@ -316,7 +321,7 @@ class QEMUWrapper:
         except (OSError, ValueError) as exc:
             if ret is None:
                 ret = proc.returncode if proc.poll() is not None else 125
-                log.fatal('Unable to execute QEMU: %s', exc)
+                log.fatal('Unable to execute %s: %s', self.NAME, exc)
         finally:
             if xend is None:
                 xend = now()
@@ -331,18 +336,18 @@ class QEMUWrapper:
                     xend = now()
                 proc.terminate()
                 try:
-                    # leave 1 second for QEMU to cleanly complete...
+                    # leave 1 second for host app to cleanly complete...
                     proc.wait(1.0)
                 except TimeoutExpired:
                     # otherwise kill it
-                    log.error('Force-killing QEMU')
+                    log.error('Force-killing %s', self.NAME)
                     proc.kill()
                 if ret is None:
                     ret = proc.returncode
                 # retrieve the remaining log messages
-                stdlog = self._qlog.info if ret else self._qlog.debug
+                stdlog = self._wlog.info if ret else self._wlog.debug
                 for msg, logger in zip(proc.communicate(timeout=1.1),
-                                       (stdlog, self._qlog.error)):
+                                       (stdlog, self._wlog.error)):
                     for line in msg.split('\n'):
                         line = line.strip()
                         if line:
@@ -350,22 +355,24 @@ class QEMUWrapper:
             if asan_file:
                 self._post_process_asan(asan_file)
         xtime = ExecTime(xend-xstart) if xstart and xend else 0.0
-        qemu_cmd_lead = f'{basename(tdef.command[0])}: '
-        if last_error.startswith(qemu_cmd_lead):
-            last_error = last_error[len(qemu_cmd_lead):]
+        app_cmd_lead = f'{basename(tdef.command[0])}: '
+        if last_error.startswith(app_cmd_lead):
+            last_error = last_error[len(app_cmd_lead):]
         return abs(ret) or 0, xtime, last_error
 
     @classmethod
     def classify_log(cls, line: str, default: int = logging.ERROR,
-                     qemux: Optional[str] = None) -> int:
+                     app_exec: Optional[str] = None) -> int:
         """Classify log level of a line depending on its content.
 
            :param line: line to classify
            :param default: defaut log level in no classification is found
+           :param app_exec: host application basename
            :return: the logger log level to use
         """
-        if qemux and line.startswith(qemux):
-            # discard QEMU internal messages that cannot be disable from the VM
+        if app_exec and line.startswith(app_exec):
+            # discard host app internal messages that cannot be disabled from
+            # the VM
             return logging.NOTSET
         if (line.find('info: ') >= 0 or
             line.startswith('INFO ') or
@@ -395,25 +402,32 @@ class QEMUWrapper:
         for color, logname in enumerate(sorted(lognames)):
             clr_fmt.add_logger_colors(f'{vcplogname}.{logname}', color)
 
+    def _discard_log(self, err: bool, line: str):
+        # pylint: disable=unused-argument
+        return False
+
+    def _decrease_log(self, err: bool, line: str):
+        # pylint: disable=unused-argument
+        return False
+
     def _process_log_queue(self, log_q, classifier) -> Optional[str]:
         first_err = None
         while log_q:
             err, qline = log_q.popleft()
             if err:
-                if self.USELESS_ERR_CRE.match(qline):
+                if self._discard_log(err, qline):
                     continue
                 level = classifier.classify(qline, logging.ERROR)
-                if level == logging.INFO and \
-                   qline.find('QEMU waiting for connection') >= 0:
+                if level == logging.INFO and self._decrease_log(err, qline):
                     level = logging.DEBUG
                 if level >= logging.ERROR and not first_err:
                     first_err = qline
             else:
                 level = logging.INFO
-            self._qlog.log(level, qline)
+            self._wlog.log(level, qline)
         return first_err
 
-    def _qemu_logger(self, proc: Popen, queue: deque, err: bool):
+    def _log_worker(self, proc: Popen, queue: deque, err: bool):
         # worker thread, blocking on VM stdout/stderr
         stream = proc.stderr if err else proc.stdout
         while proc.poll() is None:
@@ -467,4 +481,4 @@ class QEMUWrapper:
                 alog.error(aline.rstrip())
             unlink(asan_file)
         except (OSError, ValueError) as exc:
-            self._qlog.error('Cannot process ASAN file: %s', exc)
+            self._wlog.error('Cannot process ASAN file: %s', exc)

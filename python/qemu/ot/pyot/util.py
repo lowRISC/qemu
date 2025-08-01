@@ -39,7 +39,7 @@ class ResultFormatter:
         self._results = []
 
     def load(self, csvpath: str) -> None:
-        """Load a CSV file (generated with QEMUExecuter) and parse it.
+        """Load a CSV file (generated with an Executer) and parse it.
 
            :param csvpath: the path to the CSV file.
         """
@@ -82,12 +82,12 @@ class LogMessageClassifier:
 
        :param classifiers: a map of loglevel, list of RE-compatible strings
                            to match messages
-       :param qemux: the QEMU executable name, to filter out useless messages
+       :param app_exec: the executable name, to filter out useless messages
     """
 
     def __init__(self, classifiers: Optional[dict[str, list[str]]] = None,
-                 qemux: Optional[str] = None):
-        self._qemux = qemux
+                 app_exec: Optional[str] = None):
+        self._app_exec = app_exec
         if classifiers is None:
             classifiers = {}
         self._regexes: dict[int, re.Pattern] = {}
@@ -120,7 +120,7 @@ class LogMessageClassifier:
            :param default: defaut log level in no classification is found
            :return: the logger log level to use
         """
-        if self._qemux and line.startswith(self._qemux):
+        if self._app_exec and line.startswith(self._app_exec):
             # discard QEMU internal messages that cannot be disable from the VM
             if line.find("QEMU waiting") > 0:
                 return logging.NOTSET

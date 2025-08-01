@@ -82,8 +82,8 @@ class ContextWorker:
                      errors='ignore', text=True)
         Thread(target=self._logger, args=(proc, True), daemon=True).start()
         Thread(target=self._logger, args=(proc, False), daemon=True).start()
-        qemu_exec = f'{basename(self._cmd[0])}: '
-        classifier = LogMessageClassifier(qemux=qemu_exec)
+        host_app_exec = f'{basename(self._cmd[0])}: '
+        classifier = LogMessageClassifier(app_exec=host_app_exec)
         while self._resume:
             while self._log_q:
                 err, qline = self._log_q.popleft()

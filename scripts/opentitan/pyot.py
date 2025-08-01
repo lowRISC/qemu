@@ -35,7 +35,7 @@ sys.path.append(QEMU_PYPATH)
 # pylint: disable=import-error
 
 from ot.pyot import DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_FACTOR
-from ot.pyot.executer import QEMUExecuter
+from ot.pyot.qemu.executer import QEMUExecuter
 from ot.pyot.filemgr import FileManager
 from ot.pyot.util import ResultFormatter
 from ot.util.log import ColorLogFormatter, RemoteLogService, configure_loggers
