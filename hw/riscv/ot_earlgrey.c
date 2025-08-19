@@ -537,6 +537,21 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 77),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 78),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 79),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 80),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 81),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 82),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 83),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 84),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 85),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 86),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 87),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 88),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 89),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 90),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 91),
             OT_EG_SOC_GPIO_ALERT(0, 6)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -553,6 +568,21 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 92),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 93),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 94),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 95),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 96),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 97),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 98),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 99),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 100),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 101),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 102),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 103),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 104),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 105),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 106),
             OT_EG_SOC_GPIO_ALERT(0, 7)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -569,6 +599,21 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 107),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 108),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 109),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 110),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(4, PLIC, 111),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 112),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 113),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 114),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 115),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(9, PLIC, 116),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(10, PLIC, 117),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(11, PLIC, 118),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(12, PLIC, 119),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(13, PLIC, 120),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 121),
             OT_EG_SOC_GPIO_ALERT(0, 8)
         ),
         .link = IBEXDEVICELINKDEFS(
