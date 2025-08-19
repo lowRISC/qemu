@@ -500,7 +500,7 @@ def main():
         log = configure_loggers(args.verbose, 'cfggen', 'otp')[0]
 
         if _HJSON_ERROR:
-            argparser.error('Missing HJSON module: {_HJSON_ERROR}')
+            argparser.error(f'Missing HJSON module: {_HJSON_ERROR}')
 
         cfg = OtConfiguration()
 
