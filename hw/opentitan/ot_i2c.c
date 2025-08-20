@@ -680,6 +680,8 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_ENABLE:
     case R_CTRL:
     case R_FIFO_CTRL:
+    case R_HOST_FIFO_CONFIG:
+    case R_TARGET_FIFO_CONFIG:
     case R_TARGET_ID:
     case R_TIMEOUT_CTRL:
     case R_HOST_TIMEOUT_CTRL:
@@ -757,8 +759,6 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
     case R_TIMING4:
         val32 = s->regs[reg];
         break;
-    case R_HOST_FIFO_CONFIG:
-    case R_TARGET_FIFO_CONFIG:
     case R_TARGET_TIMEOUT_CTRL:
     case R_TARGET_NACK_COUNT:
     case R_TARGET_ACK_CTRL:
@@ -995,6 +995,18 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
             ot_i2c_target_reset_rx_fifo(s);
         }
         break;
+    case R_HOST_FIFO_CONFIG:
+        ARRAY_FIELD_DP32(s->regs, HOST_FIFO_CONFIG, RX_THRESH,
+                         FIELD_EX32(val32, HOST_FIFO_CONFIG, RX_THRESH));
+        ARRAY_FIELD_DP32(s->regs, HOST_FIFO_CONFIG, FMT_THRESH,
+                         FIELD_EX32(val32, HOST_FIFO_CONFIG, FMT_THRESH));
+        break;
+    case R_TARGET_FIFO_CONFIG:
+        ARRAY_FIELD_DP32(s->regs, TARGET_FIFO_CONFIG, TX_THRESH,
+                         FIELD_EX32(val32, TARGET_FIFO_CONFIG, TX_THRESH));
+        ARRAY_FIELD_DP32(s->regs, TARGET_FIFO_CONFIG, ACQ_THRESH,
+                         FIELD_EX32(val32, TARGET_FIFO_CONFIG, ACQ_THRESH));
+        break;
     case R_OVRD:
         qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
                       __func__, s->ot_id, REG_NAME(reg));
@@ -1026,8 +1038,6 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         s->check_timings = true;
         break;
-    case R_HOST_FIFO_CONFIG:
-    case R_TARGET_FIFO_CONFIG:
     case R_TARGET_NACK_COUNT:
     case R_TARGET_ACK_CTRL:
     case R_ACQ_FIFO_NEXT_DATA:
