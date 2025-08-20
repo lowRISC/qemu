@@ -68,17 +68,17 @@
 typedef enum {
     FMT_THRESHOLD,
     RX_THRESHOLD,
-    FMT_OVERFLOW,
+    ACQ_THRESHOLD,
     RX_OVERFLOW,
-    NAK,
+    CONTROLLER_HALT,
     SCL_INTERFERENCE,
     SDA_INTERFERENCE,
     STRETCH_TIMEOUT,
     SDA_UNSTABLE,
     CMD_COMPLETE,
     TX_STRETCH,
-    TX_OVERFLOW,
-    ACQ_FULL,
+    TX_THRESHOLD,
+    ACQ_STRETCH,
     UNEXP_STOP,
     HOST_TIMEOUT,
     OT_I2C_IRQ_NUM
@@ -88,17 +88,17 @@ typedef enum {
 REG32(INTR_STATE, 0x00u)
     SHARED_FIELD(INTR_FMT_THRESHOLD, FMT_THRESHOLD, 1u)
     SHARED_FIELD(INTR_RX_THRESHOLD, RX_THRESHOLD, 1u)
-    SHARED_FIELD(INTR_FMT_OVERFLOW, FMT_OVERFLOW, 1u)
+    SHARED_FIELD(INTR_ACQ_THRESHOLD, ACQ_THRESHOLD, 1u)
     SHARED_FIELD(INTR_RX_OVERFLOW, RX_OVERFLOW, 1u)
-    SHARED_FIELD(INTR_NAK, NAK, 1u)
+    SHARED_FIELD(INTR_CONTROLLER_HALT, CONTROLLER_HALT, 1u)
     SHARED_FIELD(INTR_SCL_INTERFERENCE, SCL_INTERFERENCE, 1u)
     SHARED_FIELD(INTR_SDA_INTERFERENCE, SDA_INTERFERENCE, 1u)
     SHARED_FIELD(INTR_STRETCH_TIMEOUT, STRETCH_TIMEOUT, 1u)
     SHARED_FIELD(INTR_SDA_UNSTABLE, SDA_UNSTABLE, 1u)
     SHARED_FIELD(INTR_CMD_COMPLETE, CMD_COMPLETE, 1u)
     SHARED_FIELD(INTR_TX_STRETCH, TX_STRETCH, 1u)
-    SHARED_FIELD(INTR_TX_OVERFLOW, TX_OVERFLOW, 1u)
-    SHARED_FIELD(INTR_ACQ_FULL, ACQ_FULL, 1u)
+    SHARED_FIELD(INTR_TX_THRESHOLD, TX_THRESHOLD, 1u)
+    SHARED_FIELD(INTR_ACQ_STRETCH, ACQ_STRETCH, 1u)
     SHARED_FIELD(INTR_UNEXP_STOP, UNEXP_STOP, 1u)
     SHARED_FIELD(INTR_HOST_TIMEOUT, HOST_TIMEOUT, 1u)
 REG32(INTR_ENABLE, 0x04u)
@@ -109,6 +109,10 @@ REG32(CTRL, 0x10u)
     FIELD(CTRL, ENABLEHOST, 0u, 1u)
     FIELD(CTRL, ENABLETARGET, 1u, 1u)
     FIELD(CTRL, LLPBK, 2u, 1u)
+    FIELD(CTRL, NACK_ADDR_AFTER_TIMEOUT, 3u, 1u)
+    FIELD(CTRL, ACK_CTRL_EN, 4u, 1u)
+    FIELD(CTRL, MULTI_CONTROLLER_MONITOR_EN, 5u, 1u)
+    FIELD(CTRL, TX_STRETCH_CTRL_EN, 6u, 1u)
 REG32(STATUS, 0x14u)
     FIELD(STATUS, FMTFULL, 0u, 1u)
     FIELD(STATUS, RXFULL, 1u, 1u)
@@ -120,6 +124,7 @@ REG32(STATUS, 0x14u)
     FIELD(STATUS, ACQFULL, 7u, 1u)
     FIELD(STATUS, TXEMPTY, 8u, 1u)
     FIELD(STATUS, ACQEMPTY, 9u, 1u)
+    FIELD(STATUS, ACK_CTRL_STRETCH, 10u, 1u)
 REG32(RDATA, 0x18u)
     FIELD(RDATA, RDATA, 0u, 8u)
 REG32(FDATA, 0x1cu)
@@ -132,67 +137,96 @@ REG32(FDATA, 0x1cu)
 REG32(FIFO_CTRL, 0x20u)
     FIELD(FIFO_CTRL, RXRST, 0u, 1u)
     FIELD(FIFO_CTRL, FMTRST, 1u, 1u)
-    FIELD(FIFO_CTRL, RXILVL, 2u, 3u)
-    FIELD(FIFO_CTRL, FMTILVL, 5u, 2u)
     FIELD(FIFO_CTRL, ACQRST, 7u, 1u)
     FIELD(FIFO_CTRL, TXRST, 8u, 1u)
-REG32(FIFO_STATUS, 0x24u)
-    FIELD(FIFO_STATUS, FMTLVL, 0u, 7u)
-    FIELD(FIFO_STATUS, TXLVL, 8u, 7u)
-    FIELD(FIFO_STATUS, RXLVL, 16u, 7u)
-    FIELD(FIFO_STATUS, ACQLVL, 24u, 7u)
-REG32(OVRD, 0x28u)
+REG32(HOST_FIFO_CONFIG, 0x24u)
+    FIELD(HOST_FIFO_CONFIG, RX_THRESH, 0u, 12u)
+    FIELD(HOST_FIFO_CONFIG, FMT_THRESH, 16u, 12u)
+REG32(TARGET_FIFO_CONFIG, 0x28u)
+    FIELD(TARGET_FIFO_CONFIG, TX_THRESH, 0u, 12u)
+    FIELD(TARGET_FIFO_CONFIG, ACQ_THRESH, 16u, 12u)
+REG32(HOST_FIFO_STATUS, 0x2cu)
+    FIELD(HOST_FIFO_STATUS, FMTLVL, 0u, 12u)
+    FIELD(HOST_FIFO_STATUS, RXLVL, 16u, 12u)
+REG32(TARGET_FIFO_STATUS, 0x30u)
+    FIELD(TARGET_FIFO_STATUS, TXLVL, 0u, 12u)
+    FIELD(TARGET_FIFO_STATUS, ACQLVL, 16u, 12u)
+REG32(OVRD, 0x34u)
     FIELD(OVRD, TXOVRDEN, 0u, 1u)
     FIELD(OVRD, SCLVAL, 1u, 1u)
     FIELD(OVRD, SDAVAL, 2u, 1u)
-REG32(VAL, 0x2cu)
+REG32(VAL, 0x38u)
     FIELD(VAL, SCL_RX, 0u, 16u)
     FIELD(VAL, SDA_RX, 16u, 16u)
-REG32(TIMING0, 0x30u)
-    FIELD(TIMING0, THIGH, 0u, 16u)
-    FIELD(TIMING0, TLOW, 16u, 16u)
-REG32(TIMING1, 0x34u)
-    FIELD(TIMING1, T_R, 0u, 16u)
-    FIELD(TIMING1, T_F, 16u, 16u)
-REG32(TIMING2, 0x38u)
-    FIELD(TIMING2, TSU_STA, 0u, 16u)
-    FIELD(TIMING2, THD_STA, 16u, 16u)
-REG32(TIMING3, 0x3cu)
-    FIELD(TIMING3, TSU_DAT, 0u, 16u)
-    FIELD(TIMING3, THD_DAT, 16u, 16u)
-REG32(TIMING4, 0x40u)
-    FIELD(TIMING4, TSU_STO, 0u, 16u)
-    FIELD(TIMING4, T_BUF, 16u, 16u)
-REG32(TIMEOUT_CTRL, 0x44u)
-    FIELD(TIMEOUT_CTRL, VAL, 0u, 31u)
+REG32(TIMING0, 0x3cu)
+    FIELD(TIMING0, THIGH, 0u, 13u)
+    FIELD(TIMING0, TLOW, 16u, 13u)
+REG32(TIMING1, 0x40u)
+    FIELD(TIMING1, T_R, 0u, 10u)
+    FIELD(TIMING1, T_F, 16u, 9u)
+REG32(TIMING2, 0x44u)
+    FIELD(TIMING2, TSU_STA, 0u, 13u)
+    FIELD(TIMING2, THD_STA, 16u, 13u)
+REG32(TIMING3, 0x48u)
+    FIELD(TIMING3, TSU_DAT, 0u, 9u)
+    FIELD(TIMING3, THD_DAT, 16u, 13u)
+REG32(TIMING4, 0x4cu)
+    FIELD(TIMING4, TSU_STO, 0u, 13u)
+    FIELD(TIMING4, T_BUF, 16u, 13u)
+REG32(TIMEOUT_CTRL, 0x50u)
+    FIELD(TIMEOUT_CTRL, VAL, 0u, 30u)
+    FIELD(TIMEOUT_CTRL, MODE, 30u, 1u)
     FIELD(TIMEOUT_CTRL, EN, 31u, 1u)
-REG32(TARGET_ID, 0x48u)
+REG32(TARGET_ID, 0x54u)
     FIELD(TARGET_ID, ADDRESS0, 0u, 7u)
     FIELD(TARGET_ID, MASK0, 7u, 7u)
     FIELD(TARGET_ID, ADDRESS1, 14u, 7u)
     FIELD(TARGET_ID, MASK1, 21u, 7u)
-REG32(ACQDATA, 0x4cu)
+REG32(ACQDATA, 0x58u)
     FIELD(ACQDATA, ABYTE, 0u, 8u)
-    FIELD(ACQDATA, SIGNAL, 8u, 2u)
-REG32(TXDATA, 0x50u)
+    FIELD(ACQDATA, SIGNAL, 8u, 3u)
+REG32(TXDATA, 0x5cu)
     FIELD(TXDATA, TXDATA, 0u, 8u)
-REG32(HOST_TIMEOUT_CTRL, 0x54u)
-    FIELD(HOST_TIMEOUT_CTRL, HOST_TIMEOUT_CTRL, 0u, 32u)
+REG32(HOST_TIMEOUT_CTRL, 0x60u)
+    FIELD(HOST_TIMEOUT_CTRL, HOST_TIMEOUT_CTRL, 0u, 20u)
+REG32(TARGET_TIMEOUT_CTRL, 0x64u)
+    FIELD(TARGET_TIMEOUT_CTRL, VAL, 0u, 31u)
+    FIELD(TARGET_TIMEOUT_CTRL, EN, 31u, 1u)
+REG32(TARGET_NACK_COUNT, 0x68u)
+    FIELD(TARGET_NACK_COUNT, TARGET_NACK_COUNT, 0u, 8u)
+REG32(TARGET_ACK_CTRL, 0x6cu)
+    FIELD(TARGET_ACK_CTRL, NBYTES, 0u, 9u)
+    FIELD(TARGET_ACK_CTRL, NACK, 31u, 1u)
+REG32(ACQ_FIFO_NEXT_DATA, 0x70u)
+    FIELD(ACQ_FIFO_NEXT_DATA, ACQ_FIFO_NEXT_DATA, 0u, 8u)
+REG32(HOST_NACK_HANDLER_TIMEOUT, 0x74u)
+    FIELD(HOST_NACK_HANDLER_TIMEOUT, VAL, 0u, 31u)
+    FIELD(HOST_NACK_HANDLER_TIMEOUT, EN, 31u, 1u)
+REG32(CONTROLLER_EVENTS, 0x78u)
+    FIELD(CONTROLLER_EVENTS, NACK, 0u, 1u)
+    FIELD(CONTROLLER_EVENTS, UNHANDLED_NACK_TIMEOUT, 1u, 1u)
+    FIELD(CONTROLLER_EVENTS, BUS_TIMEOUT, 2u, 1u)
+    FIELD(CONTROLLER_EVENTS, ARBITRATION_LOST, 3u, 1u)
+REG32(TARGET_EVENTS, 0x7cu)
+    FIELD(TARGET_EVENTS, TX_PENDING, 0u, 1u)
+    FIELD(TARGET_EVENTS, BUS_TIMEOUT, 1u, 1u)
+    FIELD(TARGET_EVENTS, ARBITRATION_LOST, 2u, 1u)
 /* clang-format on */
 
 #define INTR_RW1C_MASK \
-    (INTR_FMT_THRESHOLD_MASK | INTR_RX_THRESHOLD_MASK | \
-     INTR_FMT_OVERFLOW_MASK | INTR_RX_OVERFLOW_MASK | INTR_NAK_MASK | \
-     INTR_SCL_INTERFERENCE_MASK | INTR_SDA_INTERFERENCE_MASK | \
-     INTR_STRETCH_TIMEOUT_MASK | INTR_SDA_UNSTABLE_MASK | \
-     INTR_CMD_COMPLETE_MASK | INTR_TX_OVERFLOW_MASK | INTR_UNEXP_STOP_MASK | \
+    (INTR_RX_OVERFLOW_MASK | INTR_SCL_INTERFERENCE_MASK | \
+     INTR_SDA_INTERFERENCE_MASK | INTR_STRETCH_TIMEOUT_MASK | \
+     INTR_SDA_UNSTABLE_MASK | INTR_CMD_COMPLETE_MASK | INTR_UNEXP_STOP_MASK | \
      INTR_HOST_TIMEOUT_MASK)
 
-#define INTR_MASK (INTR_RW1C_MASK | INTR_ACQ_FULL_MASK | INTR_TX_STRETCH_MASK)
+#define INTR_MASK \
+    (INTR_RW1C_MASK | INTR_FMT_THRESHOLD_MASK | INTR_RX_THRESHOLD_MASK | \
+     INTR_ACQ_THRESHOLD_MASK | INTR_CONTROLLER_HALT_MASK | \
+     INTR_TX_STRETCH_MASK | INTR_TX_THRESHOLD_MASK | INTR_ACQ_STRETCH_MASK)
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
-#define R_LAST_REG (R_HOST_TIMEOUT_CTRL)
+#define R_LAST_REG (R_TARGET_EVENTS)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
@@ -210,7 +244,10 @@ static const char *REG_NAMES[REGS_COUNT] = {
     REG_NAME_ENTRY(RDATA),
     REG_NAME_ENTRY(FDATA),
     REG_NAME_ENTRY(FIFO_CTRL),
-    REG_NAME_ENTRY(FIFO_STATUS),
+    REG_NAME_ENTRY(HOST_FIFO_CONFIG),
+    REG_NAME_ENTRY(TARGET_FIFO_CONFIG),
+    REG_NAME_ENTRY(HOST_FIFO_STATUS),
+    REG_NAME_ENTRY(TARGET_FIFO_STATUS),
     REG_NAME_ENTRY(OVRD),
     REG_NAME_ENTRY(VAL),
     REG_NAME_ENTRY(TIMING0),
@@ -218,11 +255,18 @@ static const char *REG_NAMES[REGS_COUNT] = {
     REG_NAME_ENTRY(TIMING2),
     REG_NAME_ENTRY(TIMING3),
     REG_NAME_ENTRY(TIMING4),
-    REG_NAME_ENTRY(TARGET_ID),
     REG_NAME_ENTRY(TIMEOUT_CTRL),
+    REG_NAME_ENTRY(TARGET_ID),
     REG_NAME_ENTRY(ACQDATA),
     REG_NAME_ENTRY(TXDATA),
     REG_NAME_ENTRY(HOST_TIMEOUT_CTRL),
+    REG_NAME_ENTRY(TARGET_TIMEOUT_CTRL),
+    REG_NAME_ENTRY(TARGET_NACK_COUNT),
+    REG_NAME_ENTRY(TARGET_ACK_CTRL),
+    REG_NAME_ENTRY(ACQ_FIFO_NEXT_DATA),
+    REG_NAME_ENTRY(HOST_NACK_HANDLER_TIMEOUT),
+    REG_NAME_ENTRY(CONTROLLER_EVENTS),
+    REG_NAME_ENTRY(TARGET_EVENTS),
     /* clang-format on */
 };
 #undef REG_NAME_ENTRY
@@ -232,17 +276,17 @@ static const char *IRQ_NAMES[OT_I2C_IRQ_NUM] = {
     /* clang-format off */
     IRQ_NAME_ENTRY(FMT_THRESHOLD),
     IRQ_NAME_ENTRY(RX_THRESHOLD),
-    IRQ_NAME_ENTRY(FMT_OVERFLOW),
+    IRQ_NAME_ENTRY(ACQ_THRESHOLD),
     IRQ_NAME_ENTRY(RX_OVERFLOW),
-    IRQ_NAME_ENTRY(NAK),
+    IRQ_NAME_ENTRY(CONTROLLER_HALT),
     IRQ_NAME_ENTRY(SCL_INTERFERENCE),
     IRQ_NAME_ENTRY(SDA_INTERFERENCE),
     IRQ_NAME_ENTRY(STRETCH_TIMEOUT),
     IRQ_NAME_ENTRY(SDA_UNSTABLE),
     IRQ_NAME_ENTRY(CMD_COMPLETE),
     IRQ_NAME_ENTRY(TX_STRETCH),
-    IRQ_NAME_ENTRY(TX_OVERFLOW),
-    IRQ_NAME_ENTRY(ACQ_FULL),
+    IRQ_NAME_ENTRY(TX_THRESHOLD),
+    IRQ_NAME_ENTRY(ACQ_STRETCH),
     IRQ_NAME_ENTRY(UNEXP_STOP),
     IRQ_NAME_ENTRY(HOST_TIMEOUT),
     /* clang-format on */
@@ -255,7 +299,10 @@ typedef enum {
     SIGNAL_NONE,
     SIGNAL_START,
     SIGNAL_STOP,
-    SIGNAL_RESTART
+    SIGNAL_RESTART,
+    SIGNAL_NACK,
+    SIGNAL_NACK_START,
+    SIGNAL_NACK_STOP
 } OtI2CSignal;
 
 struct OtI2CState {
@@ -280,7 +327,7 @@ struct OtI2CState {
     /*
      * ACQ: Received bytes + signals for target mode.
      * [7:0] = Data byte
-     * [9:8] = Signal (OtI2CSignal)
+     * [10:8] = Signal (OtI2CSignal)
      */
     OtFifo32 target_rx_fifo;
 
@@ -357,28 +404,29 @@ static bool ot_i2c_target_enabled(const OtI2CState *s)
     return (bool)ARRAY_FIELD_EX32(s->regs, CTRL, ENABLETARGET);
 }
 
-static uint32_t ot_i2c_get_tx_threshold(const OtI2CState *s)
+static uint32_t ot_i2c_host_get_tx_threshold(const OtI2CState *s)
 {
-    const uint32_t fmt_level[] = { 1u, 4u, 8u, 16u };
-    uint32_t fmt_ilvl;
-
-    fmt_ilvl = ARRAY_FIELD_EX32(s->regs, FIFO_CTRL, FMTILVL);
-    return fmt_level[fmt_ilvl > ARRAY_SIZE(fmt_level) ? 1u : fmt_ilvl];
+    return ARRAY_FIELD_EX32(s->regs, HOST_FIFO_CONFIG, FMT_THRESH);
 }
 
-static uint32_t ot_i2c_get_rx_threshold(const OtI2CState *s)
+static uint32_t ot_i2c_host_get_rx_threshold(const OtI2CState *s)
 {
-    const uint32_t rx_level[] = { 1u, 4u, 8u, 16u, 30u };
-    uint32_t rx_ilvl;
+    return ARRAY_FIELD_EX32(s->regs, HOST_FIFO_CONFIG, RX_THRESH);
+}
 
-    rx_ilvl = ARRAY_FIELD_EX32(s->regs, FIFO_CTRL, RXILVL);
-    return rx_level[rx_ilvl > ARRAY_SIZE(rx_level) ? 1u : rx_ilvl];
+static uint32_t ot_i2c_target_get_rx_threshold(const OtI2CState *s)
+{
+    return ARRAY_FIELD_EX32(s->regs, TARGET_FIFO_CONFIG, ACQ_THRESH);
+}
+
+static uint32_t ot_i2c_target_get_tx_threshold(const OtI2CState *s)
+{
+    return ARRAY_FIELD_EX32(s->regs, TARGET_FIFO_CONFIG, TX_THRESH);
 }
 
 static void ot_i2c_host_reset_tx_fifo(OtI2CState *s)
 {
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_FMT_THRESHOLD, 0);
-    SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_FMT_OVERFLOW, 0);
     fifo8_reset(&s->host_tx_fifo);
     s->host_tx_threshold = 0;
 }
@@ -392,13 +440,13 @@ static void ot_i2c_host_reset_rx_fifo(OtI2CState *s)
 
 static void ot_i2c_target_reset_tx_fifo(OtI2CState *s)
 {
-    SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_TX_OVERFLOW, 0);
+    SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_TX_THRESHOLD, 0);
     fifo8_reset(&s->target_tx_fifo);
 }
 
 static void ot_i2c_target_reset_rx_fifo(OtI2CState *s)
 {
-    SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_ACQ_FULL, 0);
+    SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_ACQ_THRESHOLD, 0);
     ot_fifo32_reset(&s->target_rx_fifo);
     s->target_rx_nack = false;
 }
@@ -423,8 +471,9 @@ static void ot_i2c_host_send(OtI2CState *s)
     /* Send all the data in the TX FIFO to the target. */
     while (!fifo8_is_empty(&s->host_tx_fifo)) {
         if (i2c_send(s->bus, fifo8_pop(&s->host_tx_fifo))) {
-            /* Error while sending byte, raise "no ACK" interrupt. */
-            ot_i2c_irq_set_state(s, NAK, true);
+            /* Error while sending byte, raise controller halt interrupt. */
+            ARRAY_FIELD_DP32(s->regs, CONTROLLER_EVENTS, NACK, 1);
+            ot_i2c_irq_set_state(s, CONTROLLER_HALT, true);
             break;
         }
     }
@@ -463,12 +512,15 @@ static void ot_i2c_target_write_tx_fifo(OtI2CState *s, uint8_t val)
     if (fifo8_is_full(&s->target_tx_fifo)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Target TX FIFO overflow\n",
                       __func__, s->ot_id);
-        ot_i2c_irq_set_state(s, TX_OVERFLOW, true);
-        return;
+    } else {
+        /* Add this entry to the FIFO. */
+        fifo8_push(&s->target_tx_fifo, val);
     }
 
-    /* Add this entry to the FIFO. */
-    fifo8_push(&s->target_tx_fifo, val);
+    ot_i2c_irq_set_state(s, TX_THRESHOLD,
+                         fifo8_num_used(&s->target_tx_fifo) >
+                             ot_i2c_target_get_tx_threshold(s));
+    return;
 }
 
 static bool ot_i2c_check_timings(OtI2CState *s)
@@ -677,20 +729,24 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_ACQDATA:
         val32 = (uint32_t)ot_i2c_target_read_rx_fifo(s);
-        /* Deassert level interrupt state if FIFO is not full. */
-        if (!ot_fifo32_is_full(&s->target_rx_fifo)) {
-            ot_i2c_irq_set_state(s, ACQ_FULL, false);
+        /* Deassert level interrupt state if FIFO is no longer above the
+         * threshold. */
+        if (ot_fifo32_num_used(&s->target_rx_fifo) <=
+            ot_i2c_target_get_rx_threshold(s)) {
+            ot_i2c_irq_set_state(s, ACQ_THRESHOLD, false);
         }
         break;
-    case R_FIFO_STATUS:
-        val32 = FIELD_DP32(val32, FIFO_STATUS, FMTLVL,
-                           fifo8_num_used(&s->host_tx_fifo) & 0x7fu);
-        val32 = FIELD_DP32(val32, FIFO_STATUS, RXLVL,
-                           fifo8_num_used(&s->host_rx_fifo) & 0x7fu);
-        val32 = FIELD_DP32(val32, FIFO_STATUS, ACQLVL,
-                           ot_fifo32_num_used(&s->target_rx_fifo) & 0x7fu);
-        val32 = FIELD_DP32(val32, FIFO_STATUS, TXLVL,
-                           fifo8_num_used(&s->target_tx_fifo) & 0x7fu);
+    case R_HOST_FIFO_STATUS:
+        val32 = FIELD_DP32(val32, HOST_FIFO_STATUS, FMTLVL,
+                           fifo8_num_used(&s->host_tx_fifo));
+        val32 = FIELD_DP32(val32, HOST_FIFO_STATUS, RXLVL,
+                           fifo8_num_used(&s->host_rx_fifo));
+        break;
+    case R_TARGET_FIFO_STATUS:
+        val32 = FIELD_DP32(val32, TARGET_FIFO_STATUS, TXLVL,
+                           fifo8_num_used(&s->target_tx_fifo));
+        val32 = FIELD_DP32(val32, TARGET_FIFO_STATUS, ACQLVL,
+                           ot_fifo32_num_used(&s->target_rx_fifo));
         break;
     case R_OVRD:
     case R_VAL:
@@ -701,7 +757,20 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
     case R_TIMING4:
         val32 = s->regs[reg];
         break;
+    case R_HOST_FIFO_CONFIG:
+    case R_TARGET_FIFO_CONFIG:
+    case R_TARGET_TIMEOUT_CTRL:
+    case R_TARGET_NACK_COUNT:
+    case R_TARGET_ACK_CTRL:
+    case R_ACQ_FIFO_NEXT_DATA:
+    case R_HOST_NACK_HANDLER_TIMEOUT:
+    case R_CONTROLLER_EVENTS:
+    case R_TARGET_EVENTS:
+        qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
+                      __func__, s->ot_id, REG_NAME(reg));
+        break;
     case R_INTR_TEST:
+    case R_ALERT_TEST:
     case R_FDATA:
     case R_TXDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -741,7 +810,7 @@ static unsigned ot_i2c_host_recv_fill_fifo(OtI2CState *s, unsigned chunk)
     }
 
     /* Check if rx_threshold interrupt should be asserted. */
-    if (fifo8_num_used(&s->host_rx_fifo) > ot_i2c_get_rx_threshold(s)) {
+    if (fifo8_num_used(&s->host_rx_fifo) > ot_i2c_host_get_rx_threshold(s)) {
         ot_i2c_irq_set_state(s, RX_THRESHOLD, true);
     }
 
@@ -802,7 +871,6 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
             if (fifo8_is_full(&s->host_tx_fifo)) {
                 qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: TX FIFO overflow\n",
                               __func__, s->ot_id);
-                ot_i2c_irq_set_state(s, FMT_OVERFLOW, true);
                 return;
             }
 
@@ -810,8 +878,10 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
             fifo8_push(&s->host_tx_fifo, fbyte);
 
             /* Check if threshold has been reached. */
-            s->host_tx_threshold = ot_i2c_get_tx_threshold(s);
-            if (fifo8_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
+            s->host_tx_threshold = ot_i2c_host_get_tx_threshold(s);
+            if (fifo8_num_used(&s->host_tx_fifo) > s->host_tx_threshold) {
+                ot_i2c_irq_set_state(s, FMT_THRESHOLD, true);
+            } else {
                 /* Reset the cached threshold level. */
                 s->host_tx_threshold = 0;
             }
@@ -912,14 +982,6 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_i2c_target_write_tx_fifo(s, FIELD_EX8(val32, TXDATA, TXDATA));
         break;
     case R_FIFO_CTRL:
-        /* RX FIFO depth above this value raises rx_threshold interrupt. */
-        ARRAY_FIELD_DP32(s->regs, FIFO_CTRL, RXILVL,
-                         FIELD_EX32(val32, FIFO_CTRL, RXILVL));
-
-        /* FMT FIFO depth below this value raises fmt_threshold interrupt. */
-        ARRAY_FIELD_DP32(s->regs, FIFO_CTRL, FMTILVL,
-                         FIELD_EX32(val32, FIFO_CTRL, FMTILVL));
-
         if (FIELD_EX32(val32, FIFO_CTRL, RXRST)) {
             ot_i2c_host_reset_rx_fifo(s);
         }
@@ -964,9 +1026,21 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         s->check_timings = true;
         break;
+    case R_HOST_FIFO_CONFIG:
+    case R_TARGET_FIFO_CONFIG:
+    case R_TARGET_NACK_COUNT:
+    case R_TARGET_ACK_CTRL:
+    case R_ACQ_FIFO_NEXT_DATA:
+    case R_HOST_NACK_HANDLER_TIMEOUT:
+    case R_CONTROLLER_EVENTS:
+    case R_TARGET_EVENTS:
+        qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
+                      __func__, s->ot_id, REG_NAME(reg));
+        break;
     case R_STATUS:
     case R_RDATA:
-    case R_FIFO_STATUS:
+    case R_HOST_FIFO_STATUS:
+    case R_TARGET_FIFO_STATUS:
     case R_VAL:
     case R_ACQDATA:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -998,9 +1072,10 @@ static void ot_i2c_target_set_acqdata(OtI2CState *s, uint32_t data,
     /* Add this entry to the target receive FIFO. */
     ot_fifo32_push(&s->target_rx_fifo, val32);
 
-    /* See if this entry filled the queue. */
-    if (ot_fifo32_is_full(&s->target_rx_fifo)) {
-        ot_i2c_irq_set_state(s, ACQ_FULL, true);
+    /* See if adding this entry exceeded the threshold. */
+    if (ot_fifo32_num_used(&s->target_rx_fifo) >
+        ot_i2c_target_get_rx_threshold(s)) {
+        ot_i2c_irq_set_state(s, ACQ_THRESHOLD, true);
     }
 
     trace_ot_i2c_target_set_acqdata(s->ot_id,
