@@ -189,6 +189,7 @@ typedef struct {
 typedef struct {
     char *path;
     bool reset;
+    char *ot_id;
 } OtRstMgrResetDesc;
 
 typedef struct {
@@ -300,7 +301,6 @@ static void ot_rstmgr_reset_bus(void *opaque)
 
 static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
 {
-    OtRstMgrState *s = OT_RSTMGR(dev);
     OtRstMgrResetDesc *desc = opaque;
 
     int match =
@@ -311,7 +311,7 @@ static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
         return 0;
     }
 
-    trace_ot_rstmgr_sw_rst(s->ot_id, desc->path, desc->reset);
+    trace_ot_rstmgr_sw_rst(desc->ot_id, desc->path, desc->reset);
 
     if (desc->reset) {
         resettable_assert_reset(OBJECT(dev), RESET_TYPE_COLD);
@@ -341,6 +341,7 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
 
     desc.path = g_strdup_printf("%s[%d]", rst->typename, rst->idx);
     desc.reset = !s->regs[R_SW_RST_CTRL_N_0 + devix];
+    desc.ot_id = s->ot_id;
 
     trace_ot_rstmgr_sw_reset(s->ot_id, desc.path);
 
