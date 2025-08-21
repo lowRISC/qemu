@@ -999,9 +999,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41110000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 165),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 166),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 167),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 166),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 167),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 168),
             OT_EG_SOC_GPIO_ALERT(0, 44)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -1039,7 +1039,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41130000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 171),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 172),
             OT_EG_SOC_GPIO_ALERT(0, 47),
             OT_EG_SOC_GPIO_ALERT(1, 48)
         ),
