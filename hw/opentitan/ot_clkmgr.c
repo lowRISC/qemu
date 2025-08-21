@@ -2,6 +2,7 @@
  * QEMU OpenTitan Clock manager device
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -983,6 +984,8 @@ static uint64_t ot_clkmgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_CLK_ENABLES:
     case R_CLK_HINTS:
     case R_MEASURE_CTRL_REGWEN:
+        val32 = s->regs[reg];
+        break;
     case R_CLK_HINTS_STATUS:
         val32 = ot_clkmgr_get_clock_hints(s);
         break;
