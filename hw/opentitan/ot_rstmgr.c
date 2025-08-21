@@ -2,6 +2,7 @@
  * QEMU OpenTitan Reset Manager device
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -609,7 +610,15 @@ static void ot_rstmgr_reset_enter(Object *obj, ResetType type)
 
     for (unsigned devix = 0; devix < OT_RSTMGR_SW_RESET_MAX; devix++) {
         const OtRstMgrResettable *rst = &config->sw_resettable_devices[devix];
-        if (rst->typename) {
+        /*
+         * On Earlgrey, not all SW resettable devices are implemented yet, but
+         * there is still merit in resetting these registers so that they can
+         * be tested as part of the rstmgr implementation.
+         *
+         * TODO: remove this version check when USBDEV and I2C are implemented
+         * and connected to the `rstmgr`.
+         */
+        if (rst->typename || s->version == OT_RSTMGR_VERSION_EG_252) {
             s->regs[R_SW_RST_REGWEN_0 + devix] = SW_RST_REGWEN_EN_MASK;
             s->regs[R_SW_RST_CTRL_N_0 + devix] = SW_RST_CTRL_VAL_MASK;
         }
