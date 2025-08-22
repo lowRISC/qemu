@@ -1190,9 +1190,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "rom"),
             IBEX_DEV_UINT_PROP("size", 0x8000u),
             IBEX_DEV_UINT_PROP("kmac-app", 2u),
-            /* Earlgrey-M2.5.2-RC0 */
-            IBEX_DEV_STRING_PROP("nonce", "755cf00bd7432c3f"),
-            IBEX_DEV_STRING_PROP("key", "8cd4e7eff1b9ec59ce812447c5714595")
+            /*
+             * Nonce & Key for Earlgrey 1.0.0, taken from the auto-generated
+             * `hw/top_earlgrey/rtl/autogen/top_earlgrey_rnd_cnst_pkg.sv`
+             * `RndCnstRomCtrlScrNonce` and `RndCnstRomCtrlScrKey` values.
+             */
+            IBEX_DEV_STRING_PROP("nonce", "fee457dee82b6e06"),
+            IBEX_DEV_STRING_PROP("key", "663c291739ff0e7d644758fee1c58564")
         ),
     },
     [OT_EG_SOC_DEV_IBEX_WRAPPER] = {
