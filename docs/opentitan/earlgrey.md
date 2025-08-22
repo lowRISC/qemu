@@ -2,7 +2,7 @@
 
 ## Supported version
 
-EarlGrey 2.5.2-RC0
+[Earlgrey 1.0.0](https://github.com/lowRISC/opentitan/tree/earlgrey_1.0.0)
 
 ## Supported features
 
@@ -20,6 +20,9 @@ EarlGrey 2.5.2-RC0
 * AON Timer
 * CSRNG
 * EDN
+* Flash controller
+  * missing ECCs/ICVs, scrambling functionality and alerts
+  * no modelling of erase suspend
 * HMAC
 * OTBN
   * missing side-loading
@@ -39,8 +42,6 @@ Devices in this group implement subset(s) of the real HW.
   * Manage clock dividers, groups, hints, software configurable clocks
   * Propagate clock signals from source (AST, ...) to devices
   * Hint management and measurement are not implemented
-* Flash controller
-  * read-only features only
 * OTP controller
   * read-only features only, ECC is ignored
 * Entropy Src
@@ -53,6 +54,7 @@ Devices in this group implement subset(s) of the real HW.
     from Power Manager
 * KMAC
   * Side loading is not supported
+  * Masking is not supported
 * [ROM controller](rom_ctrl.md)
 * SRAM controller
   * Initialization and scrambling with dummy key supported
@@ -77,10 +79,17 @@ features are implemented.
 
 Devices in this group are mostly implemented with a RAM backend or real CSRs but do not implement
 any useful feature (only allow guest test code to execute as expected).
+Some just use generic `UNIMP` devices to define a memory region.
 
+* Analog Sensor Top
+* I2C
 * Key manager
+* Pattern Generator
 * Pinmux
-* Sensor
+* PWM
+* Sensor Control
+* System Reset Controller
+* USB Device
 
 ## Running the virtual machine
 
