@@ -2,6 +2,7 @@
  * QEMU OpenTitan Life Cycle controller device
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -324,8 +325,10 @@ typedef enum {
 /* Life cycle state group diversification value for keymgr */
 typedef enum {
     LC_DIV_INVALID,
-    LC_DIV_TEST_DEV_RMA,
+    LC_DIV_TEST_UNLOCKED,
+    LC_DIV_DEV,
     LC_DIV_PROD,
+    LC_DIV_RMA,
     LC_DIV_COUNT,
 } OtLcCtrlKeyMgrDivType;
 
@@ -770,13 +773,13 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
             sigbm = LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
                     LC_BCAST_BIT(NVM_DEBUG_EN) | LC_BCAST_BIT(HW_DEBUG_EN) |
                     LC_BCAST_BIT(CPU_EN) | LC_BCAST_BIT(ISO_PART_SW_WR_EN);
-            div_type = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_TEST_UNLOCKED;
             break;
         case LC_STATE_TESTUNLOCKED7:
             sigbm = LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
                     LC_BCAST_BIT(HW_DEBUG_EN) | LC_BCAST_BIT(CPU_EN) |
                     LC_BCAST_BIT(ISO_PART_SW_WR_EN);
-            div_type = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_TEST_UNLOCKED;
             break;
         case LC_STATE_PROD:
         case LC_STATE_PRODEND:
@@ -810,7 +813,7 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
             if (s->regs[R_LC_ID_STATE] == LC_ID_STATE_PERSONALIZED) {
                 sigbm |= LC_BCAST_BIT(SEED_HW_RD_EN);
             }
-            div_type = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_DEV;
             break;
         case LC_STATE_RMA:
             sigbm =
@@ -822,7 +825,7 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
                 LC_BCAST_BIT(OWNER_SEED_SW_RW_EN) |
                 LC_BCAST_BIT(ISO_PART_SW_RD_EN) |
                 LC_BCAST_BIT(ISO_PART_SW_WR_EN) | LC_BCAST_BIT(SEED_HW_RD_EN);
-            div_type = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_RMA;
             break;
         case LC_STATE_SCRAP:
         default:
@@ -2129,9 +2132,11 @@ static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING("raw_unlock_token", OtLcCtrlState,
                        raw_unlock_token_xstr),
     DEFINE_PROP_STRING("invalid", OtLcCtrlState, km_div_xstrs[LC_DIV_INVALID]),
+    DEFINE_PROP_STRING("test_unlocked", OtLcCtrlState,
+                       km_div_xstrs[LC_DIV_TEST_UNLOCKED]),
+    DEFINE_PROP_STRING("dev", OtLcCtrlState, km_div_xstrs[LC_DIV_DEV]),
     DEFINE_PROP_STRING("production", OtLcCtrlState, km_div_xstrs[LC_DIV_PROD]),
-    DEFINE_PROP_STRING("test_dev_rma", OtLcCtrlState,
-                       km_div_xstrs[LC_DIV_TEST_DEV_RMA]),
+    DEFINE_PROP_STRING("rma", OtLcCtrlState, km_div_xstrs[LC_DIV_RMA]),
     DEFINE_PROP_STRING("lc_state_first", OtLcCtrlState,
                        trans_cfg[LC_CTRL_TRANS_LC_STATE]
                            .state[LC_CTRL_TSTATE_FIRST]),
