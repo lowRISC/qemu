@@ -198,7 +198,7 @@ typedef struct {
 } OtRstMgrConfig;
 
 static const OtRstMgrConfig RSTMGR_CONFIG[OT_RSTMGR_VERSION_COUNT] = {
-    [OT_RSTMGR_VERSION_EG_252] = {
+    [OT_RSTMGR_VERSION_EG_1_0_0] = {
         .reset_request_codes = {
             [OT_RSTMGR_RESET_POR] = BIT(0),
             [OT_RSTMGR_RESET_LOW_POWER] = BIT(1),
@@ -619,7 +619,7 @@ static void ot_rstmgr_reset_enter(Object *obj, ResetType type)
          * TODO: remove this version check when USBDEV and I2C are implemented
          * and connected to the `rstmgr`.
          */
-        if (rst->typename || s->version == OT_RSTMGR_VERSION_EG_252) {
+        if (rst->typename || s->version == OT_RSTMGR_VERSION_EG_1_0_0) {
             s->regs[R_SW_RST_REGWEN_0 + devix] = SW_RST_REGWEN_EN_MASK;
             s->regs[R_SW_RST_CTRL_N_0 + devix] = SW_RST_CTRL_VAL_MASK;
         }
