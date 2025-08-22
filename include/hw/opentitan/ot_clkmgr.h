@@ -33,6 +33,13 @@
 #define TYPE_OT_CLKMGR "ot-clkmgr"
 OBJECT_DECLARE_TYPE(OtClkMgrState, OtClkMgrClass, OT_CLKMGR)
 
+/* Supported ClockManager versions */
+typedef enum {
+    OT_CLKMGR_VERSION_EG_1_0_0,
+    OT_CLKMGR_VERSION_DJ_PRE,
+    OT_CLKMGR_VERSION_COUNT,
+} OtClkMgrVersion;
+
 #define OT_CLOCK_HINT_PREFIX "ot-clock-hint-"
 
 #define OT_CLKMGR_CLOCK_INPUT TYPE_OT_CLKMGR "-clock-in"

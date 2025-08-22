@@ -265,6 +265,7 @@ struct OtClkMgrState {
     char *cfg_swcg;
     /* list of software-hintable groups */
     char *cfg_hint;
+    uint8_t version;
 };
 
 /*
@@ -1129,7 +1130,15 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] &= val32;
         break;
     case R_JITTER_ENABLE:
-        if (s->regs[R_JITTER_REGWEN]) {
+        if (s->regs[R_JITTER_REGWEN] ||
+            s->version == OT_CLKMGR_VERSION_EG_1_0_0) {
+            if (s->version == OT_CLKMGR_VERSION_EG_1_0_0) {
+                qemu_log_mask(
+                    LOG_GUEST_ERROR,
+                    "%s: JITTER_ENABLE should be protected w/ REGWEN,\n"
+                    "but is allowed due to a known bug in Earlgrey 1.0.0\n",
+                    __func__);
+            }
             val32 &= R_JITTER_ENABLE_VAL_MASK;
             s->regs[reg] = val32;
         } else {
@@ -1265,6 +1274,7 @@ static Property ot_clkmgr_properties[] = {
     DEFINE_PROP_STRING("groups", OtClkMgrState, cfg_groups),
     DEFINE_PROP_STRING("swcg", OtClkMgrState, cfg_swcg),
     DEFINE_PROP_STRING("hint", OtClkMgrState, cfg_hint),
+    DEFINE_PROP_UINT8("version", OtClkMgrState, version, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1321,6 +1331,8 @@ static void ot_clkmgr_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->clock_src);
     OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    g_assert(s->version < OT_CLKMGR_VERSION_COUNT);
 
     ot_clkmgr_parse_top_clocks(s, &error_fatal);
     unsigned top_count = g_list_length(s->clocks);

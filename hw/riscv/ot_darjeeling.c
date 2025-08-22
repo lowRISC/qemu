@@ -1342,7 +1342,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
                 "peri:io_div4+io_div2+io+aon+usb,"
                 "timers:io_div4+aon"),
             IBEX_DEV_STRING_PROP("swcg", "peri"),
-            IBEX_DEV_STRING_PROP("hint", "trans")
+            IBEX_DEV_STRING_PROP("hint", "trans"),
+            IBEX_DEV_UINT_PROP("version", OT_CLKMGR_VERSION_DJ_PRE)
         ),
     },
     [OT_DJ_SOC_DEV_PINMUX] = {
