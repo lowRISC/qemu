@@ -2,6 +2,7 @@
  * QEMU OpenTitan EarlGrey One Time Programmable (OTP) memory controller
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -452,6 +453,10 @@ typedef struct {
     uint16_t iskeymgr : 1;
 } OtOTPPartDesc;
 
+#define OT_OTP_EG_PARTS
+/* NOLINTNEXTLINE */
+#include "ot_otp_eg_parts.c"
+
 typedef struct {
     uint32_t *storage; /* overall buffer for the storage backend */
     uint32_t *data; /* data buffer (all partitions) */
@@ -501,6 +506,7 @@ struct OtOTPEgState {
     char *digest_iv_xstr;
     char *sram_const_xstr;
     char *sram_iv_xstr;
+    char *inv_default_part_xstrs[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
 };
 /* clang-format on */
 
@@ -508,10 +514,6 @@ struct OtOTPEgState {
 
 /* initialized to zero, i.e. no valid token declared for now */
 static const OtOTPTokens OT_OTP_EG_TOKENS;
-
-#define OT_OTP_EG_PARTS
-/* NOLINTNEXTLINE */
-#include "ot_otp_eg_parts.c"
 
 #define LC_TRANSITION_COUNT_MAX 24u
 #define LC_STATE_BIT_WIDTH      5u
@@ -1226,6 +1228,26 @@ ot_otp_eg_ctrl_get_entropy_cfg(const OtOTPState *s)
     return ds->entropy_cfg;
 }
 
+static void ot_otp_eg_class_add_inv_def_props(OtOTPClass *odc)
+{
+    for (unsigned ix = 0; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
+        if (!OtOTPPartDescs[ix].buffered) {
+            continue;
+        }
+
+        Property *prop = g_new0(Property, 1u);
+
+        prop->name = g_strdup_printf("inv_default_part_%u", ix);
+        prop->info = &qdev_prop_string;
+        prop->offset = offsetof(OtOTPEgState, inv_default_part_xstrs) +
+                       sizeof(char *) * ix;
+
+        object_class_property_add(OBJECT_CLASS(odc), prop->name,
+                                  prop->info->name, prop->info->get,
+                                  prop->info->set, prop->info->release, prop);
+    }
+}
+
 static Property ot_otp_eg_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTPEgState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPEgState, blk),
@@ -1453,6 +1475,8 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
     oc->get_lc_info = &ot_otp_eg_ctrl_get_lc_info;
     oc->get_hw_cfg = &ot_otp_eg_ctrl_get_hw_cfg;
     oc->get_entropy_cfg = &ot_otp_eg_ctrl_get_entropy_cfg;
+
+    ot_otp_eg_class_add_inv_def_props(oc);
 }
 
 static const TypeInfo ot_otp_eg_info = {
