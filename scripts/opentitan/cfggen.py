@@ -561,11 +561,20 @@ def main():
             argparser.error(f"No such file '{lcpath}'")
 
         if not args.otpconst:
-            ocpath = joinpath(ot_dir, 'hw', top,
-                              'ip_autogen/otp_ctrl/rtl/otp_ctrl_part_pkg.sv')
+            otp_constant_locations = [
+                joinpath(
+                    ot_dir, "hw", top, "ip_autogen/otp_ctrl/rtl/otp_ctrl_part_pkg.sv"
+                ),
+                joinpath(ot_dir, 'hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv'),
+            ]
+            ocpath = None
+            for maybe_ocpath in otp_constant_locations:
+                if isfile(maybe_ocpath):
+                    ocpath = maybe_ocpath
+                    break
         else:
             ocpath = args.otpconst
-        if not isfile(lcpath):
+        if ocpath is None or not isfile(lcpath):
             argparser.error(f"No such file '{ocpath}'")
 
         cfg.load_lifecycle(lcpath)
