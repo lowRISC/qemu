@@ -283,8 +283,13 @@ static const uint32_t ot_eg_pmp_addrs[] = {
         } \
     }
 
-/* Earlgrey M2.5.2-RC0 RV DM */
-#define EG_TAP_IDCODE IBEX_JTAG_IDCODE(0, 1, 0)
+/*
+ * Earlgrey 1.0.0 TAPs
+ * See https://github.com/lowRISC/part-number-registry/blob/main/jtag_partno.md
+ */
+#define EG_RV_DM_TAP_IDCODE    IBEX_JTAG_IDCODE(0, 1, 1)
+#define EG_LC_CTRL_TAP_IDCODE  IBEX_JTAG_IDCODE(0, 2, 1)
+#define EG_COMBINED_TAP_IDCODE IBEX_JTAG_IDCODE(0, 3, 1)
 
 #define PULP_DM_BASE   0x00010000u
 #define SRAM_MAIN_SIZE 0x20000u
@@ -315,7 +320,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ot_eg_soc_tap_ctrl_configure,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("ir_length", IBEX_TAP_IR_LENGTH),
-            IBEX_DEV_UINT_PROP("idcode", EG_TAP_IDCODE)
+            IBEX_DEV_UINT_PROP("idcode", EG_RV_DM_TAP_IDCODE)
         ),
     },
     [OT_EG_SOC_DEV_DTM] = {
