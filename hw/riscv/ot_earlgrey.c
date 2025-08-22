@@ -789,7 +789,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("clocks", "main,io,usb"),
             IBEX_DEV_UINT_PROP("num-rom", 1u),
-            IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_EG_252)
+            IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_EG_1_0_0)
         ),
     },
     [OT_EG_SOC_DEV_RSTMGR] = {

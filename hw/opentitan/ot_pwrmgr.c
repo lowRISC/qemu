@@ -337,7 +337,7 @@ typedef struct {
 
 /* clang-format off */
 static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWRMGR_VERSION_COUNT] = {
-    [OT_PWRMGR_VERSION_EG_252] = {
+    [OT_PWRMGR_VERSION_EG_1_0_0] = {
         .wakeup_count = 6u,
         .reset_count = 2u,
         .reset_mask = 0x3u
@@ -350,7 +350,7 @@ static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWRMGR_VERSION_COUNT] = {
 };
 
 static int PWRMGR_RESET_DISPATCH[OT_PWRMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
-    [OT_PWRMGR_VERSION_EG_252] = {
+    [OT_PWRMGR_VERSION_EG_1_0_0] = {
         [0] = OT_RSTMGR_RESET_SYSCTRL,
         [1] = OT_RSTMGR_RESET_AON_TIMER,
     },
@@ -362,7 +362,7 @@ static int PWRMGR_RESET_DISPATCH[OT_PWRMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = 
 
 static const char *
 PWRMGR_WAKEUP_NAMES[OT_PWRMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
-    [OT_PWRMGR_VERSION_EG_252] = {
+    [OT_PWRMGR_VERSION_EG_1_0_0] = {
         [0] = "SYSRST",
         [1] = "ADC_CTRL",
         [2] = "PINMUX",
@@ -381,7 +381,7 @@ PWRMGR_WAKEUP_NAMES[OT_PWRMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
 };
 
 static const char *PWRMGR_RST_NAMES[OT_PWRMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
-    [OT_PWRMGR_VERSION_EG_252] = {
+    [OT_PWRMGR_VERSION_EG_1_0_0] = {
         [0] = "SYSRST",
         [1] = "AON_TIMER",
     },
