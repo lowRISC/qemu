@@ -725,6 +725,10 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
             /* Used by drivers to see if partial transactions are done. */
             if (!i2c_bus_busy(s->bus)) {
                 val32 = FIELD_DP32(val32, STATUS, FMTEMPTY, 1u);
+            } else {
+                qemu_log_mask(LOG_TRACE,
+                              "%s: %s: FMT is empty but bus is still busy\n",
+                              __func__, s->ot_id);
             }
         }
         if (fifo8_is_full(&s->host_tx_fifo)) {
@@ -851,6 +855,9 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
     bool rcont = FIELD_EX32(fdata, FDATA, RCONT);
 
     if (!ot_i2c_host_enabled(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: I2C host not enabled, no write issued\n",
+                      __func__, s->ot_id);
         return;
     }
 
@@ -885,7 +892,7 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
         if (!rcont) {
             i2c_nack(s->bus);
         }
-    } else {
+    } else { /* !READB */
         if (start) {
             /* START or RESTART I2C transaction to requested address. */
             i2c_start_transfer(s->bus, extract32(fbyte, 1, 7),
@@ -971,9 +978,16 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
                           s->ot_id);
         }
         address = FIELD_EX32(val32, TARGET_ID, ADDRESS0);
-        mask = FIELD_EX32(val32, TARGET_ID, MASK0);
-        if (address != 0 && mask == 0x7f) {
+        if ((val32 & R_TARGET_ID_MASK0_MASK) != R_TARGET_ID_MASK0_MASK) {
+            qemu_log_mask(
+                LOG_UNIMP,
+                "%s: %s: Address Mask with any bits unset is not supported.\n",
+                __func__, s->ot_id);
+            break;
+        }
+        if (address != 0) {
             ARRAY_FIELD_DP32(s->regs, TARGET_ID, ADDRESS0, address);
+            mask = FIELD_EX32(val32, TARGET_ID, MASK0);
             ARRAY_FIELD_DP32(s->regs, TARGET_ID, MASK0, mask);
             /* Update the address of this target on the bus. */
             i2c_slave_set_address(s->target, address);
@@ -1135,6 +1149,9 @@ static int ot_i2c_target_event(I2CSlave *target, enum i2c_event event)
     int ret = 0;
 
     if (!ot_i2c_target_enabled(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: I2C target mode not enabled, no event issued\n",
+                      __func__, s->ot_id);
         return -1;
     }
 
@@ -1190,6 +1207,9 @@ static uint8_t ot_i2c_target_recv(I2CSlave *target)
     uint8_t data;
 
     if (!ot_i2c_target_enabled(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: I2C target mode not enabled, no event issued\n",
+                      __func__, s->ot_id);
         return 0;
     }
 
