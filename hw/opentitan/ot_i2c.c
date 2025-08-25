@@ -404,25 +404,46 @@ static bool ot_i2c_target_enabled(const OtI2CState *s)
     return (bool)ARRAY_FIELD_EX32(s->regs, CTRL, ENABLETARGET);
 }
 
-static uint32_t ot_i2c_host_get_tx_threshold(const OtI2CState *s)
+static uint32_t ot_i2c_get_fmt_threshold(const OtI2CState *s)
 {
     return ARRAY_FIELD_EX32(s->regs, HOST_FIFO_CONFIG, FMT_THRESH);
 }
 
-static uint32_t ot_i2c_host_get_rx_threshold(const OtI2CState *s)
+static uint32_t ot_i2c_get_rx_threshold(const OtI2CState *s)
 {
     return ARRAY_FIELD_EX32(s->regs, HOST_FIFO_CONFIG, RX_THRESH);
 }
 
-static uint32_t ot_i2c_target_get_rx_threshold(const OtI2CState *s)
+static uint32_t ot_i2c_get_acq_threshold(const OtI2CState *s)
 {
     return ARRAY_FIELD_EX32(s->regs, TARGET_FIFO_CONFIG, ACQ_THRESH);
 }
 
-static uint32_t ot_i2c_target_get_tx_threshold(const OtI2CState *s)
+static uint32_t ot_i2c_get_tx_threshold(const OtI2CState *s)
 {
     return ARRAY_FIELD_EX32(s->regs, TARGET_FIFO_CONFIG, TX_THRESH);
 }
+
+static bool ot_i2c_fmt_threshold_intr(OtI2CState *s)
+{
+    return fifo8_num_used(&s->host_tx_fifo) < ot_i2c_get_fmt_threshold(s);
+}
+
+static bool ot_i2c_rx_threshold_intr(OtI2CState *s)
+{
+    return fifo8_num_used(&s->host_rx_fifo) > ot_i2c_get_rx_threshold(s);
+}
+
+static bool ot_i2c_acq_threshold_intr(OtI2CState *s)
+{
+    return ot_fifo32_num_used(&s->target_rx_fifo) > ot_i2c_get_acq_threshold(s);
+}
+
+static bool ot_i2c_tx_threshold_intr(OtI2CState *s)
+{
+    return fifo8_num_used(&s->target_tx_fifo) < ot_i2c_get_tx_threshold(s);
+}
+
 
 static void ot_i2c_host_reset_tx_fifo(OtI2CState *s)
 {
@@ -517,10 +538,7 @@ static void ot_i2c_target_write_tx_fifo(OtI2CState *s, uint8_t val)
         fifo8_push(&s->target_tx_fifo, val);
     }
 
-    ot_i2c_irq_set_state(s, TX_THRESHOLD,
-                         fifo8_num_used(&s->target_tx_fifo) >
-                             ot_i2c_target_get_tx_threshold(s));
-    return;
+    ot_i2c_irq_set_state(s, TX_THRESHOLD, ot_i2c_tx_threshold_intr(s));
 }
 
 static bool ot_i2c_check_timings(OtI2CState *s)
@@ -728,15 +746,12 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_RDATA:
         val32 = (uint32_t)ot_i2c_host_read_rx_fifo(s);
+        ot_i2c_irq_set_state(s, RX_THRESHOLD, ot_i2c_rx_threshold_intr(s));
         break;
     case R_ACQDATA:
         val32 = (uint32_t)ot_i2c_target_read_rx_fifo(s);
-        /* Deassert level interrupt state if FIFO is no longer above the
-         * threshold. */
-        if (ot_fifo32_num_used(&s->target_rx_fifo) <=
-            ot_i2c_target_get_rx_threshold(s)) {
-            ot_i2c_irq_set_state(s, ACQ_THRESHOLD, false);
-        }
+        /* Deassert level interrupt state if FIFO is no longer above the threshold. */
+        ot_i2c_irq_set_state(s, ACQ_THRESHOLD, ot_i2c_acq_threshold_intr(s));
         break;
     case R_HOST_FIFO_STATUS:
         val32 = FIELD_DP32(val32, HOST_FIFO_STATUS, FMTLVL,
@@ -810,9 +825,7 @@ static unsigned ot_i2c_host_recv_fill_fifo(OtI2CState *s, unsigned chunk)
     }
 
     /* Check if rx_threshold interrupt should be asserted. */
-    if (fifo8_num_used(&s->host_rx_fifo) > ot_i2c_host_get_rx_threshold(s)) {
-        ot_i2c_irq_set_state(s, RX_THRESHOLD, true);
-    }
+    ot_i2c_irq_set_state(s, RX_THRESHOLD, ot_i2c_rx_threshold_intr(s));
 
     /* Return number of bytes read. */
     return index;
@@ -878,8 +891,8 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
             fifo8_push(&s->host_tx_fifo, fbyte);
 
             /* Check if threshold has been reached. */
-            s->host_tx_threshold = ot_i2c_host_get_tx_threshold(s);
-            if (fifo8_num_used(&s->host_tx_fifo) > s->host_tx_threshold) {
+            s->host_tx_threshold = ot_i2c_get_fmt_threshold(s);
+            if (fifo8_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
                 ot_i2c_irq_set_state(s, FMT_THRESHOLD, true);
             } else {
                 /* Reset the cached threshold level. */
@@ -1000,12 +1013,18 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
                          FIELD_EX32(val32, HOST_FIFO_CONFIG, RX_THRESH));
         ARRAY_FIELD_DP32(s->regs, HOST_FIFO_CONFIG, FMT_THRESH,
                          FIELD_EX32(val32, HOST_FIFO_CONFIG, FMT_THRESH));
+
+        ot_i2c_irq_set_state(s, RX_THRESHOLD, ot_i2c_rx_threshold_intr(s));
+        ot_i2c_irq_set_state(s, FMT_THRESHOLD, ot_i2c_fmt_threshold_intr(s));
         break;
     case R_TARGET_FIFO_CONFIG:
         ARRAY_FIELD_DP32(s->regs, TARGET_FIFO_CONFIG, TX_THRESH,
                          FIELD_EX32(val32, TARGET_FIFO_CONFIG, TX_THRESH));
         ARRAY_FIELD_DP32(s->regs, TARGET_FIFO_CONFIG, ACQ_THRESH,
                          FIELD_EX32(val32, TARGET_FIFO_CONFIG, ACQ_THRESH));
+
+        ot_i2c_irq_set_state(s, TX_THRESHOLD, ot_i2c_tx_threshold_intr(s));
+        ot_i2c_irq_set_state(s, ACQ_THRESHOLD, ot_i2c_acq_threshold_intr(s));
         break;
     case R_OVRD:
         qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
@@ -1083,10 +1102,7 @@ static void ot_i2c_target_set_acqdata(OtI2CState *s, uint32_t data,
     ot_fifo32_push(&s->target_rx_fifo, val32);
 
     /* See if adding this entry exceeded the threshold. */
-    if (ot_fifo32_num_used(&s->target_rx_fifo) >
-        ot_i2c_target_get_rx_threshold(s)) {
-        ot_i2c_irq_set_state(s, ACQ_THRESHOLD, true);
-    }
+    ot_i2c_irq_set_state(s, ACQ_THRESHOLD, ot_i2c_acq_threshold_intr(s));
 
     trace_ot_i2c_target_set_acqdata(s->ot_id,
                                     ot_fifo32_num_used(&s->target_rx_fifo),
