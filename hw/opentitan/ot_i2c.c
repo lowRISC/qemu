@@ -697,7 +697,6 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_STATE:
     case R_INTR_ENABLE:
     case R_CTRL:
-    case R_FIFO_CTRL:
     case R_HOST_FIFO_CONFIG:
     case R_TARGET_FIFO_CONFIG:
     case R_TARGET_ID:
@@ -750,7 +749,8 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_ACQDATA:
         val32 = (uint32_t)ot_i2c_target_read_rx_fifo(s);
-        /* Deassert level interrupt state if FIFO is no longer above the threshold. */
+        /* Deassert level interrupt state if FIFO is no longer above the
+         * threshold. */
         ot_i2c_irq_set_state(s, ACQ_THRESHOLD, ot_i2c_acq_threshold_intr(s));
         break;
     case R_HOST_FIFO_STATUS:
@@ -784,6 +784,7 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
         qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
                       __func__, s->ot_id, REG_NAME(reg));
         break;
+    case R_FIFO_CTRL:
     case R_INTR_TEST:
     case R_ALERT_TEST:
     case R_FDATA:
