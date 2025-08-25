@@ -224,6 +224,16 @@ REG32(TARGET_EVENTS, 0x7cu)
      INTR_ACQ_THRESHOLD_MASK | INTR_CONTROLLER_HALT_MASK | \
      INTR_TX_STRETCH_MASK | INTR_TX_THRESHOLD_MASK | INTR_ACQ_STRETCH_MASK)
 
+#define CONTROLLER_EVENTS_RW1C_MASK \
+    (R_CONTROLLER_EVENTS_NACK_MASK | \
+     R_CONTROLLER_EVENTS_UNHANDLED_NACK_TIMEOUT_MASK | \
+     R_CONTROLLER_EVENTS_BUS_TIMEOUT_MASK | \
+     R_CONTROLLER_EVENTS_ARBITRATION_LOST_MASK)
+
+#define TARGET_EVENTS_RW1C_MASK \
+    (R_TARGET_EVENTS_TX_PENDING_MASK | R_TARGET_EVENTS_BUS_TIMEOUT_MASK | \
+     R_TARGET_EVENTS_ARBITRATION_LOST_MASK)
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_LAST_REG (R_TARGET_EVENTS)
@@ -702,6 +712,8 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
     case R_TARGET_ID:
     case R_TIMEOUT_CTRL:
     case R_HOST_TIMEOUT_CTRL:
+    case R_CONTROLLER_EVENTS:
+    case R_TARGET_EVENTS:
         val32 = s->regs[reg];
         break;
     case R_STATUS:
@@ -779,8 +791,6 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
     case R_TARGET_ACK_CTRL:
     case R_ACQ_FIFO_NEXT_DATA:
     case R_HOST_NACK_HANDLER_TIMEOUT:
-    case R_CONTROLLER_EVENTS:
-    case R_TARGET_EVENTS:
         qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
                       __func__, s->ot_id, REG_NAME(reg));
         break;
@@ -1058,12 +1068,20 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         s->check_timings = true;
         break;
+    case R_CONTROLLER_EVENTS:
+        val32 &= CONTROLLER_EVENTS_RW1C_MASK;
+        s->regs[reg] &= ~val32; /* RW1C */
+        ot_i2c_irq_set_state(s, CONTROLLER_HALT, s->regs[reg] != 0);
+        break;
+    case R_TARGET_EVENTS:
+        val32 &= TARGET_EVENTS_RW1C_MASK;
+        s->regs[reg] &= ~val32; /* RW1C */
+        ot_i2c_irq_set_state(s, TX_STRETCH, s->regs[reg] != 0);
+        break;
     case R_TARGET_NACK_COUNT:
     case R_TARGET_ACK_CTRL:
     case R_ACQ_FIFO_NEXT_DATA:
     case R_HOST_NACK_HANDLER_TIMEOUT:
-    case R_CONTROLLER_EVENTS:
-    case R_TARGET_EVENTS:
         qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
                       __func__, s->ot_id, REG_NAME(reg));
         break;
