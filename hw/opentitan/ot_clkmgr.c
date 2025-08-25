@@ -267,6 +267,22 @@ struct OtClkMgrState {
     char *cfg_hint;
 };
 
+/*
+ * Device state-index pair used as opaque data with the `ot_clkmgr_clock_hint`
+ * clock hint callback.
+ *
+ * To enable dynamic clock-hinting across IP based on the clocks defined in the
+ * property strings, we need to expose the clock hint signal as a named GPIO
+ * input to the QDev, but by creating individual named signals instead of an
+ * array we lose the context of the hint number.
+ *
+ * We hence must pass additional opaque data to describe the hint index.
+ */
+typedef struct {
+    OtClkMgrState *state;
+    unsigned hint_index;
+} OtClkMgrHintContext;
+
 struct OtClkMgrClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
@@ -341,10 +357,11 @@ static void ot_clkmgr_update_swcg(OtClkMgrState *s, uint32_t change)
 
 static void ot_clkmgr_clock_hint(void *opaque, int irq, int level)
 {
-    OtClkMgrState *s = opaque;
+    OtClkMgrHintContext *hint_ctx = opaque;
+    OtClkMgrState *s = hint_ctx->state;
+    unsigned hint = hint_ctx->hint_index;
 
-    unsigned hint = (unsigned)irq;
-
+    g_assert(irq == 0);
     g_assert(hint < s->hint_count);
 
     trace_ot_clkmgr_clock_hint(s->ot_id, s->hints[hint]->name, hint,
@@ -811,10 +828,15 @@ static void ot_clkmgr_configure_groups(gpointer data, gpointer user_data)
         for (GList *cnode = group->clocks; cnode; cnode = cnode->next) {
             OtClkMgrClock *clk = (OtClkMgrClock *)(cnode->data);
 
+            OtClkMgrHintContext *hint_ctx = g_new0(OtClkMgrHintContext, 1u);
+            hint_ctx->state = s;
+            hint_ctx->hint_index = s->hint_count;
+
             char *hintname = g_strdup_printf(OT_CLOCK_HINT_PREFIX "%s.%s",
                                              group->name, clk->name);
-            qdev_init_gpio_in_named(DEVICE(s), &ot_clkmgr_clock_hint, hintname,
-                                    1);
+            qdev_init_gpio_in_named_with_opaque(DEVICE(s),
+                                                &ot_clkmgr_clock_hint, hint_ctx,
+                                                hintname, 1);
             trace_ot_clkmgr_create(s->ot_id, "hint", hintname);
             g_free(hintname);
 
