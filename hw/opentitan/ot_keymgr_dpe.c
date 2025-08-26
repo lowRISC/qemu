@@ -532,7 +532,6 @@ static const char *WORKING_STATE_NAMES[] = {
     WORKING_STATE_ENTRY(INVALID),
 };
 #undef WORKING_STATE_ENTRY
-
 #define WORKING_STATE_NAME(_st_) \
     (((unsigned)(_st_)) < ARRAY_SIZE(WORKING_STATE_NAMES) ? \
          WORKING_STATE_NAMES[(_st_)] : \
@@ -719,12 +718,10 @@ static void ot_keymgr_dpe_push_entropy(void *opaque, uint32_t bits, bool fips)
     if (resched) {
         /* We need more entropy */
         ot_keymgr_dpe_request_entropy(s);
-    } else {
-        if (prng->reseed_req) {
-            prng->reseed_ack = true;
-            prng->reseed_cnt = 0u;
-            ot_keymgr_dpe_schedule_fsm(s);
-        }
+    } else if (prng->reseed_req) {
+        prng->reseed_ack = true;
+        prng->reseed_cnt = 0u;
+        ot_keymgr_dpe_schedule_fsm(s);
     }
 }
 
@@ -1547,10 +1544,9 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
     }
 
     /* last requested operation status */
+    bool invalid_op = (bool)(s->regs[R_ERR_CODE] & R_ERR_CODE_INVALID_OP_MASK);
     bool op_done =
-        s->op_state.op_req ?
-            s->op_state.op_ack :
-            (init || (bool)(s->regs[R_ERR_CODE] & R_ERR_CODE_INVALID_OP_MASK));
+        s->op_state.op_req ? s->op_state.op_ack : (init || invalid_op);
     if (op_done) {
         s->op_state.op_req = false;
         s->op_state.op_ack = false;
@@ -1770,9 +1766,8 @@ static void ot_keymgr_dpe_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_CONTROL_SHADOWED_MASK;
         switch (ot_shadow_reg_write(&s->control, val32)) {
         case OT_SHADOW_REG_STAGED:
-        case OT_SHADOW_REG_COMMITTED: {
+        case OT_SHADOW_REG_COMMITTED:
             break;
-        }
         case OT_SHADOW_REG_ERROR:
         default:
             s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_SHADOW_UPDATE_MASK;
@@ -1827,13 +1822,14 @@ static void ot_keymgr_dpe_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_SW_BINDING_4:
     case R_SW_BINDING_5:
     case R_SW_BINDING_6:
-    case R_SW_BINDING_7:
+    case R_SW_BINDING_7: {
         if (!ot_keymgr_dpe_check_reg_write(s, reg, R_SW_BINDING_REGWEN)) {
             break;
         }
-        stl_le_p(&s->sw_binding[(reg - R_SW_BINDING_0) * sizeof(uint32_t)],
-                 val32);
+        unsigned offset = (reg - R_SW_BINDING_0) * sizeof(uint32_t);
+        stl_le_p(&s->sw_binding[offset], val32);
         break;
+    }
     case R_SALT_0:
     case R_SALT_1:
     case R_SALT_2:
@@ -1841,12 +1837,14 @@ static void ot_keymgr_dpe_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_SALT_4:
     case R_SALT_5:
     case R_SALT_6:
-    case R_SALT_7:
+    case R_SALT_7: {
         if (!ot_keymgr_dpe_check_reg_write(s, reg, R_CFG_REGWEN)) {
             break;
         }
-        stl_le_p(&s->salt[(reg - R_SALT_0) * sizeof(uint32_t)], val32);
+        unsigned offset = (reg - R_SALT_0) * sizeof(uint32_t);
+        stl_le_p(&s->salt[offset], val32);
         break;
+    }
     case R_KEY_VERSION:
         if (!ot_keymgr_dpe_check_reg_write(s, reg, R_CFG_REGWEN)) {
             break;
