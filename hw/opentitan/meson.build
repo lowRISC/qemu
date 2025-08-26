@@ -27,6 +27,7 @@ system_ss.add(when: 'CONFIG_OT_HMAC', if_true: [files('ot_hmac.c'), libtomcrypt_
 system_ss.add(when: 'CONFIG_OT_I2C', if_true: files('ot_i2c.c'))
 system_ss.add(when: 'CONFIG_OT_IBEX_WRAPPER', if_true: files('ot_ibex_wrapper.c'))
 system_ss.add(when: 'CONFIG_OT_KEY_SINK', if_true: files('ot_key_sink.c'))
+system_ss.add(when: 'CONFIG_OT_KEYMGR', if_true: files('ot_keymgr.c'))
 system_ss.add(when: 'CONFIG_OT_KEYMGR_DPE', if_true: files('ot_keymgr_dpe.c'))
 system_ss.add(when: 'CONFIG_OT_KMAC', if_true: [files('ot_kmac.c'), libtomcrypt_dep])
 system_ss.add(when: 'CONFIG_OT_LC_CTRL', if_true: files('ot_lc_ctrl.c'))
