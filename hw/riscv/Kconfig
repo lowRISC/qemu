@@ -81,6 +81,7 @@ config OT_EARLGREY
     select OT_HMAC
     select OT_I2C
     select OT_IBEX_WRAPPER
+    select OT_KEYMGR
     select OT_KMAC
     select OT_LC_CTRL
     select OT_OTBN

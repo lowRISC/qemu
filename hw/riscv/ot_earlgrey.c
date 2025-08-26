@@ -52,6 +52,7 @@
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_i2c.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
+#include "hw/opentitan/ot_keymgr.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
@@ -1173,18 +1174,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_KEYMGR] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_KEYMGR,
         .memmap = MEMMAPENTRIES(
             { .base = 0x41140000u }
         ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("size", 0x100u),
-            IBEX_DEV_UINT_PROP("irq-count", 1u),
-            IBEX_DEV_UINT_PROP("alert-count", 2u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
-        ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 173),
             OT_EG_SOC_GPIO_ALERT(0, 49),
             OT_EG_SOC_GPIO_ALERT(1, 50)
         )
