@@ -86,12 +86,12 @@ static_assert(KEYMGR_DPE_GEN_DATA_BYTES <= KEYMGR_DPE_KDF_BUFFER_BYTES,
               "KeyMgr GEN data does not fit in KDF buffer");
 static_assert((KEYMGR_DPE_KDF_BUFFER_BYTES % OT_KMAC_APP_MSG_BYTES) == 0u,
               "KeyMgr KDF buffer not a multiple of KMAC message size");
-static_assert(OT_KMAC_KEY_SIZE <= OT_KMAC_APP_DIGEST_BYTES,
+static_assert(KEYMGR_DPE_KEY_SIZE_MAX <= OT_KMAC_APP_DIGEST_BYTES,
               "KeyMgr key size does not match KMAC digest size");
 /* NOLINTNEXTLINE(misc-redundant-expression) */
 static_assert(OT_OTBN_KEY_SIZE <= OT_KMAC_APP_DIGEST_BYTES,
               "KeyMgr OTBN key size does not match KMAC digest size");
-static_assert(OT_KMAC_KEY_SIZE == OT_OTP_KEYMGR_SECRET_SIZE,
+static_assert(KEYMGR_DPE_KEY_SIZE == OT_OTP_KEYMGR_SECRET_SIZE,
               "KeyMgr key size does not match OTP KeyMgr secret size");
 /* NOLINTBEGIN(misc-redundant-expression) */
 static_assert(KEYMGR_DPE_KEY_SIZE == OT_AES_KEY_SIZE, "invalid key size");
