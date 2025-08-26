@@ -235,9 +235,6 @@ REG32(DEBUG, 0xd0u)
      R_DEBUG_INVALID_DIGEST_MASK | R_DEBUG_INVALID_ROOT_KEY_MASK | \
      R_DEBUG_INACTIVE_LC_EN_MASK)
 
-#define KEYMGR_DPE_KEY_WIDTH      256u
-#define KEYMGR_DPE_OTBN_KEY_WIDTH 384u
-
 #define KEYMGR_DPE_LFSR_WIDTH    64u
 #define KEYMGR_DPE_ENTROPY_WIDTH (KEYMGR_DPE_LFSR_WIDTH / 2u)
 #define KEYMGR_DPE_ENTROPY_ROUNDS \
@@ -2032,8 +2029,6 @@ static void ot_keymgr_dpe_reset_enter(Object *obj, ResetType type)
     memset(s->salt, 0u, NUM_SALT_REG * sizeof(uint32_t));
     s->regs[R_MAX_KEY_VER_REGWEN] = 0x1u;
     ot_shadow_reg_init(&s->max_key_ver, 0u);
-    s->regs[R_WORKING_STATE] = 0u;
-    s->regs[R_OP_STATUS] = 0u;
 
     /* reset internal state */
     s->enabled = false;
