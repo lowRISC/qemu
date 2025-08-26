@@ -407,6 +407,57 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
+static void ot_keymgr_update_irq(OtKeyMgrState *s)
+{
+    bool level = (bool)(s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE]);
+    trace_ot_keymgr_irq(s->ot_id, s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
+                        level);
+    ibex_irq_set(&s->irq, (int)level);
+}
+
+static void ot_keymgr_update_alerts(OtKeyMgrState *s)
+{
+    uint32_t levels = s->regs[R_ALERT_TEST];
+
+    bool recov_operation = s->regs[R_ERR_CODE] & ERR_CODE_MASK;
+    if (recov_operation) {
+        levels |= 1u << ALERT_RECOVERABLE;
+    }
+
+    bool fatal_fault = s->regs[R_FAULT_STATUS] & FAULT_STATUS_MASK;
+    if (fatal_fault) {
+        levels |= 1u << ALERT_FATAL;
+    }
+
+    for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
+        int level = (int)((levels >> ix) & 0x1u);
+        if (level != ibex_irq_get_level(&s->alerts[ix])) {
+            trace_ot_keymgr_update_alert(s->ot_id,
+                                         ibex_irq_get_level(&s->alerts[ix]),
+                                         level);
+        }
+        ibex_irq_set(&s->alerts[ix], level);
+    }
+
+    if (!s->regs[R_ALERT_TEST] && !recov_operation) {
+        return;
+    }
+    /* ALERT_TEST and recoverable error alerts are transient */
+    s->regs[R_ALERT_TEST] = 0u;
+    s->regs[R_FAULT_STATUS] &= ~FAULT_STATUS_MASK;
+    levels = fatal_fault ? (1u << ALERT_FATAL) : 0u;
+
+    for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
+        int level = (int)((levels >> ix) & 0x1u);
+        if (level != ibex_irq_get_level(&s->alerts[ix])) {
+            trace_ot_keymgr_update_alert(s->ot_id,
+                                         ibex_irq_get_level(&s->alerts[ix]),
+                                         level);
+        }
+        ibex_irq_set(&s->alerts[ix], level);
+    }
+}
+
 static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtKeyMgrState *s = opaque;
@@ -682,7 +733,9 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     s->regs[R_MAX_OWNER_KEY_VER_REGWEN] = 0x1u;
     ot_shadow_reg_init(&s->max_owner_key_ver, 0x0u);
 
-    /* @todo: update IRQs and alert states */
+    /* update IRQ and alert states */
+    ot_keymgr_update_irq(s);
+    ot_keymgr_update_alerts(s);
 }
 
 static void ot_keymgr_reset_exit(Object *obj, ResetType type)
