@@ -385,7 +385,6 @@ typedef struct OtKeyMgrDpeState {
     QEMUBH *fsm_tick_bh;
     OtKeyMgrDpeKdfBuffer kdf_buf;
 
-    /* entries for shadowed regs, salt and sw_binding are not used */
     uint32_t regs[REGS_COUNT];
     OtShadowReg control;
     OtShadowReg reseed_interval;
@@ -402,7 +401,7 @@ typedef struct OtKeyMgrDpeState {
     /* key slots */
     OtKeyMgrDpeSlot *key_slots;
 
-    /* SW output kes */
+    /* SW output keys */
     OtKeyMgrDpeKey *sw_out_key;
 
     char *hexstr;
