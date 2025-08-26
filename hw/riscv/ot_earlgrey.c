@@ -45,7 +45,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
-#include "hw/opentitan/ot_entropy_src.h"
+#include "hw/opentitan/ot_entropy_src_eg.h"
 #include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_hmac.h"
@@ -1098,7 +1098,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_ENTROPY_SRC] = {
-        .type = TYPE_OT_ENTROPY_SRC,
+        .type = TYPE_OT_ENTROPY_SRC_EG,
         .memmap = MEMMAPENTRIES(
             { .base = 0x41160000u }
         ),

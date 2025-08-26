@@ -52,7 +52,11 @@ config OT_DMA
 config OT_EDN
     bool
 
-config OT_ENTROPY_SRC
+config OT_ENTROPY_SRC_EG
+    select OT_RANDOM_SRC
+    bool
+
+config OT_ENTROPY_SRC_DJ
     select OT_RANDOM_SRC
     bool
 
