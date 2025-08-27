@@ -33,6 +33,7 @@
 #include "exec/address-spaces.h"
 #include "hw/block/flash.h"
 #include "hw/boards.h"
+#include "hw/core/split-irq.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
@@ -155,6 +156,10 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_UART3,
     OT_EG_SOC_DEV_USBDEV,
     OT_EG_SOC_DEV_VMAPPER,
+    /* IRQ splitters, i.e. 1-to-N signal dispatchers */
+    OT_EG_SOC_SPLITTER_LC_HW_DEBUG,
+    OT_EG_SOC_SPLITTER_LC_ESCALATE,
+    OT_EG_SOC_SPLITTER_LC_SEED_HW_RD,
 };
 
 enum OtEgResetRequest {
@@ -249,10 +254,36 @@ static const uint32_t ot_eg_pmp_addrs[] = {
 #define OT_EG_SOC_DEVLINK(_pname_, _target_) \
     IBEX_DEVLINK(_pname_, OT_EG_SOC_DEV_##_target_)
 
+/* Device named signal to device named signal */
 #define OT_EG_SOC_SIGNAL(_sname_, _snum_, _tgt_, _tname_, _tnum_) \
     { \
         .out = { \
             .name = (_sname_), \
+            .num = (_snum_), \
+        }, \
+        .in = { \
+            .name = (_tname_), \
+            .index = (OT_EG_SOC_DEV_ ## _tgt_), \
+            .num = (_tnum_), \
+        } \
+    }
+
+/* Device named signal to splitter input */
+#define OT_EG_SOC_D2S(_sname_, _snum_, _tgt_) \
+    { \
+        .out = { \
+            .name = (_sname_), \
+            .num = (_snum_), \
+        }, \
+        .in = { \
+            .index = (OT_EG_SOC_SPLITTER_ ## _tgt_), \
+        } \
+    }
+
+/* Splitter output to device named signal */
+#define OT_EG_SOC_S2D(_snum_, _tgt_, _tname_, _tnum_) \
+    { \
+        .out = { \
             .num = (_snum_), \
         }, \
         .in = { \
@@ -652,7 +683,24 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_RSP(OT_PWRMGR_LC, PWRMGR),
             OT_EG_SOC_GPIO_ALERT(0, 16),
             OT_EG_SOC_GPIO_ALERT(1, 17),
-            OT_EG_SOC_GPIO_ALERT(2, 18)
+            OT_EG_SOC_GPIO_ALERT(2, 18),
+            /*
+             * TODO: add missing life cycle broadcast signals when the required
+             * supporting HW is available:
+             *  - OT_LC_NVM_DEBUG_EN (for embed. flash)
+             *  - OT_LC_KEYMGR_EN (when keymgr is implemented)
+             *  - OT_LC_CHECK_BYP_EN (when Earlgrey supports OTP signals)
+             *  - OT_LC_CREATOR_SEED_SW_RW_EN (for OTP and embed. flash)
+             *  - OT_LC_OWNER_SEED_SW_RW_EN (for embed. flash)
+             *  - OT_LC_ISO_PART_SW_RD_EN (for embed. flash)
+             *  - OT_LC_ISO_PART_SW_WR_EN (for embed. flash)
+             *  - OT_LC_SEED_HW_RD_EN (for OTP and embed. flash)
+             */
+            OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN, LC_HW_DEBUG),
+            OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_ESCALATE_EN, LC_ESCALATE),
+            OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_SEED_HW_RD_EN, LC_SEED_HW_RD),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CPU_EN, IBEX_WRAPPER,
+                             OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_LC_CTRL_CPU_EN)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
@@ -1274,6 +1322,41 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "soc"),
             IBEX_DEV_UINT_PROP("trans_count", OT_EG_IBEX_WRAPPER_NUM_REGIONS)
         ),
+    },
+    /* IRQ splitters */
+    [OT_EG_SOC_SPLITTER_LC_HW_DEBUG] = {
+        .type = TYPE_SPLIT_IRQ,
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
+        )
+    },
+    [OT_EG_SOC_SPLITTER_LC_ESCALATE] = {
+        .type = TYPE_SPLIT_IRQ,
+        /*
+         * TODO: Earlgrey OTP signals are not supported yet, add the escalation
+         * connection to the OTP controller when Earlgrey's OTP is updated.
+         * .gpio = IBEXGPIOCONNDEFS(
+         *     OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
+         *                   OT_OTP_LC_ESCALATE_EN)
+         * ),
+         */
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
+        )
+    },
+    [OT_EG_SOC_SPLITTER_LC_SEED_HW_RD] = {
+        .type = TYPE_SPLIT_IRQ,
+        /*
+         * TODO: Earlgrey OTP signals are not supported yet, add the signal
+         * connection to the OTP controller when Earlgrey's OTP is updated.
+         * .gpio = IBEXGPIOCONNDEFS(
+         *   OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
+         *                 OT_OTP_LC_SEED_HW_RD_EN)
+         * ),
+         */
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("num-lines", 2u)
+        )
     }
     /* clang-format on */
 };
