@@ -34,4 +34,7 @@
 #define TYPE_OT_KEYMGR "ot-keymgr"
 OBJECT_DECLARE_TYPE(OtKeyMgrState, OtKeyMgrClass, OT_KEYMGR)
 
+/* Input signal to enable the key manager (from lifecycle controller) */
+#define OT_KEYMGR_ENABLE TYPE_OT_KEYMGR "-enable"
+
 #endif /* HW_OPENTITAN_OT_KEYMGR_H */
