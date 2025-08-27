@@ -111,10 +111,16 @@ REG32(CONFIGOPTS, 0x18u)
 REG32(CSID, 0x1cu)
     FIELD(CSID, CSID, 0u, 32u)
 REG32(COMMAND, 0x20u)
+/* Darjeeling field definitions */
     FIELD(COMMAND, CSAAT, 0u, 1u)
     FIELD(COMMAND, SPEED, 1u, 2u)
     FIELD(COMMAND, DIRECTION, 3u, 2u)
     FIELD(COMMAND, LEN, 5u, 20u)
+/* Earlgrey 1.0.0 field definitions */
+    FIELD(COMMAND, EG_1_0_0_LEN, 0u, 9u)
+    FIELD(COMMAND, EG_1_0_0_CSAAT, 9u, 1u)
+    FIELD(COMMAND, EG_1_0_0_SPEED, 10u, 2u)
+    FIELD(COMMAND, EG_1_0_0_DIRECTION, 12u, 2u)
 REG32(RXDATA, 0x24u)
 REG32(TXDATA, 0x28u)
 REG32(ERROR_ENABLE, 0x2cu)
@@ -360,6 +366,7 @@ struct OtSPIHostState {
     uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /* SPI host port number */
     uint32_t num_cs; /* Supported CS line count */
+    uint8_t version;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -485,6 +492,22 @@ static uint32_t cmdfifo_num_used(const CmdFifo *fifo)
 /* ------------------------------------------------------------------------ */
 /* Helpers */
 /* ------------------------------------------------------------------------ */
+
+static uint32_t ot_spi_host_convert_from_eg_1_0_0_command(uint32_t eg_cmd)
+{
+    uint32_t csaat = FIELD_EX32(eg_cmd, COMMAND, EG_1_0_0_CSAAT);
+    uint32_t speed = FIELD_EX32(eg_cmd, COMMAND, EG_1_0_0_SPEED);
+    uint32_t direction = FIELD_EX32(eg_cmd, COMMAND, EG_1_0_0_DIRECTION);
+    uint32_t len = FIELD_EX32(eg_cmd, COMMAND, EG_1_0_0_LEN);
+
+    /* EG 1.0.0 has a narrower length field, so this conversion is safe. */
+    uint32_t cmd = 0;
+    cmd = FIELD_DP32(cmd, COMMAND, CSAAT, csaat);
+    cmd = FIELD_DP32(cmd, COMMAND, SPEED, speed);
+    cmd = FIELD_DP32(cmd, COMMAND, DIRECTION, direction);
+    cmd = FIELD_DP32(cmd, COMMAND, LEN, len);
+    return cmd;
+}
 
 static bool ot_spi_host_is_rx(uint32_t command)
 {
@@ -1134,6 +1157,10 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_COMMAND: {
+        /* Convert command for back-compat with Earlgrey 1.0.0 fields */
+        if (s->version == OT_SPI_HOST_VERSION_EG_1_0_0) {
+            val32 = ot_spi_host_convert_from_eg_1_0_0_command(val32);
+        }
         val32 &= R_COMMAND_MASK;
 
         /* IP not enabled */
@@ -1295,6 +1322,7 @@ static Property ot_spi_host_properties[] = {
                        FSM_START_DELAY_NS),
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
                        0),
+    DEFINE_PROP_UINT8("version", OtSPIHostState, version, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1353,6 +1381,8 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
     g_assert(s->clock_name);
     g_assert(s->clock_src);
     OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    g_assert(s->version < OT_SPI_HOST_VERSION_COUNT);
 
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 

@@ -1250,7 +1250,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4"),
+            IBEX_DEV_UINT_PROP("version", OT_SPI_HOST_VERSION_DJ_PRE)
         ),
     },
     [OT_DJ_SOC_DEV_SPI_DEVICE] = {

@@ -724,7 +724,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4"),
+            IBEX_DEV_UINT_PROP("version", OT_SPI_HOST_VERSION_EG_1_0_0)
         ),
     },
     [OT_EG_SOC_DEV_SPI_HOST1] = {
@@ -743,7 +744,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi1"),
             IBEX_DEV_UINT_PROP("bus-num", 1),
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4"),
+            IBEX_DEV_UINT_PROP("version", OT_SPI_HOST_VERSION_EG_1_0_0)
         ),
     },
     [OT_EG_SOC_DEV_USBDEV] = {

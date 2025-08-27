@@ -36,4 +36,11 @@
 #define TYPE_OT_SPI_HOST "ot-spi_host"
 OBJECT_DECLARE_TYPE(OtSPIHostState, OtSPIHostClass, OT_SPI_HOST)
 
+/* Supported SPI Host versions */
+typedef enum {
+    OT_SPI_HOST_VERSION_EG_1_0_0,
+    OT_SPI_HOST_VERSION_DJ_PRE,
+    OT_SPI_HOST_VERSION_COUNT,
+} OtSPIHostVersion;
+
 #endif /* HW_OPENTITAN_OT_SPI_HOST_H */
