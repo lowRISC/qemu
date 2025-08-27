@@ -719,6 +719,9 @@ static_assert(NUM_PART <= 64, "Maximum part count reached");
 
 #define OTP_DIGEST_ADDR_MASK (sizeof(uint64_t) - 1u)
 
+static_assert(OTP_BYTE_ADDR_WIDTH == R_DIRECT_ACCESS_ADDRESS_ADDRESS_LENGTH,
+              "OTP byte address width mismatch");
+
 typedef struct {
     union {
         OtOTPBufState b;
@@ -1193,7 +1196,7 @@ static void ot_otp_dj_disable_all_partitions(OtOTPDjState *s)
 
 static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 {
-    /* This is it NUM_ERROR_ENTRIES */
+    /* This is in NUM_ERROR_ENTRIES */
     g_assert(part < NUM_ERROR_ENTRIES);
 
     uint32_t errval = ((uint32_t)err) & 0x7;
@@ -3089,6 +3092,7 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
 
 #undef CASE_SCALAR
 #undef CASE_RANGE
+#undef CASE_DIGEST
 }
 
 static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
@@ -3292,7 +3296,7 @@ static void ot_otp_dj_fake_entropy(OtOTPDjState *s, unsigned count)
      * on SRAM controller I/O request, which is itself fully synchronous.
      * When not enough entropy has been initiatially collected, this function
      * adds some fake entropy to entropy buffer. The main use case is to enable
-     * SRAM initialization with random values and does not need to be trully
+     * SRAM initialization with random values and does not need to be truly
      * secure, while limiting emulation code size and complexity.
      */
 
@@ -3833,7 +3837,7 @@ static void ot_otp_dj_pwr_otp_bh(void *opaque)
      * This sequence is triggered from the Power Manager, in the early boot
      * sequence while the OT IPs are maintained in reset.
      * This means that all ot_otp_dj_pwr_* functions are called before the OTP
-     * IP is relased from reset.
+     * IP is released from reset.
      *
      * The QEMU reset is not a 1:1 mapping to the actual HW.
      */
@@ -4083,7 +4087,7 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
      * realize-reset sequence.
      *
      * File back-end storage (loading) is processed from
-     * the ot_otp_dj_pwr_otp_bh handler, to ensure data are reloaded from the
+     * the ot_otp_dj_pwr_otp_bh handler, to ensure data is reloaded from the
      * backend on each reset, prior to this very reset fuction. This reset
      * function should not alter the storage content.
      *
