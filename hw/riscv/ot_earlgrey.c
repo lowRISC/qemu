@@ -735,9 +735,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(1, 17),
             OT_EG_SOC_GPIO_ALERT(2, 18),
             /*
-             * TODO: add missing life cycle broadcast signals when the required
-             * supporting HW is available:
-             *  - OT_LC_KEYMGR_EN (when keymgr is implemented)
+             * @todo: check for missing life cycle broadcast signal connections
+             * and add them when the required supporting HW is available.
              */
             /* Splitters for signals that go to many blocks. */
             OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN, LC_HW_DEBUG),
@@ -748,6 +747,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             /* Signals to ibex_wrapper */
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CPU_EN, IBEX_WRAPPER,
                              OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_LC_CTRL_CPU_EN),
+            /* Signals to keymgr */
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_KEYMGR_EN, KEYMGR,
+                             OT_KEYMGR_ENABLE, 0),
             /* Signals to flash_ctrl */
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_OWNER_SEED_SW_RW_EN,
                              FLASH_CTRL, OT_LC_BROADCAST,
