@@ -653,14 +653,12 @@ ot_keymgr_dpe_get_working_state(const OtKeyMgrDpeState *s)
 static void ot_keymgr_dpe_xchange_working_state(
     OtKeyMgrDpeState *s, OtKeyMgrDpeWorkingState working_state, int line)
 {
-    OtKeyMgrDpeWorkingState prev_working_state =
-        ot_keymgr_dpe_get_working_state(s);
+    OtKeyMgrDpeWorkingState prev_state = ot_keymgr_dpe_get_working_state(s);
 
-    if (prev_working_state != working_state) {
+    if (prev_state != working_state) {
         trace_ot_keymgr_dpe_change_working_state(s->ot_id, line,
-                                                 WORKING_STATE_NAME(
-                                                     prev_working_state),
-                                                 prev_working_state,
+                                                 WORKING_STATE_NAME(prev_state),
+                                                 prev_state,
                                                  WORKING_STATE_NAME(
                                                      working_state),
                                                  working_state);

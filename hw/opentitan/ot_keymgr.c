@@ -91,6 +91,9 @@ static_assert(KEYMGR_GEN_DATA_BYTES <= KEYMGR_KDF_BUFFER_BYTES,
 static_assert(KEYMGR_LFSR_SEED_BYTES <= KEYMGR_SEED_BYTES,
               "Keymgr LFSR seed is larger than generic KeyMgr seed size");
 
+/* Use a timer with a small delay instead of a BH for reliability */
+#define FSM_TICK_DELAY 200u /* 200 ns */
+
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
     SHARED_FIELD(INTR_OP_DONE, 0u, 1u)
@@ -314,12 +317,27 @@ enum {
     KEYMGR_SEED_COUNT,
 };
 
+typedef enum {
+    KEYMGR_ST_RESET,
+    KEYMGR_ST_ENTROPY_RESEED,
+    KEYMGR_ST_RANDOM,
+    KEYMGR_ST_ROOT_KEY,
+    KEYMGR_ST_INIT,
+    KEYMGR_ST_CREATOR_ROOT_KEY,
+    KEYMGR_ST_OWNER_INT_KEY,
+    KEYMGR_ST_OWNER_KEY,
+    KEYMGR_ST_DISABLED,
+    KEYMGR_ST_WIPE,
+    KEYMGR_ST_INVALID,
+} OtKeyMgrFSMState;
+
 typedef struct OtKeyMgrState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
     IbexIRQ irq;
     IbexIRQ alerts[ALERT_COUNT];
+    QEMUTimer *fsm_tick_timer;
 
     uint32_t regs[REGS_COUNT];
     OtShadowReg control;
@@ -331,6 +349,8 @@ typedef struct OtKeyMgrState {
     uint8_t *sealing_sw_binding;
     uint8_t *attest_sw_binding;
 
+    bool enabled;
+    OtKeyMgrFSMState state;
     uint8_t *seeds[KEYMGR_SEED_COUNT];
 
     /* properties */
@@ -413,6 +433,43 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
+#define WORKING_STATE_ENTRY(_st_) \
+    [KEYMGR_WORKING_STATE_##_st_] = stringify(_st_)
+static const char *WORKING_STATE_NAMES[] = {
+    WORKING_STATE_ENTRY(RESET),
+    WORKING_STATE_ENTRY(INIT),
+    WORKING_STATE_ENTRY(CREATOR_ROOT_KEY),
+    WORKING_STATE_ENTRY(OWNER_INTERMEDIATE_KEY),
+    WORKING_STATE_ENTRY(OWNER_KEY),
+    WORKING_STATE_ENTRY(DISABLED),
+    WORKING_STATE_ENTRY(INVALID),
+};
+#undef WORKING_STATE_ENTRY
+#define WORKING_STATE_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(WORKING_STATE_NAMES) ? \
+         WORKING_STATE_NAMES[(_st_)] : \
+         "?")
+
+#define FST_ENTRY(_st_) [KEYMGR_ST_##_st_] = stringify(_st_)
+static const char *FST_NAMES[] = {
+    /* clang-format off */
+    FST_ENTRY(RESET),
+    FST_ENTRY(ENTROPY_RESEED),
+    FST_ENTRY(RANDOM),
+    FST_ENTRY(ROOT_KEY),
+    FST_ENTRY(INIT),
+    FST_ENTRY(CREATOR_ROOT_KEY),
+    FST_ENTRY(OWNER_INT_KEY),
+    FST_ENTRY(OWNER_KEY),
+    FST_ENTRY(DISABLED),
+    FST_ENTRY(WIPE),
+    FST_ENTRY(INVALID),
+    /* clang-format on */
+};
+#undef FST_ENTRY
+#define FST_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(FST_NAMES) ? FST_NAMES[(_st_)] : "?")
+
 static void ot_keymgr_update_irq(OtKeyMgrState *s)
 {
     bool level = (bool)(s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE]);
@@ -461,6 +518,128 @@ static void ot_keymgr_update_alerts(OtKeyMgrState *s)
                                          level);
         }
         ibex_irq_set(&s->alerts[ix], level);
+    }
+}
+
+#define ot_keymgr_change_working_state(_s_, _working_state_) \
+    ot_keymgr_xchange_working_state(_s_, _working_state_, __LINE__)
+
+static OtKeyMgrWorkingState ot_keymgr_get_working_state(const OtKeyMgrState *s)
+{
+    uint32_t working_state =
+        FIELD_EX32(s->regs[R_WORKING_STATE], WORKING_STATE, STATE);
+
+    if (working_state <= KEYMGR_WORKING_STATE_INVALID) {
+        return working_state;
+    }
+    return KEYMGR_WORKING_STATE_INVALID;
+}
+
+static void ot_keymgr_xchange_working_state(
+    OtKeyMgrState *s, OtKeyMgrWorkingState working_state, int line)
+{
+    OtKeyMgrWorkingState prev_working_state = ot_keymgr_get_working_state(s);
+
+    if (prev_working_state != working_state) {
+        trace_ot_keymgr_change_working_state(s->ot_id, line,
+                                             WORKING_STATE_NAME(
+                                                 prev_working_state),
+                                             prev_working_state,
+                                             WORKING_STATE_NAME(working_state),
+                                             working_state);
+        s->regs[R_WORKING_STATE] = working_state;
+    }
+}
+
+#define ot_keymgr_schedule_fsm(_s_) \
+    ot_keymgr_xschedule_fsm(_s_, __func__, __LINE__)
+
+static void ot_keymgr_xschedule_fsm(OtKeyMgrState *s, const char *func,
+                                    int line)
+{
+    trace_ot_keymgr_schedule_fsm(s->ot_id, func, line);
+    if (!timer_pending(s->fsm_tick_timer)) {
+        uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+        timer_mod(s->fsm_tick_timer, (int64_t)(now + FSM_TICK_DELAY));
+    }
+}
+
+#define ot_keymgr_change_main_fsm_state(_s_, _op_status_) \
+    ot_keymgr_xchange_main_fsm_state(_s_, _op_status_, __LINE__)
+
+static void ot_keymgr_xchange_main_fsm_state(OtKeyMgrState *s,
+                                             OtKeyMgrFSMState state, int line)
+{
+    if (s->state != state) {
+        trace_ot_keymgr_change_main_fsm_state(s->ot_id, line,
+                                              FST_NAME(s->state), s->state,
+                                              FST_NAME(state), state);
+        s->state = state;
+    }
+}
+
+/* Tick the main FSM. Returns whether there was any state change this tick. */
+static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
+{
+    /* store current state so we can determine (& return) any state change */
+    OtKeyMgrFSMState state = s->state;
+    bool op_start = s->regs[R_START] & R_START_EN_MASK;
+    bool invalid_state = s->regs[R_FAULT_STATUS] & FAULT_STATUS_MASK;
+    uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+
+    trace_ot_keymgr_main_fsm_tick(s->ot_id, FST_NAME(s->state), s->state);
+
+    switch (s->state) {
+    case KEYMGR_ST_RESET:
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_RESET);
+        bool op_advance =
+            FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION) == KEYMGR_OP_ADVANCE;
+        /* @todo: add keymgr enablement via lc_ctrl */
+        bool advance_sel = op_start && op_advance && s->enabled;
+        if (op_start && !advance_sel) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+        }
+
+        if (invalid_state) {
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
+        } else if (advance_sel) {
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_ENTROPY_RESEED);
+        }
+        break;
+    case KEYMGR_ST_ENTROPY_RESEED:
+    case KEYMGR_ST_RANDOM:
+    case KEYMGR_ST_ROOT_KEY:
+    case KEYMGR_ST_INIT:
+    case KEYMGR_ST_CREATOR_ROOT_KEY:
+    case KEYMGR_ST_OWNER_INT_KEY:
+    case KEYMGR_ST_OWNER_KEY:
+    case KEYMGR_ST_DISABLED:
+    case KEYMGR_ST_WIPE:
+    case KEYMGR_ST_INVALID:
+        /* @todo: implement other keymgr FSM states */
+        qemu_log_mask(LOG_UNIMP, "%s: %s: FSM State %s is not implemented.\n",
+                      __func__, s->ot_id, FST_NAME(s->state));
+        break;
+    default:
+        break;
+    }
+
+    /* @todo: update ERR_CODE, OP_STATUS & CFG_REGWEN based on FSM changes */
+
+    return state != s->state;
+}
+
+static void ot_keymgr_fsm_tick(void *opaque)
+{
+    OtKeyMgrState *s = opaque;
+
+    bool fsm_state_changed = ot_keymgr_main_fsm_tick(s);
+    if (fsm_state_changed) {
+        /* FSM state changed, so schedule an FSM update once more */
+        ot_keymgr_schedule_fsm(s);
+    } else {
+        /* no FSM state change, so go idle and wait for some external event */
+        trace_ot_keymgr_go_idle(s->ot_id);
     }
 }
 
@@ -642,7 +821,7 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= R_START_EN_MASK;
         s->regs[reg] = val32;
-        /* @todo: implement R_START */
+        ot_keymgr_fsm_tick(s);
         break;
     case R_CONTROL_SHADOWED:
         if (!ot_keymgr_check_reg_write(s, reg, R_CFG_REGWEN)) {
@@ -916,6 +1095,8 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
+    timer_del(s->fsm_tick_timer);
+
     /* reset registers */
     memset(s->regs, 0u, sizeof(s->regs));
     s->regs[R_CFG_REGWEN] = 0x1u;
@@ -932,6 +1113,10 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     memset(s->salt, 0u, KEYMGR_SALT_BYTES);
     memset(s->sealing_sw_binding, 0u, KEYMGR_SW_BINDING_BYTES);
     memset(s->attest_sw_binding, 0u, KEYMGR_SW_BINDING_BYTES);
+
+    /* reset internal state */
+    s->enabled = false;
+    s->state = KEYMGR_ST_RESET;
 
     /* update IRQ and alert states */
     ot_keymgr_update_irq(s);
@@ -983,6 +1168,8 @@ static void ot_keymgr_init(Object *obj)
     for (unsigned ix = 0u; ix < ARRAY_SIZE(s->seeds); ix++) {
         s->seeds[ix] = g_new0(uint8_t, KEYMGR_SEED_BYTES);
     }
+
+    s->fsm_tick_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_keymgr_fsm_tick, s);
 }
 
 static void ot_keymgr_class_init(ObjectClass *klass, void *data)
