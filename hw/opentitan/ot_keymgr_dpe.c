@@ -2,6 +2,7 @@
  * QEMU OpenTitan Key Manager DPE device
  *
  * Copyright (c) 2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -261,7 +262,7 @@ typedef enum {
     KEYMGR_DPE_OP_GENERATE_SW_OUTPUT = 2,
     KEYMGR_DPE_OP_GENERATE_HW_OUTPUT = 3,
     KEYMGR_DPE_OP_DISABLE = 4,
-} OtKeyMgrOperation;
+} OtKeyMgrDpeOperation;
 
 /* values for CONTROL_SHADOWED.DEST_SEL */
 typedef enum {
@@ -293,7 +294,7 @@ typedef enum {
     KEYMGR_DPE_OP_STATUS_WIP = 1,
     KEYMGR_DPE_OP_STATUS_DONE_SUCCESS = 2,
     KEYMGR_DPE_OP_STATUS_DONE_ERROR = 3,
-} OtKeyMgrOpStatus;
+} OtKeyMgrDpeOpStatus;
 
 enum {
     /* clang-format off */
@@ -370,7 +371,7 @@ typedef struct {
 typedef struct {
     bool op_req;
     bool op_ack;
-} OtKeyMgrOpState;
+} OtKeyMgrDpeOpState;
 
 typedef struct {
     uint8_t *data;
@@ -398,7 +399,7 @@ typedef struct OtKeyMgrDpeState {
     bool enabled;
     OtKeyMgrDpeFSMState state;
     OtKeyMgrDpePrng prng;
-    OtKeyMgrOpState op_state;
+    OtKeyMgrDpeOpState op_state;
     uint8_t *seeds[KEYMGR_DPE_SEED_COUNT];
 
     /* key slots */
@@ -662,7 +663,8 @@ static void ot_keymgr_dpe_xchange_working_state(
     }
 }
 
-static OtKeyMgrOpStatus ot_keymgr_dpe_get_op_status(const OtKeyMgrDpeState *s)
+static OtKeyMgrDpeOpStatus
+ot_keymgr_dpe_get_op_status(const OtKeyMgrDpeState *s)
 {
     switch (FIELD_EX32(s->regs[R_OP_STATUS], OP_STATUS, VAL)) {
     case KEYMGR_DPE_OP_STATUS_IDLE:
@@ -682,9 +684,9 @@ static OtKeyMgrOpStatus ot_keymgr_dpe_get_op_status(const OtKeyMgrDpeState *s)
     ot_keymgr_dpe_xchange_op_status(_s_, _op_status_, __LINE__)
 
 static void ot_keymgr_dpe_xchange_op_status(
-    OtKeyMgrDpeState *s, OtKeyMgrOpStatus op_status, int line)
+    OtKeyMgrDpeState *s, OtKeyMgrDpeOpStatus op_status, int line)
 {
-    OtKeyMgrOpStatus prev_op_status = ot_keymgr_dpe_get_op_status(s);
+    OtKeyMgrDpeOpStatus prev_op_status = ot_keymgr_dpe_get_op_status(s);
     if (prev_op_status != op_status) {
         trace_ot_keymgr_dpe_change_op_status(s->ot_id, line,
                                              OP_STATUS_NAME(prev_op_status),
@@ -960,7 +962,7 @@ static bool ot_keymgr_dpe_valid_data_check(const uint8_t *data, size_t len)
     return (popcount && popcount != (len * BITS_PER_BYTE));
 }
 
-static void ot_keymgr_reset_kdf_buffer(OtKeyMgrDpeState *s)
+static void ot_keymgr_dpe_reset_kdf_buffer(OtKeyMgrDpeState *s)
 {
     memset(s->kdf_buf.data, 0u, KEYMGR_DPE_KDF_BUFFER_BYTES);
     s->kdf_buf.offset = 0u;
@@ -1115,7 +1117,7 @@ static void ot_keymgr_dpe_operation_advance(OtKeyMgrDpeState *s)
     (void)(invalid_allow_child || invalid_max_boot_stage || invalid_src_slot ||
            invalid_retain_parent);
 
-    ot_keymgr_reset_kdf_buffer(s);
+    ot_keymgr_dpe_reset_kdf_buffer(s);
 
     size_t expected_kdf_len = 0u;
 
@@ -1200,7 +1202,7 @@ static void ot_keymgr_dpe_operation_gen_output(OtKeyMgrDpeState *s, bool sw)
         (uint8_t)FIELD_EX32(ctrl, CONTROL_SHADOWED, SLOT_SRC_SEL);
     OtKeyMgrDpeSlot *src_slot = &s->key_slots[slot_src_sel];
 
-    ot_keymgr_reset_kdf_buffer(s);
+    ot_keymgr_dpe_reset_kdf_buffer(s);
 
     if (src_slot->valid) {
         /* Output Key Seed (SW/HW key) */
@@ -2041,7 +2043,7 @@ static void ot_keymgr_dpe_reset_enter(Object *obj, ResetType type)
     s->prng.reseed_cnt = 0u;
     s->op_state.op_req = false;
     s->op_state.op_ack = false;
-    ot_keymgr_reset_kdf_buffer(s);
+    ot_keymgr_dpe_reset_kdf_buffer(s);
 
     /* reset slots */
     memset(s->key_slots, 0u, NUM_SLOTS * sizeof(OtKeyMgrDpeSlot));
