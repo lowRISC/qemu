@@ -110,7 +110,6 @@ REG32(STATUS, 0x10u)
     FIELD(STATUS, BUS_INTEG_ERROR, 28u, 1u)
     FIELD(STATUS, DAI_IDLE, 29u, 1u)
     FIELD(STATUS, CHECK_PENDING, 30u, 1u)
-    FIELD(STATUS, RESET_ALLOWED, 31u, 1u)
 REG32(ERR_CODE_0, 0x14u)
     SHARED_FIELD(ERR_CODE, 0u, 3u)
 REG32(ERR_CODE_1, 0x18u)
@@ -1257,7 +1256,6 @@ static uint32_t ot_otp_dj_get_status(const OtOTPDjState *s)
 
     status = FIELD_DP32(s->regs[R_STATUS], STATUS, DAI_IDLE,
                         !ot_otp_dj_dai_is_busy(s));
-    status = FIELD_DP32(status, STATUS, RESET_ALLOWED, 1u);
 
     return status;
 }
