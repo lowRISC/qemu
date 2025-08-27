@@ -112,6 +112,7 @@ REG32(STATUS, 0x10u)
     FIELD(STATUS, CHECK_PENDING, 30u, 1u)
     FIELD(STATUS, RESET_ALLOWED, 31u, 1u)
 REG32(ERR_CODE_0, 0x14u)
+    SHARED_FIELD(ERR_CODE, 0u, 3u)
 REG32(ERR_CODE_1, 0x18u)
 REG32(ERR_CODE_2, 0x1cu)
 REG32(ERR_CODE_3, 0x20u)
@@ -719,6 +720,9 @@ static_assert(NUM_PART <= 64, "Maximum part count reached");
 
 #define OTP_DIGEST_ADDR_MASK (sizeof(uint64_t) - 1u)
 
+static_assert(OTP_BYTE_ADDR_WIDTH == R_DIRECT_ACCESS_ADDRESS_ADDRESS_LENGTH,
+              "OTP byte address width mismatch");
+
 typedef struct {
     union {
         OtOTPBufState b;
@@ -1193,10 +1197,10 @@ static void ot_otp_dj_disable_all_partitions(OtOTPDjState *s)
 
 static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 {
-    /* This is it NUM_ERROR_ENTRIES */
+    /* This is in NUM_ERROR_ENTRIES */
     g_assert(part < NUM_ERROR_ENTRIES);
 
-    uint32_t errval = ((uint32_t)err) & 0x7;
+    uint32_t errval = ((uint32_t)err) & ERR_CODE_MASK;
     if (errval || errval != s->regs[R_ERR_CODE_0 + part]) {
         trace_ot_otp_set_error(s->ot_id, PART_NAME(part), part,
                                ERR_CODE_NAME(err), err);
@@ -1826,8 +1830,9 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
         trace_ot_otp_mismatch_digest(s->ot_id, PART_NAME(ix), ix, digest,
                                      pctrl->buffer.digest);
 
-        TRACE_OTP("compute digest of %s: %016llx from %s\n", PART_NAME(ix),
-                  digest, ot_otp_hexdump(s, pctrl->buffer.data, part_size));
+        TRACE_OTP("compute digest of %s: %016" PRIx64 " from %s\n",
+                  PART_NAME(ix), digest,
+                  ot_otp_hexdump(s, pctrl->buffer.data, part_size));
 
         pctrl->failed = true;
         /* this is a fatal error */
@@ -2318,8 +2323,9 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
         ot_otp_dj_compute_partition_digest(s, data, part_size);
     s->dai->partition = partition;
 
-    TRACE_OTP("%s: %s: next digest %016llx from %s\n", __func__, s->ot_id,
-              pctrl->buffer.next_digest, ot_otp_hexdump(s, data, part_size));
+    TRACE_OTP("%s: %s: next digest %016" PRIx64 " from %s\n", __func__,
+              s->ot_id, pctrl->buffer.next_digest,
+              ot_otp_hexdump(s, data, part_size));
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_WAIT);
 
@@ -3089,6 +3095,7 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
 
 #undef CASE_SCALAR
 #undef CASE_RANGE
+#undef CASE_DIGEST
 }
 
 static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
@@ -3292,7 +3299,7 @@ static void ot_otp_dj_fake_entropy(OtOTPDjState *s, unsigned count)
      * on SRAM controller I/O request, which is itself fully synchronous.
      * When not enough entropy has been initiatially collected, this function
      * adds some fake entropy to entropy buffer. The main use case is to enable
-     * SRAM initialization with random values and does not need to be trully
+     * SRAM initialization with random values and does not need to be truly
      * secure, while limiting emulation code size and complexity.
      */
 
@@ -3429,7 +3436,7 @@ static bool ot_otp_dj_program_req(OtOTPState *s, const uint16_t *lc_tcount,
                  OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size / sizeof(uint16_t));
 
         /* current position in LC buffer to write to backend */
-        lci->hpos = 0;
+        lci->hpos = 0u;
     }
 
     /*
@@ -3485,7 +3492,7 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
     void *ack_data = lci->ack_data;
     lci->ack_fn = NULL;
     lci->ack_data = NULL;
-    lci->hpos = 0;
+    lci->hpos = 0u;
 
     if (!success && lci->error != OTP_NO_ERROR) {
         ot_otp_dj_set_error(s, OTP_PART_LIFE_CYCLE, lci->error);
@@ -3579,7 +3586,7 @@ static void ot_otp_dj_lci_write_word(void *opaque)
         lc_edst[lci->hpos] |= new_ecc;
     }
 
-    lci->hpos += 1;
+    lci->hpos += 1u;
 
     unsigned update_time = s->be_chars.timings.write_ns * sizeof(uint16_t);
     timer_mod(lci->prog_delay,
@@ -3833,7 +3840,7 @@ static void ot_otp_dj_pwr_otp_bh(void *opaque)
      * This sequence is triggered from the Power Manager, in the early boot
      * sequence while the OT IPs are maintained in reset.
      * This means that all ot_otp_dj_pwr_* functions are called before the OTP
-     * IP is relased from reset.
+     * IP is released from reset.
      *
      * The QEMU reset is not a 1:1 mapping to the actual HW.
      */
@@ -4083,7 +4090,7 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
      * realize-reset sequence.
      *
      * File back-end storage (loading) is processed from
-     * the ot_otp_dj_pwr_otp_bh handler, to ensure data are reloaded from the
+     * the ot_otp_dj_pwr_otp_bh handler, to ensure data is reloaded from the
      * backend on each reset, prior to this very reset fuction. This reset
      * function should not alter the storage content.
      *
