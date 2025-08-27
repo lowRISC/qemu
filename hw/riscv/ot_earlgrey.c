@@ -1184,7 +1184,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 173),
             OT_EG_SOC_GPIO_ALERT(0, 49),
             OT_EG_SOC_GPIO_ALERT(1, 50)
-        )
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("edn", EDN0)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("edn-ep", 0u)
+        ),
     },
     [OT_EG_SOC_DEV_CSRNG] = {
         .type = TYPE_OT_CSRNG,

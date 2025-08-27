@@ -33,7 +33,9 @@
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_keymgr.h"
+#include "hw/opentitan/ot_prng.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -75,6 +77,12 @@
 #define KEYMGR_KDF_BUFFER_WIDTH 1600u
 #define KEYMGR_KDF_BUFFER_BYTES ((KEYMGR_KDF_BUFFER_WIDTH) / 8u)
 #define KEYMGR_SEED_BYTES       (KEYMGR_KEY_BYTES)
+
+/*
+ * The EDN provides words of entropy at a time, so the keymgr needs
+ * to send multiple entropy requests to reseeds its internal LFSR.
+ */
+#define KEYMGR_RESEED_COUNT (KEYMGR_LFSR_WIDTH / (8u * sizeof(uint32_t)))
 
 static_assert(KEYMGR_ADV_DATA_BYTES <= KEYMGR_KDF_BUFFER_BYTES,
               "KeyMgr ADV data does not fit in KDF buffer");
@@ -331,6 +339,20 @@ typedef enum {
     KEYMGR_ST_INVALID,
 } OtKeyMgrFSMState;
 
+typedef struct {
+    OtEDNState *device;
+    uint8_t ep;
+    bool connected;
+    bool scheduled;
+} OtKeyMgrEDN;
+
+typedef struct {
+    OtPrngState *state;
+    bool reseed_req;
+    bool reseed_ack;
+    uint8_t reseed_cnt;
+} OtKeyMgrPrng;
+
 typedef struct OtKeyMgrState {
     SysBusDevice parent_obj;
 
@@ -351,10 +373,12 @@ typedef struct OtKeyMgrState {
 
     bool enabled;
     OtKeyMgrFSMState state;
+    OtKeyMgrPrng prng;
     uint8_t *seeds[KEYMGR_SEED_COUNT];
 
     /* properties */
     char *ot_id;
+    OtKeyMgrEDN edn;
     char *seed_xstrs[KEYMGR_SEED_COUNT];
 } OtKeyMgrState;
 
@@ -564,6 +588,57 @@ static void ot_keymgr_xschedule_fsm(OtKeyMgrState *s, const char *func,
     }
 }
 
+static void ot_keymgr_request_entropy(OtKeyMgrState *s);
+
+static void ot_keymgr_push_entropy(void *opaque, uint32_t bits, bool fips)
+{
+    (void)fips;
+    OtKeyMgrState *s = opaque;
+    OtKeyMgrEDN *edn = &s->edn;
+    OtKeyMgrPrng *prng = &s->prng;
+
+    if (!edn->scheduled) {
+        trace_ot_keymgr_error(s->ot_id, "Unexpected entropy");
+        return;
+    }
+    edn->scheduled = false;
+
+    ot_prng_reseed(prng->state, bits);
+    prng->reseed_cnt++;
+
+    bool reschedule = prng->reseed_cnt < KEYMGR_RESEED_COUNT;
+
+    trace_ot_keymgr_entropy(s->ot_id, prng->reseed_cnt, reschedule);
+
+    if (reschedule) {
+        /* we need more entropy */
+        ot_keymgr_request_entropy(s);
+    } else if (prng->reseed_req) {
+        prng->reseed_ack = true;
+        prng->reseed_cnt = 0u;
+        ot_keymgr_schedule_fsm(s);
+    }
+}
+
+static void ot_keymgr_request_entropy(OtKeyMgrState *s)
+{
+    OtKeyMgrEDN *edn = &s->edn;
+
+    if (!edn->connected) {
+        ot_edn_connect_endpoint(edn->device, edn->ep, &ot_keymgr_push_entropy,
+                                s);
+        edn->connected = true;
+    }
+
+    if (!edn->scheduled && s->prng.reseed_req) {
+        edn->scheduled = true;
+        if (ot_edn_request_entropy(edn->device, edn->ep)) {
+            error_setg(&error_fatal, "%s: %s: keymgr failed to request entropy",
+                       __func__, s->ot_id);
+        }
+    }
+}
+
 #define ot_keymgr_change_main_fsm_state(_s_, _op_status_) \
     ot_keymgr_xchange_main_fsm_state(_s_, _op_status_, __LINE__)
 
@@ -606,8 +681,39 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         }
         break;
     case KEYMGR_ST_ENTROPY_RESEED:
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_RESET);
+        /*
+         * The Earlgrey 1.0.0 keymgr does not immediately transition to
+         * ST_INVALID if disabled by the lc_ctrl whilst reseeding entropy.
+         */
+        if (!s->prng.reseed_req) {
+            s->prng.reseed_ack = false;
+            s->prng.reseed_req = true;
+            ot_keymgr_request_entropy(s);
+        } else if (s->prng.reseed_ack) {
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_RANDOM);
+        }
+        break;
     case KEYMGR_ST_RANDOM:
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_RESET);
+        /*
+         * The Earlgrey 1.0.0 keymgr does not immediately transition to
+         * ST_INVALID if disabled by the lc_ctrl whilst reseeding entropy.
+         *
+         * @todo: normally, this state would initialise the key state with
+         * some random entropy for masking of key shares, but we leave these
+         * uninitialised while there is no KMAC masking.
+         */
+        ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_ROOT_KEY);
+        break;
     case KEYMGR_ST_ROOT_KEY:
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_INIT);
+        if (!s->enabled) {
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_INVALID);
+        } else {
+            /* @todo: retrieve root key from OTP and change state */
+        }
+        break;
     case KEYMGR_ST_INIT:
     case KEYMGR_ST_CREATOR_ROOT_KEY:
     case KEYMGR_ST_OWNER_INT_KEY:
@@ -1075,6 +1181,9 @@ static void ot_keymgr_configure_constants(OtKeyMgrState *s)
 
 static Property ot_keymgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtKeyMgrState, ot_id),
+    DEFINE_PROP_LINK("edn", OtKeyMgrState, edn.device, TYPE_OT_EDN,
+                     OtEDNState *),
+    DEFINE_PROP_UINT8("edn-ep", OtKeyMgrState, edn.ep, UINT8_MAX),
     DEFINE_PROP_STRING("lfsr_seed", OtKeyMgrState,
                        seed_xstrs[KEYMGR_SEED_LFSR]),
     DEFINE_PROP_STRING("revision_seed", OtKeyMgrState,
@@ -1121,6 +1230,9 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
 
     timer_del(s->fsm_tick_timer);
 
+    g_assert(s->edn.device);
+    g_assert(s->edn.ep != UINT8_MAX);
+
     /* reset registers */
     memset(s->regs, 0u, sizeof(s->regs));
     s->regs[R_CFG_REGWEN] = 0x1u;
@@ -1141,6 +1253,9 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     /* reset internal state */
     s->enabled = false;
     s->state = KEYMGR_ST_RESET;
+    s->prng.reseed_req = false;
+    s->prng.reseed_ack = false;
+    s->prng.reseed_cnt = 0u;
 
     /* update IRQ and alert states */
     ot_keymgr_update_irq(s);
@@ -1187,6 +1302,8 @@ static void ot_keymgr_init(Object *obj)
     }
     qdev_init_gpio_in_named(DEVICE(s), ot_keymgr_lc_signal, OT_KEYMGR_ENABLE,
                             1);
+
+    s->prng.state = ot_prng_allocate();
 
     s->salt = g_new0(uint8_t, KEYMGR_SALT_BYTES);
     s->sealing_sw_binding = g_new0(uint8_t, KEYMGR_SW_BINDING_BYTES);
