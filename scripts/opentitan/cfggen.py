@@ -133,8 +133,16 @@ class OtConfiguration:
                 continue
             if modtype.startswith('keymgr'):
                 self._keymgr_name = modtype
-                self._load_top_values(module, self._keymgr, False,
-                                      r'RndCnst((?:.*)Seed)')
+                self._load_top_values(
+                    module,
+                    self._keymgr,
+                    False,
+                    r"RndCnst((?:.*)Seed)",
+                    # The CDI keymgr seed does not match `RndCnst.*Seed`
+                    r"RndCnst(Cdi)",
+                )
+                if "cdi" in self._keymgr:
+                    self._keymgr["cdi_seed"] = self._keymgr.pop("cdi")
                 continue
         clocks = cfg.get('clocks', {})
         for clock in clocks.get('srcs', []):
