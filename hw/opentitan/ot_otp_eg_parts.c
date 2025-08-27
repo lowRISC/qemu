@@ -130,7 +130,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .write_lock = false,
         .read_lock = true,
         .integrity = true,
-        // .iskeymgr_creator = true,
+        .iskeymgr_creator = true,
     },
     [OTP_PART_LIFE_CYCLE] = {
         .size = 88u,
