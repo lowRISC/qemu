@@ -655,14 +655,15 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(1, 12),
             OT_EG_SOC_GPIO_ALERT(2, 13),
             OT_EG_SOC_GPIO_ALERT(3, 14),
-            OT_EG_SOC_GPIO_ALERT(4, 15)
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("edn-ep", 1u)
+            OT_EG_SOC_GPIO_ALERT(4, 15),
+            OT_EG_SOC_RSP(OT_PWRMGR_OTP, PWRMGR)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0),
             OT_EG_SOC_DEVLINK("backend", OTP_BACKEND)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("edn-ep", 1u)
         ),
     },
     [OT_EG_SOC_DEV_OTP_BACKEND] = {
@@ -820,16 +821,15 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 153),
-            /* loopback signal since Earlgrey OTP signal are not supported yet*/
-            OT_EG_SOC_SIGNAL(OT_PWRMGR_OTP_REQ, 0, PWRMGR,
-                             OT_PWRMGR_OTP_RSP, 0),
+            OT_EG_SOC_GPIO_ALERT(0, 22),
+            OT_EG_SOC_REQ(OT_PWRMGR_OTP, OTP_CTRL),
             OT_EG_SOC_REQ(OT_PWRMGR_LC, LC_CTRL),
             OT_EG_SOC_SIGNAL(OT_PWRMGR_CPU_EN, 0, IBEX_WRAPPER,
                              OT_IBEX_WRAPPER_CPU_EN,
                              OT_IBEX_PWRMGR_CPU_EN),
+            /* todo: add pwmgr GPIO strap when Earlgrey GPIO is updated */
             OT_EG_SOC_SIGNAL(OT_PWRMGR_RST_REQ, 0, RSTMGR,
-                             OT_RSTMGR_RST_REQ, 0),
-            OT_EG_SOC_GPIO_ALERT(0, 22)
+                             OT_RSTMGR_RST_REQ, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("clock_ctrl", AST)
