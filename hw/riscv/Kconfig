@@ -103,6 +103,7 @@ config OT_EARLGREY
     select RISCV_DM
     select RISCV_DTM
     select SIFIVE_PLIC
+    select SPLIT_IRQ
     select TAP_CTRL_RBB
 
 config IBEXDEMO
