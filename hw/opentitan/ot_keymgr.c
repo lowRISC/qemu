@@ -83,6 +83,11 @@ static_assert(KEYMGR_GEN_DATA_BYTES <= KEYMGR_KDF_BUFFER_BYTES,
 #define KEYMGR_ENTROPY_WIDTH  (KEYMGR_LFSR_WIDTH / 2u)
 #define KEYMGR_ENTROPY_ROUNDS (KEYMGR_KEY_WIDTH / KEYMGR_ENTROPY_WIDTH)
 
+#define KEYMGR_LFSR_SEED_BYTES ((KEYMGR_LFSR_WIDTH) / 8u)
+
+static_assert(KEYMGR_LFSR_SEED_BYTES <= KEYMGR_SEED_BYTES,
+              "Keymgr LFSR seed is larger than generic KeyMgr seed size");
+
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
     SHARED_FIELD(INTR_OP_DONE, 0u, 1u)
@@ -290,6 +295,22 @@ enum {
     /* clang-format on */
 };
 
+enum {
+    KEYMGR_SEED_LFSR,
+    KEYMGR_SEED_REV,
+    KEYMGR_SEED_CREATOR_IDENTITY,
+    KEYMGR_SEED_OWNER_INT_IDENTITY,
+    KEYMGR_SEED_OWNER_IDENTITY,
+    KEYMGR_SEED_SW_OUT,
+    KEYMGR_SEED_HW_OUT,
+    KEYMGR_SEED_AES,
+    KEYMGR_SEED_KMAC,
+    KEYMGR_SEED_OTBN,
+    KEYMGR_SEED_CDI,
+    KEYMGR_SEED_NONE,
+    KEYMGR_SEED_COUNT,
+};
+
 typedef struct OtKeyMgrState {
     SysBusDevice parent_obj;
 
@@ -299,8 +320,11 @@ typedef struct OtKeyMgrState {
 
     uint32_t regs[REGS_COUNT];
 
+    uint8_t *seeds[KEYMGR_SEED_COUNT];
+
     /* properties */
     char *ot_id;
+    char *seed_xstrs[KEYMGR_SEED_COUNT];
 } OtKeyMgrState;
 
 struct OtKeyMgrClass {
@@ -564,8 +588,59 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
+static void ot_keymgr_configure_constants(OtKeyMgrState *s)
+{
+    for (unsigned ix = 0u; ix < KEYMGR_SEED_COUNT; ix++) {
+        if (!s->seed_xstrs[ix]) {
+            trace_ot_keymgr_seed_missing(s->ot_id, ix);
+            continue;
+        }
+
+        size_t len = strlen(s->seed_xstrs[ix]);
+        size_t seed_len_bytes = KEYMGR_SEED_BYTES;
+        /* the LFSR seed constant is smaller than other seed constants */
+        if (ix == KEYMGR_SEED_LFSR) {
+            seed_len_bytes = KEYMGR_LFSR_SEED_BYTES;
+        }
+        if (len != (seed_len_bytes * 2u)) {
+            error_setg(&error_fatal, "%s: %s invalid seed #%u length", __func__,
+                       s->ot_id, ix);
+            continue;
+        }
+
+        if (ot_common_parse_hexa_str(s->seeds[ix], s->seed_xstrs[ix],
+                                     seed_len_bytes, true, true)) {
+            error_setg(&error_fatal, "%s: %s unable to parse seed #%u",
+                       __func__, s->ot_id, ix);
+            continue;
+        }
+    }
+}
+
 static Property ot_keymgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtKeyMgrState, ot_id),
+    DEFINE_PROP_STRING("lfsr_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_LFSR]),
+    DEFINE_PROP_STRING("revision_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_REV]),
+    DEFINE_PROP_STRING("creator_identity_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_CREATOR_IDENTITY]),
+    DEFINE_PROP_STRING("owner_int_identity_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_OWNER_INT_IDENTITY]),
+    DEFINE_PROP_STRING("owner_identity_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_OWNER_IDENTITY]),
+    DEFINE_PROP_STRING("soft_output_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_SW_OUT]),
+    DEFINE_PROP_STRING("hard_output_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_HW_OUT]),
+    DEFINE_PROP_STRING("aes_seed", OtKeyMgrState, seed_xstrs[KEYMGR_SEED_AES]),
+    DEFINE_PROP_STRING("kmac_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_KMAC]),
+    DEFINE_PROP_STRING("otbn_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_OTBN]),
+    DEFINE_PROP_STRING("cdi_seed", OtKeyMgrState, seed_xstrs[KEYMGR_SEED_CDI]),
+    DEFINE_PROP_STRING("none_seed", OtKeyMgrState,
+                       seed_xstrs[KEYMGR_SEED_NONE]),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -615,6 +690,8 @@ static void ot_keymgr_realize(DeviceState *dev, Error **errp)
         s->ot_id =
             g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
+
+    ot_keymgr_configure_constants(s);
 }
 
 static void ot_keymgr_init(Object *obj)
@@ -628,6 +705,10 @@ static void ot_keymgr_init(Object *obj)
     ibex_sysbus_init_irq(obj, &s->irq);
     for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+    }
+
+    for (unsigned ix = 0u; ix < ARRAY_SIZE(s->seeds); ix++) {
+        s->seeds[ix] = g_new0(uint8_t, KEYMGR_SEED_BYTES);
     }
 }
 
