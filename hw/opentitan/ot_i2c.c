@@ -327,8 +327,12 @@ struct OtI2CState {
     IbexIRQ irqs[OT_I2C_IRQ_NUM];
     IbexIRQ alert;
 
-    /* FMT: Scheduled operations for host mode. */
-    Fifo8 host_tx_fifo;
+    /*
+     * FMT: Scheduled operations for host mode.
+     * [7:0] = Data byte
+     * [12] = NAKOK
+     */
+    OtFifo32 host_tx_fifo;
     uint32_t host_tx_threshold;
 
     /* RX: Received bytes for host mode. */
@@ -436,7 +440,7 @@ static uint32_t ot_i2c_get_tx_threshold(const OtI2CState *s)
 
 static bool ot_i2c_fmt_threshold_intr(OtI2CState *s)
 {
-    return fifo8_num_used(&s->host_tx_fifo) < ot_i2c_get_fmt_threshold(s);
+    return ot_fifo32_num_used(&s->host_tx_fifo) < ot_i2c_get_fmt_threshold(s);
 }
 
 static bool ot_i2c_rx_threshold_intr(OtI2CState *s)
@@ -458,7 +462,7 @@ static bool ot_i2c_tx_threshold_intr(OtI2CState *s)
 static void ot_i2c_host_reset_tx_fifo(OtI2CState *s)
 {
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_FMT_THRESHOLD, 0);
-    fifo8_reset(&s->host_tx_fifo);
+    ot_fifo32_reset(&s->host_tx_fifo);
     s->host_tx_threshold = 0;
 }
 
@@ -496,13 +500,19 @@ static uint8_t ot_i2c_host_read_rx_fifo(OtI2CState *s)
 
 static void ot_i2c_host_send(OtI2CState *s)
 {
-    trace_ot_i2c_host_send(s->ot_id, fifo8_num_used(&s->host_tx_fifo),
+    trace_ot_i2c_host_send(s->ot_id, ot_fifo32_num_used(&s->host_tx_fifo),
                            s->host_tx_threshold);
 
     /* Send all the data in the TX FIFO to the target. */
-    while (!fifo8_is_empty(&s->host_tx_fifo)) {
-        if (i2c_send(s->bus, fifo8_pop(&s->host_tx_fifo))) {
-            /* Error while sending byte, raise controller halt interrupt. */
+    while (!ot_fifo32_is_empty(&s->host_tx_fifo)) {
+        uint32_t val = ot_fifo32_pop(&s->host_tx_fifo);
+        uint8_t fbyte = (uint8_t)FIELD_EX32(val, FDATA, FBYTE);
+        bool nakok = (bool)FIELD_EX32(val, FDATA, NAKOK);
+        if (i2c_send(s->bus, fbyte) && !nakok) {
+            /*
+             * Error while sending byte and NAKOK unset,
+             * raise controller halt interrupt.
+             */
             ARRAY_FIELD_DP32(s->regs, CONTROLLER_EVENTS, NACK, 1);
             ot_i2c_irq_set_state(s, CONTROLLER_HALT, true);
             break;
@@ -515,7 +525,7 @@ static void ot_i2c_host_send(OtI2CState *s)
      * cached threshold level.
      */
     if (s->host_tx_threshold &&
-        fifo8_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
+        ot_fifo32_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
         ot_i2c_irq_set_state(s, FMT_THRESHOLD, true);
         s->host_tx_threshold = 0;
     }
@@ -721,17 +731,10 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
         val32 = FIELD_DP32(val32, STATUS, TARGETIDLE, !i2c_bus_busy(s->bus));
 
         /* Report host TX FIFO status. */
-        if (fifo8_is_empty(&s->host_tx_fifo)) {
-            /* Used by drivers to see if partial transactions are done. */
-            if (!i2c_bus_busy(s->bus)) {
-                val32 = FIELD_DP32(val32, STATUS, FMTEMPTY, 1u);
-            } else {
-                qemu_log_mask(LOG_TRACE,
-                              "%s: %s: FMT is empty but bus is still busy\n",
-                              __func__, s->ot_id);
-            }
+        if (ot_fifo32_is_empty(&s->host_tx_fifo)) {
+            val32 = FIELD_DP32(val32, STATUS, FMTEMPTY, 1u);
         }
-        if (fifo8_is_full(&s->host_tx_fifo)) {
+        if (ot_fifo32_is_full(&s->host_tx_fifo)) {
             val32 = FIELD_DP32(val32, STATUS, FMTFULL, 1u);
         }
 
@@ -771,7 +774,7 @@ static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_HOST_FIFO_STATUS:
         val32 = FIELD_DP32(val32, HOST_FIFO_STATUS, FMTLVL,
-                           fifo8_num_used(&s->host_tx_fifo));
+                           ot_fifo32_num_used(&s->host_tx_fifo));
         val32 = FIELD_DP32(val32, HOST_FIFO_STATUS, RXLVL,
                            fifo8_num_used(&s->host_rx_fifo));
         break;
@@ -853,6 +856,7 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
     bool start = FIELD_EX32(fdata, FDATA, START);
     bool stop = FIELD_EX32(fdata, FDATA, STOP);
     bool rcont = FIELD_EX32(fdata, FDATA, RCONT);
+    bool nakok = FIELD_EX32(fdata, FDATA, NAKOK);
 
     if (!ot_i2c_host_enabled(s)) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -866,6 +870,11 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
         unsigned bytes_to_read = fbyte ?: 256;
         unsigned index;
 
+        if (nakok) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: Invalid FDATA flags READB+NAKOK\n", __func__,
+                          s->ot_id);
+        }
         if (rcont && stop) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: Invalid FDATA flags READB+RCONT+STOP\n",
@@ -899,18 +908,21 @@ static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
                                extract32(fbyte, 0, 1));
         } else {
             /* Check for overflow. */
-            if (fifo8_is_full(&s->host_tx_fifo)) {
+            if (ot_fifo32_is_full(&s->host_tx_fifo)) {
                 qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: TX FIFO overflow\n",
                               __func__, s->ot_id);
                 return;
             }
 
+            uint32_t val = 0;
+            val = FIELD_DP32(val, FDATA, FBYTE, fbyte);
+            val = FIELD_DP32(val, FDATA, NAKOK, nakok);
             /* Add this byte to the TX FIFO. */
-            fifo8_push(&s->host_tx_fifo, fbyte);
+            ot_fifo32_push(&s->host_tx_fifo, val);
 
             /* Check if threshold has been reached. */
             s->host_tx_threshold = ot_i2c_get_fmt_threshold(s);
-            if (fifo8_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
+            if (ot_fifo32_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
                 ot_i2c_irq_set_state(s, FMT_THRESHOLD, true);
             } else {
                 /* Reset the cached threshold level. */
@@ -1340,7 +1352,7 @@ static void ot_i2c_init(Object *obj)
                           REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
-    fifo8_create(&s->host_tx_fifo, OT_I2C_FIFO_SIZE);
+    ot_fifo32_create(&s->host_tx_fifo, OT_I2C_FIFO_SIZE);
     fifo8_create(&s->host_rx_fifo, OT_I2C_FIFO_SIZE);
     fifo8_create(&s->target_tx_fifo, OT_I2C_FIFO_SIZE);
     ot_fifo32_create(&s->target_rx_fifo, OT_I2C_FIFO_SIZE);
