@@ -55,7 +55,14 @@ class OtpConstants:
                 raise ValueError(f'Multiple definitions of constant {name}')
             consts = self._consts[name] = []
             for cmo in re.finditer(r"(64|128)'h([0-9A-F]+),?", values):
-                consts.append(cmo.group(2).lower())
+                nibble_count = (int(cmo.group(1)) + 3) // 4
+                hexa_str = cmo.group(2).lower()
+                hexa_str_len = len(hexa_str)
+                if hexa_str_len < nibble_count:
+                    pad_str = '0' * (nibble_count - hexa_str_len)
+                    hexa_str = f'{pad_str}{hexa_str}'
+                assert len(hexa_str) == nibble_count
+                consts.append(hexa_str)
             # RTL order in array is reversed
             consts.reverse()
         #  +parameter +logic +\[\d+:0\] +PartInvDefault += +\d+'\(\{(.*)\}\);
@@ -77,7 +84,6 @@ class OtpConstants:
                     if hexa_str_len < exp_len:
                         pad_str = '0' * (exp_len - hexa_str_len)
                         hexa_str = f'{pad_str}{hexa_str}'
-                        hexa_str_len += 1
                     hexa_bytes = unhexlify(hexa_str)
                     assert len(hexa_bytes) == byte_count
                     chunks.append(hexa_bytes)
