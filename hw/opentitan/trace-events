@@ -280,6 +280,7 @@ ot_ibex_wrapper_update_exec(const char *id, uint32_t bm, bool esc_rx, bool halte
 # ot_keymgr.c
 ot_keymgr_change_main_fsm_state(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
 ot_keymgr_change_working_state(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
+ot_keymgr_dump_creator_root_key(const char *id, unsigned idx, bool valid, const char *hexstr) "%s: share:%u valid:%u %s"
 ot_keymgr_entropy(const char *id, unsigned reseed_cnt, bool resched) "%s: reseed_cnt: %u, resched: %u"
 ot_keymgr_error(const char *id, const char *msg) "%s: %s"
 ot_keymgr_go_idle(const char *id) "%s"

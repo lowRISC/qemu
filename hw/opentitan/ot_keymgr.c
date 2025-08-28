@@ -35,6 +35,8 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_keymgr.h"
+#include "hw/opentitan/ot_kmac.h"
+#include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -90,6 +92,12 @@ static_assert(KEYMGR_ID_DATA_BYTES <= KEYMGR_KDF_BUFFER_BYTES,
               "KeyMgr ID data does not fit in KDF buffer");
 static_assert(KEYMGR_GEN_DATA_BYTES <= KEYMGR_KDF_BUFFER_BYTES,
               "KeyMgr GEN data does not fit in KDF buffer");
+/* NOLINTBEGIN(misc-redundant-expression) */
+static_assert(KEYMGR_KEY_BYTES == OT_OTP_KEYMGR_SECRET_SIZE,
+              "KeyMgr key size does not match OTP KeyMgr secret size");
+static_assert(KEYMGR_KEY_BYTES == OT_KMAC_KEY_SIZE,
+              "KeyMgr key size does not match KMAC key size");
+/* NOLINTEND(misc-redundant-expression) */
 
 #define KEYMGR_ENTROPY_WIDTH  (KEYMGR_LFSR_WIDTH / 2u)
 #define KEYMGR_ENTROPY_ROUNDS (KEYMGR_KEY_WIDTH / KEYMGR_ENTROPY_WIDTH)
@@ -353,6 +361,12 @@ typedef struct {
     uint8_t reseed_cnt;
 } OtKeyMgrPrng;
 
+typedef struct {
+    uint8_t share0[KEYMGR_KEY_BYTES];
+    uint8_t share1[KEYMGR_KEY_BYTES];
+    bool valid;
+} OtKeyMgrKey;
+
 typedef struct OtKeyMgrState {
     SysBusDevice parent_obj;
 
@@ -376,9 +390,15 @@ typedef struct OtKeyMgrState {
     OtKeyMgrPrng prng;
     uint8_t *seeds[KEYMGR_SEED_COUNT];
 
+    /* key states */
+    OtKeyMgrKey *key_states;
+
+    char *hexstr;
+
     /* properties */
     char *ot_id;
     OtKeyMgrEDN edn;
+    OtOTPState *otp_ctrl;
     char *seed_xstrs[KEYMGR_SEED_COUNT];
 } OtKeyMgrState;
 
@@ -493,6 +513,11 @@ static const char *FST_NAMES[] = {
 #undef FST_ENTRY
 #define FST_NAME(_st_) \
     (((unsigned)(_st_)) < ARRAY_SIZE(FST_NAMES) ? FST_NAMES[(_st_)] : "?")
+
+#define OT_KEYMGR_HEXSTR_SIZE 256u
+
+#define ot_keymgr_dump_bigint(_s_, _b_, _l_) \
+    ot_common_lhexdump(_b_, _l_, true, (_s_)->hexstr, OT_KEYMGR_HEXSTR_SIZE)
 
 static void ot_keymgr_update_irq(OtKeyMgrState *s)
 {
@@ -639,6 +664,28 @@ static void ot_keymgr_request_entropy(OtKeyMgrState *s)
     }
 }
 
+static void ot_keymgr_get_root_key(OtKeyMgrState *s, OtOTPKeyMgrSecret *share0,
+                                   OtOTPKeyMgrSecret *share1)
+{
+    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
+    g_assert(oc);
+    oc->get_keymgr_secret(s->otp_ctrl,
+                          OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0, share0);
+    oc->get_keymgr_secret(s->otp_ctrl,
+                          OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1, share1);
+
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DUMP_CREATOR_ROOT_KEY)) {
+        trace_ot_keymgr_dump_creator_root_key(
+            s->ot_id, 0, share0->valid,
+            ot_keymgr_dump_bigint(s, share0->secret,
+                                  OT_OTP_KEYMGR_SECRET_SIZE));
+        trace_ot_keymgr_dump_creator_root_key(
+            s->ot_id, 1, share1->valid,
+            ot_keymgr_dump_bigint(s, share1->secret,
+                                  OT_OTP_KEYMGR_SECRET_SIZE));
+    }
+}
+
 #define ot_keymgr_change_main_fsm_state(_s_, _op_status_) \
     ot_keymgr_xchange_main_fsm_state(_s_, _op_status_, __LINE__)
 
@@ -708,10 +755,30 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         break;
     case KEYMGR_ST_ROOT_KEY:
         ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_INIT);
+        /* If the keymgr is disabled or the root key is invalid, we must wipe */
         if (!s->enabled) {
-            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_INVALID);
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
+            break;
+        }
+        /* @todo: update `op_done_o` as `init_o = 1` here. */
+
+        /* Retrieve Creator Root Key from OTP */
+        OtOTPKeyMgrSecret secret_share0 = { 0u };
+        OtOTPKeyMgrSecret secret_share1 = { 0u };
+        ot_keymgr_get_root_key(s, &secret_share0, &secret_share1);
+
+        if (secret_share0.valid && secret_share1.valid) {
+            memset(s->key_states, 0u, NUM_CDIS * sizeof(OtKeyMgrKey));
+            for (unsigned cdi = 0u; cdi < NUM_CDIS; cdi++) {
+                memcpy(s->key_states[cdi].share0, secret_share0.secret,
+                       OT_OTP_KEYMGR_SECRET_SIZE);
+                memcpy(s->key_states[cdi].share1, secret_share1.secret,
+                       OT_OTP_KEYMGR_SECRET_SIZE);
+                s->key_states[cdi].valid = true;
+            }
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_INIT);
         } else {
-            /* @todo: retrieve root key from OTP and change state */
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
         }
         break;
     case KEYMGR_ST_INIT:
@@ -1184,6 +1251,8 @@ static Property ot_keymgr_properties[] = {
     DEFINE_PROP_LINK("edn", OtKeyMgrState, edn.device, TYPE_OT_EDN,
                      OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKeyMgrState, edn.ep, UINT8_MAX),
+    DEFINE_PROP_LINK("otp_ctrl", OtKeyMgrState, otp_ctrl, TYPE_OT_OTP,
+                     OtOTPState *),
     DEFINE_PROP_STRING("lfsr_seed", OtKeyMgrState,
                        seed_xstrs[KEYMGR_SEED_LFSR]),
     DEFINE_PROP_STRING("revision_seed", OtKeyMgrState,
@@ -1232,6 +1301,7 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
 
     g_assert(s->edn.device);
     g_assert(s->edn.ep != UINT8_MAX);
+    g_assert(s->otp_ctrl);
 
     /* reset registers */
     memset(s->regs, 0u, sizeof(s->regs));
@@ -1256,6 +1326,9 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     s->prng.reseed_req = false;
     s->prng.reseed_ack = false;
     s->prng.reseed_cnt = 0u;
+
+    /* reset key state */
+    memset(s->key_states, 0u, NUM_CDIS * sizeof(OtKeyMgrKey));
 
     /* update IRQ and alert states */
     ot_keymgr_update_irq(s);
@@ -1311,8 +1384,11 @@ static void ot_keymgr_init(Object *obj)
     for (unsigned ix = 0u; ix < ARRAY_SIZE(s->seeds); ix++) {
         s->seeds[ix] = g_new0(uint8_t, KEYMGR_SEED_BYTES);
     }
+    s->key_states = g_new0(OtKeyMgrKey, NUM_CDIS);
 
     s->fsm_tick_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_keymgr_fsm_tick, s);
+
+    s->hexstr = g_new0(char, OT_KEYMGR_HEXSTR_SIZE);
 }
 
 static void ot_keymgr_class_init(ObjectClass *klass, void *data)

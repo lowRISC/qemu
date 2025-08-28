@@ -1186,7 +1186,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(1, 50)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("edn", EDN0)
+            OT_EG_SOC_DEVLINK("edn", EDN0),
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 0u)
