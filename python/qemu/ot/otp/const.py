@@ -116,6 +116,13 @@ class OtpConstants:
         """Return a list of parsed enumerations."""
         return list(self._enums.keys())
 
+    def get_digests(self) -> list[str]:
+        """Return a list of parsed digests."""
+        try:
+            return list(self._enums['digest'])
+        except KeyError as exc:
+            raise ValueError("No 'digest' enum found") from exc
+
     def get_digest_pair(self, name: str, prefix: str) -> dict[str, str]:
         """Return a dict of digest pair.
            :param name: one of the enumerated values, see #get_enums
