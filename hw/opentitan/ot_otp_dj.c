@@ -3277,7 +3277,10 @@ static void ot_otp_dj_generate_otp_sram_key(OtOTPDjState *s, OtOTPKey *key)
         ot_present_init(ps, s->sram_const);
         ot_present_encrypt(ps, data, &data);
 
-        key->seed[rix] = data;
+        for (unsigned ix = 0; ix < sizeof(uint64_t); ix++) {
+            unsigned seed_byte = rix * sizeof(uint64_t) + ix;
+            key->seed[seed_byte] = (uint8_t)(data >> (ix * 8));
+        }
     }
 
     key->seed_valid = valid;
