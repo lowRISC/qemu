@@ -255,8 +255,18 @@ class OtConfiguration:
         otpconst = OtpConstants()
         with open(otppath, 'rt') as cfp:
             otpconst.load(cfp)
-        self._otp.update(otpconst.get_digest_pair('cnsty_digest', 'digest'))
-        self._otp.update(otpconst.get_digest_pair('sram_data_key', 'sram'))
+        digests = {
+            'cnsty_digest': 'digest',
+            'flash_data_key': 'flash_data',
+            'flash_addr_key': 'flash_addr',
+            'sram_data_key': 'sram',
+        }
+        avail_digests = otpconst.get_digests()
+        for digest, prefix in digests.items():
+            if digest not in avail_digests:
+                continue
+            pair = otpconst.get_digest_pair(digest, prefix)
+            self._otp.update(pair)
         idx = 0
         while True:
             try:
