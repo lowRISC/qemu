@@ -400,7 +400,7 @@ ot_otp_pwr_otp_req(const char * id, const char *where) "%s: %s"
 ot_otp_reset(const char * id, const char *phase) "%s: %s"
 ot_otp_set_error(const char * id, const char *part, unsigned pix, const char* err, unsigned eix) "%s: %s (#%u): %s (%u)"
 ot_otp_skip_digest(const char * id, const char* part, unsigned pix) "%s: skipping empty digest on %s (#%u)"
-ot_otp_sram_key_generated(const char * id) "%s"
+ot_otp_key_generated(const char * id, int type) "%s: type %d"
 ot_otp_update_irq(const char * id, int prev, int next) "%s: %d -> %d"
 ot_otp_update_alert(const char * id, int prev, int next) "%s: %d -> %d"
 
