@@ -3268,7 +3268,7 @@ static void ot_otp_dj_generate_otp_sram_key(OtOTPDjState *s, OtOTPKey *key)
         ot_present_encrypt(ps, data, &data);
 
         g_assert(ot_fifo32_num_used(entropy) >= SRAM_KEY_WORDS);
-        for (unsigned ix = 0; ix < SRAM_NONCE_WORDS; ix++) {
+        for (unsigned ix = 0; ix < SRAM_KEY_WORDS; ix++) {
             tmpkey[ix] = ot_fifo32_pop(entropy);
         }
         ot_present_init(ps, (uint8_t *)&tmpkey[0]);
