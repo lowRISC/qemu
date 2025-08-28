@@ -26,6 +26,10 @@
 * HMAC
 * OTBN
   * missing side-loading
+* OTP controller
+  * read and write features are supported,
+  * Present scrambling is supported with digest checks,
+  * ECC (detection and correction) is supported
 * SPI data flash (from QEMU upstream w/ fixes)
 * SPI Host controller
 * Timer
@@ -42,8 +46,6 @@ Devices in this group implement subset(s) of the real HW.
   * Manage clock dividers, groups, hints, software configurable clocks
   * Propagate clock signals from source (AST, ...) to devices
   * Hint management and measurement are not implemented
-* OTP controller
-  * read-only features only, ECC is ignored
 * Entropy Src
    * test/health features are not supported
    * AES CTR not supported (uses xoroshiro128++ reseeded from entropy src)
