@@ -1128,9 +1128,11 @@ static void ot_otp_dj_update_alerts(OtOTPDjState *s)
         levels = s->alert_bm;
         for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
             int level = (int)(bool)(levels & (1u << ix));
-            trace_ot_otp_update_alert(s->ot_id,
-                                      ibex_irq_get_level(&s->alerts[ix]),
-                                      level);
+            if (level != ibex_irq_get_level(&s->alerts[ix])) {
+                trace_ot_otp_update_alert(s->ot_id,
+                                          ibex_irq_get_level(&s->alerts[ix]),
+                                          level);
+            }
             ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
         }
     }
