@@ -569,8 +569,6 @@ REG32(LC_STATE, 16344u)
 #define SRAM_NONCE_BYTES ((SRAM_NONCE_WIDTH) / 8u)
 #define OTBN_KEY_BYTES   ((OTBN_KEY_WIDTH) / 8u)
 #define OTBN_NONCE_BYTES ((OTBN_NONCE_WIDTH) / 8u)
-#define SRAM_KEY_WORDS   ((SRAM_KEY_WIDTH) / 32u)
-#define SRAM_NONCE_WORDS ((SRAM_NONCE_WIDTH) / 32u)
 
 /* Need 128 bits of entropy to compute each 64-bit key part */
 #define OTP_ENTROPY_PRESENT_BITS \
@@ -3236,62 +3234,6 @@ ot_otp_dj_keygen_push_entropy(void *opaque, uint32_t bits, bool fips)
     }
 }
 
-static void ot_otp_dj_generate_otp_sram_key(OtOTPDjState *s, OtOTPKey *key)
-{
-    static_assert(SRAM_NONCE_WORDS * sizeof(uint32_t) < OT_OTP_NONCE_MAX_SIZE,
-                  "Invalid nonce size");
-
-    /* fill in Nonce */
-    OtFifo32 *entropy = &s->keygen->entropy_buf;
-    g_assert(ot_fifo32_num_used(entropy) >= SRAM_NONCE_WORDS);
-    for (unsigned ix = 0; ix < SRAM_NONCE_WORDS; ix++) {
-        stl_le_p(&key->nonce[ix * sizeof(uint32_t)], ot_fifo32_pop(entropy));
-    }
-    key->nonce_size = SRAM_NONCE_WORDS * sizeof(uint32_t);
-
-    /* handle key from key seed */
-
-    OtPresentState *ps = s->keygen->present;
-
-    OtOTPPartController *pctrl = &s->partctrls[OTP_PART_SECRET1];
-    bool valid = pctrl->locked && !pctrl->failed;
-    g_assert(ot_otp_dj_is_buffered(OTP_PART_SECRET1));
-    const uint32_t *sram_data_key_seed =
-        &pctrl->buffer
-             .data[R_SECRET1_SRAM_DATA_KEY_SEED -
-                   OtOTPPartDescs[OTP_PART_SECRET1].offset / sizeof(uint32_t)];
-    uint32_t tmpkey[SRAM_KEY_WORDS];
-    for (unsigned rix = 0; rix < SRAM_KEY_WIDTH / 64u; rix++) {
-        uint64_t data = s->sram_iv;
-
-        ot_present_init(ps, (const uint8_t *)sram_data_key_seed);
-        ot_present_encrypt(ps, data, &data);
-
-        g_assert(ot_fifo32_num_used(entropy) >= SRAM_KEY_WORDS);
-        for (unsigned ix = 0; ix < SRAM_KEY_WORDS; ix++) {
-            tmpkey[ix] = ot_fifo32_pop(entropy);
-        }
-        ot_present_init(ps, (uint8_t *)&tmpkey[0]);
-        ot_present_encrypt(ps, data, &data);
-
-        ot_present_init(ps, s->sram_const);
-        ot_present_encrypt(ps, data, &data);
-
-        for (unsigned ix = 0; ix < sizeof(uint64_t); ix++) {
-            unsigned seed_byte = rix * sizeof(uint64_t) + ix;
-            key->seed[seed_byte] = (uint8_t)(data >> (ix * 8));
-        }
-    }
-
-    key->seed_valid = valid;
-    key->seed_size = SRAM_KEY_BYTES;
-
-    trace_ot_otp_sram_key_generated(s->ot_id);
-
-    /* some entropy bits have been used, refill the buffer */
-    qemu_bh_schedule(s->keygen->entropy_bh);
-}
-
 static void ot_otp_dj_fake_entropy(OtOTPDjState *s, unsigned count)
 {
     /*
@@ -3312,13 +3254,114 @@ static void ot_otp_dj_fake_entropy(OtOTPDjState *s, unsigned count)
     }
 }
 
+/*
+ * See
+ * https://opentitan.org/book/hw/top_darjeeling/ip_autogen/otp_ctrl/doc/
+ * theory_of_operation.html#scrambling-datapath
+ *
+ * The `fetch_nonce_entropy` field refers to the fetching of additional
+ * entropy for the nonce output.
+ *
+ * The `ingest_entropy` field indicates whether an additional 128 bit entropy
+ * block should be ingested after the seed. That is, `true` will
+ * derive an ephemeral scrambling key (path C) and `false` will derive a static
+ * scrambling key (path D).
+ *
+ * Will fake entropy if there is not enough available, rather than waiting.
+ */
+static void ot_otp_dj_generate_scrambling_key(
+    OtOTPDjState *s, OtOTPKey *key, OtOTPKeyType type, hwaddr key_reg,
+    uint64_t k_iv, const uint8_t *k_const, bool fetch_nonce_entropy,
+    bool ingest_entropy)
+{
+    g_assert(key->seed_size < OT_OTP_SEED_MAX_SIZE);
+    g_assert(key->nonce_size < OT_OTP_NONCE_MAX_SIZE);
+
+    g_assert(key->seed_size % sizeof(uint32_t) == 0u);
+    g_assert(key->nonce_size % sizeof(uint32_t) == 0u);
+    unsigned seed_words = key->seed_size / sizeof(uint32_t);
+    unsigned nonce_words = key->nonce_size / sizeof(uint32_t);
+    unsigned scramble_blocks = key->seed_size / sizeof(uint64_t);
+
+    OtFifo32 *entropy = &s->keygen->entropy_buf;
+
+    /* for QEMU emulation, fake entropy instead of waiting */
+    unsigned avail_entropy = ot_fifo32_num_used(entropy);
+    unsigned needed_entropy = 0u;
+    needed_entropy += fetch_nonce_entropy ? nonce_words : 0u;
+    needed_entropy += ingest_entropy ? (seed_words * scramble_blocks) : 0u;
+    if (avail_entropy < needed_entropy) {
+        unsigned count = needed_entropy - avail_entropy;
+        error_report("%s: %s: not enough entropy for key %d, fake %u words",
+                     __func__, s->ot_id, type, count);
+        ot_otp_dj_fake_entropy(s, count);
+    }
+
+    if (fetch_nonce_entropy) {
+        /* fill in the nonce using entropy */
+        g_assert(ot_fifo32_num_used(entropy) >= nonce_words);
+        for (unsigned ix = 0; ix < nonce_words; ix++) {
+            stl_le_p(&key->nonce[ix * sizeof(uint32_t)],
+                     ot_fifo32_pop(entropy));
+        }
+    }
+
+    OtPresentState *ps = s->keygen->present;
+
+    /* read the key seed from the OTP SECRET1 partition */
+    OtOTPPartController *pctrl = &s->partctrls[OTP_PART_SECRET1];
+    g_assert(ot_otp_dj_is_buffered(OTP_PART_SECRET1));
+    uint32_t poffset =
+        OtOTPPartDescs[OTP_PART_SECRET1].offset / sizeof(uint32_t);
+    const uint32_t *key_seed = &pctrl->buffer.data[key_reg - poffset];
+
+    /* check the key seed's validity */
+    key->seed_valid = pctrl->locked && !pctrl->failed;
+
+    uint32_t *ephemeral_entropy = g_new0(uint32_t, seed_words);
+    for (unsigned rix = 0; rix < scramble_blocks; rix++) {
+        /* compress the IV state with the OTP key seed */
+        uint64_t data = k_iv;
+        ot_present_init(ps, (const uint8_t *)key_seed);
+        ot_present_encrypt(ps, data, &data);
+
+        if (ingest_entropy) {
+            /* ephemeral keys ingest different entropy each round */
+            g_assert(ot_fifo32_num_used(entropy) >= seed_words);
+            for (unsigned ix = 0; ix < seed_words; ix++) {
+                ephemeral_entropy[ix] = ot_fifo32_pop(entropy);
+            }
+
+            ot_present_init(ps, (uint8_t *)&ephemeral_entropy[0]);
+            ot_present_encrypt(ps, data, &data);
+        }
+
+        /* compress with the finalization constant*/
+        ot_present_init(ps, k_const);
+        ot_present_encrypt(ps, data, &data);
+
+        /* write back to the key */
+        for (unsigned ix = 0; ix < sizeof(uint64_t); ix++) {
+            unsigned seed_byte = rix * sizeof(uint64_t) + ix;
+            key->seed[seed_byte] = (uint8_t)(data >> (ix * 8u));
+        }
+    }
+    g_free(ephemeral_entropy);
+
+    trace_ot_otp_key_generated(s->ot_id, type);
+
+    if (needed_entropy) {
+        /* some entropy bits have been used, refill the buffer */
+        qemu_bh_schedule(s->keygen->entropy_bh);
+    }
+}
+
 static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
                                   OtOTPKey *key)
 {
     OtOTPDjState *ds = OT_OTP_DJ(s);
 
-    unsigned avail_entropy = ot_fifo32_num_used(&ds->keygen->entropy_buf);
-    unsigned need_entropy;
+    hwaddr key_offset;
 
     trace_ot_otp_get_otp_key(ds->ot_id, type);
 
@@ -3338,14 +3381,10 @@ static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
         key->seed_size = SRAM_KEY_BYTES;
         key->nonce_size = SRAM_NONCE_BYTES;
         key->seed_valid = false;
-        need_entropy = (SRAM_KEY_WIDTH * 2u + SRAM_NONCE_WIDTH) / 32u;
-        if (avail_entropy < need_entropy) {
-            unsigned count = need_entropy - avail_entropy;
-            error_report("%s: %s: not enough entropy for key %d, fake %u words",
-                         __func__, ds->ot_id, type, count);
-            ot_otp_dj_fake_entropy(ds, count);
-        }
-        ot_otp_dj_generate_otp_sram_key(ds, key);
+        key_offset = R_SECRET1_SRAM_DATA_KEY_SEED;
+        ot_otp_dj_generate_scrambling_key(ds, key, type, key_offset,
+                                          ds->sram_iv, ds->sram_const, true,
+                                          true);
         break;
     default:
         error_report("%s: %s: invalid OTP key type: %d", __func__, ds->ot_id,
