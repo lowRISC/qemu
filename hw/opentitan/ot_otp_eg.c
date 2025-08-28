@@ -665,6 +665,10 @@ struct OtOTPEgState {
     uint8_t digest_const[16u];
     uint64_t sram_iv;
     uint8_t sram_const[16u];
+    uint64_t flash_data_iv;
+    uint8_t flash_data_const[16u];
+    uint64_t flash_addr_iv;
+    uint8_t flash_addr_const[16u];
     uint8_t *inv_default_parts[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
 
     OtOTPStorage *otp;
@@ -682,6 +686,10 @@ struct OtOTPEgState {
     char *digest_iv_xstr;
     char *sram_const_xstr;
     char *sram_iv_xstr;
+    char *flash_data_iv_xstr;
+    char *flash_data_const_xstr;
+    char *flash_addr_iv_xstr;
+    char *flash_addr_const_xstr;
     char *inv_default_part_xstrs[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
     uint8_t edn_ep;
     bool fatal_escalate;
@@ -3549,6 +3557,97 @@ static void ot_otp_eg_configure_digest(OtOTPEgState *s)
     s->digest_iv = ldq_le_p(digest_iv);
 }
 
+static void ot_otp_eg_configure_flash(OtOTPEgState *s)
+{
+    memset(s->flash_data_const, 0, sizeof(s->flash_data_const));
+    memset(s->flash_addr_const, 0, sizeof(s->flash_addr_const));
+    s->flash_data_iv = 0ull;
+    s->flash_addr_iv = 0ull;
+
+    if (!s->flash_data_const_xstr) {
+        trace_ot_otp_configure_missing(s->ot_id, "flash_data_const");
+        return;
+    }
+    if (!s->flash_addr_const_xstr) {
+        trace_ot_otp_configure_missing(s->ot_id, "flash_addr_const");
+        return;
+    }
+    if (!s->flash_data_iv_xstr) {
+        trace_ot_otp_configure_missing(s->ot_id, "flash_data_iv");
+        return;
+    }
+    if (!s->flash_addr_iv_xstr) {
+        trace_ot_otp_configure_missing(s->ot_id, "flash_addr_iv");
+        return;
+    }
+
+    size_t len;
+
+    len = strlen(s->flash_data_const_xstr);
+    if (len != sizeof(s->flash_data_const) * 2u) {
+        error_setg(&error_fatal, "%s: %s invalid flash_data_const length\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    if (ot_common_parse_hexa_str(s->flash_data_const, s->flash_data_const_xstr,
+                                 sizeof(s->flash_data_const), true, true)) {
+        error_setg(&error_fatal, "%s: %s unable to parse flash_data_const\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    len = strlen(s->flash_addr_const_xstr);
+    if (len != sizeof(s->flash_addr_const) * 2u) {
+        error_setg(&error_fatal, "%s: %s invalid flash_addr_const length\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    if (ot_common_parse_hexa_str(s->flash_addr_const, s->flash_addr_const_xstr,
+                                 sizeof(s->flash_addr_const), true, true)) {
+        error_setg(&error_fatal, "%s: %s unable to parse flash_addr_const\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    uint8_t flash_data_iv[sizeof(uint64_t)];
+
+    len = strlen(s->flash_data_iv_xstr);
+    if (len != sizeof(flash_data_iv) * 2u) {
+        error_setg(&error_fatal, "%s: %s invalid flash_data_iv length\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    if (ot_common_parse_hexa_str(flash_data_iv, s->flash_data_iv_xstr,
+                                 sizeof(flash_data_iv), true, true)) {
+        error_setg(&error_fatal, "%s: %s unable to parse flash_data_iv\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    s->flash_data_iv = ldq_le_p(flash_data_iv);
+
+    uint8_t flash_addr_iv[sizeof(uint64_t)];
+
+    len = strlen(s->flash_addr_iv_xstr);
+    if (len != sizeof(flash_addr_iv) * 2u) {
+        error_setg(&error_fatal, "%s: %s invalid flash_addr_iv length\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    if (ot_common_parse_hexa_str(flash_addr_iv, s->flash_addr_iv_xstr,
+                                 sizeof(flash_addr_iv), true, true)) {
+        error_setg(&error_fatal, "%s: %s unable to parse flash_addr_iv\n",
+                   __func__, s->ot_id);
+        return;
+    }
+
+    s->flash_addr_iv = ldq_le_p(flash_addr_iv);
+}
+
 static void ot_otp_eg_configure_sram(OtOTPEgState *s)
 {
     memset(s->sram_const, 0, sizeof(s->sram_const));
@@ -3667,6 +3766,10 @@ static Property ot_otp_eg_properties[] = {
     DEFINE_PROP_STRING("digest_iv", OtOTPEgState, digest_iv_xstr),
     DEFINE_PROP_STRING("sram_const", OtOTPEgState, sram_const_xstr),
     DEFINE_PROP_STRING("sram_iv", OtOTPEgState, sram_iv_xstr),
+    DEFINE_PROP_STRING("flash_data_const", OtOTPEgState, flash_data_const_xstr),
+    DEFINE_PROP_STRING("flash_data_iv", OtOTPEgState, flash_data_iv_xstr),
+    DEFINE_PROP_STRING("flash_addr_const", OtOTPEgState, flash_addr_const_xstr),
+    DEFINE_PROP_STRING("flash_addr_iv", OtOTPEgState, flash_addr_iv_xstr),
     DEFINE_PROP_BOOL("fatal_escalate", OtOTPEgState, fatal_escalate, false),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -3800,6 +3903,7 @@ static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
     ot_otp_eg_configure_scrmbl_key(s);
     ot_otp_eg_configure_digest(s);
     ot_otp_eg_configure_sram(s);
+    ot_otp_eg_configure_flash(s);
     ot_otp_eg_configure_inv_default_parts(s);
 }
 
