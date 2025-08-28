@@ -2942,6 +2942,7 @@ static void ot_otp_eg_get_otp_key(OtOTPState *s, OtOTPKeyType type,
 
     trace_ot_otp_get_otp_key(ds->ot_id, type);
 
+    /* reference: req_bundles in OpenTitan rtl/otp_ctrl_kdi.sv */
     switch (type) {
     case OTP_KEY_FLASH_DATA:
     case OTP_KEY_FLASH_ADDR:
@@ -2950,7 +2951,16 @@ static void ot_otp_eg_get_otp_key(OtOTPState *s, OtOTPKeyType type,
                       __func__, ds->ot_id);
         break;
     case OTP_KEY_OTBN:
-        memset(key, 0, sizeof(*key));
+        memcpy(key->seed, ds->scrmbl_key_init->key, OTBN_KEY_BYTES);
+        memcpy(key->nonce, ds->scrmbl_key_init->nonce, OTBN_NONCE_BYTES);
+        key->seed_size = OTBN_KEY_BYTES;
+        key->nonce_size = OTBN_NONCE_BYTES;
+        key->seed_valid = false;
+        /* The OTBN scrambling key is derived from the SRAM scrambling key */
+        key_offset = R_SECRET1_SRAM_DATA_KEY_SEED;
+        ot_otp_eg_generate_scrambling_key(ds, key, type, key_offset,
+                                          ds->sram_iv, ds->sram_const, true,
+                                          true);
         break;
     case OTP_KEY_SRAM:
         memcpy(key->seed, ds->scrmbl_key_init->key, SRAM_KEY_BYTES);
