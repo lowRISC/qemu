@@ -1096,12 +1096,12 @@ static void ot_otp_dj_update_irqs(OtOTPDjState *s)
     uint32_t levels = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->irqs); ix++) {
-        int level = (int)(bool)(levels & (1u << ix));
+        int level = (int)((levels >> ix) & 0x1u);
         if (level != ibex_irq_get_level(&s->irqs[ix])) {
             trace_ot_otp_update_irq(s->ot_id, ibex_irq_get_level(&s->irqs[ix]),
                                     level);
         }
-        ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1));
+        ibex_irq_set(&s->irqs[ix], level);
     }
 }
 
@@ -1112,13 +1112,13 @@ static void ot_otp_dj_update_alerts(OtOTPDjState *s)
     levels |= s->alert_bm;
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-        int level = (int)(bool)(levels & (1u << ix));
+        int level = (int)((levels >> ix) & 0x1u);
         if (level != ibex_irq_get_level(&s->alerts[ix])) {
             trace_ot_otp_update_alert(s->ot_id,
                                       ibex_irq_get_level(&s->alerts[ix]),
                                       level);
         }
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        ibex_irq_set(&s->alerts[ix], level);
     }
 
     /* alert test is transient */
@@ -1127,13 +1127,13 @@ static void ot_otp_dj_update_alerts(OtOTPDjState *s)
 
         levels = s->alert_bm;
         for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
-            int level = (int)(bool)(levels & (1u << ix));
+            int level = (int)((levels >> ix) & 0x1u);
             if (level != ibex_irq_get_level(&s->alerts[ix])) {
                 trace_ot_otp_update_alert(s->ot_id,
                                           ibex_irq_get_level(&s->alerts[ix]),
                                           level);
             }
-            ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+            ibex_irq_set(&s->alerts[ix], level);
         }
     }
 }
