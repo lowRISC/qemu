@@ -2544,13 +2544,14 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
 static const char *ot_otp_eg_swcfg_reg_name(unsigned swreg)
 {
 #define CASE_SCALAR(_reg_) \
-    case R_##_reg_: \
+    case A_##_reg_...(A_##_reg_ + 3u): \
         return stringify(_reg_)
 #define CASE_RANGE(_reg_) \
-    case R_##_reg_...(R_##_reg_ + (((_reg_##_SIZE) + 3u) / 4u) - 1u): \
+    case A_##_reg_...(A_##_reg_ + (_reg_##_SIZE) - 1u): \
         return stringify(_reg_)
+#define CASE_SUB_WORD CASE_RANGE
 #define CASE_DIGEST(_reg_) \
-    case R_##_reg_...(R_##_reg_ + 1u): \
+    case A_##_reg_...(A_##_reg_ + 7u): \
         return stringify(_reg_)
 
     switch (swreg) {
@@ -2652,17 +2653,9 @@ static const char *ot_otp_eg_swcfg_reg_name(unsigned swreg)
         CASE_RANGE(HW_CFG0_DEVICE_ID);
         CASE_RANGE(HW_CFG0_MANUF_STATE);
         CASE_DIGEST(HW_CFG0_DIGEST);
-        CASE_SCALAR(HW_CFG1_EN_SRAM_IFETCH);
-        /*
-         * TODO: the HW_CFG1 OTP fields are each packed into individual bytes,
-         * which break methods like this that use the register (word) address
-         * rather than the byte address. This function should be changed to
-         * use a byte address so that this can be handled, and other usages
-         * of register addresses vs. byte addresses should be checked.
-         *
-         * CASE_SCALAR(HW_CFG1_EN_CSRNG_SW_APP_READ);
-         * CASE_SCALAR(HW_CFG1_DIS_RV_DM_LATE_DEBUG);
-         */
+        CASE_SUB_WORD(HW_CFG1_EN_SRAM_IFETCH);
+        CASE_SUB_WORD(HW_CFG1_EN_CSRNG_SW_APP_READ);
+        CASE_SUB_WORD(HW_CFG1_DIS_RV_DM_LATE_DEBUG);
         CASE_DIGEST(HW_CFG1_DIGEST);
         CASE_RANGE(SECRET0_TEST_UNLOCK_TOKEN);
         CASE_RANGE(SECRET0_TEST_EXIT_TOKEN);
@@ -2683,6 +2676,7 @@ static const char *ot_otp_eg_swcfg_reg_name(unsigned swreg)
 
 #undef CASE_SCALAR
 #undef CASE_RANGE
+#undef CASE_SUB_WORD
 #undef CASE_DIGEST
 }
 
@@ -2730,7 +2724,7 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
 
     pc = ibex_get_current_pc();
     trace_ot_otp_io_swcfg_read_out(s->ot_id, (uint32_t)addr,
-                                   ot_otp_eg_swcfg_reg_name(reg), val32, pc);
+                                   ot_otp_eg_swcfg_reg_name(addr), val32, pc);
 
     *data = (uint64_t)val32;
 

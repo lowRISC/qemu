@@ -2926,13 +2926,14 @@ static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
 static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
 {
 #define CASE_SCALAR(_reg_) \
-    case R_##_reg_: \
+    case A_##_reg_...(A_##_reg_ + 3u): \
         return stringify(_reg_)
 #define CASE_RANGE(_reg_) \
-    case R_##_reg_...(R_##_reg_ + (((_reg_##_SIZE) + 3u) / 4u) - 1u): \
+    case A_##_reg_...(A_##_reg_ + (_reg_##_SIZE) - 1u): \
         return stringify(_reg_)
+#define CASE_SUB_WORD CASE_RANGE
 #define CASE_DIGEST(_reg_) \
-    case R_##_reg_...(R_##_reg_ + 1u): \
+    case A_##_reg_...(A_##_reg_ + 7u): \
         return stringify(_reg_)
 
     switch (swreg) {
@@ -3093,6 +3094,7 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
 
 #undef CASE_SCALAR
 #undef CASE_RANGE
+#undef CASE_SUB_WORD
 #undef CASE_DIGEST
 }
 
@@ -3140,7 +3142,7 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
 
     pc = ibex_get_current_pc();
     trace_ot_otp_io_swcfg_read_out(s->ot_id, (uint32_t)addr,
-                                   ot_otp_dj_swcfg_reg_name(reg), val32, pc);
+                                   ot_otp_dj_swcfg_reg_name(addr), val32, pc);
 
     *data = (uint64_t)val32;
 
