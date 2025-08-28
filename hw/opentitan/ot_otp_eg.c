@@ -418,17 +418,30 @@ REG32(LC_STATE, 2008u)
 #define DAI_DIGEST_DELAY_NS 50000u /* 50us */
 #define LCI_PROG_SCHED_NS   1000u /* 1us*/
 
-#define SRAM_KEY_SEED_WIDTH (SRAM_DATA_KEY_SEED_SIZE * 8u)
-#define KEY_MGR_KEY_WIDTH   256u
-#define SRAM_KEY_WIDTH      128u
-#define SRAM_NONCE_WIDTH    128u
-#define OTBN_KEY_WIDTH      128u
-#define OTBN_NONCE_WIDTH    64u
+#define FLASH_KEY_SEED_WIDTH 256u
+#define SRAM_KEY_SEED_WIDTH  128u
+#define KEY_MGR_KEY_WIDTH    256u
+#define FLASH_KEY_WIDTH      128u
+/* nonce is same size as key: see req_bundles[0] in rtl/otp_ctrl_kdi.sv */
+#define FLASH_NONCE_WIDTH (FLASH_KEY_WIDTH)
+#define SRAM_KEY_WIDTH    128u
+#define SRAM_NONCE_WIDTH  128u
+#define OTBN_KEY_WIDTH    128u
+#define OTBN_NONCE_WIDTH  64u
 
-#define SRAM_KEY_BYTES   ((SRAM_KEY_WIDTH) / 8u)
-#define SRAM_NONCE_BYTES ((SRAM_NONCE_WIDTH) / 8u)
-#define OTBN_KEY_BYTES   ((OTBN_KEY_WIDTH) / 8u)
-#define OTBN_NONCE_BYTES ((OTBN_NONCE_WIDTH) / 8u)
+static_assert(FLASH_KEY_SEED_WIDTH == SECRET1_FLASH_ADDR_KEY_SEED_SIZE * 8u,
+              "Flash key seed size does not match flash address field size");
+static_assert(FLASH_KEY_SEED_WIDTH == SECRET1_FLASH_DATA_KEY_SEED_SIZE * 8u,
+              "Flash key seed size does not match flash data field size");
+static_assert(SRAM_KEY_SEED_WIDTH == SECRET1_SRAM_DATA_KEY_SEED_SIZE * 8u,
+              "SRAM key seed size does not match OTP field size");
+
+#define FLASH_KEY_BYTES   ((FLASH_KEY_WIDTH) / 8u)
+#define FLASH_NONCE_BYTES ((FLASH_NONCE_WIDTH) / 8u)
+#define SRAM_KEY_BYTES    ((SRAM_KEY_WIDTH) / 8u)
+#define SRAM_NONCE_BYTES  ((SRAM_NONCE_WIDTH) / 8u)
+#define OTBN_KEY_BYTES    ((OTBN_KEY_WIDTH) / 8u)
+#define OTBN_NONCE_BYTES  ((OTBN_NONCE_WIDTH) / 8u)
 
 /* Need 128 bits of entropy to compute each 64-bit key part */
 #define OTP_ENTROPY_PRESENT_BITS \
@@ -2945,10 +2958,25 @@ static void ot_otp_eg_get_otp_key(OtOTPState *s, OtOTPKeyType type,
     /* reference: req_bundles in OpenTitan rtl/otp_ctrl_kdi.sv */
     switch (type) {
     case OTP_KEY_FLASH_DATA:
+        memcpy(key->seed, ds->scrmbl_key_init->key, FLASH_KEY_BYTES);
+        memcpy(key->nonce, ds->scrmbl_key_init->nonce, FLASH_NONCE_BYTES);
+        key->seed_size = FLASH_KEY_BYTES;
+        key->nonce_size = FLASH_NONCE_BYTES;
+        key->seed_valid = false;
+        key_offset = R_SECRET1_FLASH_DATA_KEY_SEED;
+        ot_otp_eg_generate_scrambling_key(ds, key, type, key_offset,
+                                          ds->flash_data_iv,
+                                          ds->flash_data_const, true, false);
+        break;
     case OTP_KEY_FLASH_ADDR:
-        /* TODO: add flash key support for Earlgrey */
-        qemu_log_mask(LOG_UNIMP, "%s: %s: flash key is not supported\n",
-                      __func__, ds->ot_id);
+        memcpy(key->seed, ds->scrmbl_key_init->key, FLASH_KEY_BYTES);
+        key->seed_size = FLASH_KEY_BYTES;
+        key->nonce_size = 0u; /* FLASH_ADDR_KEY has nonce_size = 0 */
+        key->seed_valid = false;
+        key_offset = R_SECRET1_FLASH_ADDR_KEY_SEED;
+        ot_otp_eg_generate_scrambling_key(ds, key, type, key_offset,
+                                          ds->flash_addr_iv,
+                                          ds->flash_addr_const, true, false);
         break;
     case OTP_KEY_OTBN:
         memcpy(key->seed, ds->scrmbl_key_init->key, OTBN_KEY_BYTES);
