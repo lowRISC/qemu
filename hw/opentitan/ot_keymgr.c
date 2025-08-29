@@ -367,6 +367,11 @@ typedef struct {
     bool valid;
 } OtKeyMgrKey;
 
+typedef struct {
+    bool op_req;
+    bool op_ack;
+} OtKeyMgrOpState;
+
 typedef struct OtKeyMgrState {
     SysBusDevice parent_obj;
 
@@ -388,6 +393,7 @@ typedef struct OtKeyMgrState {
     bool enabled;
     OtKeyMgrFSMState state;
     OtKeyMgrPrng prng;
+    OtKeyMgrOpState op_state;
     uint8_t *seeds[KEYMGR_SEED_COUNT];
 
     /* key states */
@@ -477,6 +483,18 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
+#define OP_ENTRY(_op_) [KEYMGR_OP_##_op_] = stringify(_op_)
+static const char *OP_NAMES[] = {
+    OP_ENTRY(ADVANCE),
+    OP_ENTRY(GENERATE_ID),
+    OP_ENTRY(GENERATE_SW_OUTPUT),
+    OP_ENTRY(GENERATE_HW_OUTPUT),
+    OP_ENTRY(DISABLE),
+};
+#undef OP_ENTRY
+#define OP_NAME(_op_) \
+    (((unsigned)(_op_)) < ARRAY_SIZE(OP_NAMES) ? OP_NAMES[(_op_)] : "?")
+
 #define WORKING_STATE_ENTRY(_st_) \
     [KEYMGR_WORKING_STATE_##_st_] = stringify(_st_)
 static const char *WORKING_STATE_NAMES[] = {
@@ -492,6 +510,19 @@ static const char *WORKING_STATE_NAMES[] = {
 #define WORKING_STATE_NAME(_st_) \
     (((unsigned)(_st_)) < ARRAY_SIZE(WORKING_STATE_NAMES) ? \
          WORKING_STATE_NAMES[(_st_)] : \
+         "?")
+
+#define OP_STATUS_ENTRY(_st_) [KEYMGR_OP_STATUS_##_st_] = stringify(_st_)
+static const char *OP_STATUS_NAMES[] = {
+    OP_STATUS_ENTRY(IDLE),
+    OP_STATUS_ENTRY(WIP),
+    OP_STATUS_ENTRY(DONE_SUCCESS),
+    OP_STATUS_ENTRY(DONE_ERROR),
+};
+#undef OP_STATUS_ENTRY
+#define OP_STATUS_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(OP_STATUS_NAMES) ? \
+         OP_STATUS_NAMES[(_st_)] : \
          "?")
 
 #define FST_ENTRY(_st_) [KEYMGR_ST_##_st_] = stringify(_st_)
@@ -600,6 +631,33 @@ static void ot_keymgr_xchange_working_state(
     }
 }
 
+static OtKeyMgrOpStatus ot_keymgr_get_op_status(const OtKeyMgrState *s)
+{
+    uint32_t op_status = FIELD_EX32(s->regs[R_OP_STATUS], OP_STATUS, STATUS);
+
+    if (op_status <= KEYMGR_OP_STATUS_DONE_ERROR) {
+        return op_status;
+    }
+    g_assert_not_reached();
+}
+
+#define ot_keymgr_change_op_status(_s_, _op_status_) \
+    ot_keymgr_xchange_op_status(_s_, _op_status_, __LINE__)
+
+static void ot_keymgr_xchange_op_status(OtKeyMgrState *s,
+                                        OtKeyMgrOpStatus op_status, int line)
+{
+    OtKeyMgrOpStatus prev_status = ot_keymgr_get_op_status(s);
+    if (prev_status != op_status) {
+        trace_ot_keymgr_change_op_status(s->ot_id, line,
+                                         OP_STATUS_NAME(prev_status),
+                                         prev_status, OP_STATUS_NAME(op_status),
+                                         op_status);
+        s->regs[R_OP_STATUS] =
+            FIELD_DP32(s->regs[R_OP_STATUS], OP_STATUS, STATUS, op_status);
+    }
+}
+
 #define ot_keymgr_schedule_fsm(_s_) \
     ot_keymgr_xschedule_fsm(_s_, __func__, __LINE__)
 
@@ -700,6 +758,26 @@ static void ot_keymgr_xchange_main_fsm_state(OtKeyMgrState *s,
     }
 }
 
+static void ot_keymgr_start_operation(OtKeyMgrState *s)
+{
+    uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+    int op = (int)FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION);
+
+    trace_ot_keymgr_operation(s->ot_id, OP_NAME(op), op);
+
+    switch (op) {
+    case KEYMGR_OP_ADVANCE:
+    case KEYMGR_OP_DISABLE:
+        /* @todo: implement keymgr operations */
+        qemu_log_mask(LOG_UNIMP, "%s: %s, Operation %s is not implemented.\n",
+                      __func__, s->ot_id, OP_NAME(op));
+        break;
+    default:
+        /* should only be called with a valid init operation */
+        g_assert_not_reached();
+    }
+}
+
 /* Tick the main FSM. Returns whether there was any state change this tick. */
 static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
 {
@@ -707,6 +785,7 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
     OtKeyMgrFSMState state = s->state;
     bool op_start = s->regs[R_START] & R_START_EN_MASK;
     bool invalid_state = s->regs[R_FAULT_STATUS] & FAULT_STATUS_MASK;
+    bool init = false;
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
 
     trace_ot_keymgr_main_fsm_tick(s->ot_id, FST_NAME(s->state), s->state);
@@ -760,7 +839,7 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
             ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
             break;
         }
-        /* @todo: update `op_done_o` as `init_o = 1` here. */
+        init = true;
 
         /* Retrieve Creator Root Key from OTP */
         OtOTPKeyMgrSecret secret_share0 = { 0u };
@@ -782,6 +861,23 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         }
         break;
     case KEYMGR_ST_INIT:
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_INIT);
+        if (!s->enabled || invalid_state) {
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
+            break;
+        }
+        if (!op_start) {
+            break; /* no state change if op_start is not set */
+        }
+        uint32_t op = FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION);
+        bool valid_op = (op == KEYMGR_OP_ADVANCE) || (op == KEYMGR_OP_DISABLE);
+        if (!valid_op) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+        } else if (!s->op_state.op_req) {
+            s->op_state.op_req = true;
+            ot_keymgr_start_operation(s);
+        }
+        break;
     case KEYMGR_ST_CREATOR_ROOT_KEY:
     case KEYMGR_ST_OWNER_INT_KEY:
     case KEYMGR_ST_OWNER_KEY:
@@ -796,7 +892,36 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         break;
     }
 
-    /* @todo: update ERR_CODE, OP_STATUS & CFG_REGWEN based on FSM changes */
+    /* update the last requested operation status */
+    bool invalid_op = (bool)(s->regs[R_ERR_CODE] & R_ERR_CODE_INVALID_OP_MASK);
+    bool op_done =
+        s->op_state.op_req ? s->op_state.op_ack : (init || invalid_op);
+    if (op_done) {
+        s->op_state.op_req = false;
+        s->op_state.op_ack = false;
+        s->regs[R_START] &= ~R_START_EN_MASK;
+        if (s->regs[R_ERR_CODE] || s->regs[R_FAULT_STATUS]) {
+            ot_keymgr_update_alerts(s);
+            ot_keymgr_change_op_status(s, KEYMGR_OP_STATUS_DONE_ERROR);
+        } else {
+            ot_keymgr_change_op_status(s, KEYMGR_OP_STATUS_DONE_SUCCESS);
+        }
+        s->regs[R_INTR_STATE] |= INTR_OP_DONE_MASK;
+        ot_keymgr_update_irq(s);
+    } else if (op_start) {
+        ot_keymgr_change_op_status(s, KEYMGR_OP_STATUS_WIP);
+    } else {
+        ot_keymgr_change_op_status(s, KEYMGR_OP_STATUS_IDLE);
+    }
+
+    /* lock CFG_REGWEN when an operation is ongoing */
+    if (s->enabled && op_start) {
+        if (op_done) {
+            s->regs[R_CFG_REGWEN] |= R_CFG_REGWEN_EN_MASK;
+        } else {
+            s->regs[R_CFG_REGWEN] &= ~R_CFG_REGWEN_EN_MASK;
+        }
+    }
 
     return state != s->state;
 }
@@ -1172,11 +1297,13 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
             ot_keymgr_update_alerts(s);
         }
         break;
-    case R_OP_STATUS:
+    case R_OP_STATUS: {
         val32 &= R_OP_STATUS_STATUS_MASK;
-        s->regs[reg] &= ~val32; /* RW1C */
-        /* @todo: implement trace on R_OP_STATUS change? */
+        ot_keymgr_change_op_status(s, s->regs[reg] & ~val32); /* RW1C */
+        /* SW write may clear `WIP` here which may be immediately set again */
+        ot_keymgr_fsm_tick(s);
         break;
+    }
     case R_ERR_CODE:
         val32 &= ERR_CODE_MASK;
         s->regs[reg] &= ~val32; /* RW1C */
@@ -1326,6 +1453,8 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     s->prng.reseed_req = false;
     s->prng.reseed_ack = false;
     s->prng.reseed_cnt = 0u;
+    s->op_state.op_req = false;
+    s->op_state.op_ack = false;
 
     /* reset key state */
     memset(s->key_states, 0u, NUM_CDIS * sizeof(OtKeyMgrKey));
