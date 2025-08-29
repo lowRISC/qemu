@@ -59,6 +59,10 @@ Devices in this group implement subset(s) of the real HW.
 * SRAM controller
   * Initialization and scrambling with dummy key supported
   * Wait for init completion (bus stall) emulated
+* I2C controller
+  * Timing features are not implemented
+  * Only 7-bit addressing with all MASK0 bits set is supported
+  * Loopback mode is not implemented
 
 ### Sparsely implemented devices
 
@@ -82,7 +86,6 @@ any useful feature (only allow guest test code to execute as expected).
 Some just use generic `UNIMP` devices to define a memory region.
 
 * Analog Sensor Top
-* I2C
 * Key manager
 * Pattern Generator
 * Pinmux
@@ -247,6 +250,11 @@ There are two modes to handle address remapping, with different limitations:
   `-serial chardev:serial1` can be used to redirect UART1 (in this example) to a TCP socket. These
   options are not specific to OpenTitan emulation, but are useful to communicate over a UART.
   Note that QEMU offers many `chardev` backends, please check QEMU documentation for details.
+
+### I2C
+
+* `-device <name>,bus=<bus>,address=<address>` can be used to attach devices at a specific address
+  to one of the three I2C buses. The buses are named `ot-i2c0`, `ot-i2c1`, and `ot-i2c2`.
 
 ## Useful debugging options
 
