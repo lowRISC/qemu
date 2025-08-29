@@ -345,9 +345,6 @@ struct OtI2CState {
      */
     OtFifo32 target_rx_fifo;
 
-    /* Set if NACK has been received by target during transaction. */
-    bool target_rx_nack;
-
     /* Whether I2C timings should be checked before comm. over the bus */
     bool check_timings;
 
@@ -483,7 +480,6 @@ static void ot_i2c_target_reset_rx_fifo(OtI2CState *s)
 {
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_ACQ_THRESHOLD, 0);
     ot_fifo32_reset(&s->target_rx_fifo);
-    s->target_rx_nack = false;
 }
 
 static uint8_t ot_i2c_host_read_rx_fifo(OtI2CState *s)
@@ -1184,21 +1180,14 @@ static int ot_i2c_target_event(I2CSlave *target, enum i2c_event event)
              */
             ot_i2c_irq_set_state(s, TX_STRETCH, true);
         }
-        s->target_rx_nack = false;
         i2c_ack(s->bus);
         break;
     case I2C_NACK:
-        s->target_rx_nack = true;
+        g_assert_not_reached();
         break;
     case I2C_FINISH:
-        /*
-         * Signal STOP as the last entry in the fifo.
-         *
-         * Indicate whether a NACK was received in the first bit of
-         * the data byte.  Only used for read and ignored for write.
-         */
-        ot_i2c_target_set_acqdata(s, s->target_rx_nack, SIGNAL_STOP);
-        s->target_rx_nack = false;
+        /* Signal STOP as the last entry in the fifo. */
+        ot_i2c_target_set_acqdata(s, 0, SIGNAL_STOP);
 
         /* Assert command complete interrupt. */
         ot_i2c_irq_set_state(s, CMD_COMPLETE, true);
