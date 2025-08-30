@@ -444,6 +444,14 @@ REG32(CSR20, 0x50u)
 
 /* clang-format on */
 
+/*
+ * todo: init is a command handled by the lcmgr and should not be treated the
+ * same as other ops (each SW-commanded `INIT` operation can lead to multiple
+ * HW flash program operations for example).
+ *
+ * this enum should be removed and everything using it should be refactored
+ * to directly use s->op.kind (OtFlashControlOperation) instead.
+ */
 typedef enum {
     OP_NONE,
     OP_INIT,
@@ -850,26 +858,18 @@ static void ot_flash_update_prog_watermark(OtFlashState *s)
     ot_flash_update_irqs(s);
 }
 
-static void ot_flash_op_signal(void *opaque)
+static void ot_flash_init_complete(void *opaque)
 {
     OtFlashState *s = opaque;
 
-    switch (s->op.kind) {
-    case OP_INIT:
-        s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 0u);
-        s->regs[R_STATUS] =
-            FIELD_DP32(s->regs[R_STATUS], STATUS, INITIALIZED, 1u);
-        s->regs[R_PHY_STATUS] =
-            FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
-        trace_ot_flash_op_complete(OP_NAME(s->op.kind), true);
-        s->op.kind = OP_NONE;
-        break;
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: unexpected operation completion: %d\n", __func__,
-                      s->op.kind);
-        break;
-    }
+    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 0u);
+    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INITIALIZED, 1u);
+    s->regs[R_PHY_STATUS] =
+        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
+
+    trace_ot_flash_op_complete(OP_NAME(s->op.kind), true);
+
+    s->op.kind = OP_NONE;
 }
 
 static bool ot_flash_fifo_in_reset(const OtFlashState *s)
@@ -2668,7 +2668,7 @@ static void ot_flash_init(Object *obj)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
-    s->op_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_op_signal, s);
+    s->op_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_init_complete, s);
 }
 
 static void ot_flash_class_init(ObjectClass *klass, void *data)
