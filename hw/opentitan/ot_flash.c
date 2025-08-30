@@ -1917,7 +1917,6 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_BANK1_INFO2_REGWEN_1:
     case R_BANK1_INFO1_REGWEN:
     case R_BANK_CFG_REGWEN:
-    case R_CTRL_REGWEN:
         val32 &= BANK_REGWEN_MASK;
         s->regs[reg] &= val32; /* rw0c */
         break;
@@ -2101,6 +2100,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] &= val32;
         break;
     }
+    case R_CTRL_REGWEN:
     case R_STATUS:
     case R_DEBUG_STATE:
     case R_RD_FIFO:
