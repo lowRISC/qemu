@@ -1265,9 +1265,21 @@ static unsigned ot_flash_next_data_address(OtFlashState *s)
         return address;
     }
 
+    /*
+     * Hardware can only access the data pages in the RMA LC phase, at which
+     * point it has full access.
+     */
     if (s->op.hw) {
-        qemu_log_mask(LOG_UNIMP, "%s: hw access data page protections\n",
-                      __func__);
+        if (s->phase == LC_PHASE_RMA) {
+            return address;
+        }
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: hardware operation %s on data pages is not permitted "
+            "in the %s flash_ctrl lc phase\n",
+            __func__, OP_NAME(s->op.kind), LC_PHASE_NAME(s->phase));
+        ot_flash_set_error(s, mp_err_ebit, address);
+        s->op.failed = true;
         return address;
     }
 
@@ -1306,10 +1318,11 @@ static unsigned ot_flash_next_data_address(OtFlashState *s)
 
         /* Page does fall in this region, so check if enabled for operation. */
         if (!ot_flash_mp_region_cfg_op_enabled(s, r_region_cfg)) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: operation %s on page %u of data partition in "
-                          "bank %u is disabled by MP region %u\n",
-                          __func__, OP_NAME(s->op.kind), page, bank, region);
+            qemu_log_mask(
+                LOG_GUEST_ERROR,
+                "%s: software operation %s on page %u of data partition "
+                "in bank %u is disabled by MP region %u\n",
+                __func__, OP_NAME(s->op.kind), page, bank, region);
             ot_flash_set_error(s, mp_err_ebit, address);
             s->op.failed = true;
             return address;
@@ -1320,8 +1333,8 @@ static unsigned ot_flash_next_data_address(OtFlashState *s)
     /* If page not in any region, apply the default region's permissions. */
     if (!matching_region_found && !ot_flash_default_region_cfg_op_enabled(s)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: operation %s on page %u of data partition in bank "
-                      "%u is disabled by default region\n",
+                      "%s: software operation %s on page %u of data partition "
+                      "in bank %u is disabled by default region\n",
                       __func__, OP_NAME(s->op.kind), page, bank);
         ot_flash_set_error(s, mp_err_ebit, address);
         s->op.failed = true;
