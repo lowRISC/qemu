@@ -1683,7 +1683,7 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
             }
             ot_flash_update_rd_watermark(s);
             ot_flash_update_irqs(s);
-            if (s->op.count) {
+            if (s->op.kind != OP_NONE && s->op.count) {
                 ot_flash_op_execute(s);
             }
         } else {
@@ -2059,7 +2059,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             if (ot_fifo32_is_full(&s->prog_fifo)) {
                 s->regs[R_STATUS] |= R_STATUS_PROG_FULL_MASK;
             }
-            if (s->op.count) {
+            if (s->op.kind != OP_NONE && s->op.count) {
                 ot_flash_op_execute(s);
             }
         } else {
