@@ -444,6 +444,13 @@ REG32(CSR20, 0x50u)
 
 /* clang-format on */
 
+typedef enum {
+    LC_PHASE_SEED,
+    LC_PHASE_RMA,
+    LC_PHASE_NONE,
+    LC_PHASE_INVALID
+} OtFlashLifeCyclePhase;
+
 /*
  * todo: init is a command handled by the lcmgr and should not be treated the
  * same as other ops (each SW-commanded `INIT` operation can lead to multiple
@@ -619,6 +626,13 @@ static const char *CSR_NAMES[CSRS_COUNT] = {
 
 #define FLASH_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
 
+static const char *LC_PHASE_NAMES[] = {
+    FLASH_NAME_ENTRY(LC_PHASE_SEED),
+    FLASH_NAME_ENTRY(LC_PHASE_RMA),
+    FLASH_NAME_ENTRY(LC_PHASE_NONE),
+    FLASH_NAME_ENTRY(LC_PHASE_INVALID),
+};
+
 static const char *OP_NAMES[] = {
     FLASH_NAME_ENTRY(OP_NONE),  FLASH_NAME_ENTRY(OP_INIT),
     FLASH_NAME_ENTRY(OP_READ),  FLASH_NAME_ENTRY(OP_PROG),
@@ -642,6 +656,11 @@ static const char *PROGRAM_SELECTION_NAMES[] = {
 };
 
 #undef FLASH_NAME_ENTRY
+
+#define LC_PHASE_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(LC_PHASE_NAMES) ? \
+         LC_PHASE_NAMES[(_st_)] : \
+         "?")
 
 #define OP_NAME(_st_) \
     (((unsigned)(_st_)) < ARRAY_SIZE(OP_NAMES) ? OP_NAMES[(_st_)] : "?")
@@ -770,6 +789,7 @@ struct OtFlashState {
         bool erase_sel;
         bool failed;
     } op;
+    OtFlashLifeCyclePhase phase; /* HW LC phase for memory protection / RMA */
     OtFifo32 rd_fifo;
     OtFifo32 prog_fifo;
     OtFlashStorage flash;
@@ -918,6 +938,9 @@ static void ot_flash_initialize(OtFlashState *s)
                       __func__);
         return;
     }
+
+    s->phase = LC_PHASE_SEED;
+    trace_ot_flash_change_lc_phase(LC_PHASE_NAME(s->phase), s->phase);
 
     s->op.kind = OP_INIT;
     trace_ot_flash_op_start(OP_NAME(s->op.kind));
@@ -2634,6 +2657,8 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
     s->csrs[R_CSR0_REGWEN] = 0x1u;
 
     s->latched_alerts = 0u;
+
+    s->phase = LC_PHASE_NONE;
 
     ot_flash_update_irqs(s);
     ot_flash_update_alerts(s);
