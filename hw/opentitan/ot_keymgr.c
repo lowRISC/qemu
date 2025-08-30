@@ -95,6 +95,8 @@ static_assert(KEYMGR_ID_DATA_BYTES <= KEYMGR_KDF_BUFFER_BYTES,
               "KeyMgr ID data does not fit in KDF buffer");
 static_assert(KEYMGR_GEN_DATA_BYTES <= KEYMGR_KDF_BUFFER_BYTES,
               "KeyMgr GEN data does not fit in KDF buffer");
+static_assert((KEYMGR_KDF_BUFFER_BYTES % OT_KMAC_APP_MSG_BYTES) == 0u,
+              "KeyMgr KDF buffer not a multiple of KMAC message size");
 /* NOLINTBEGIN(misc-redundant-expression) */
 static_assert(KEYMGR_KEY_BYTES == OT_OTP_KEYMGR_SECRET_SIZE,
               "KeyMgr key size does not match OTP KeyMgr secret size");
@@ -262,6 +264,13 @@ typedef enum {
 
 #define KEY_SINK_OFFSET 1
 
+typedef enum {
+    KEYMGR_STAGE_CREATOR,
+    KEYMGR_STAGE_OWNER_INT,
+    KEYMGR_STAGE_OWNER,
+    KEYMGR_STAGE_DISABLE,
+} OtKeyMgrStage;
+
 /* values for CONTROL_SHADOWED.OPERATION */
 typedef enum {
     KEYMGR_OP_ADVANCE = 0,
@@ -373,7 +382,15 @@ typedef struct {
 typedef struct {
     bool op_req;
     bool op_ack;
+    OtKeyMgrStage stage;
+    OtKeyMgrCdi adv_cdi_cnt;
 } OtKeyMgrOpState;
+
+typedef struct {
+    uint8_t *data;
+    unsigned offset; /* current read offset (in bytes ) */
+    unsigned length; /* current length (in bytes) */
+} OtKeyMgrKdfBuffer;
 
 typedef struct OtKeyMgrState {
     SysBusDevice parent_obj;
@@ -382,6 +399,7 @@ typedef struct OtKeyMgrState {
     IbexIRQ irq;
     IbexIRQ alerts[ALERT_COUNT];
     QEMUTimer *fsm_tick_timer;
+    OtKeyMgrKdfBuffer kdf_buf;
 
     uint32_t regs[REGS_COUNT];
     OtShadowReg control;
@@ -489,6 +507,26 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
+#define STAGE_ENTRY(_st_) [KEYMGR_STAGE_##_st_] = stringify(_st_)
+static const char *STAGE_NAMES[] = {
+    STAGE_ENTRY(CREATOR),
+    STAGE_ENTRY(OWNER_INT),
+    STAGE_ENTRY(OWNER),
+    STAGE_ENTRY(DISABLE),
+};
+#undef STAGE_ENTRY
+#define STAGE_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(STAGE_NAMES) ? STAGE_NAMES[(_st_)] : "?")
+
+#define CDI_ENTRY(_cd_) [KEYMGR_CDI_##_cd_] = stringify(_cd_)
+static const char *CDI_NAMES[] = {
+    CDI_ENTRY(SEALING),
+    CDI_ENTRY(ATTESTATION),
+};
+#undef CDI_ENTRY
+#define CDI_NAME(_cd_) \
+    (((unsigned)(_cd_)) < ARRAY_SIZE(CDI_NAMES) ? CDI_NAMES[(_cd_)] : "?")
+
 #define OP_ENTRY(_op_) [KEYMGR_OP_##_op_] = stringify(_op_)
 static const char *OP_NAMES[] = {
     OP_ENTRY(ADVANCE),
@@ -555,6 +593,22 @@ static const char *FST_NAMES[] = {
 
 #define ot_keymgr_dump_bigint(_s_, _b_, _l_) \
     ot_common_lhexdump(_b_, _l_, true, (_s_)->hexstr, OT_KEYMGR_HEXSTR_SIZE)
+
+static void ot_keymgr_dump_kdf_buf(const OtKeyMgrState *s, const char *op)
+{
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DUMP_KDF_BUF)) {
+        size_t msgs = (s->kdf_buf.length + OT_KMAC_APP_MSG_BYTES - 1u) /
+                      OT_KMAC_APP_MSG_BYTES;
+        for (size_t ix = 0u; ix < msgs; ix++) {
+            trace_ot_keymgr_dump_kdf_buf(
+                s->ot_id, op, ix,
+                ot_keymgr_dump_bigint(s,
+                                      &s->kdf_buf
+                                           .data[ix * OT_KMAC_APP_MSG_BYTES],
+                                      OT_KMAC_APP_MSG_BYTES));
+        }
+    }
+}
 
 static void ot_keymgr_update_irq(OtKeyMgrState *s)
 {
@@ -728,6 +782,129 @@ static void ot_keymgr_request_entropy(OtKeyMgrState *s)
     }
 }
 
+/* check that 'data' is not all zeros or all ones */
+static bool ot_keymgr_valid_data_check(const uint8_t *data, size_t len)
+{
+    size_t popcount = 0u;
+    for (unsigned ix = 0u; ix < len; ix++) {
+        popcount += __builtin_popcount(data[ix]);
+    }
+    return (popcount && popcount != (len * BITS_PER_BYTE));
+}
+
+static void ot_keymgr_reset_kdf_buffer(OtKeyMgrState *s)
+{
+    memset(s->kdf_buf.data, 0u, KEYMGR_KDF_BUFFER_BYTES);
+    s->kdf_buf.offset = 0u;
+    s->kdf_buf.length = 0u;
+}
+
+static void ot_keymgr_kdf_push_bytes(OtKeyMgrState *s, const uint8_t *data,
+                                     size_t len)
+{
+    g_assert(s->kdf_buf.length + len <= KEYMGR_KDF_BUFFER_BYTES);
+
+    memcpy(&s->kdf_buf.data[s->kdf_buf.length], data, len);
+    s->kdf_buf.length += len;
+}
+
+static void ot_keymgr_dump_kdf_material(
+    const OtKeyMgrState *s, const char *what, const uint8_t *buf, size_t len)
+{
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DUMP_KDF_MATERIAL)) {
+        const char *hexstr = ot_keymgr_dump_bigint(s, buf, len);
+        trace_ot_keymgr_dump_kdf_material(s->ot_id, what, hexstr);
+    }
+}
+
+static size_t ot_keymgr_kdf_append_rev_seed(OtKeyMgrState *s)
+{
+    ot_keymgr_kdf_push_bytes(s, s->seeds[KEYMGR_SEED_REV], KEYMGR_SEED_BYTES);
+    ot_keymgr_dump_kdf_material(s, "REV_SEED", s->seeds[KEYMGR_SEED_REV],
+                                KEYMGR_SEED_BYTES);
+    return KEYMGR_SEED_BYTES;
+}
+
+static size_t ot_keymgr_kdf_append_rom_digest(OtKeyMgrState *s, bool *dvalid)
+{
+    uint8_t rom_digest[OT_ROM_DIGEST_BYTES] = { 0u };
+
+    OtRomCtrlClass *rcc = OT_ROM_CTRL_GET_CLASS(s->rom_ctrl);
+    rcc->get_rom_digest(s->rom_ctrl, rom_digest);
+
+    ot_keymgr_kdf_push_bytes(s, rom_digest, OT_ROM_DIGEST_BYTES);
+    *dvalid &= ot_keymgr_valid_data_check(rom_digest, OT_ROM_DIGEST_BYTES);
+
+    ot_keymgr_dump_kdf_material(s, "ROM_DIGEST", rom_digest,
+                                OT_ROM_DIGEST_BYTES);
+    return OT_ROM_DIGEST_BYTES;
+}
+
+static size_t ot_keymgr_kdf_append_km_div(OtKeyMgrState *s, bool *dvalid)
+{
+    OtLcCtrlKeyMgrDiv km_div = { 0u };
+
+    OtLcCtrlClass *lc = OT_LC_CTRL_GET_CLASS(s->lc_ctrl);
+    lc->get_keymgr_div(s->lc_ctrl, &km_div);
+
+    ot_keymgr_kdf_push_bytes(s, km_div.data, OT_LC_KEYMGR_DIV_BYTES);
+    *dvalid &= ot_keymgr_valid_data_check(km_div.data, OT_LC_KEYMGR_DIV_BYTES);
+
+    ot_keymgr_dump_kdf_material(s, "KM_DIV", km_div.data,
+                                OT_LC_KEYMGR_DIV_BYTES);
+    return OT_LC_KEYMGR_DIV_BYTES;
+}
+
+static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s, bool *dvalid)
+{
+    OtOTPClass *otp_oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
+    const OtOTPHWCfg *hw_cfg = otp_oc->get_hw_cfg(s->otp_ctrl);
+
+    ot_keymgr_kdf_push_bytes(s, hw_cfg->device_id,
+                             OT_OTP_HWCFG_DEVICE_ID_BYTES);
+    *dvalid &= ot_keymgr_valid_data_check(hw_cfg->device_id,
+                                          OT_OTP_HWCFG_DEVICE_ID_BYTES);
+
+    ot_keymgr_dump_kdf_material(s, "DEVICE_ID", hw_cfg->device_id,
+                                OT_OTP_HWCFG_DEVICE_ID_BYTES);
+    return OT_OTP_HWCFG_DEVICE_ID_BYTES;
+}
+
+static size_t
+ot_keymgr_kdf_append_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
+                          const char *seed_name, bool *dvalid)
+{
+    OtFlashKeyMgrSecret seed = { 0u };
+
+    OtFlashClass *fc = OT_FLASH_GET_CLASS(s->flash_ctrl);
+    fc->get_keymgr_secret(s->flash_ctrl, type, &seed);
+
+    ot_keymgr_kdf_push_bytes(s, seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
+    *dvalid &=
+        ot_keymgr_valid_data_check(seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
+    *dvalid &= seed.valid;
+
+    ot_keymgr_dump_kdf_material(s, seed_name, seed.secret,
+                                OT_FLASH_KEYMGR_SECRET_BYTES);
+    return OT_FLASH_KEYMGR_SECRET_BYTES;
+}
+
+static size_t ot_keymgr_kdf_append_sw_binding(OtKeyMgrState *s, OtKeyMgrCdi cdi)
+{
+    uint8_t *sw_binding = (cdi == KEYMGR_CDI_SEALING) ? s->sealing_sw_binding :
+                                                        s->attest_sw_binding;
+
+    ot_keymgr_kdf_push_bytes(s, sw_binding, KEYMGR_SW_BINDING_BYTES);
+
+    char buf[32u];
+    const char *binding_suffix = "_SW_BINDING";
+    const char *cdi_name = CDI_NAME(cdi);
+    g_assert(strlen(binding_suffix) + strlen(cdi_name) + 1 < sizeof(buf));
+    snprintf(buf, sizeof(buf), "%s%s", cdi_name, binding_suffix);
+    ot_keymgr_dump_kdf_material(s, buf, sw_binding, KEYMGR_SW_BINDING_BYTES);
+    return KEYMGR_SW_BINDING_BYTES;
+}
+
 static void ot_keymgr_get_root_key(OtKeyMgrState *s, OtOTPKeyMgrSecret *share0,
                                    OtOTPKeyMgrSecret *share1)
 {
@@ -764,22 +941,112 @@ static void ot_keymgr_xchange_main_fsm_state(OtKeyMgrState *s,
     }
 }
 
+static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
+                                        OtKeyMgrCdi cdi)
+{
+    trace_ot_keymgr_advance(s->ot_id, STAGE_NAME(stage), (int)stage,
+                            CDI_NAME(cdi), (int)cdi);
+
+    bool dvalid = true;
+
+    /* @todo: do we need to check for any error states here? */
+
+    ot_keymgr_reset_kdf_buffer(s);
+
+    size_t expected_kdf_len = 0u;
+
+    switch (stage) {
+    case KEYMGR_STAGE_CREATOR:
+        /* Revision Seed (which is a netlist constant) */
+        expected_kdf_len += ot_keymgr_kdf_append_rev_seed(s);
+
+        /* Rom Digest (from rom_ctrl) */
+        expected_kdf_len += ot_keymgr_kdf_append_rom_digest(s, &dvalid);
+
+        /* KeyManager Diversification (from lc_ctrl) */
+        expected_kdf_len += ot_keymgr_kdf_append_km_div(s, &dvalid);
+
+        /* Device ID (from OTP) */
+        expected_kdf_len += ot_keymgr_kdf_append_dev_id(s, &dvalid);
+        break;
+    case KEYMGR_STAGE_OWNER_INT:
+        /* Creator Seed (from flash) */
+        expected_kdf_len +=
+            ot_keymgr_kdf_append_seed(s, FLASH_KEYMGR_SECRET_CREATOR_SEED,
+                                      "CREATOR_SEED", &dvalid);
+        break;
+    case KEYMGR_STAGE_OWNER:
+        /* Owner Seed (from flash) */
+        expected_kdf_len +=
+            ot_keymgr_kdf_append_seed(s, FLASH_KEYMGR_SECRET_OWNER_SEED,
+                                      "OWNER_SEED", &dvalid);
+        break;
+    case KEYMGR_STAGE_DISABLE:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: advance called in the %s key stage\n.", __func__,
+                      s->ot_id, STAGE_NAME(stage));
+        return;
+    default:
+        /* should only be called with a valid stage */
+        g_assert_not_reached();
+    }
+
+    /* Software Binding (software-provided via {x_SW_BINDING_y registers) */
+    expected_kdf_len += ot_keymgr_kdf_append_sw_binding(s, cdi);
+
+    /* check that we have pushed all expected KDF data */
+    g_assert(s->kdf_buf.length == expected_kdf_len);
+
+    /*
+     * @todo: store `dvalid` somewhere and, if the data is invalid, replace the
+     * KMAC response with decoy data (a random permutation of entropy share 1).
+     */
+    if (!dvalid) {
+        s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_KMAC_INPUT_MASK;
+    }
+
+    g_assert(s->kdf_buf.length <= KEYMGR_ADV_DATA_BYTES);
+    s->kdf_buf.length = KEYMGR_ADV_DATA_BYTES;
+
+    ot_keymgr_dump_kdf_buf(s, "adv");
+
+    /*
+     * @todo: send the KMAC KDF request and handle the response. When we get a
+     * response, transition the main FSM to `KEYMGR_ST_CREATOR_ROOT_KEY`.
+     */
+}
+
+static void ot_keymgr_operation_disable(OtKeyMgrState *s)
+{
+    /* @todo: wipe the current keys with some dummy entropy data */
+    ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_DISABLED);
+    s->op_state.op_ack = true;
+    ot_keymgr_schedule_fsm(s);
+}
+
 static void ot_keymgr_start_operation(OtKeyMgrState *s)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
     int op = (int)FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION);
 
-    trace_ot_keymgr_operation(s->ot_id, OP_NAME(op), op);
+    trace_ot_keymgr_operation(s->ot_id, STAGE_NAME(s->op_state.stage),
+                              OP_NAME(op), op);
 
     switch (op) {
     case KEYMGR_OP_ADVANCE:
+        s->op_state.adv_cdi_cnt = (OtKeyMgrCdi)0;
+        ot_keymgr_operation_advance(s, s->op_state.stage,
+                                    s->op_state.adv_cdi_cnt);
+        /*
+         * @todo: when we get a KMAC response with the sealing key, we should
+         * then send a request for the attestation CDI before completing.
+         */
+        break;
     case KEYMGR_OP_DISABLE:
-        /* @todo: implement keymgr operations */
-        qemu_log_mask(LOG_UNIMP, "%s: %s, Operation %s is not implemented.\n",
-                      __func__, s->ot_id, OP_NAME(op));
+        ot_keymgr_operation_disable(s);
         break;
     default:
-        /* should only be called with a valid init operation */
+        /* should only be called with a valid operation */
         g_assert_not_reached();
     }
 }
@@ -880,6 +1147,9 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         if (!valid_op) {
             s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
         } else if (!s->op_state.op_req) {
+            s->op_state.stage =
+                (op == KEYMGR_OP_ADVANCE) ? KEYMGR_STAGE_CREATOR :
+                                            KEYMGR_STAGE_DISABLE;
             s->op_state.op_req = true;
             ot_keymgr_start_operation(s);
         }
@@ -1470,6 +1740,9 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     s->prng.reseed_cnt = 0u;
     s->op_state.op_req = false;
     s->op_state.op_ack = false;
+    s->op_state.stage = KEYMGR_STAGE_DISABLE;
+    s->op_state.adv_cdi_cnt = 0u;
+    ot_keymgr_reset_kdf_buffer(s);
 
     /* reset key state */
     memset(s->key_states, 0u, NUM_CDIS * sizeof(OtKeyMgrKey));
@@ -1522,6 +1795,7 @@ static void ot_keymgr_init(Object *obj)
 
     s->prng.state = ot_prng_allocate();
 
+    s->kdf_buf.data = g_new0(uint8_t, KEYMGR_KDF_BUFFER_BYTES);
     s->salt = g_new0(uint8_t, KEYMGR_SALT_BYTES);
     s->sealing_sw_binding = g_new0(uint8_t, KEYMGR_SW_BINDING_BYTES);
     s->attest_sw_binding = g_new0(uint8_t, KEYMGR_SW_BINDING_BYTES);
