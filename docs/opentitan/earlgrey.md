@@ -21,8 +21,9 @@
 * CSRNG
 * EDN
 * Flash controller
-  * missing ECCs/ICVs, scrambling functionality and alerts
-  * no modelling of erase suspend
+  * largely functional but without ECCs/ICVs, scrambling functionality and alerts
+  * no modelling of erase suspend or RMA entry
+  * some lc_ctrl signals and OTP settings not yet supported
 * HMAC
 * OTBN
   * missing side-loading
