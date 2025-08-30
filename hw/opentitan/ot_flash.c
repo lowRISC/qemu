@@ -1142,11 +1142,11 @@ static unsigned ot_flash_next_info_address(OtFlashState *s)
         s->op.failed = true;
         return address;
     }
-    if (SHARED_FIELD_EX32(s->regs[info_page_cfg_reg], BANK_INFO_PAGE_CFG_EN) !=
-        OT_MULTIBITBOOL4_TRUE) {
-        return address; /* page config is disabled; so access is permitted. */
-    }
-    if (!ot_flash_info_page_cfg_op_enabled(s, info_page_cfg_reg)) {
+    bool page_disabled =
+        SHARED_FIELD_EX32(s->regs[info_page_cfg_reg], BANK_INFO_PAGE_CFG_EN) !=
+        OT_MULTIBITBOOL4_TRUE;
+    if (page_disabled ||
+        !ot_flash_info_page_cfg_op_enabled(s, info_page_cfg_reg)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: operation %s on info page %u in partition %u of "
                       "bank %u is disabled by page config\n",
