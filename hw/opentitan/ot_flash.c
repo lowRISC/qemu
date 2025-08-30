@@ -34,7 +34,6 @@
  *    Generic Flash Bank and so are not emulated.
  *  - Erase Suspend is not emulated in QEMU (erases are done synchronously, so
  *    you can suspend, but the bit will immediately be cleared).
- *  - HW info cfg overrides are not modelled in QEMU.
  */
 
 #include "qemu/osdep.h"
@@ -835,6 +834,85 @@ struct OtFlashState {
     bool no_mem_prot; /* Flag to disable mem protection features */
 };
 
+/* Flash memory protection rules */
+
+static const OtFlashPropertyCfg OT_FLASH_CFG_ALLOW_READ = {
+    .en = true,
+    .rd_en = true,
+    .prog_en = false,
+    .erase_en = false,
+    .scramble_en = true,
+    .ecc_en = true,
+    .he_en = true,
+};
+
+static const OtFlashPropertyCfg OT_FLASH_CFG_ALLOW_READ_PROG_ERASE = {
+    .en = true,
+    .rd_en = true,
+    .prog_en = true,
+    .erase_en = true,
+    .scramble_en = true,
+    .ecc_en = true,
+    .he_en = true,
+};
+
+static const OtFlashPropertyCfg OT_FLASH_CFG_INFO_DISABLE = {
+    .en = false,
+    .rd_en = false,
+    .prog_en = false,
+    .erase_en = false,
+    .scramble_en = false,
+    .ecc_en = false,
+    .he_en = false,
+};
+
+typedef struct {
+    /* the page to give HW access to */
+    unsigned bank;
+    unsigned info_partition;
+    unsigned page;
+    OtFlashLifeCyclePhase phase; /* the phase this rule applies in */
+    OtFlashPropertyCfg cfg; /* cfg to apply to the page */
+} OtFlashHwInfoPageRule;
+
+static const OtFlashHwInfoPageRule OT_FLASH_HW_INFO_PAGE_RULES[] = {
+    {
+        .bank = FLASH_SEED_BANK,
+        .info_partition = FLASH_SEED_INFO_PARTITION,
+        .page = FLASH_QUAL_INFO_PAGE_CREATOR,
+        .phase = LC_PHASE_SEED,
+        .cfg = OT_FLASH_CFG_ALLOW_READ,
+    },
+    {
+        .bank = FLASH_SEED_BANK,
+        .info_partition = FLASH_SEED_INFO_PARTITION,
+        .page = FLASH_QUAL_INFO_PAGE_OWNER,
+        .phase = LC_PHASE_SEED,
+        .cfg = OT_FLASH_CFG_ALLOW_READ,
+    },
+    {
+        .bank = FLASH_SEED_BANK,
+        .info_partition = FLASH_SEED_INFO_PARTITION,
+        .page = FLASH_QUAL_INFO_PAGE_CREATOR,
+        .phase = LC_PHASE_RMA,
+        .cfg = OT_FLASH_CFG_ALLOW_READ_PROG_ERASE,
+    },
+    {
+        .bank = FLASH_SEED_BANK,
+        .info_partition = FLASH_SEED_INFO_PARTITION,
+        .page = FLASH_QUAL_INFO_PAGE_OWNER,
+        .phase = LC_PHASE_RMA,
+        .cfg = OT_FLASH_CFG_ALLOW_READ_PROG_ERASE,
+    },
+    {
+        .bank = FLASH_SEED_BANK,
+        .info_partition = FLASH_SEED_INFO_PARTITION,
+        .page = FLASH_QUAL_INFO_PAGE_ISOLATED,
+        .phase = LC_PHASE_RMA,
+        .cfg = OT_FLASH_CFG_ALLOW_READ_PROG_ERASE,
+    },
+};
+
 struct OtFlashClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
@@ -1086,6 +1164,19 @@ static uint32_t ot_flash_get_info_page_cfg_reg(
     }
 }
 
+static OtFlashPropertyCfg ot_flash_get_hw_info_page_cfg(
+    OtFlashState *s, unsigned bank, unsigned info_partition, unsigned page)
+{
+    for (unsigned ix = 0; ix < ARRAY_SIZE(OT_FLASH_HW_INFO_PAGE_RULES); ++ix) {
+        const OtFlashHwInfoPageRule *rule = &OT_FLASH_HW_INFO_PAGE_RULES[ix];
+        if (bank == rule->bank && info_partition == rule->info_partition &&
+            page == rule->page && s->phase == rule->phase) {
+            return rule->cfg;
+        }
+    }
+    return OT_FLASH_CFG_INFO_DISABLE;
+}
+
 static OtFlashPropertyCfg ot_flash_get_info_page_reg_cfg(
     const OtFlashState *s, uint32_t info_page_cfg_reg)
 {
@@ -1329,30 +1420,44 @@ static unsigned ot_flash_next_info_address(OtFlashState *s)
         return address;
     }
 
-    if (s->op.hw) {
-        qemu_log_mask(LOG_UNIMP, "%s: hw access info page protections\n",
-                      __func__);
-        return address;
-    }
-
-    /* Check the matching info partition page config register */
     unsigned page = address_in_bank / BYTES_PER_PAGE;
-    uint32_t info_page_cfg_reg =
-        ot_flash_get_info_page_cfg_reg(bank, info_partition, page);
-    if (!info_page_cfg_reg) {
-        ot_flash_set_error(s, mp_err_ebit, op_address);
-        s->op.failed = true;
-        return address;
+
+    /*
+     * Check the matching info partition page configuration.
+     * For software reads, this depends on the config registers and any
+     * additional secret qualifiers. For hardware reads, this depends
+     * on the defined hardware rules & any HW overrides.
+     */
+    OtFlashPropertyCfg cfg;
+    if (s->op.hw) {
+        cfg = ot_flash_get_hw_info_page_cfg(s, bank, info_partition, page);
+        uint32_t override = s->regs[R_HW_INFO_CFG_OVERRIDE];
+        bool scramble_disable =
+            FIELD_EX32(override, HW_INFO_CFG_OVERRIDE, SCRAMBLE_DIS) ==
+            OT_MULTIBITBOOL4_TRUE;
+        bool ecc_disable = FIELD_EX32(override, HW_INFO_CFG_OVERRIDE,
+                                      ECC_DIS) == OT_MULTIBITBOOL4_TRUE;
+        cfg.scramble_en &= !scramble_disable;
+        cfg.ecc_en &= !ecc_disable;
+    } else {
+        uint32_t info_page_cfg_reg =
+            ot_flash_get_info_page_cfg_reg(bank, info_partition, page);
+        if (!info_page_cfg_reg) {
+            ot_flash_set_error(s, mp_err_ebit, op_address);
+            s->op.failed = true;
+            return address;
+        }
+        cfg = ot_flash_get_info_page_reg_cfg(s, info_page_cfg_reg);
+        ot_flash_update_info_page_qualification(bank, info_partition, page,
+                                                &cfg);
     }
-    OtFlashPropertyCfg cfg =
-        ot_flash_get_info_page_reg_cfg(s, info_page_cfg_reg);
-    ot_flash_update_info_page_qualification(bank, info_partition, page, &cfg);
 
     if (!cfg.en || !ot_flash_info_page_cfg_op_enabled(s, &cfg)) {
+        const char *op_type = (s->op.hw) ? "hardware" : "software";
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: operation %s on info page %u in partition %u of "
+                      "%s: %s operation %s on info page %u in partition %u of "
                       "bank %u is disabled by page config\n",
-                      __func__, OP_NAME(s->op.kind), page, bank,
+                      __func__, op_type, OP_NAME(s->op.kind), page, bank,
                       info_partition);
         ot_flash_set_error(s, mp_err_ebit, op_address);
         s->op.failed = true;
