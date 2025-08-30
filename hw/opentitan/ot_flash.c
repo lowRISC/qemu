@@ -1298,15 +1298,9 @@ static void ot_flash_op_read(OtFlashState *s)
             /* If fifo in reset, still read but don't push rdata */
             continue;
         }
-
         ot_fifo32_push(&s->rd_fifo, word);
-        s->regs[R_STATUS] &= ~R_STATUS_RD_EMPTY_MASK;
-        ot_flash_update_rd_watermark(s);
 
         if (ot_fifo32_is_full(&s->rd_fifo)) {
-            s->regs[R_STATUS] |= R_STATUS_RD_FULL_MASK;
-            s->regs[R_INTR_STATE] |= INTR_RD_FULL_MASK;
-            ot_flash_update_irqs(s);
             break;
         }
     }
@@ -1332,14 +1326,7 @@ static void ot_flash_op_prog(OtFlashState *s)
 
     while (s->op.remaining) {
         uint32_t word = ot_fifo32_pop(&s->prog_fifo);
-        s->regs[R_STATUS] &= ~R_STATUS_PROG_FULL_MASK;
-        ot_flash_update_prog_watermark(s);
         bool fifo_empty = ot_fifo32_is_empty(&s->prog_fifo);
-        if (fifo_empty) {
-            s->regs[R_STATUS] |= R_STATUS_PROG_EMPTY_MASK;
-            s->regs[R_INTR_STATE] |= INTR_PROG_EMPTY_MASK;
-            ot_flash_update_irqs(s);
-        }
 
         /* Must calculate next addr before decrementing the remaining count. */
         unsigned address = 0u;
@@ -1520,6 +1507,32 @@ static void ot_flash_op_erase(OtFlashState *s)
     }
 }
 
+static void ot_flash_update_fifos_status(OtFlashState *s)
+{
+    uint32_t rd_full = (uint32_t)ot_fifo32_is_full(&s->rd_fifo);
+    uint32_t rd_empty = (uint32_t)ot_fifo32_is_empty(&s->rd_fifo);
+    uint32_t prog_full = (uint32_t)ot_fifo32_is_full(&s->prog_fifo);
+    uint32_t prog_empty = (uint32_t)ot_fifo32_is_empty(&s->prog_fifo);
+
+    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, RD_FULL, rd_full);
+    s->regs[R_STATUS] =
+        FIELD_DP32(s->regs[R_STATUS], STATUS, RD_EMPTY, rd_empty);
+    s->regs[R_STATUS] =
+        FIELD_DP32(s->regs[R_STATUS], STATUS, PROG_FULL, prog_full);
+    s->regs[R_STATUS] =
+        FIELD_DP32(s->regs[R_STATUS], STATUS, PROG_EMPTY, prog_empty);
+
+    if (rd_full) {
+        s->regs[R_INTR_STATE] |= INTR_RD_FULL_MASK;
+    }
+    if (prog_empty) {
+        s->regs[R_INTR_STATE] |= INTR_PROG_EMPTY_MASK;
+    }
+    ot_flash_update_rd_watermark(s);
+    ot_flash_update_prog_watermark(s);
+    ot_flash_update_irqs(s);
+}
+
 static void ot_flash_op_execute(OtFlashState *s)
 {
     s->regs[R_CTRL_REGWEN] &= ~R_CTRL_REGWEN_EN_MASK;
@@ -1542,6 +1555,8 @@ static void ot_flash_op_execute(OtFlashState *s)
         xtrace_ot_flash_error("unsupported");
         break;
     }
+
+    ot_flash_update_fifos_status(s);
 }
 
 static void ot_flash_update_exec(OtFlashState *s)
@@ -1702,17 +1717,8 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_SCRATCH:
     case R_FIFO_LVL:
     case R_FIFO_RST:
-        val32 = s->regs[reg];
-        break;
     case R_STATUS:
-        val32 = FIELD_DP32(s->regs[reg], STATUS, RD_FULL,
-                           (uint32_t)ot_fifo32_is_full(&s->rd_fifo));
-        val32 = FIELD_DP32(val32, STATUS, RD_EMPTY,
-                           (uint32_t)ot_fifo32_is_empty(&s->rd_fifo));
-        val32 = FIELD_DP32(val32, STATUS, PROG_FULL,
-                           (uint32_t)ot_fifo32_is_full(&s->prog_fifo));
-        val32 = FIELD_DP32(val32, STATUS, PROG_EMPTY,
-                           (uint32_t)ot_fifo32_is_empty(&s->prog_fifo));
+        val32 = s->regs[reg];
         break;
     case R_RD_FIFO:
         if (!ot_fifo32_is_empty(&s->rd_fifo)) {
