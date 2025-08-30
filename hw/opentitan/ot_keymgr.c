@@ -34,10 +34,13 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
+#include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_keymgr.h"
 #include "hw/opentitan/ot_kmac.h"
+#include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_prng.h"
+#include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -404,7 +407,10 @@ typedef struct OtKeyMgrState {
     /* properties */
     char *ot_id;
     OtKeyMgrEDN edn;
+    OtFlashState *flash_ctrl;
+    OtLcCtrlState *lc_ctrl;
     OtOTPState *otp_ctrl;
+    OtRomCtrlState *rom_ctrl;
     char *seed_xstrs[KEYMGR_SEED_COUNT];
 } OtKeyMgrState;
 
@@ -1378,8 +1384,14 @@ static Property ot_keymgr_properties[] = {
     DEFINE_PROP_LINK("edn", OtKeyMgrState, edn.device, TYPE_OT_EDN,
                      OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKeyMgrState, edn.ep, UINT8_MAX),
+    DEFINE_PROP_LINK("flash_ctrl", OtKeyMgrState, flash_ctrl, TYPE_OT_FLASH,
+                     OtFlashState *),
+    DEFINE_PROP_LINK("lc_ctrl", OtKeyMgrState, lc_ctrl, TYPE_OT_LC_CTRL,
+                     OtLcCtrlState *),
     DEFINE_PROP_LINK("otp_ctrl", OtKeyMgrState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
+    DEFINE_PROP_LINK("rom_ctrl", OtKeyMgrState, rom_ctrl, TYPE_OT_ROM_CTRL,
+                     OtRomCtrlState *),
     DEFINE_PROP_STRING("lfsr_seed", OtKeyMgrState,
                        seed_xstrs[KEYMGR_SEED_LFSR]),
     DEFINE_PROP_STRING("revision_seed", OtKeyMgrState,
@@ -1428,7 +1440,10 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
 
     g_assert(s->edn.device);
     g_assert(s->edn.ep != UINT8_MAX);
+    g_assert(s->flash_ctrl);
+    g_assert(s->lc_ctrl);
     g_assert(s->otp_ctrl);
+    g_assert(s->rom_ctrl);
 
     /* reset registers */
     memset(s->regs, 0u, sizeof(s->regs));
