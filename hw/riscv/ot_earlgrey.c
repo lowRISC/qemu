@@ -161,6 +161,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_SPLITTER_LC_HW_DEBUG,
     OT_EG_SOC_SPLITTER_LC_ESCALATE,
     OT_EG_SOC_SPLITTER_LC_SEED_HW_RD,
+    OT_EG_SOC_SPLITTER_LC_CREATOR_SEED_SW_RW,
 };
 
 enum OtEgResetRequest {
@@ -735,23 +736,34 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             /*
              * TODO: add missing life cycle broadcast signals when the required
              * supporting HW is available:
-             *  - OT_LC_NVM_DEBUG_EN (for embed. flash)
              *  - OT_LC_KEYMGR_EN (when keymgr is implemented)
-             *  - OT_LC_CREATOR_SEED_SW_RW_EN (for embed. flash)
-             *  - OT_LC_OWNER_SEED_SW_RW_EN (for embed. flash)
-             *  - OT_LC_ISO_PART_SW_RD_EN (for embed. flash)
-             *  - OT_LC_ISO_PART_SW_WR_EN (for embed. flash)
-             *  - OT_LC_SEED_HW_RD_EN (for embed. flash)
              */
+            /* Splitters for signals that go to many blocks. */
             OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN, LC_HW_DEBUG),
             OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_ESCALATE_EN, LC_ESCALATE),
             OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_SEED_HW_RD_EN, LC_SEED_HW_RD),
+            OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_CREATOR_SEED_SW_RW_EN,
+                          LC_CREATOR_SEED_SW_RW),
+            /* Signals to ibex_wrapper */
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CPU_EN, IBEX_WRAPPER,
                              OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_LC_CTRL_CPU_EN),
+            /* Signals to flash_ctrl */
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_OWNER_SEED_SW_RW_EN,
+                             FLASH_CTRL, OT_LC_BROADCAST,
+                             OT_FLASH_LC_OWNER_SEED_SW_RW_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_SEED_HW_RD_EN, FLASH_CTRL,
+                             OT_LC_BROADCAST, OT_FLASH_LC_SEED_HW_RD_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_ISO_PART_SW_RD_EN,
+                             FLASH_CTRL, OT_LC_BROADCAST,
+                             OT_FLASH_LC_ISO_PART_SW_RD_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_ISO_PART_SW_WR_EN,
+                             FLASH_CTRL, OT_LC_BROADCAST,
+                             OT_FLASH_LC_ISO_PART_SW_WR_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_NVM_DEBUG_EN, FLASH_CTRL,
+                             OT_LC_BROADCAST, OT_FLASH_LC_NVM_DEBUG_EN),
+            /* Signals to OTP */
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CHECK_BYP_EN, OTP_CTRL,
-                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN),
-            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CREATOR_SEED_SW_RW_EN, OTP_CTRL,
-                             OT_LC_BROADCAST, OT_OTP_LC_CREATOR_SEED_SW_RW_EN)
+                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
@@ -1377,29 +1389,45 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_SPLITTER_LC_HW_DEBUG] = {
         .type = TYPE_SPLIT_IRQ,
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
+            IBEX_DEV_UINT_PROP("num-lines", 1u) /** @todo to be changed */
         )
     },
     [OT_EG_SOC_SPLITTER_LC_ESCALATE] = {
         .type = TYPE_SPLIT_IRQ,
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
-                          OT_OTP_LC_ESCALATE_EN)
+                          OT_OTP_LC_ESCALATE_EN),
+            OT_EG_SOC_S2D(1, FLASH_CTRL, OT_LC_BROADCAST,
+                          OT_FLASH_LC_ESCALATE_EN)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
+            IBEX_DEV_UINT_PROP("num-lines", 2u) /** @todo to be changed */
         )
     },
     [OT_EG_SOC_SPLITTER_LC_SEED_HW_RD] = {
         .type = TYPE_SPLIT_IRQ,
         .gpio = IBEXGPIOCONNDEFS(
           OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
-                        OT_OTP_LC_SEED_HW_RD_EN)
+                        OT_OTP_LC_SEED_HW_RD_EN),
+          OT_EG_SOC_S2D(1, FLASH_CTRL, OT_LC_BROADCAST,
+                        OT_FLASH_LC_SEED_HW_RD_EN)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("num-lines", 2u)
         )
-    }
+    },
+    [OT_EG_SOC_SPLITTER_LC_CREATOR_SEED_SW_RW] = {
+        .type = TYPE_SPLIT_IRQ,
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
+                          OT_OTP_LC_CREATOR_SEED_SW_RW_EN),
+            OT_EG_SOC_S2D(1, FLASH_CTRL, OT_LC_BROADCAST,
+                          OT_FLASH_LC_CREATOR_SEED_SW_RW_EN)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("num-lines", 2u)
+        )
+    },
     /* clang-format on */
 };
 
