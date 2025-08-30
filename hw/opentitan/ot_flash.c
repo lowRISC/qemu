@@ -727,6 +727,8 @@ enum {
 #define OT_FLASH_PROG_FIFO_SIZE 16u
 #define BUS_PGM_RES             ((REG_BUS_PGM_RES_BYTES) / (OT_TL_UL_D_WIDTH_BYTES))
 
+#define WORD_ALIGN_ADDR(_addr_) ((_addr_) & ~3u)
+
 typedef struct {
     unsigned offset; /* storage offset in bank, relative to first info page */
     unsigned size; /* size in bytes of the partition */
@@ -1016,18 +1018,9 @@ static void ot_flash_update_prog_watermark(OtFlashState *s)
     ot_flash_update_irqs(s);
 }
 
-static void ot_flash_init_complete(void *opaque)
+static bool ot_flash_is_initialized(const OtFlashState *s)
 {
-    OtFlashState *s = opaque;
-
-    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 0u);
-    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INITIALIZED, 1u);
-    s->regs[R_PHY_STATUS] =
-        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
-
-    trace_ot_flash_op_complete(OP_NAME(s->op.kind), s->op.hw, true);
-
-    s->op.kind = OP_NONE;
+    return (bool)(s->regs[R_STATUS] & R_STATUS_INITIALIZED_MASK);
 }
 
 static bool ot_flash_fifo_in_reset(const OtFlashState *s)
@@ -1916,6 +1909,100 @@ static bool ot_flash_check_program_type(OtFlashState *s)
     return true;
 }
 
+static void ot_flash_process_control_op(OtFlashState *s)
+{
+    uint32_t ctrl = s->regs[R_CONTROL];
+    bool start = (bool)FIELD_EX32(ctrl, CONTROL, START);
+    if (!start || ot_flash_in_operation(s)) {
+        return;
+    }
+
+    unsigned op = (unsigned)FIELD_EX32(ctrl, CONTROL, OP);
+    bool prog_sel = (bool)FIELD_EX32(ctrl, CONTROL, PROG_SEL);
+    bool erase_sel = (bool)FIELD_EX32(ctrl, CONTROL, ERASE_SEL);
+    bool part_sel = (bool)FIELD_EX32(ctrl, CONTROL, PARTITION_SEL);
+    unsigned info_sel = (unsigned)FIELD_EX32(ctrl, CONTROL, INFO_SEL);
+    unsigned num = (unsigned)FIELD_EX32(ctrl, CONTROL, NUM);
+
+    s->op.hw = false;
+
+    /*
+     * If the flash controller is disabled by software, then (a) the flash
+     * protocol controller completes existing software commands, (b) the flash
+     * physical controller completes existing stateful operations, and (c) the
+     * flash protocol controller MP errors back all controller initiated ops.
+     */
+    if (ot_flash_is_disabled(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: flash has been disabled\n",
+                      __func__);
+        ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, 0u);
+        return;
+    }
+
+    switch (op) {
+    case CONTROL_OP_READ:
+        s->op.kind = OP_READ;
+        s->op.address = WORD_ALIGN_ADDR(s->regs[R_ADDR]);
+        s->op.info_part = part_sel;
+        s->op.info_sel = info_sel;
+        xtrace_ot_flash_info("Read from", s->op.address);
+        s->op.count = num + 1u;
+        break;
+    case CONTROL_OP_PROG:
+        s->op.kind = OP_PROG;
+        s->op.address = WORD_ALIGN_ADDR(s->regs[R_ADDR]);
+        s->op.info_part = part_sel;
+        s->op.info_sel = info_sel;
+        s->op.prog_sel = (bool)prog_sel;
+        s->op.count = num + 1u;
+        /*
+         * On encountering either a program resolution error or program type
+         * error, do not start the transaction.
+         */
+        if (!ot_flash_check_program_resolution(s) ||
+            !ot_flash_check_program_type(s)) {
+            break;
+        }
+        xtrace_ot_flash_info("Write to", s->op.address);
+        break;
+    case CONTROL_OP_ERASE:
+        s->op.kind = OP_ERASE;
+        s->op.address = WORD_ALIGN_ADDR(s->regs[R_ADDR]);
+        s->op.info_part = part_sel;
+        s->op.info_sel = info_sel;
+        s->op.erase_sel = (bool)erase_sel;
+        /* Erase ops neither go through FIFOs nor use/require a word count */
+        s->op.count = 0u;
+        xtrace_ot_flash_info("Erase at", s->op.address);
+        break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Operation %u (%s) is invalid\n",
+                      __func__, op, CONTROL_OP_NAME(op));
+        ot_flash_set_error(s, R_ERR_CODE_OP_ERR_MASK, 0u);
+        ot_flash_op_complete(s);
+        return;
+    }
+    s->op.failed = false;
+    s->op.remaining = s->op.count;
+    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
+    ot_flash_op_execute(s);
+}
+
+static void ot_flash_init_complete(void *opaque)
+{
+    OtFlashState *s = opaque;
+
+    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 0u);
+    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INITIALIZED, 1u);
+    s->regs[R_PHY_STATUS] =
+        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
+
+    trace_ot_flash_op_complete(OP_NAME(s->op.kind), s->op.hw, true);
+
+    s->op.kind = OP_NONE;
+    ot_flash_process_control_op(s);
+}
+
 static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtFlashState *s = opaque;
@@ -2146,82 +2233,17 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 
         val32 &= CONTROL_MASK;
         s->regs[reg] = val32;
-        bool start = (bool)FIELD_EX32(val32, CONTROL, START);
-        unsigned op = (unsigned)FIELD_EX32(val32, CONTROL, OP);
-        bool prog_sel = (bool)FIELD_EX32(val32, CONTROL, PROG_SEL);
-        bool erase_sel = (bool)FIELD_EX32(val32, CONTROL, ERASE_SEL);
-        bool part_sel = (bool)FIELD_EX32(val32, CONTROL, PARTITION_SEL);
-        unsigned info_sel = (unsigned)FIELD_EX32(val32, CONTROL, INFO_SEL);
-        unsigned num = (unsigned)FIELD_EX32(val32, CONTROL, NUM);
 
-        if (start && !ot_flash_in_operation(s)) {
-            /*
-             * If the flash controller is disabled by software, then (a) the
-             * flash protocol controller completes existing software commands,
-             * (b) the flash physical controller completes existing stateful
-             * operations, and (c) the flash protocol controller MP errors
-             * back all controller initiated operations.
-             */
-            if (ot_flash_is_disabled(s)) {
-                qemu_log_mask(LOG_GUEST_ERROR, "%s: flash has been disabled\n",
-                              __func__);
-                ot_flash_set_error(s, R_ERR_CODE_MP_ERR_MASK, 0u);
-                return;
-            }
-
-            s->op.hw = false;
-
-            switch (op) {
-            case CONTROL_OP_READ:
-                s->op.kind = OP_READ;
-                s->op.address = s->regs[R_ADDR] & ~3u;
-                s->op.info_part = part_sel;
-                s->op.info_sel = info_sel;
-                xtrace_ot_flash_info("Read from", s->op.address);
-                s->op.count = num + 1u;
-                break;
-            case CONTROL_OP_PROG:
-                s->op.kind = OP_PROG;
-                s->op.address = s->regs[R_ADDR] & ~3u;
-                s->op.info_part = part_sel;
-                s->op.info_sel = info_sel;
-                s->op.prog_sel = (bool)prog_sel;
-                s->op.count = num + 1u;
-                /*
-                 * On encountering either a program resolution error or program
-                 * type error, do not start the transaction.
-                 */
-                if (!ot_flash_check_program_resolution(s) ||
-                    !ot_flash_check_program_type(s)) {
-                    return;
-                }
-                xtrace_ot_flash_info("Write to", s->op.address);
-                break;
-            case CONTROL_OP_ERASE:
-                s->op.kind = OP_ERASE;
-                s->op.address = s->regs[R_ADDR] & ~3u;
-                s->op.info_part = part_sel;
-                s->op.info_sel = info_sel;
-                s->op.erase_sel = (bool)erase_sel;
-                /* Erase operations neither go through FIFOs nor use/require a
-                 * word count */
-                s->op.count = 0u;
-                xtrace_ot_flash_info("Erase at", s->op.address);
-                break;
-            default:
-                qemu_log_mask(LOG_GUEST_ERROR,
-                              "%s: Operation %u (%s) is invalid\n", __func__,
-                              op, CONTROL_OP_NAME(op));
-                ot_flash_set_error(s, R_ERR_CODE_OP_ERR_MASK, 0u);
-                ot_flash_op_complete(s);
-                return;
-            }
-            s->op.failed = false;
-            s->op.remaining = s->op.count;
-            trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
+        /*
+         * SW protocol ops are not processed until the phy controller is init;
+         * immediately after the flash arbiter permits hw ops to read keymgr
+         * secrets. So, we cannot perform a sw op until the flash_ctrl is
+         * initialized. However, if `start` is true, the arbiter processes the
+         * sw request immediately after init in `ot_flash_init_complete`.
+         */
+        if (ot_flash_is_initialized(s)) {
+            ot_flash_process_control_op(s);
         }
-        ot_flash_op_execute(s);
-
         break;
     case R_ADDR:
         val32 &= R_ADDR_START_MASK;
