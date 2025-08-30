@@ -2059,6 +2059,16 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         break;
     case R_PROG_FIFO:
+        if (s->op.kind != OP_PROG) {
+            /*
+             * "This FIFO can only be programmed by software after a program
+             * operation has been initiated via the `CONTROL` register."
+             */
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: write prog fifo when not in a sw prog op\n",
+                          __func__);
+            break;
+        }
         if (!ot_fifo32_is_full(&s->prog_fifo)) {
             if (!ot_flash_fifo_in_reset(s)) {
                 ot_fifo32_push(&s->prog_fifo, val32);
