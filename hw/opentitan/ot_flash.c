@@ -29,7 +29,7 @@
  * Known limitations:
  *  - ECC/ICV/Scrambling functionality is not yet implemented in QEMU,
  *    including ECC single error support.
- *  - Alert functionality is not yet modelled (outside of test alerts).
+ *  - Alert functionality is only partially modelled (test & recov_err).
  *  - Program Repair / High Endurance enables are meaningless in the OpenTitan
  *    Generic Flash Bank and so are not emulated.
  *  - Erase Suspend is not emulated in QEMU (erases are done synchronously, so
@@ -82,11 +82,11 @@ REG32(INTR_STATE, 0x0u)
 REG32(INTR_ENABLE, 0x4u)
 REG32(INTR_TEST, 0x8u)
 REG32(ALERT_TEST, 0xcu)
-    FIELD(ALERT_TEST, RECOV_ERR, 0u, 1u)
-    FIELD(ALERT_TEST, FATAL_STD_ERR, 1u, 1u)
-    FIELD(ALERT_TEST, FATAL_ERR, 2u, 1u)
-    FIELD(ALERT_TEST, FATAL_PRIM, 3u, 1u)
-    FIELD(ALERT_TEST, RECOV_PRIM, 4u, 1u)
+    SHARED_FIELD(ALERT_RECOV_ERR, 0u, 1u)
+    SHARED_FIELD(ALERT_FATAL_STD_ERR, 1u, 1u)
+    SHARED_FIELD(ALERT_FATAL_ERR, 2u, 1u)
+    SHARED_FIELD(ALERT_FATAL_PRIM, 3u, 1u)
+    SHARED_FIELD(ALERT_RECOV_PRIM, 4u, 1u)
 REG32(DIS, 0x10u)
     FIELD(DIS, VAL, 0u, 4u)
 REG32(EXEC, 0x14u)
@@ -294,11 +294,11 @@ REG32(RD_FIFO, 0x1b4u)
      INTR_OP_DONE_MASK | \
      INTR_CORR_ERR_MASK)
 #define ALERT_MASK \
-    (R_ALERT_TEST_RECOV_ERR_MASK | \
-     R_ALERT_TEST_FATAL_STD_ERR_MASK | \
-     R_ALERT_TEST_FATAL_ERR_MASK | \
-     R_ALERT_TEST_FATAL_PRIM_MASK | \
-     R_ALERT_TEST_RECOV_PRIM_MASK)
+    (ALERT_RECOV_ERR_MASK | \
+     ALERT_FATAL_STD_ERR_MASK | \
+     ALERT_FATAL_ERR_MASK | \
+     ALERT_FATAL_PRIM_MASK | \
+     ALERT_RECOV_PRIM_MASK)
 #define BANK_INFO_PAGE_CFG_MASK \
     (BANK_INFO_PAGE_CFG_EN_MASK | \
      BANK_INFO_PAGE_CFG_RD_EN_MASK | \
@@ -756,6 +756,9 @@ struct OtFlashState {
     uint32_t *regs;
     uint32_t *csrs;
 
+    /* "sticky" alerts that should stay signaled after firing */
+    uint32_t latched_alerts;
+
     struct {
         OtFlashOperation kind;
         unsigned count;
@@ -792,11 +795,32 @@ static void ot_flash_update_irqs(OtFlashState *s)
 
 static void ot_flash_update_alerts(OtFlashState *s)
 {
-    /* @todo Implement non-test alert sources and update them here as well. */
-    uint32_t level = s->regs[R_ALERT_TEST];
+    uint32_t levels = s->regs[R_ALERT_TEST];
 
-    for (unsigned ix = 0u; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    levels |= s->latched_alerts;
+
+    for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+        int level = (int)((levels >> ix) & 0x1u);
+        if (level != ibex_irq_get_level(&s->alerts[ix])) {
+            trace_ot_flash_update_alert(ibex_irq_get_level(&s->alerts[ix]),
+                                        level);
+        }
+        ibex_irq_set(&s->alerts[ix], level);
+    }
+
+    /* alert test is transient */
+    if (s->regs[R_ALERT_TEST]) {
+        s->regs[R_ALERT_TEST] = 0;
+
+        levels = s->latched_alerts;
+        for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+            int level = (int)((levels >> ix) & 0x1u);
+            if (level != ibex_irq_get_level(&s->alerts[ix])) {
+                trace_ot_flash_update_alert(ibex_irq_get_level(&s->alerts[ix]),
+                                            level);
+            }
+            ibex_irq_set(&s->alerts[ix], level);
+        }
     }
 }
 
@@ -931,9 +955,11 @@ static void ot_flash_set_error(OtFlashState *s, uint32_t ebit, uint32_t eaddr)
         s->regs[R_INTR_STATE] |= INTR_CORR_ERR_MASK;
         s->regs[R_ERR_ADDR] = FIELD_DP32(0, ERR_ADDR, ERR_ADDR, eaddr);
         s->regs[R_ERR_CODE] = ebit;
+        s->regs[R_ALERT_TEST] |= ALERT_RECOV_ERR_MASK;
+        ot_flash_update_irqs(s);
+        ot_flash_update_alerts(s);
     }
     trace_ot_flash_set_error(OP_NAME(s->op.kind), ebit, eaddr);
-    ot_flash_update_irqs(s);
 }
 
 static void ot_flash_op_complete(OtFlashState *s)
@@ -2600,6 +2626,8 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
     s->regs[R_FIFO_LVL] = 0xf0fu;
 
     s->csrs[R_CSR0_REGWEN] = 0x1u;
+
+    s->latched_alerts = 0u;
 
     ot_flash_update_irqs(s);
     ot_flash_update_alerts(s);
