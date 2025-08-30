@@ -27,13 +27,22 @@
  * THE SOFTWARE.
  *
  * Known limitations:
- *  - ECC/ICV/Scrambling functionality is not yet implemented in QEMU,
+ *  - ECC/ICV/Scrambling functionality is completely unsupported in QEMU,
  *    including ECC single error support.
+ *  - In addition, the loading of flash address and flash data scrambling keys
+ *    from OTP is likewise not included in initialisation.
+ *  - The lc_ctrl `LC_NVM_DEBUG_EN` is currently unused. The `LC_ESCALATE_EN`
+ *    signal is partially implemented (disables the flash).
  *  - Alert functionality is only partially modelled.
- *  - Program Repair / High Endurance enables are meaningless in the OpenTitan
- *    Generic Flash Bank and so are not emulated.
- *  - Erase Suspend is not emulated in QEMU (erases are done synchronously, so
- *    you can suspend, but the bit will immediately be cleared).
+ *  - Life cycle RMA Entry is not implemented.
+ *
+ * Other notes:
+ *  - Program Repair / High Endurance enables are meaningless in the OT
+ *  Generic Flash Bank and so are not emulated.
+ *  - Erase suspend is not emulated as erases are done synchronously, so
+ *  you can suspend, but the bit will be immediately cleared.
+ *  - Flash operations are generally treated as synchronous, so arbitration
+ *  between SW and HW is entirely unsupported.
  */
 
 #include "qemu/osdep.h"

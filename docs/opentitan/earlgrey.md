@@ -21,8 +21,9 @@
 * CSRNG
 * EDN
 * Flash controller
-  * missing ECCs/ICVs, scrambling functionality and alerts
-  * no modelling of erase suspend
+  * largely functional but without ECCs/ICVs, scrambling functionality & alerts
+  * no modelling of erase suspend or RMA entry
+  * lc_ctrl NVM debug signal not implemented, escalation partially implemented
 * HMAC
 * OTBN
   * missing side-loading
