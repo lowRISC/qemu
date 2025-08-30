@@ -872,9 +872,24 @@ static void ot_flash_op_signal(void *opaque)
     }
 }
 
+static bool ot_flash_fifo_in_reset(const OtFlashState *s)
+{
+    return (bool)s->regs[R_FIFO_RST];
+}
+
+static bool ot_flash_in_operation(const OtFlashState *s)
+{
+    return s->op.kind != OP_NONE;
+}
+
+static bool ot_flash_operation_ongoing(const OtFlashState *s)
+{
+    return s->op.kind != OP_NONE && s->op.count;
+}
+
 static void ot_flash_initialize(OtFlashState *s)
 {
-    if (s->op.kind != OP_NONE) {
+    if (ot_flash_in_operation(s)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot initialize while in op",
                       __func__);
         return;
@@ -887,11 +902,6 @@ static void ot_flash_initialize(OtFlashState *s)
         FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
     timer_mod(s->op_delay,
               qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
-}
-
-static bool ot_flash_fifo_in_reset(const OtFlashState *s)
-{
-    return (bool)s->regs[R_FIFO_RST];
 }
 
 static void ot_flash_reset_rd_fifo(OtFlashState *s)
@@ -1683,7 +1693,7 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
             }
             ot_flash_update_rd_watermark(s);
             ot_flash_update_irqs(s);
-            if (s->op.kind != OP_NONE && s->op.count) {
+            if (ot_flash_operation_ongoing(s)) {
                 ot_flash_op_execute(s);
             }
         } else {
@@ -1788,7 +1798,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         unsigned info_sel = (unsigned)FIELD_EX32(val32, CONTROL, INFO_SEL);
         unsigned num = (unsigned)FIELD_EX32(val32, CONTROL, NUM);
 
-        if (start && s->op.kind == OP_NONE) {
+        if (start && !ot_flash_in_operation(s)) {
             /*
              * If the flash controller is disabled by software, then (a) the
              * flash protocol controller completes existing software commands,
@@ -2059,7 +2069,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             if (ot_fifo32_is_full(&s->prog_fifo)) {
                 s->regs[R_STATUS] |= R_STATUS_PROG_FULL_MASK;
             }
-            if (s->op.kind != OP_NONE && s->op.count) {
+            if (ot_flash_operation_ongoing(s)) {
                 ot_flash_op_execute(s);
             }
         } else {
