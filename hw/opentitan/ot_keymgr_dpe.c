@@ -1158,7 +1158,13 @@ static void ot_keymgr_dpe_operation_advance(OtKeyMgrDpeState *s)
     /* check that we have pushed all expected KDF data*/
     g_assert(s->kdf_buf.length == expected_kdf_len);
 
-    (void)dvalid; /* TODO use this */
+    /*
+     * @todo store `dvalid` somewhere and, if the data is invalid, replace the
+     * kmac response with decoy data (random permutation of entropy share 1).
+     */
+    if (!dvalid) {
+        s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_KMAC_INPUT_MASK;
+    }
 
     g_assert(s->kdf_buf.length <= KEYMGR_DPE_ADV_DATA_BYTES);
     s->kdf_buf.length = KEYMGR_DPE_ADV_DATA_BYTES;
