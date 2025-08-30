@@ -71,6 +71,9 @@
 #define PARAM_NUM_IRQS   6u
 #define PARAM_NUM_ALERTS 5u
 
+#define FLASH_SEED_BANK           0u
+#define FLASH_SEED_INFO_PARTITION 0u
+
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
     SHARED_FIELD(INTR_PROG_EMPTY, 0u, 1u)
@@ -730,6 +733,25 @@ typedef struct {
     unsigned size; /* size in bytes of the partition */
 } OtFlashInfoPart;
 
+typedef enum {
+    FLASH_QUAL_INFO_PAGE_CREATOR = 1,
+    FLASH_QUAL_INFO_PAGE_OWNER = 2,
+    FLASH_QUAL_INFO_PAGE_ISOLATED = 3,
+} OtFlashQualifiedInfoPage;
+
+typedef union {
+    uint8_t bitmap;
+    struct {
+        uint8_t en : 1;
+        uint8_t rd_en : 1;
+        uint8_t prog_en : 1;
+        uint8_t erase_en : 1;
+        uint8_t scramble_en : 1;
+        uint8_t ecc_en : 1;
+        uint8_t he_en : 1;
+    };
+} OtFlashPropertyCfg;
+
 typedef struct {
     uint32_t *storage; /* overall buffer for the storage backend */
     uint32_t *data; /* data buffer (all partitions/banks) */
@@ -1055,23 +1077,112 @@ static uint32_t ot_flash_get_info_page_cfg_reg(
     }
 }
 
-static bool
-ot_flash_info_page_cfg_op_enabled(OtFlashState *s, uint32_t info_page_cfg_reg)
+static OtFlashPropertyCfg
+ot_flash_get_info_page_reg_cfg(OtFlashState *s, uint32_t info_page_cfg_reg)
 {
-    unsigned en_field;
+    unsigned en_mubi4 =
+        SHARED_FIELD_EX32(s->regs[info_page_cfg_reg], BANK_INFO_PAGE_CFG_EN);
+    unsigned rd_en_mubi4 =
+        SHARED_FIELD_EX32(s->regs[info_page_cfg_reg], BANK_INFO_PAGE_CFG_RD_EN);
+    unsigned prog_en_mubi4 = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
+                                               BANK_INFO_PAGE_CFG_PROG_EN);
+    unsigned erase_en_mubi4 = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
+                                                BANK_INFO_PAGE_CFG_ERASE_EN);
+    unsigned scramble_en_mubi4 =
+        SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
+                          BANK_INFO_PAGE_CFG_SCRAMBLE_EN);
+    unsigned ecc_en_mubi4 = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
+                                              BANK_INFO_PAGE_CFG_ECC_EN);
+    unsigned he_en_mubi4 =
+        SHARED_FIELD_EX32(s->regs[info_page_cfg_reg], BANK_INFO_PAGE_CFG_HE_EN);
+
+    return (OtFlashPropertyCfg){
+        .en = (uint8_t)(en_mubi4 == OT_MULTIBITBOOL4_TRUE),
+        .rd_en = (uint8_t)(rd_en_mubi4 == OT_MULTIBITBOOL4_TRUE),
+        .prog_en = (uint8_t)(prog_en_mubi4 == OT_MULTIBITBOOL4_TRUE),
+        .erase_en = (uint8_t)(erase_en_mubi4 == OT_MULTIBITBOOL4_TRUE),
+        .scramble_en = (uint8_t)(scramble_en_mubi4 == OT_MULTIBITBOOL4_TRUE),
+        .ecc_en = (uint8_t)(ecc_en_mubi4 == OT_MULTIBITBOOL4_TRUE),
+        .he_en = (uint8_t)(he_en_mubi4 == OT_MULTIBITBOOL4_TRUE),
+    };
+}
+
+static void
+ot_flash_merge_info_page_cfg(OtFlashPropertyCfg *cfg, OtFlashPropertyCfg qual)
+{
+    cfg->en &= qual.en;
+    cfg->rd_en &= qual.rd_en;
+    cfg->prog_en &= qual.prog_en;
+    cfg->erase_en &= qual.erase_en;
+    cfg->scramble_en &= qual.scramble_en;
+    cfg->ecc_en &= qual.ecc_en;
+    cfg->he_en &= qual.he_en;
+}
+
+static void ot_flash_update_info_page_qualification(
+    OtFlashState *s, unsigned bank, unsigned info_partition, unsigned page,
+    OtFlashPropertyCfg *cfg)
+{
+    OtFlashPropertyCfg qual;
+    qual.scramble_en = true;
+    qual.ecc_en = true;
+    qual.he_en = true;
+
+    /*
+     * TODO: these signals are stubbed out to always give permissions to any
+     * qualified info pages for now, but in reality they should be connected
+     * to the lc_ctrl broadcast signals.
+     */
+    bool creator_en = true;
+    bool owner_en = true;
+    bool isolated_rd_en = true;
+    bool isolated_wr_en = true;
+
+    /* retrieve additional qualifications for pages containing secrets */
+    if (bank != FLASH_SEED_BANK ||
+        info_partition != FLASH_SEED_INFO_PARTITION) {
+        return;
+    }
+    switch (info_partition) {
+    case FLASH_QUAL_INFO_PAGE_CREATOR:
+        qual.en = creator_en;
+        qual.rd_en = creator_en;
+        qual.prog_en = creator_en;
+        qual.erase_en = creator_en;
+        break;
+    case FLASH_QUAL_INFO_PAGE_OWNER:
+        qual.en = owner_en;
+        qual.rd_en = owner_en;
+        qual.prog_en = owner_en;
+        qual.erase_en = owner_en;
+        break;
+    case FLASH_QUAL_INFO_PAGE_ISOLATED:
+        qual.en = true;
+        qual.rd_en = isolated_rd_en;
+        qual.prog_en = isolated_wr_en;
+        qual.erase_en = isolated_wr_en;
+        break;
+    default:
+        return;
+    }
+
+    /* merge the reg cfg and the page qualifications */
+    uint8_t prev_cfg = cfg->bitmap;
+    ot_flash_merge_info_page_cfg(cfg, qual);
+    trace_ot_flash_merge_info_qual(bank, info_partition, page, prev_cfg,
+                                   qual.bitmap, cfg->bitmap);
+}
+
+static bool ot_flash_info_page_cfg_op_enabled(OtFlashState *s,
+                                              const OtFlashPropertyCfg *cfg)
+{
     switch (s->op.kind) {
     case OP_READ:
-        en_field = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
-                                     BANK_INFO_PAGE_CFG_RD_EN);
-        break;
+        return cfg->rd_en;
     case OP_PROG:
-        en_field = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
-                                     BANK_INFO_PAGE_CFG_PROG_EN);
-        break;
+        return cfg->prog_en;
     case OP_ERASE:
-        en_field = SHARED_FIELD_EX32(s->regs[info_page_cfg_reg],
-                                     BANK_INFO_PAGE_CFG_ERASE_EN);
-        break;
+        return cfg->erase_en;
     case OP_NONE:
         xtrace_ot_flash_error("cannot check mp without operation");
         return false;
@@ -1079,7 +1190,6 @@ ot_flash_info_page_cfg_op_enabled(OtFlashState *s, uint32_t info_page_cfg_reg)
         xtrace_ot_flash_error("unsupported operation?");
         return false;
     }
-    return en_field == OT_MULTIBITBOOL4_TRUE;
 }
 
 static bool
@@ -1219,11 +1329,12 @@ static unsigned ot_flash_next_info_address(OtFlashState *s)
         s->op.failed = true;
         return address;
     }
-    bool page_disabled =
-        SHARED_FIELD_EX32(s->regs[info_page_cfg_reg], BANK_INFO_PAGE_CFG_EN) !=
-        OT_MULTIBITBOOL4_TRUE;
-    if (page_disabled ||
-        !ot_flash_info_page_cfg_op_enabled(s, info_page_cfg_reg)) {
+    OtFlashPropertyCfg cfg =
+        ot_flash_get_info_page_reg_cfg(s, info_page_cfg_reg);
+    ot_flash_update_info_page_qualification(s, bank, info_partition, page,
+                                            &cfg);
+
+    if (!cfg.en || !ot_flash_info_page_cfg_op_enabled(s, &cfg)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: operation %s on info page %u in partition %u of "
                       "bank %u is disabled by page config\n",
