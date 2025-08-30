@@ -1266,12 +1266,16 @@ static void ot_flash_op_read(OtFlashState *s)
             }
         }
 
-        if (!ot_flash_fifo_in_reset(s)) {
-            ot_fifo32_push(&s->rd_fifo, word);
-            s->regs[R_STATUS] &= ~R_STATUS_RD_EMPTY_MASK;
-            ot_flash_update_rd_watermark(s);
-            s->op.remaining--;
+        s->op.remaining--;
+        if (ot_flash_fifo_in_reset(s)) {
+            /* If fifo in reset, still read but don't push rdata */
+            continue;
         }
+
+        ot_fifo32_push(&s->rd_fifo, word);
+        s->regs[R_STATUS] &= ~R_STATUS_RD_EMPTY_MASK;
+        ot_flash_update_rd_watermark(s);
+
         if (ot_fifo32_is_full(&s->rd_fifo)) {
             s->regs[R_STATUS] |= R_STATUS_RD_FULL_MASK;
             s->regs[R_INTR_STATE] |= INTR_RD_FULL_MASK;
@@ -1300,9 +1304,6 @@ static void ot_flash_op_prog(OtFlashState *s)
     uint32_t *dest = s->op.info_part ? storage->info : storage->data;
 
     while (s->op.remaining) {
-        if (ot_flash_fifo_in_reset(s)) {
-            continue;
-        }
         uint32_t word = ot_fifo32_pop(&s->prog_fifo);
         s->regs[R_STATUS] &= ~R_STATUS_PROG_FULL_MASK;
         ot_flash_update_prog_watermark(s);
