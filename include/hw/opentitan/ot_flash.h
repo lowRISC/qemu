@@ -33,6 +33,25 @@
 #define TYPE_OT_FLASH "ot-flash"
 OBJECT_DECLARE_TYPE(OtFlashState, OtFlashClass, OT_FLASH)
 
+/* Input signals from the lc_ctrl */
+typedef enum {
+    /* "Indication ... that software is allowed to read/write CREATOR_SEED" */
+    OT_FLASH_LC_CREATOR_SEED_SW_RW_EN,
+    /* "Indication ... that software is allowed to read/write OWNER_SEED" */
+    OT_FLASH_LC_OWNER_SEED_SW_RW_EN,
+    /* "Indication ... that hardware is allowed to read {CREATOR,OWNER}_SEED" */
+    OT_FLASH_LC_SEED_HW_RD_EN,
+    /* "Indication ... that software is allowed to read the isolated part" */
+    OT_FLASH_LC_ISO_PART_SW_RD_EN,
+    /* "Indication ... that software is allowed to write the isolated part" */
+    OT_FLASH_LC_ISO_PART_SW_WR_EN,
+    /* "Escalation indication" - move FSMs into the error state */
+    OT_FLASH_LC_ESCALATE_EN,
+    /* "Indication ... that non-volatile memory debug is allowed" */
+    OT_FLASH_LC_NVM_DEBUG_EN,
+    OT_FLASH_LC_BROADCAST_COUNT,
+} OtFlashLcBroadcastType;
+
 typedef enum {
     FLASH_KEYMGR_SECRET_CREATOR_SEED,
     FLASH_KEYMGR_SECRET_OWNER_SEED,

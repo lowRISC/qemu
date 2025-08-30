@@ -48,6 +48,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_flash.h"
+#include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -797,6 +798,16 @@ typedef struct {
     uint32_t num;
 } OtFlashFifo;
 
+typedef struct {
+    QEMUBH *bh;
+    uint16_t signal; /* each bit tells if signal needs to be handled */
+    uint16_t level; /* level of the matching signals */
+    uint16_t current_level; /* current level of all signals */
+} OtFlashLcBroadcast;
+
+static_assert(OT_FLASH_LC_BROADCAST_COUNT < 8 * sizeof(uint16_t),
+              "Invalid OT_FLASH_LC_BROADCAST_COUNT");
+
 struct OtFlashState {
     SysBusDevice parent_obj;
 
@@ -827,6 +838,7 @@ struct OtFlashState {
         bool hw; /* hw- or sw-requested operation? */
     } op;
     OtFlashLifeCyclePhase phase; /* HW LC phase for memory protection / RMA */
+    OtFlashLcBroadcast lc_broadcast;
     OtFifo32 rd_fifo;
     OtFifo32 prog_fifo;
     OtFlashStorage flash;
@@ -840,6 +852,7 @@ struct OtFlashState {
     BlockBackend *blk; /* Flash backend */
     OtVMapperState *vmapper; /* to disable execution from flash */
     bool no_mem_prot; /* Flag to disable mem protection features */
+    bool fatal_escalate;
 };
 
 /* Flash memory protection rules */
@@ -977,7 +990,10 @@ static bool ot_flash_write_backend(OtFlashState *s, const void *buffer,
 
 static bool ot_flash_is_disabled(const OtFlashState *s)
 {
-    return s->regs[R_DIS] != OT_MULTIBITBOOL4_FALSE;
+    bool reg_dis = s->regs[R_DIS] != OT_MULTIBITBOOL4_FALSE;
+    bool lc_escalate_dis =
+        s->lc_broadcast.current_level & BIT(OT_FLASH_LC_ESCALATE_EN);
+    return reg_dis || lc_escalate_dis;
 }
 
 static bool ot_flash_regs_is_wr_enabled(const OtFlashState *s, unsigned regwen)
@@ -1203,15 +1219,15 @@ static void ot_flash_update_info_page_qualification(
     qual.ecc_en = true;
     qual.he_en = true;
 
-    /*
-     * TODO: these signals are stubbed out to always give permissions to any
-     * qualified info pages for now, but in reality they should be connected
-     * to the lc_ctrl broadcast signals.
-     */
-    bool creator_en = true;
-    bool owner_en = true;
-    bool isolated_rd_en = true;
-    bool isolated_wr_en = true;
+    /* extra quals depend on lc_ctrl broadcast signals */
+    bool creator_en =
+        s->lc_broadcast.current_level & BIT(OT_FLASH_LC_CREATOR_SEED_SW_RW_EN);
+    bool owner_en =
+        s->lc_broadcast.current_level & BIT(OT_FLASH_LC_OWNER_SEED_SW_RW_EN);
+    bool isolated_rd_en =
+        s->lc_broadcast.current_level & BIT(OT_FLASH_LC_ISO_PART_SW_RD_EN);
+    bool isolated_wr_en =
+        s->lc_broadcast.current_level & BIT(OT_FLASH_LC_ISO_PART_SW_WR_EN);
 
     /* retrieve additional qualifications for pages containing secrets */
     if (bank != FLASH_SEED_BANK ||
@@ -2722,6 +2738,80 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
+static void ot_flash_lc_broadcast_recv(void *opaque, int n, int level)
+{
+    OtFlashState *s = opaque;
+    OtFlashLcBroadcast *bcast = &s->lc_broadcast;
+
+    g_assert((unsigned)n < OT_FLASH_LC_BROADCAST_COUNT);
+
+    uint16_t bit = 1u << (unsigned)n;
+    bcast->signal |= bit;
+    /*
+     * As these signals are only used to change permissions, it is valid to
+     * override a signal value that has not been processed yet.
+     */
+    if (level) {
+        bcast->level |= bit;
+    } else {
+        bcast->level &= ~bit;
+    }
+
+    /* Use a BH to decouple IRQ signaling from actual handling */
+    qemu_bh_schedule(s->lc_broadcast.bh);
+}
+
+static void ot_flash_lc_broadcast_bh(void *opaque)
+{
+    OtFlashState *s = opaque;
+    OtFlashLcBroadcast *bcast = &s->lc_broadcast;
+
+    /* handle all flagged signals */
+    while (bcast->signal) {
+        /* pick the first seen signal and clear it */
+        unsigned sig = ctz16(bcast->signal);
+        uint16_t bit = 1u << sig;
+        bcast->signal &= ~bit;
+        bcast->current_level &= ~bit;
+        bcast->current_level |= (bcast->level & bit);
+        bool level = (bool)(bcast->current_level & bit);
+
+        trace_ot_flash_lc_broadcast(sig, level);
+
+        switch (sig) {
+        case OT_FLASH_LC_SEED_HW_RD_EN:
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: lc_seed_hw_rd_en is ignored for now\n",
+                          __func__);
+            break;
+        case OT_FLASH_LC_CREATOR_SEED_SW_RW_EN:
+        case OT_FLASH_LC_OWNER_SEED_SW_RW_EN:
+        case OT_FLASH_LC_ISO_PART_SW_RD_EN:
+        case OT_FLASH_LC_ISO_PART_SW_WR_EN:
+            /* nothing to do here, flag is latched in current_level */
+            break;
+        case OT_FLASH_LC_ESCALATE_EN:
+            /* flash disabling is detected from latch in current_level */
+            /* todo: also change the flash lcmgr lc_state? */
+            if (s->fatal_escalate) {
+                error_setg(&error_fatal, "%s: Flash LC escalate\n", __func__);
+            }
+            break;
+        case OT_FLASH_LC_NVM_DEBUG_EN:
+            qemu_log_mask(
+                LOG_UNIMP,
+                "%s: lc_nvm_debug_en for JTAG connection is ignored\n",
+                __func__);
+            break;
+        default:
+            error_setg(&error_fatal, "%s: unexpected LC broadcast %d\n",
+                       __func__, sig);
+            g_assert_not_reached();
+            break;
+        }
+    }
+}
+
 static void ot_flash_get_keymgr_secret(
     OtFlashState *s, OtFlashKeyMgrSecretType type, OtFlashKeyMgrSecret *secret)
 {
@@ -2950,6 +3040,7 @@ static Property ot_flash_properties[] = {
     /* Optionally disable memory protection, as searching for valid memory
     regions and checking their config can slow down regular operation. */
     DEFINE_PROP_BOOL("no-mem-prot", OtFlashState, no_mem_prot, false),
+    DEFINE_PROP_BOOL("fatal_escalate", OtFlashState, fatal_escalate, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2990,6 +3081,8 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
+
+    qemu_bh_cancel(s->lc_broadcast.bh);
 
     timer_del(s->op_delay);
     s->op.kind = OP_NONE;
@@ -3078,6 +3171,10 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
 
     s->alert_bm = 0u;
 
+    s->lc_broadcast.current_level = 0u;
+    s->lc_broadcast.level = 0u;
+    s->lc_broadcast.signal = 0u;
+
     s->phase = LC_PHASE_NONE;
 
     /* wipe internal secrets latched on initialisation */
@@ -3153,6 +3250,11 @@ static void ot_flash_init(Object *obj)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_flash_lc_broadcast_recv,
+                            OT_LC_BROADCAST, OT_FLASH_LC_BROADCAST_COUNT);
+
+    s->lc_broadcast.bh = qemu_bh_new(&ot_flash_lc_broadcast_bh, s);
     s->op_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_init_complete, s);
 }
 
