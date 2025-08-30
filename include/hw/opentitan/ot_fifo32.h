@@ -2,6 +2,7 @@
  * QEMU OpenTitan 32-bit FIFO helper
  *
  * Copyright (c) 2023 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  * Based on fifo8.h
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -39,6 +40,11 @@ static inline void ot_fifo32_create(OtFifo32 *fifo, uint32_t capacity)
     fifo->capacity = capacity;
     fifo->head = 0u;
     fifo->num = 0u;
+}
+
+static inline void ot_fifo32_destroy(OtFifo32 *fifo)
+{
+    g_free(fifo->data);
 }
 
 static inline void ot_fifo32_push(OtFifo32 *fifo, uint32_t data)

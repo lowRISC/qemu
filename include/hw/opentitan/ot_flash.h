@@ -33,4 +33,32 @@
 #define TYPE_OT_FLASH "ot-flash"
 OBJECT_DECLARE_TYPE(OtFlashState, OtFlashClass, OT_FLASH)
 
+typedef enum {
+    FLASH_KEYMGR_SECRET_CREATOR_SEED,
+    FLASH_KEYMGR_SECRET_OWNER_SEED,
+    FLASH_KEYMGR_SECRET_COUNT
+} OtFlashKeyMgrSecretType;
+
+#define OT_FLASH_KEYMGR_SECRET_BYTES 32u /* 256 bits */
+
+typedef struct {
+    uint8_t secret[OT_FLASH_KEYMGR_SECRET_BYTES]; /* seed data */
+    bool valid; /* whether the seed data is valid */
+} OtFlashKeyMgrSecret;
+
+struct OtFlashClass {
+    DeviceClass parent_class;
+    ResettablePhases parent_phases;
+
+    /*
+     * Retrieve Key Manager secret (seed) from flash.
+     *
+     * @s the flash device
+     * @type the type of secret to retrieve
+     * @secret the key manager secret record to update
+     */
+    void (*get_keymgr_secret)(OtFlashState *s, OtFlashKeyMgrSecretType type,
+                              OtFlashKeyMgrSecret *secret);
+};
+
 #endif /* HW_OPENTITAN_OT_FLASH_H */

@@ -72,6 +72,9 @@
 
 #define FLASH_SEED_BANK           0u
 #define FLASH_SEED_INFO_PARTITION 0u
+#define FLASH_SEED_WIDTH          256u
+#define FLASH_SEED_WORDS          ((FLASH_SEED_WIDTH) / sizeof(uint32_t))
+#define FLASH_SEED_BYTES          ((FLASH_SEED_WIDTH) / 8u)
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
@@ -682,6 +685,19 @@ static const char *PROGRAM_SELECTION_NAMES[] = {
          PROGRAM_SELECTION_NAMES[(_st_)] : \
          "?")
 
+#define SECRET_NAME_ENTRY(_st_) [FLASH_KEYMGR_SECRET_##_st_] = stringify(_st_)
+
+static const char *FLASH_KEYMGR_SECRET_NAMES[] = {
+    SECRET_NAME_ENTRY(CREATOR_SEED),
+    SECRET_NAME_ENTRY(OWNER_SEED),
+};
+
+#undef SECRET_NAME_ENTRY
+#define FLASH_KEYMGR_SECRET_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(FLASH_KEYMGR_SECRET_NAMES) ? \
+         FLASH_KEYMGR_SECRET_NAMES[(_st_)] : \
+         "?")
+
 /**
  * Bank 0 information partition type 0 pages.
  *
@@ -795,6 +811,7 @@ struct OtFlashState {
 
     uint32_t *regs;
     uint32_t *csrs;
+    OtFlashKeyMgrSecret keymgr_seeds[FLASH_KEYMGR_SECRET_COUNT];
     uint32_t alert_bm;
 
     struct {
@@ -902,11 +919,6 @@ static const OtFlashHwInfoPageRule OtFlashHwInfoPageRules[] = {
         .phase = LC_PHASE_RMA,
         .cfg = OtFlashCfgAllowReadProgErase,
     },
-};
-
-struct OtFlashClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
 };
 
 static void ot_flash_update_irqs(OtFlashState *s)
@@ -1030,27 +1042,6 @@ static bool ot_flash_in_hw_operation(const OtFlashState *s)
 static bool ot_flash_operation_ongoing(const OtFlashState *s)
 {
     return s->op.kind != OP_NONE && s->op.count;
-}
-
-static void ot_flash_initialize(OtFlashState *s)
-{
-    if (ot_flash_in_operation(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot initialize while in op",
-                      __func__);
-        return;
-    }
-
-    s->phase = LC_PHASE_SEED;
-    trace_ot_flash_change_lc_phase(LC_PHASE_NAME(s->phase), s->phase);
-
-    s->op.kind = OP_INIT;
-    s->op.hw = false;
-    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
-    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 1u);
-    s->regs[R_PHY_STATUS] =
-        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 1u);
-    timer_mod(s->op_delay,
-              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
 }
 
 static void ot_flash_reset_rd_fifo(OtFlashState *s)
@@ -1848,6 +1839,105 @@ static void ot_flash_op_execute(OtFlashState *s)
     }
 }
 
+static unsigned ot_flash_get_op_address_from_page(unsigned bank, unsigned page)
+{
+    return page * BYTES_PER_PAGE + bank * BYTES_PER_BANK;
+}
+
+static void ot_flash_read_keymgr_seed(OtFlashState *s, unsigned page,
+                                      OtFlashKeyMgrSecret *seed)
+{
+    ot_fifo32_reset(&s->hw_rd_fifo);
+
+    s->op.kind = OP_READ;
+    s->op.address = ot_flash_get_op_address_from_page(FLASH_SEED_BANK, page);
+    s->op.info_part = true;
+    s->op.info_sel = FLASH_SEED_INFO_PARTITION;
+    s->op.count = FLASH_SEED_WORDS;
+    s->op.hw = true; /* init is triggered by SW, but considered a HW request */
+    s->op.failed = false;
+    s->op.remaining = s->op.count;
+
+    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
+    ot_flash_op_execute(s);
+
+    uint32_t seed_words[FLASH_SEED_WORDS] = { 0 };
+    ot_fifo32_pop_buf(&s->hw_rd_fifo, FLASH_SEED_WORDS, seed_words);
+    memcpy(seed->secret, seed_words, FLASH_SEED_BYTES);
+    seed->valid = !s->op.failed;
+
+    /* todo: dump the seed in the trace? */
+    trace_ot_flash_read_keymgr_seed(page, !s->op.failed);
+
+    if (s->op.failed) {
+        ot_flash_set_error(s, R_FAULT_STATUS_SEED_ERR_MASK, s->op.address);
+    }
+}
+
+static void ot_flash_initialize(OtFlashState *s)
+{
+    bool initialized = (bool)FIELD_EX32(s->regs[R_STATUS], STATUS, INITIALIZED);
+    bool init_wip = (bool)FIELD_EX32(s->regs[R_STATUS], STATUS, INIT_WIP);
+    if (ot_flash_in_operation(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot initialize while in op",
+                      __func__);
+        return;
+    }
+    if (initialized) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: initialize is meaningless when already initialized",
+                      __func__);
+        return;
+    }
+    if (init_wip) {
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: initialize is meaningless when currently initializing",
+            __func__);
+        return;
+    }
+
+    /* Start the INIT operation. */
+    s->op.kind = OP_INIT;
+    s->op.hw = false;
+    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
+    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 1u);
+    s->regs[R_PHY_STATUS] =
+        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 1u);
+
+    /*
+     * TODO: this flash life cycle management logic is currently missing the
+     * ability to receive RMA requests from the lc_ctrl and wipe.
+     *
+     * TODO: implement reading of flash address and data keys from OTP
+     *
+     * TODO: should only read flash seeds if `lc_seed_hw_rd_en` is received
+     * from the lc_ctrl (i.e. "good otp/lc intiialization"). Otherwise
+     * just lock up (phase=None) and wait for an RMA entry to reseed entropy
+     * and then wipe.
+     */
+
+    /* Read & latch seeds stored in flash on initialisation */
+    s->phase = LC_PHASE_SEED;
+    trace_ot_flash_change_lc_phase(LC_PHASE_NAME(s->phase), s->phase);
+
+    ot_fifo32_create(&s->hw_rd_fifo, FLASH_SEED_WORDS);
+    ot_flash_read_keymgr_seed(
+        s, FLASH_QUAL_INFO_PAGE_CREATOR,
+        &s->keymgr_seeds[FLASH_KEYMGR_SECRET_CREATOR_SEED]);
+    ot_flash_read_keymgr_seed(s, FLASH_QUAL_INFO_PAGE_OWNER,
+                              &s->keymgr_seeds[FLASH_KEYMGR_SECRET_OWNER_SEED]);
+    ot_fifo32_destroy(&s->hw_rd_fifo);
+
+    /* continue the init operation */
+    s->op.kind = OP_INIT;
+    s->op.hw = false;
+
+    /* Delay to emulate taking time to process the `INIT` op. */
+    timer_mod(s->op_delay,
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
+}
+
 static void ot_flash_update_exec(OtFlashState *s)
 {
     OtVMapperClass *vm = OT_VMAPPER_GET_CLASS(s->vmapper);
@@ -2622,6 +2712,28 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
+static void ot_flash_get_keymgr_secret(
+    OtFlashState *s, OtFlashKeyMgrSecretType type, OtFlashKeyMgrSecret *secret)
+{
+    trace_ot_flash_get_keymgr_secret(FLASH_KEYMGR_SECRET_NAME(type), type);
+
+    switch (type) {
+    case FLASH_KEYMGR_SECRET_CREATOR_SEED:
+    case FLASH_KEYMGR_SECRET_OWNER_SEED:
+        memcpy(secret, &s->keymgr_seeds[type], sizeof(OtFlashKeyMgrSecret));
+        bool invalid_seed =
+            (bool)(s->regs[R_FAULT_STATUS] & R_FAULT_STATUS_SEED_ERR_MASK);
+        secret->valid = !invalid_seed;
+        return;
+    default:
+        error_report("%s: invalid flash keymgr secret type: %d", __func__,
+                     type);
+        secret->valid = false;
+        memset(secret->secret, 0u, OT_FLASH_KEYMGR_SECRET_BYTES);
+        return;
+    }
+}
+
 static void ot_flash_load(OtFlashState *s, Error **errp)
 {
     OtFlashStorage *flash = &s->flash;
@@ -2958,6 +3070,12 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
 
     s->phase = LC_PHASE_NONE;
 
+    /* wipe internal secrets latched on initialisation */
+    for (unsigned ix = 0; ix < FLASH_KEYMGR_SECRET_COUNT; ix++) {
+        memset(s->keymgr_seeds[ix].secret, 0u, OT_FLASH_KEYMGR_SECRET_BYTES);
+        s->keymgr_seeds[ix].valid = false;
+    }
+
     ot_flash_update_irqs(s);
     ot_flash_update_alerts(s);
 
@@ -3042,6 +3160,8 @@ static void ot_flash_class_init(ObjectClass *klass, void *data)
     resettable_class_set_parent_phases(rc, &ot_flash_reset_enter, NULL,
                                        &ot_flash_reset_exit,
                                        &fc->parent_phases);
+
+    fc->get_keymgr_secret = &ot_flash_get_keymgr_secret;
 }
 
 static const TypeInfo ot_flash_info = {
