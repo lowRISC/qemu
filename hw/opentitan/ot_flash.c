@@ -944,6 +944,7 @@ static void ot_flash_op_complete(OtFlashState *s)
      */
     s->regs[R_OP_STATUS] |= R_OP_STATUS_DONE_MASK;
     s->regs[R_INTR_STATE] |= INTR_OP_DONE_MASK;
+    s->regs[R_CTRL_REGWEN] |= R_CTRL_REGWEN_EN_MASK;
     trace_ot_flash_op_complete(OP_NAME(s->op.kind), !s->regs[R_ERR_CODE]);
     s->op.kind = OP_NONE;
     ot_flash_update_irqs(s);
@@ -1495,6 +1496,8 @@ static void ot_flash_op_erase(OtFlashState *s)
 
 static void ot_flash_op_execute(OtFlashState *s)
 {
+    s->regs[R_CTRL_REGWEN] &= ~R_CTRL_REGWEN_EN_MASK;
+
     switch (s->op.kind) {
     case OP_READ:
         trace_ot_flash_op_execute(OP_NAME(s->op.kind));
@@ -1509,6 +1512,7 @@ static void ot_flash_op_execute(OtFlashState *s)
         ot_flash_op_erase(s);
         break;
     default:
+        s->regs[R_CTRL_REGWEN] |= R_CTRL_REGWEN_EN_MASK;
         xtrace_ot_flash_error("unsupported");
         break;
     }
@@ -1789,6 +1793,13 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_flash_update_exec(s);
         break;
     case R_CONTROL:
+        if (!(s->regs[R_CTRL_REGWEN] & R_CTRL_REGWEN_EN_MASK)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s is not enabled, so %s is protected\n",
+                          __func__, REG_NAME(R_CTRL_REGWEN), REG_NAME(reg));
+            break;
+        }
+
         val32 &= CONTROL_MASK;
         s->regs[reg] = val32;
         bool start = (bool)FIELD_EX32(val32, CONTROL, START);
