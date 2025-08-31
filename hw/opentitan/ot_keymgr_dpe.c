@@ -793,8 +793,6 @@ static void ot_keymgr_dpe_kmac_push_key(OtKeyMgrDpeState *s)
 
 static void ot_keymgr_dpe_send_kmac_req(OtKeyMgrDpeState *s)
 {
-    uint32_t len = s->kdf_buf.offset;
-
     g_assert(s->kdf_buf.length);
     g_assert(s->kdf_buf.offset < s->kdf_buf.length);
 
@@ -803,16 +801,18 @@ static void ot_keymgr_dpe_send_kmac_req(OtKeyMgrDpeState *s)
         msg_len = OT_KMAC_APP_MSG_BYTES;
     }
 
-    unsigned offset = s->kdf_buf.offset;
-    s->kdf_buf.offset += msg_len;
+    unsigned next_offset = s->kdf_buf.offset + msg_len;
 
     OtKMACAppReq req = {
-        .last = s->kdf_buf.offset == s->kdf_buf.length,
+        .last = next_offset == s->kdf_buf.length,
         .msg_len = msg_len,
     };
-    memcpy(req.msg_data, &s->kdf_buf.data[offset], msg_len);
+    memcpy(req.msg_data, &s->kdf_buf.data[s->kdf_buf.offset], msg_len);
 
-    trace_ot_keymgr_dpe_kmac_req(s->ot_id, len, req.msg_len, req.last);
+    trace_ot_keymgr_dpe_kmac_req(s->ot_id, s->kdf_buf.length, s->kdf_buf.offset,
+                                 req.msg_len, req.last);
+
+    s->kdf_buf.offset = next_offset;
 
     OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
     kc->app_request(s->kmac, s->kmac_app, &req);
