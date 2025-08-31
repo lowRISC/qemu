@@ -1102,12 +1102,15 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
     g_assert(s->kdf_buf.length <= KEYMGR_ADV_DATA_BYTES);
     s->kdf_buf.length = KEYMGR_ADV_DATA_BYTES;
 
-    ot_keymgr_dump_kdf_buf(s, "adv");
+    /* send the current key state to KMAC as the KDF key */
+    g_assert(cdi < NUM_CDIS);
+    OtKeyMgrKey *key_state = &s->key_states[cdi];
+    ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, key_state->share0,
+                       key_state->share1, key_state->valid);
 
-    /*
-     * @todo: send the KMAC KDF request and handle the response. When we get a
-     * response, transition the main FSM to `KEYMGR_ST_CREATOR_ROOT_KEY`.
-     */
+    /* transmit the contents of the KDF buffer to KMAC for computation */
+    ot_keymgr_dump_kdf_buf(s, "adv");
+    ot_keymgr_send_kmac_req(s);
 }
 
 static void ot_keymgr_operation_disable(OtKeyMgrState *s)
@@ -1131,10 +1134,6 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
         s->op_state.adv_cdi_cnt = (OtKeyMgrCdi)0;
         ot_keymgr_operation_advance(s, s->op_state.stage,
                                     s->op_state.adv_cdi_cnt);
-        /*
-         * @todo: when we get a KMAC response with the sealing key, we should
-         * then send a request for the attestation CDI before completing.
-         */
         break;
     case KEYMGR_OP_DISABLE:
         ot_keymgr_operation_disable(s);
@@ -1143,6 +1142,62 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
         /* should only be called with a valid operation */
         g_assert_not_reached();
     }
+}
+
+static void ot_keymgr_reset_kmac_key(OtKeyMgrState *s)
+{
+    /* @todo: when not in use, this should be filled with dummy entropy */
+    trace_ot_keymgr_reset_kmac_key(s->ot_id);
+    ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, NULL, NULL, false);
+}
+
+static bool
+ot_keymgr_handle_kmac_resp_advance(OtKeyMgrState *s, const OtKMACAppRsp *rsp)
+{
+    unsigned cdi = s->op_state.adv_cdi_cnt;
+
+    g_assert(cdi < NUM_CDIS);
+
+    OtKeyMgrKey *key_state = &s->key_states[cdi];
+    key_state->valid = true;
+    memcpy(key_state->share0, rsp->digest_share0, OT_KMAC_KEY_SIZE);
+    memcpy(key_state->share1, rsp->digest_share1, OT_KMAC_KEY_SIZE);
+
+    /* SW can lock the `SW_BINDING` regs, and HW unlocks after an advance */
+    s->regs[R_SW_BINDING_REGWEN] |= R_SW_BINDING_REGWEN_EN_MASK;
+
+    unsigned next_cdi = cdi + 1;
+    if (next_cdi < NUM_CDIS) {
+        /* when advancing, we must advance all CDIs before completing */
+        s->op_state.adv_cdi_cnt = next_cdi;
+        ot_keymgr_operation_advance(s, s->op_state.stage, next_cdi);
+        return false;
+    }
+
+    /* all CDIs have been advanced, so complete the advance operation */
+    ot_keymgr_reset_kmac_key(s);
+    s->op_state.adv_cdi_cnt = 0u;
+
+    /* SW can lock the `SW_BINDING` regs, and HW unlocks after an advance */
+    s->regs[R_SW_BINDING_REGWEN] |= R_SW_BINDING_REGWEN_EN_MASK;
+
+    switch (s->op_state.stage) {
+    case KEYMGR_STAGE_CREATOR:
+        ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_CREATOR_ROOT_KEY);
+        break;
+    case KEYMGR_STAGE_OWNER_INT:
+        ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_OWNER_INT_KEY);
+        break;
+    case KEYMGR_STAGE_OWNER:
+        ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_OWNER_KEY);
+        break;
+    case KEYMGR_STAGE_DISABLE:
+    default:
+        /* should not be advancing to the `disable` state */
+        g_assert_not_reached();
+    }
+
+    return true;
 }
 
 static void
@@ -1174,20 +1229,31 @@ ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
     g_assert(s->kdf_buf.offset == s->kdf_buf.length);
 
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+    bool op_complete;
+
     int op = (int)FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION);
     switch (op) {
     case KEYMGR_OP_ADVANCE:
+        op_complete = ot_keymgr_handle_kmac_resp_advance(s, rsp);
+        break;
     case KEYMGR_OP_GENERATE_ID:
     case KEYMGR_OP_GENERATE_SW_OUTPUT:
     case KEYMGR_OP_GENERATE_HW_OUTPUT:
     case KEYMGR_OP_DISABLE:
         /* @todo: handle KMAC app responses in different keymgr ops */
+        op_complete = true;
         qemu_log_mask(LOG_UNIMP,
                       "%s: %s: KMAC response in op %s is not implemented.\n",
                       __func__, s->ot_id, OP_NAME(s->state));
-        return;
+        break;
     default:
         g_assert_not_reached();
+    }
+
+    if (op_complete) {
+        /* complete the operation, and reschedule the FSM */
+        s->op_state.op_ack = true;
+        ot_keymgr_schedule_fsm(s);
     }
 }
 
