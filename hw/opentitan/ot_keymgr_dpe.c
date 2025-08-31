@@ -2005,6 +2005,8 @@ static void ot_keymgr_dpe_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
+    qemu_bh_cancel(s->fsm_tick_bh);
+
     g_assert(s->edn.device);
     g_assert(s->edn.ep != UINT8_MAX);
     g_assert(s->kmac);
