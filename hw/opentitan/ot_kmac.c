@@ -1707,8 +1707,9 @@ static void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
     app->req_pending = true;
 
     /* check if app already started */
-    if (s->current_app == app) {
-        /* yes, trigger deferred compute */
+    if (s->current_app == app &&
+        (s->state == KMAC_ST_IDLE || s->state == KMAC_ST_MSG_FEED)) {
+        /* yes, receiving more data, trigger deferred compute */
         qemu_bh_schedule(s->bh);
     } else {
         /* no, mark as pending and try to start */
