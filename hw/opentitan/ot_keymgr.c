@@ -425,6 +425,8 @@ typedef struct OtKeyMgrState {
     /* properties */
     char *ot_id;
     OtKeyMgrEDN edn;
+    OtKMACState *kmac;
+    uint8_t kmac_app;
     OtFlashState *flash_ctrl;
     OtLcCtrlState *lc_ctrl;
     OtOTPState *otp_ctrl;
@@ -436,6 +438,9 @@ struct OtKeyMgrClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 };
+
+/* see kmac_pkg::AppCfg in `kmac_pkg.sv` */
+static const OtKMACAppCfg KMAC_APP_CFG = OT_KMAC_CONFIG(KMAC, 256u, "KMAC", "");
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
@@ -941,6 +946,33 @@ static void ot_keymgr_xchange_main_fsm_state(OtKeyMgrState *s,
     }
 }
 
+static void ot_keymgr_send_kmac_req(OtKeyMgrState *s)
+{
+    g_assert(s->kdf_buf.length);
+    g_assert(s->kdf_buf.offset < s->kdf_buf.length);
+
+    unsigned msg_len = s->kdf_buf.length - s->kdf_buf.offset;
+    if (msg_len > OT_KMAC_APP_MSG_BYTES) {
+        msg_len = OT_KMAC_APP_MSG_BYTES;
+    }
+
+    unsigned next_offset = s->kdf_buf.offset + msg_len;
+
+    OtKMACAppReq req = {
+        .last = next_offset == s->kdf_buf.length,
+        .msg_len = msg_len,
+    };
+    memcpy(req.msg_data, &s->kdf_buf.data[s->kdf_buf.offset], msg_len);
+
+    trace_ot_keymgr_kmac_req(s->ot_id, s->kdf_buf.length, s->kdf_buf.offset,
+                             req.msg_len, req.last);
+
+    s->kdf_buf.offset = next_offset;
+
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    kc->app_request(s->kmac, s->kmac_app, &req);
+}
+
 static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
                                         OtKeyMgrCdi cdi)
 {
@@ -1047,6 +1079,52 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
         break;
     default:
         /* should only be called with a valid operation */
+        g_assert_not_reached();
+    }
+}
+
+static void
+ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
+{
+    OtKeyMgrState *s = OT_KEYMGR(opaque);
+
+    if (trace_event_get_state(TRACE_OT_KEYMGR_KMAC_RSP)) {
+        /* if tracing, trace the unmasked KMAC response key */
+        if (rsp->done) {
+            uint8_t key[OT_KMAC_APP_DIGEST_BYTES];
+            for (unsigned ix = 0u; ix < OT_KMAC_APP_DIGEST_BYTES; ix++) {
+                key[ix] = rsp->digest_share0[ix] ^ rsp->digest_share1[ix];
+            }
+            trace_ot_keymgr_kmac_rsp(
+                s->ot_id, true,
+                ot_keymgr_dump_bigint(s, key, OT_KMAC_APP_DIGEST_BYTES));
+        } else {
+            trace_ot_keymgr_kmac_rsp(s->ot_id, false, "");
+        }
+    }
+
+    if (!rsp->done) {
+        /* not the last response from KMAC, send more data */
+        ot_keymgr_send_kmac_req(s);
+        return;
+    }
+
+    g_assert(s->kdf_buf.offset == s->kdf_buf.length);
+
+    uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+    int op = (int)FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION);
+    switch (op) {
+    case KEYMGR_OP_ADVANCE:
+    case KEYMGR_OP_GENERATE_ID:
+    case KEYMGR_OP_GENERATE_SW_OUTPUT:
+    case KEYMGR_OP_GENERATE_HW_OUTPUT:
+    case KEYMGR_OP_DISABLE:
+        /* @todo: handle KMAC app responses in different keymgr ops */
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: %s: KMAC response in op %s is not implemented.\n",
+                      __func__, s->ot_id, OP_NAME(s->state));
+        return;
+    default:
         g_assert_not_reached();
     }
 }
@@ -1656,6 +1734,8 @@ static Property ot_keymgr_properties[] = {
     DEFINE_PROP_UINT8("edn-ep", OtKeyMgrState, edn.ep, UINT8_MAX),
     DEFINE_PROP_LINK("flash_ctrl", OtKeyMgrState, flash_ctrl, TYPE_OT_FLASH,
                      OtFlashState *),
+    DEFINE_PROP_LINK("kmac", OtKeyMgrState, kmac, TYPE_OT_KMAC, OtKMACState *),
+    DEFINE_PROP_UINT8("kmac-app", OtKeyMgrState, kmac_app, UINT8_MAX),
     DEFINE_PROP_LINK("lc_ctrl", OtKeyMgrState, lc_ctrl, TYPE_OT_LC_CTRL,
                      OtLcCtrlState *),
     DEFINE_PROP_LINK("otp_ctrl", OtKeyMgrState, otp_ctrl, TYPE_OT_OTP,
@@ -1711,6 +1791,8 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     g_assert(s->edn.device);
     g_assert(s->edn.ep != UINT8_MAX);
     g_assert(s->flash_ctrl);
+    g_assert(s->kmac);
+    g_assert(s->kmac_app != UINT8_MAX);
     g_assert(s->lc_ctrl);
     g_assert(s->otp_ctrl);
     g_assert(s->rom_ctrl);
@@ -1750,6 +1832,11 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     /* update IRQ and alert states */
     ot_keymgr_update_irq(s);
     ot_keymgr_update_alerts(s);
+
+    /* connect to KMAC */
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    kc->connect_app(s->kmac, s->kmac_app, &KMAC_APP_CFG,
+                    ot_keymgr_handle_kmac_response, s);
 }
 
 static void ot_keymgr_reset_exit(Object *obj, ResetType type)

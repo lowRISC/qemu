@@ -1188,12 +1188,14 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0),
             OT_EG_SOC_DEVLINK("flash_ctrl", FLASH_CTRL),
+            OT_EG_SOC_DEVLINK("kmac", KMAC),
             OT_EG_SOC_DEVLINK("lc_ctrl", LC_CTRL),
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
             OT_EG_SOC_DEVLINK("rom_ctrl", ROM_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("edn-ep", 0u)
+            IBEX_DEV_UINT_PROP("edn-ep", 0u),
+            IBEX_DEV_UINT_PROP("kmac-app", 0u)
         ),
     },
     [OT_EG_SOC_DEV_CSRNG] = {
