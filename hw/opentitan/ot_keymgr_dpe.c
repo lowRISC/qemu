@@ -509,6 +509,18 @@ static const char *OP_NAMES[] = {
 #define OP_NAME(_op_) \
     (((unsigned)(_op_)) < ARRAY_SIZE(OP_NAMES) ? OP_NAMES[(_op_)] : "?")
 
+#define KEY_SINK_ENTRY(_st_) [KEYMGR_DPE_KEY_SINK_##_st_] = stringify(_st_)
+static const char *KEY_SINK_NAMES[] = {
+    KEY_SINK_ENTRY(AES),
+    KEY_SINK_ENTRY(KMAC),
+    KEY_SINK_ENTRY(OTBN),
+};
+#undef KEY_SINK_ENTRY
+#define KEY_SINK_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(KEY_SINK_NAMES) ? \
+         KEY_SINK_NAMES[(_st_)] : \
+         "?")
+
 #define SIDELOAD_CLEAR_ENTRY(_st_) \
     [KEYMGR_DPE_SIDELOAD_CLEAR_##_st_] = stringify(_st_)
 static const char *SIDELOAD_CLEAR_NAMES[] = {
@@ -761,6 +773,24 @@ static void ot_keymgr_dpe_push_key(
         return;
     }
 
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_PUSH_KEY)) {
+        if (!key_share0 || !key_share1) {
+            trace_ot_keymgr_dpe_push_key(s->ot_id, KEY_SINK_NAME(key_sink),
+                                         valid, "");
+        } else {
+            /* Compute the unmasked key for tracing. */
+            uint8_t key_value[KEYMGR_DPE_KEY_SIZE_MAX];
+            for (unsigned ix = 0u; ix < key_size; ix++) {
+                key_value[ix] = key_share0[ix] ^ key_share1[ix];
+            }
+
+            trace_ot_keymgr_dpe_push_key(s->ot_id, KEY_SINK_NAME(key_sink),
+                                         valid,
+                                         ot_keymgr_dpe_dump_bigint(s, key_value,
+                                                                   key_size));
+        }
+    }
+
     OtKeySinkIfClass *kc = OT_KEY_SINK_IF_GET_CLASS(sink);
     OtKeySinkIf *ki = OT_KEY_SINK_IF(sink);
 
@@ -775,17 +805,6 @@ static void ot_keymgr_dpe_kmac_push_key(OtKeyMgrDpeState *s)
     uint8_t slot_src_sel =
         (uint8_t)FIELD_EX32(ctrl, CONTROL_SHADOWED, SLOT_SRC_SEL);
     OtKeyMgrDpeSlot *src_slot = &s->key_slots[slot_src_sel];
-
-    if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_KMAC_PUSH_KEY)) {
-        uint8_t key_value[OT_KMAC_KEY_SIZE];
-        for (unsigned ix = 0u; ix < OT_KMAC_KEY_SIZE; ix++) {
-            key_value[ix] = src_slot->key.share0[ix] ^ src_slot->key.share1[ix];
-        }
-
-        trace_ot_keymgr_dpe_kmac_push_key(
-            s->ot_id, src_slot->valid,
-            ot_keymgr_dpe_dump_bigint(s, key_value, OT_KMAC_KEY_SIZE));
-    }
 
     ot_keymgr_dpe_push_key(s, KEYMGR_DPE_KEY_SINK_KMAC, src_slot->key.share0,
                            src_slot->key.share1, src_slot->valid);
