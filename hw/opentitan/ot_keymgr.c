@@ -31,13 +31,16 @@
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qapi/error.h"
+#include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_flash.h"
+#include "hw/opentitan/ot_key_sink.h"
 #include "hw/opentitan/ot_keymgr.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
+#include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
@@ -82,6 +85,8 @@
 #define KEYMGR_KDF_BUFFER_WIDTH 1600u
 #define KEYMGR_KDF_BUFFER_BYTES ((KEYMGR_KDF_BUFFER_WIDTH) / 8u)
 #define KEYMGR_SEED_BYTES       (KEYMGR_KEY_BYTES)
+#define _MAX(_a_, _b_)          ((_a_) > (_b_) ? (_a_) : (_b_))
+#define KEYMGR_KEY_SIZE_MAX     _MAX(KEYMGR_KEY_BYTES, OT_OTBN_KEY_SIZE)
 
 /*
  * The EDN provides words of entropy at a time, so the keymgr needs
@@ -103,6 +108,8 @@ static_assert(KEYMGR_KEY_BYTES == OT_OTP_KEYMGR_SECRET_SIZE,
 static_assert(KEYMGR_KEY_BYTES == OT_KMAC_KEY_SIZE,
               "KeyMgr key size does not match KMAC key size");
 /* NOLINTEND(misc-redundant-expression) */
+static_assert(KEYMGR_KEY_SIZE_MAX <= OT_KMAC_APP_DIGEST_BYTES,
+              "KeyMgr key size does not match KMAC digest size");
 
 #define KEYMGR_ENTROPY_WIDTH  (KEYMGR_LFSR_WIDTH / 2u)
 #define KEYMGR_ENTROPY_ROUNDS (KEYMGR_KEY_WIDTH / KEYMGR_ENTROPY_WIDTH)
@@ -431,12 +438,19 @@ typedef struct OtKeyMgrState {
     OtLcCtrlState *lc_ctrl;
     OtOTPState *otp_ctrl;
     OtRomCtrlState *rom_ctrl;
+    DeviceState *key_sinks[KEYMGR_KEY_SINK_COUNT];
     char *seed_xstrs[KEYMGR_SEED_COUNT];
 } OtKeyMgrState;
 
 struct OtKeyMgrClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
+};
+
+static const size_t OT_KEY_MGR_KEY_SINK_SIZES[KEYMGR_KEY_SINK_COUNT] = {
+    [KEYMGR_KEY_SINK_AES] = OT_AES_KEY_SIZE,
+    [KEYMGR_KEY_SINK_KMAC] = OT_KMAC_KEY_SIZE,
+    [KEYMGR_KEY_SINK_OTBN] = OT_OTBN_KEY_SIZE,
 };
 
 /* see kmac_pkg::AppCfg in `kmac_pkg.sv` */
@@ -543,6 +557,18 @@ static const char *OP_NAMES[] = {
 #undef OP_ENTRY
 #define OP_NAME(_op_) \
     (((unsigned)(_op_)) < ARRAY_SIZE(OP_NAMES) ? OP_NAMES[(_op_)] : "?")
+
+#define KEY_SINK_ENTRY(_st_) [KEYMGR_KEY_SINK_##_st_] = stringify(_st_)
+static const char *KEY_SINK_NAMES[] = {
+    KEY_SINK_ENTRY(AES),
+    KEY_SINK_ENTRY(KMAC),
+    KEY_SINK_ENTRY(OTBN),
+};
+#undef KEY_SINK_ENTRY
+#define KEY_SINK_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(KEY_SINK_NAMES) ? \
+         KEY_SINK_NAMES[(_st_)] : \
+         "?")
 
 #define WORKING_STATE_ENTRY(_st_) \
     [KEYMGR_WORKING_STATE_##_st_] = stringify(_st_)
@@ -785,6 +811,42 @@ static void ot_keymgr_request_entropy(OtKeyMgrState *s)
                        __func__, s->ot_id);
         }
     }
+}
+
+static void ot_keymgr_push_key(OtKeyMgrState *s, OtKeyMgrKeySink key_sink,
+                               const uint8_t *key_share0,
+                               const uint8_t *key_share1, bool valid)
+{
+    g_assert((unsigned)key_sink < KEYMGR_KEY_SINK_COUNT);
+
+    size_t key_size = OT_KEY_MGR_KEY_SINK_SIZES[key_sink];
+    DeviceState *sink = s->key_sinks[key_sink];
+
+    g_assert(sink);
+
+    if (trace_event_get_state(TRACE_OT_KEYMGR_PUSH_KEY)) {
+        if (!key_share0 || !key_share1) {
+            trace_ot_keymgr_push_key(s->ot_id, KEY_SINK_NAME(key_sink), valid,
+                                     "");
+        } else {
+            /* compute the unmasked key for tracing */
+            uint8_t key_value[KEYMGR_KEY_SIZE_MAX];
+            for (unsigned ix = 0u; ix < key_size; ix++) {
+                key_value[ix] = key_share0[ix] ^ key_share1[ix];
+            }
+
+            trace_ot_keymgr_push_key(s->ot_id, KEY_SINK_NAME(key_sink), valid,
+                                     ot_keymgr_dump_bigint(s, key_value,
+                                                           key_size));
+        }
+    }
+
+    OtKeySinkIfClass *kc = OT_KEY_SINK_IF_GET_CLASS(sink);
+    OtKeySinkIf *ki = OT_KEY_SINK_IF(sink);
+
+    g_assert(kc->push_key);
+
+    kc->push_key(ki, key_share0, key_share1, key_size, valid);
 }
 
 /* check that 'data' is not all zeros or all ones */
@@ -1742,6 +1804,10 @@ static Property ot_keymgr_properties[] = {
                      OtOTPState *),
     DEFINE_PROP_LINK("rom_ctrl", OtKeyMgrState, rom_ctrl, TYPE_OT_ROM_CTRL,
                      OtRomCtrlState *),
+    DEFINE_PROP_LINK("aes", OtKeyMgrState, key_sinks[KEYMGR_KEY_SINK_AES],
+                     TYPE_OT_KEY_SINK_IF, DeviceState *),
+    DEFINE_PROP_LINK("otbn", OtKeyMgrState, key_sinks[KEYMGR_KEY_SINK_OTBN],
+                     TYPE_OT_KEY_SINK_IF, DeviceState *),
     DEFINE_PROP_STRING("lfsr_seed", OtKeyMgrState,
                        seed_xstrs[KEYMGR_SEED_LFSR]),
     DEFINE_PROP_STRING("revision_seed", OtKeyMgrState,
@@ -1849,6 +1915,12 @@ static void ot_keymgr_reset_exit(Object *obj, ResetType type)
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj, type);
     }
+
+    /* invalidate all sideloaded keys when exiting reset */
+    for (unsigned ix = 0u; ix < KEYMGR_KEY_SINK_COUNT; ix++) {
+        OtKeyMgrKeySink key_sink = (OtKeyMgrKeySink)ix;
+        ot_keymgr_push_key(s, key_sink, NULL, NULL, false);
+    }
 }
 
 static void ot_keymgr_realize(DeviceState *dev, Error **errp)
@@ -1862,7 +1934,19 @@ static void ot_keymgr_realize(DeviceState *dev, Error **errp)
             g_strdup(object_get_canonical_path_component(OBJECT(s)->parent));
     }
 
+    for (unsigned ix = 0u; ix < KEYMGR_KEY_SINK_COUNT; ix++) {
+        if (s->key_sinks[ix]) {
+            OBJECT_CHECK(OtKeySinkIf, s->key_sinks[ix], TYPE_OT_KEY_SINK_IF);
+        }
+    }
+
     ot_keymgr_configure_constants(s);
+
+    /*
+     * Define KMAC separately in `s->kmac` instead of directly as a key sink,
+     * as we also need to offload KDF operations to it.
+     */
+    s->key_sinks[KEYMGR_KEY_SINK_KMAC] = DEVICE(s->kmac);
 }
 
 static void ot_keymgr_init(Object *obj)
