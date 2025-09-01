@@ -465,8 +465,23 @@ static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
         val32 |=
             (fifo8_num_used(&s->tx_fifo) & 0xffu) << R_FIFO_STATUS_TXLVL_SHIFT;
         break;
-    case R_OVRD:
     case R_VAL:
+        /*
+         * This is not trivially implemented due to the QEMU UART
+         * interface. There is no way to reliably sample or oversample
+         * given our emulated interface, but some software might poll the
+         * value of this register to determine break conditions.
+         *
+         * As such, and given that we always support RXIDLE, default
+         * to reporting 16 idle high samples (i.e. 0xFFFF) instead.
+         * This is still not ideal, but at least defaults to showing
+         * nothing (similar to SW waiting too long before polling) rather
+         * than essentially showing a break condition.
+         */
+        val32 = R_VAL_RX_MASK;
+        qemu_log_mask(LOG_UNIMP, "%s: UART VAL always shows idle\n", __func__);
+        break;
+    case R_OVRD:
     case R_TIMEOUT_CTRL:
         val32 = s->regs[reg];
         qemu_log_mask(LOG_UNIMP, "%s: %s is not supported\n", __func__,
