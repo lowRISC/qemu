@@ -13,6 +13,9 @@
 
 ### Near feature-complete devices
 
+* Key manager
+  * Almost feature complete
+  * Missing entropy reseeding, and support for KMAC masking (when available)
 * AES
   * missing side-loading
 * Alert controller
@@ -89,7 +92,6 @@ any useful feature (only allow guest test code to execute as expected).
 Some just use generic `UNIMP` devices to define a memory region.
 
 * Analog Sensor Top
-* Key manager
 * Pattern Generator
 * Pinmux
 * PWM
