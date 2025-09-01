@@ -1874,8 +1874,9 @@ static void ot_keymgr_dpe_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_OP_STATUS:
         val32 &= R_OP_STATUS_VAL_MASK;
-        ot_keymgr_dpe_change_op_status(s, s->regs[R_OP_STATUS] &
-                                              ~val32); /* RW1C */
+        ot_keymgr_dpe_change_op_status(s, s->regs[reg] & ~val32); /* RW1C */
+        /* SW write may clear `WIP` here which may be immediately set again */
+        ot_keymgr_dpe_fsm_tick(s);
         break;
     case R_ERR_CODE:
         val32 &= ERR_CODE_MASK;
