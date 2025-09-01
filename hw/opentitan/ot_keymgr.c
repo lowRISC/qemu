@@ -269,6 +269,9 @@ typedef enum {
     KEYMGR_KEY_SINK_COUNT
 } OtKeyMgrKeySink;
 
+static_assert(KEYMGR_KEY_SINK_COUNT < 32,
+              "Sideload clear bitmasking logic needs < 32 key sinks");
+
 #define KEY_SINK_OFFSET 1
 
 typedef enum {
@@ -445,6 +448,7 @@ typedef struct OtKeyMgrState {
     OtRomCtrlState *rom_ctrl;
     DeviceState *key_sinks[KEYMGR_KEY_SINK_COUNT];
     char *seed_xstrs[KEYMGR_SEED_COUNT];
+    bool use_default_entropy_seed; /* flag to seed PRNG with default seed */
 } OtKeyMgrState;
 
 struct OtKeyMgrClass {
@@ -832,16 +836,14 @@ static void ot_keymgr_request_entropy(OtKeyMgrState *s)
     }
 }
 
-static void ot_keymgr_wipe_key_states(OtKeyMgrState *s)
+/* Returns true if 'data' is not all zeros or all ones */
+static bool ot_keymgr_valid_data_check(const uint8_t *data, size_t len)
 {
-    /* @todo: should wipe with random entropy, but just zero for now */
-    for (unsigned cdi = 0u; cdi < NUM_CDIS; cdi++) {
-        memset(s->key_states[cdi].share0, 0u, KEYMGR_KEY_BYTES);
-        memset(s->key_states[cdi].share1, 0u, KEYMGR_KEY_BYTES);
-        s->key_states[cdi].valid = false;
+    size_t popcount = 0u;
+    for (unsigned ix = 0u; ix < len; ix++) {
+        popcount += __builtin_popcount(data[ix]);
     }
-    memset(s->sw_out_key->share0, 0u, KEYMGR_KEY_BYTES);
-    memset(s->sw_out_key->share1, 0u, KEYMGR_KEY_BYTES);
+    return (popcount && popcount != (len * BITS_PER_BYTE));
 }
 
 static void ot_keymgr_push_key(
@@ -855,12 +857,14 @@ static void ot_keymgr_push_key(
 
     g_assert(sink);
 
+    g_assert(key_share0);
+    g_assert(key_share1);
+
     /*
      * Save the latest KMAC sideloading key, as it needs to be restored after
      * any keymgr operations that load the KMAC KDF key to offload KDF.
      */
-    if (key_share0 && key_share1 && sideload_key &&
-        key_sink == KEYMGR_KEY_SINK_KMAC) {
+    if (sideload_key && key_sink == KEYMGR_KEY_SINK_KMAC) {
         memcpy(s->saved_kmac_key->share0, key_share0, key_size);
         memcpy(s->saved_kmac_key->share1, key_share1, key_size);
         s->saved_kmac_key->valid = valid;
@@ -898,21 +902,63 @@ static void ot_keymgr_push_kdf_key(OtKeyMgrState *s, const uint8_t *key_share0,
     trace_ot_keymgr_push_kdf_key(s->ot_id, valid);
 
     /*
-     * @todo: when key invalidating/wiping with entropy is implemented,
-     * pushing a new KDF key should perform a validity check for all 0s
-     * or all 1s, and set R_DEBUG_INVALID_KEY_MASK if so, i.e.:
-     *
-     * if (!ot_keymgr_valid_data_check(key_share0, OT_KMAC_KEY_SIZE)) {
-     *     s->regs[R_DEBUG] |= R_DEBUG_INVALID_KEY_MASK;
-     *     s->op_state.valid_inputs = false;
-     * }
-     *
      * @todo: when KMAC masking is introduced, this should check both key
      * shares and not just key share 0 for validity.
      */
+    if (!ot_keymgr_valid_data_check(key_share0, OT_KMAC_KEY_SIZE)) {
+        s->regs[R_DEBUG] |= R_DEBUG_INVALID_KEY_MASK;
+        s->op_state.valid_inputs = false;
+    }
 
     ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, key_share0, key_share1, valid,
                        false);
+}
+
+static void ot_keymgr_wipe_keys(OtKeyMgrState *s, bool key_states,
+                                bool sw_outputs, uint32_t key_sink_bm)
+{
+    trace_ot_keymgr_wipe_keys(s->ot_id, key_states, sw_outputs, key_sink_bm);
+
+    uint8_t sideload_share0[KEYMGR_KEY_SIZE_MAX];
+    uint8_t sideload_share1[KEYMGR_KEY_SIZE_MAX];
+
+    /* all keys (CDIs, shares etc.) are wiped with the same entropy */
+    for (unsigned ix = 0; ix < KEYMGR_KEY_SIZE_MAX; ix += sizeof(uint32_t)) {
+        /* @todo: use reseed_cnt and reseed if > RESEED_INTERVAL_SHADOWED */
+        uint32_t randval = ot_prng_random_u32(s->prng.state);
+
+        if (key_states && ix < KEYMGR_KEY_BYTES) {
+            for (unsigned cdi = 0u; cdi < NUM_CDIS; cdi++) {
+                stl_le_p(&s->key_states[cdi].share0[ix], randval);
+                stl_le_p(&s->key_states[cdi].share1[ix], randval);
+            }
+        }
+
+        if (sw_outputs && ix < KEYMGR_KEY_BYTES) {
+            stl_le_p(&s->sw_out_key->share0[ix], randval);
+            stl_le_p(&s->sw_out_key->share1[ix], randval);
+        }
+
+        if (key_sink_bm) {
+            stl_le_p(&sideload_share0[ix], randval);
+            stl_le_p(&sideload_share1[ix], randval);
+        }
+    }
+
+    for (unsigned ix = 0; key_sink_bm && ix < KEYMGR_KEY_SINK_COUNT; ix++) {
+        uint32_t key_sink_mask = (1u << ix);
+        if (key_sink_bm & key_sink_mask) {
+            key_sink_bm &= ~key_sink_mask;
+            ot_keymgr_push_key(s, (OtKeyMgrKeySink)ix, sideload_share0,
+                               sideload_share1, false, true);
+        }
+    }
+}
+
+static void ot_keymgr_wipe_all_keys(OtKeyMgrState *s)
+{
+    uint32_t all_keys_bm = (1u << KEYMGR_KEY_SINK_COUNT) - 1u;
+    ot_keymgr_wipe_keys(s, true, true, all_keys_bm);
 }
 
 static void ot_keymgr_sideload_clear(OtKeyMgrState *s)
@@ -924,38 +970,22 @@ static void ot_keymgr_sideload_clear(OtKeyMgrState *s)
                                    SIDELOAD_CLEAR_NAME(sideload_clear),
                                    sideload_clear);
 
-    /* @todo: this should use random dummy data instead */
-    uint8_t share0[KEYMGR_KEY_SIZE_MAX] = { 0 };
-    uint8_t share1[KEYMGR_KEY_SIZE_MAX] = { 0 };
-
+    uint32_t sideload_clear_bm;
     switch (sideload_clear) {
     case KEYMGR_SIDELOAD_CLEAR_NONE:
-        break;
+        return;
     case KEYMGR_SIDELOAD_CLEAR_AES:
     case KEYMGR_SIDELOAD_CLEAR_OTBN:
-    case KEYMGR_SIDELOAD_CLEAR_KMAC: {
-        OtKeyMgrKeySink sink =
-            (OtKeyMgrKeySink)(sideload_clear - KEY_SINK_OFFSET);
-        ot_keymgr_push_key(s, sink, share0, share1, false, true);
+    case KEYMGR_SIDELOAD_CLEAR_KMAC:
+        sideload_clear_bm = 1u << (sideload_clear - KEY_SINK_OFFSET);
         break;
-    }
     default:
         /* continuously clear ALL slots if a non-enumerated value is written */
-        for (unsigned ix = 0; ix < KEYMGR_KEY_SINK_COUNT; ix++) {
-            ot_keymgr_push_key(s, (OtKeyMgrKeySink)ix, share0, share1, false,
-                               true);
-        }
+        sideload_clear_bm = (1u << KEYMGR_KEY_SINK_COUNT) - 1u;
+        break;
     }
-}
 
-/* check that 'data' is not all zeros or all ones */
-static bool ot_keymgr_valid_data_check(const uint8_t *data, size_t len)
-{
-    size_t popcount = 0u;
-    for (unsigned ix = 0u; ix < len; ix++) {
-        popcount += __builtin_popcount(data[ix]);
-    }
-    return (popcount && popcount != (len * BITS_PER_BYTE));
+    ot_keymgr_wipe_keys(s, false, false, sideload_clear_bm);
 }
 
 static void ot_keymgr_reset_kdf_buffer(OtKeyMgrState *s)
@@ -1204,7 +1234,7 @@ static void ot_keymgr_send_kmac_req(OtKeyMgrState *s)
 
 static void ot_keymgr_operation_disable(OtKeyMgrState *s)
 {
-    ot_keymgr_wipe_key_states(s);
+    ot_keymgr_wipe_all_keys(s);
     ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_DISABLED);
     s->op_state.op_ack = true;
     ot_keymgr_schedule_fsm(s);
@@ -1739,7 +1769,7 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         break;
     case KEYMGR_ST_WIPE:
         /* whilst wiping, keymgr retains the previous working state */
-        ot_keymgr_wipe_key_states(s);
+        ot_keymgr_wipe_all_keys(s);
         /* see OT keymgr_ctrl.sv RTL: maintain & complete ongoing ops */
         if (op_start) {
             s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
@@ -2050,6 +2080,11 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_RESEED_INTERVAL_SHADOWED_VAL_MASK;
         switch (ot_shadow_reg_write(&s->reseed_interval, val32)) {
         case OT_SHADOW_REG_STAGED:
+            /* @todo: implement entropy reseeding & better entropy modelling */
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: Entropy reseeding not implemented.\n",
+                          __func__, s->ot_id);
+            break;
         case OT_SHADOW_REG_COMMITTED:
             break;
         case OT_SHADOW_REG_ERROR:
@@ -2285,6 +2320,8 @@ static Property ot_keymgr_properties[] = {
     DEFINE_PROP_STRING("cdi_seed", OtKeyMgrState, seed_xstrs[KEYMGR_SEED_CDI]),
     DEFINE_PROP_STRING("none_seed", OtKeyMgrState,
                        seed_xstrs[KEYMGR_SEED_NONE]),
+    DEFINE_PROP_BOOL("use-default-entropy-seed", OtKeyMgrState,
+                     use_default_entropy_seed, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2341,16 +2378,19 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     s->prng.reseed_req = false;
     s->prng.reseed_ack = false;
     s->prng.reseed_cnt = 0u;
+    if (s->use_default_entropy_seed) {
+        const uint8_t *default_prng_seed = s->seeds[KEYMGR_SEED_LFSR];
+        for (unsigned ix = 0; ix < KEYMGR_SEED_BYTES; ix += sizeof(uint32_t)) {
+            uint32_t seed = ldl_le_p(&default_prng_seed[ix]);
+            ot_prng_reseed(s->prng.state, seed);
+        }
+    }
     s->op_state.op_req = false;
     s->op_state.op_ack = false;
     s->op_state.valid_inputs = true;
     s->op_state.stage = KEYMGR_STAGE_DISABLE;
     s->op_state.adv_cdi_cnt = 0u;
     ot_keymgr_reset_kdf_buffer(s);
-
-    /* reset key state */
-    memset(s->key_states, 0u, NUM_CDIS * sizeof(OtKeyMgrKey));
-    memset(s->saved_kmac_key, 0u, sizeof(OtKeyMgrKey));
 
     /* reset output keys */
     memset(s->sw_out_key, 0u, sizeof(OtKeyMgrKey));
@@ -2376,11 +2416,9 @@ static void ot_keymgr_reset_exit(Object *obj, ResetType type)
         c->parent_phases.exit(obj, type);
     }
 
-    /* invalidate all sideloaded keys when exiting reset */
-    for (unsigned ix = 0u; ix < KEYMGR_KEY_SINK_COUNT; ix++) {
-        OtKeyMgrKeySink key_sink = (OtKeyMgrKeySink)ix;
-        ot_keymgr_push_key(s, key_sink, NULL, NULL, false, true);
-    }
+    /* invalidate internal key state & sideloaded keys when exiting reset */
+    uint32_t all_keys_bm = (1u << KEYMGR_KEY_SINK_COUNT) - 1u;
+    ot_keymgr_wipe_keys(s, true, false, all_keys_bm);
 }
 
 static void ot_keymgr_realize(DeviceState *dev, Error **errp)

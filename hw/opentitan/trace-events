@@ -305,6 +305,7 @@ ot_keymgr_schedule_fsm(const char *id, const char *func, int line) "%s @ %s:%d"
 ot_keymgr_seed_missing(const char *id, unsigned ix) "%s: #%u"
 ot_keymgr_sideload_clear(const char *id, const char *sc, unsigned nsc) "%s: [%s:%u]"
 ot_keymgr_update_alert(const char *id, int prev, int next) "%s: %d -> %d"
+ot_keymgr_wipe_keys(const char *id, bool key_states, bool sw_out, uint32_t sink_bm) "%s: key_states:%u sw_out:%u sink_bm:0x%08x"
 
 # ot_keymgr_dpe.c
 
