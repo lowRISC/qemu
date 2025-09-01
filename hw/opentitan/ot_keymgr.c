@@ -1246,8 +1246,6 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
     trace_ot_keymgr_advance(s->ot_id, STAGE_NAME(stage), (int)stage,
                             CDI_NAME(cdi), (int)cdi);
 
-    /* @todo: do we need to check for any error states here? */
-
     ot_keymgr_reset_kdf_buffer(s);
 
     size_t expected_kdf_len = 0u;
@@ -1564,13 +1562,38 @@ ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
         }
     }
 
+    if (!s->op_state.op_req) {
+        /* KMAC response when we weren't expecting one */
+        s->regs[R_FAULT_STATUS] |= R_FAULT_STATUS_KMAC_DONE_MASK;
+        ot_keymgr_update_alerts(s);
+        ot_keymgr_schedule_fsm(s);
+        return;
+    }
+
     if (!rsp->done) {
         /* not the last response from KMAC, send more data */
         ot_keymgr_send_kmac_req(s);
         return;
     }
 
-    g_assert(s->kdf_buf.offset == s->kdf_buf.length);
+    if (s->kdf_buf.offset != s->kdf_buf.length) {
+        /* KMAC interface reports done but we did not send the whole KDF buf */
+        s->regs[R_FAULT_STATUS] |= R_FAULT_STATUS_KMAC_DONE_MASK;
+        ot_keymgr_update_alerts(s);
+        ot_keymgr_schedule_fsm(s);
+        return;
+    }
+
+    /* @todo: check share1 as well when KMAC masking is supported */
+    bool share0_valid = ot_keymgr_valid_data_check(rsp->digest_share0,
+                                                   OT_KMAC_APP_DIGEST_BYTES);
+    if (!share0_valid) {
+        /* KMAC returned all 0s or all 1s*/;
+        s->regs[R_FAULT_STATUS] |= R_FAULT_STATUS_KMAC_OUT_MASK;
+        ot_keymgr_update_alerts(s);
+        ot_keymgr_schedule_fsm(s);
+        return;
+    }
 
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
     bool op_complete;
