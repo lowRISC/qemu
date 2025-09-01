@@ -389,6 +389,7 @@ typedef struct {
 typedef struct {
     bool op_req;
     bool op_ack;
+    bool valid_inputs;
     OtKeyMgrStage stage;
     OtKeyMgrCdi adv_cdi_cnt;
 } OtKeyMgrOpState;
@@ -427,6 +428,9 @@ typedef struct OtKeyMgrState {
     /* key states */
     OtKeyMgrKey *key_states;
     OtKeyMgrKey *saved_kmac_key; /* store KMAC key & restore when completing */
+
+    /* SW output keys */
+    OtKeyMgrKey *sw_out_key;
 
     char *hexstr;
 
@@ -822,6 +826,8 @@ static void ot_keymgr_wipe_key_states(OtKeyMgrState *s)
         memset(s->key_states[cdi].share1, 0u, KEYMGR_KEY_BYTES);
         s->key_states[cdi].valid = false;
     }
+    memset(s->sw_out_key->share0, 0u, KEYMGR_KEY_BYTES);
+    memset(s->sw_out_key->share1, 0u, KEYMGR_KEY_BYTES);
 }
 
 static void ot_keymgr_push_key(
@@ -972,8 +978,8 @@ static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s, bool *dvalid)
 }
 
 static size_t
-ot_keymgr_kdf_append_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
-                          const char *seed_name, bool *dvalid)
+ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
+                                const char *seed_name, bool *dvalid)
 {
     OtFlashKeyMgrSecret seed = { 0u };
 
@@ -1004,6 +1010,62 @@ static size_t ot_keymgr_kdf_append_sw_binding(OtKeyMgrState *s, OtKeyMgrCdi cdi)
     snprintf(buf, sizeof(buf), "%s%s", cdi_name, binding_suffix);
     ot_keymgr_dump_kdf_material(s, buf, sw_binding, KEYMGR_SW_BINDING_BYTES);
     return KEYMGR_SW_BINDING_BYTES;
+}
+
+static size_t ot_keymgr_kdf_append_key_seed(
+    OtKeyMgrState *s, const uint8_t *seed, const char *name)
+{
+    ot_keymgr_kdf_push_bytes(s, seed, KEYMGR_SEED_BYTES);
+    ot_keymgr_dump_kdf_material(s, name, seed, KEYMGR_SEED_BYTES);
+
+    return KEYMGR_SEED_BYTES;
+}
+
+static size_t ot_keymgr_kdf_append_output_seed(OtKeyMgrState *s, bool sw)
+{
+    int seed_idx = sw ? KEYMGR_SEED_SW_OUT : KEYMGR_SEED_HW_OUT;
+    const char *seed_name = sw ? "SW_OUT_KEY_SEED" : "HW_OUT_KEY_SEED";
+    return ot_keymgr_kdf_append_key_seed(s, s->seeds[seed_idx], seed_name);
+}
+
+static size_t
+ot_keymgr_kdf_append_destination_seed(OtKeyMgrState *s, OtKeyMgrDestSel dest)
+{
+    uint8_t *dest_seed;
+    switch (dest) {
+    case KEYMGR_DEST_SEL_VALUE_AES:
+        dest_seed = s->seeds[KEYMGR_SEED_AES];
+        break;
+    case KEYMGR_DEST_SEL_VALUE_KMAC:
+        dest_seed = s->seeds[KEYMGR_SEED_KMAC];
+        break;
+    case KEYMGR_DEST_SEL_VALUE_OTBN:
+        dest_seed = s->seeds[KEYMGR_SEED_OTBN];
+        break;
+    case KEYMGR_DEST_SEL_VALUE_NONE:
+    default:
+        dest_seed = s->seeds[KEYMGR_SEED_NONE];
+        break;
+    }
+    return ot_keymgr_kdf_append_key_seed(s, dest_seed, "DEST_SEED");
+}
+
+static size_t ot_keymgr_kdf_append_salt(OtKeyMgrState *s)
+{
+    ot_keymgr_kdf_push_bytes(s, s->salt, KEYMGR_SALT_BYTES);
+    ot_keymgr_dump_kdf_material(s, "SALT", s->salt, KEYMGR_SALT_BYTES);
+
+    return KEYMGR_SALT_BYTES;
+}
+
+static size_t ot_keymgr_kdf_append_key_version(OtKeyMgrState *s)
+{
+    uint8_t buf[sizeof(uint32_t)];
+    stl_le_p(buf, s->regs[R_KEY_VERSION]);
+    ot_keymgr_kdf_push_bytes(s, buf, sizeof(uint32_t));
+    ot_keymgr_dump_kdf_material(s, "KEY_VERSION", buf, sizeof(uint32_t));
+
+    return sizeof(uint32_t);
 }
 
 static void ot_keymgr_get_root_key(OtKeyMgrState *s, OtOTPKeyMgrSecret *share0,
@@ -1108,14 +1170,14 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
     case KEYMGR_STAGE_OWNER_INT:
         /* Creator Seed (from flash) */
         expected_kdf_len +=
-            ot_keymgr_kdf_append_seed(s, FLASH_KEYMGR_SECRET_CREATOR_SEED,
-                                      "CREATOR_SEED", &dvalid);
+            ot_keymgr_kdf_append_flash_seed(s, FLASH_KEYMGR_SECRET_CREATOR_SEED,
+                                            "CREATOR_SEED", &dvalid);
         break;
     case KEYMGR_STAGE_OWNER:
         /* Owner Seed (from flash) */
         expected_kdf_len +=
-            ot_keymgr_kdf_append_seed(s, FLASH_KEYMGR_SECRET_OWNER_SEED,
-                                      "OWNER_SEED", &dvalid);
+            ot_keymgr_kdf_append_flash_seed(s, FLASH_KEYMGR_SECRET_OWNER_SEED,
+                                            "OWNER_SEED", &dvalid);
         break;
     case KEYMGR_STAGE_DISABLE:
         /* you can "advance" from the OwnerRootKey to the `Disabled` state */
@@ -1153,6 +1215,72 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
     ot_keymgr_send_kmac_req(s);
 }
 
+static void
+ot_keymgr_operation_gen_output(OtKeyMgrState *s, OtKeyMgrStage stage, bool sw)
+{
+    uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+    OtKeyMgrCdi cdi = (OtKeyMgrCdi)FIELD_EX32(ctrl, CONTROL_SHADOWED, CDI_SEL);
+    OtKeyMgrDestSel dest =
+        (OtKeyMgrDestSel)FIELD_EX32(ctrl, CONTROL_SHADOWED, DEST_SEL);
+
+    trace_ot_keymgr_gen_output(s->ot_id, STAGE_NAME(stage), (int)stage,
+                               CDI_NAME(cdi), (int)cdi, (sw ? "sw" : "hw"));
+
+    ot_keymgr_reset_kdf_buffer(s);
+    size_t expected_kdf_len = 0u;
+
+    /* Output Key Seed (SW/HW key) */
+    expected_kdf_len += ot_keymgr_kdf_append_output_seed(s, sw);
+
+    /* Destination Seed (netlist constant i.e. seed)*/
+    expected_kdf_len += ot_keymgr_kdf_append_destination_seed(s, dest);
+
+    /* Salt (from SW, input via the `SALT_x` registers) */
+    expected_kdf_len += ot_keymgr_kdf_append_salt(s);
+
+    /* Key Version (from SW, input via the `KEY_VERSION` register) */
+    expected_kdf_len += ot_keymgr_kdf_append_key_version(s);
+
+    g_assert(s->kdf_buf.length == expected_kdf_len);
+    g_assert(s->kdf_buf.length == KEYMGR_GEN_DATA_BYTES);
+
+    uint32_t max_key_version;
+    switch (stage) {
+    case KEYMGR_STAGE_CREATOR:
+        max_key_version = ot_shadow_reg_peek(&s->max_creator_key_ver);
+        break;
+    case KEYMGR_STAGE_OWNER_INT:
+        max_key_version = ot_shadow_reg_peek(&s->max_owner_int_key_ver);
+        break;
+    case KEYMGR_STAGE_OWNER:
+        max_key_version = ot_shadow_reg_peek(&s->max_owner_key_ver);
+        break;
+    case KEYMGR_STAGE_DISABLE:
+    default:
+        max_key_version = 0;
+    }
+    bool valid_key_version = s->regs[R_KEY_VERSION] <= max_key_version;
+
+    if (!valid_key_version) {
+        /*
+         * Report the error in DEBUG now, but only in ERR_CODE when the KMAC
+         * response has been received.
+         */
+        s->regs[R_DEBUG] |= R_DEBUG_INVALID_KEY_VERSION_MASK;
+        s->op_state.valid_inputs = false;
+    }
+
+    /* send the current key state to KMAC as the KDF key */
+    g_assert(cdi < NUM_CDIS);
+    OtKeyMgrKey *key_state = &s->key_states[cdi];
+    ot_keymgr_push_kdf_key(s, key_state->share0, key_state->share1,
+                           key_state->valid);
+
+    /* transmit the contents of the KDF buffer to KMAC for computation */
+    ot_keymgr_dump_kdf_buf(s, "gen");
+    ot_keymgr_send_kmac_req(s);
+}
+
 static void ot_keymgr_start_operation(OtKeyMgrState *s)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
@@ -1168,11 +1296,15 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
                                     s->op_state.adv_cdi_cnt);
         break;
     case KEYMGR_OP_GENERATE_ID:
-    case KEYMGR_OP_GENERATE_SW_OUTPUT:
-    case KEYMGR_OP_GENERATE_HW_OUTPUT:
-        /* @todo: implement generate operations */
+        /* @todo: implement generate_id operation */
         qemu_log_mask(LOG_UNIMP, "%s: %s, Operation %s is not implemented.\n",
                       __func__, s->ot_id, OP_NAME(op));
+        break;
+    case KEYMGR_OP_GENERATE_SW_OUTPUT:
+        ot_keymgr_operation_gen_output(s, s->op_state.stage, true);
+        break;
+    case KEYMGR_OP_GENERATE_HW_OUTPUT:
+        ot_keymgr_operation_gen_output(s, s->op_state.stage, false);
         break;
     case KEYMGR_OP_DISABLE:
         ot_keymgr_operation_disable(s);
@@ -1241,6 +1373,42 @@ ot_keymgr_handle_kmac_resp_advance(OtKeyMgrState *s, const OtKMACAppRsp *rsp)
     return true;
 }
 
+static bool ot_keymgr_handle_kmac_resp_gen_output_hw(OtKeyMgrState *s,
+                                                     const OtKMACAppRsp *rsp)
+{
+    uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+    OtKeyMgrDestSel dest =
+        (OtKeyMgrDestSel)FIELD_EX32(ctrl, CONTROL_SHADOWED, DEST_SEL);
+
+    switch (dest) {
+    case KEYMGR_DEST_SEL_VALUE_AES:
+    case KEYMGR_DEST_SEL_VALUE_KMAC:
+    case KEYMGR_DEST_SEL_VALUE_OTBN: {
+        OtKeyMgrKeySink key_sink = (OtKeyMgrKeySink)(dest - KEY_SINK_OFFSET);
+        bool key_valid = s->op_state.valid_inputs;
+        ot_keymgr_push_key(s, key_sink, rsp->digest_share0, rsp->digest_share1,
+                           key_valid, true);
+        break;
+    }
+    case KEYMGR_DEST_SEL_VALUE_NONE:
+        break; /* no-op, just ack */
+    default:
+        g_assert_not_reached();
+    }
+
+    return true;
+}
+
+static bool ot_keymgr_handle_kmac_resp_gen_output_sw(OtKeyMgrState *s,
+                                                     const OtKMACAppRsp *rsp)
+{
+    memcpy(s->sw_out_key->share0, rsp->digest_share0, KEYMGR_KEY_BYTES);
+    memcpy(s->sw_out_key->share1, rsp->digest_share1, KEYMGR_KEY_BYTES);
+    s->sw_out_key->valid = s->op_state.valid_inputs;
+
+    return true;
+}
+
 static void
 ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
 {
@@ -1278,15 +1446,20 @@ ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
         op_complete = ot_keymgr_handle_kmac_resp_advance(s, rsp);
         break;
     case KEYMGR_OP_GENERATE_ID:
-    case KEYMGR_OP_GENERATE_SW_OUTPUT:
-    case KEYMGR_OP_GENERATE_HW_OUTPUT:
-    case KEYMGR_OP_DISABLE:
-        /* @todo: handle KMAC app responses in different keymgr ops */
+        /* @todo: handle KMAC app responses to the `generate_id` operation */
         op_complete = true;
         qemu_log_mask(LOG_UNIMP,
                       "%s: %s: KMAC response in op %s is not implemented.\n",
                       __func__, s->ot_id, OP_NAME(s->state));
         break;
+    case KEYMGR_OP_GENERATE_SW_OUTPUT:
+        op_complete = ot_keymgr_handle_kmac_resp_gen_output_sw(s, rsp);
+        break;
+    case KEYMGR_OP_GENERATE_HW_OUTPUT:
+        op_complete = ot_keymgr_handle_kmac_resp_gen_output_hw(s, rsp);
+        break;
+    case KEYMGR_OP_DISABLE:
+        /* disabling should not require the KMAC */
     default:
         g_assert_not_reached();
     }
@@ -1297,6 +1470,10 @@ ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
 
         /* complete the operation, and reschedule the FSM */
         s->op_state.op_ack = true;
+        if (!s->op_state.valid_inputs) {
+            /* now that the operation completed, report any errors */
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_KMAC_INPUT_MASK;
+        }
         ot_keymgr_schedule_fsm(s);
     }
 }
@@ -1346,6 +1523,7 @@ static void ot_keymgr_fsm_key_stage(OtKeyMgrState *s, bool supports_generation,
         s->op_state.stage = generate;
     }
     s->op_state.op_req = true;
+    s->op_state.valid_inputs = true;
     ot_keymgr_start_operation(s);
 }
 
@@ -1652,7 +1830,13 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_SW_SHARE0_OUTPUT_4:
     case R_SW_SHARE0_OUTPUT_5:
     case R_SW_SHARE0_OUTPUT_6:
-    case R_SW_SHARE0_OUTPUT_7:
+    case R_SW_SHARE0_OUTPUT_7: {
+        unsigned offset = (reg - R_SW_SHARE0_OUTPUT_0) * sizeof(uint32_t);
+        void *ptr = &s->sw_out_key->share0[offset];
+        val32 = ldl_le_p(ptr);
+        stl_le_p(ptr, 0u); /* RC */
+        break;
+    }
     case R_SW_SHARE1_OUTPUT_0:
     case R_SW_SHARE1_OUTPUT_1:
     case R_SW_SHARE1_OUTPUT_2:
@@ -1660,13 +1844,13 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_SW_SHARE1_OUTPUT_4:
     case R_SW_SHARE1_OUTPUT_5:
     case R_SW_SHARE1_OUTPUT_6:
-    case R_SW_SHARE1_OUTPUT_7:
-        /* @todo: implement RC software share register reads */
-        qemu_log_mask(LOG_UNIMP,
-                      "%s: %s: Read from register %s is not implemented.\n",
-                      __func__, s->ot_id, REG_NAME(reg));
-        val32 = 0u;
+    case R_SW_SHARE1_OUTPUT_7: {
+        unsigned offset = (reg - R_SW_SHARE1_OUTPUT_0) * sizeof(uint32_t);
+        void *ptr = &s->sw_out_key->share1[offset];
+        val32 = ldl_le_p(ptr);
+        stl_le_p(ptr, 0u); /* RC */
         break;
+    }
     case R_INTR_TEST:
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -2059,6 +2243,7 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     s->prng.reseed_cnt = 0u;
     s->op_state.op_req = false;
     s->op_state.op_ack = false;
+    s->op_state.valid_inputs = true;
     s->op_state.stage = KEYMGR_STAGE_DISABLE;
     s->op_state.adv_cdi_cnt = 0u;
     ot_keymgr_reset_kdf_buffer(s);
@@ -2066,6 +2251,9 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     /* reset key state */
     memset(s->key_states, 0u, NUM_CDIS * sizeof(OtKeyMgrKey));
     memset(s->saved_kmac_key, 0u, sizeof(OtKeyMgrKey));
+
+    /* reset output keys */
+    memset(s->sw_out_key, 0u, sizeof(OtKeyMgrKey));
 
     /* update IRQ and alert states */
     ot_keymgr_update_irq(s);
@@ -2147,6 +2335,7 @@ static void ot_keymgr_init(Object *obj)
     }
     s->key_states = g_new0(OtKeyMgrKey, NUM_CDIS);
     s->saved_kmac_key = g_new0(OtKeyMgrKey, 1u);
+    s->sw_out_key = g_new0(OtKeyMgrKey, 1u);
 
     s->fsm_tick_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_keymgr_fsm_tick, s);
 
