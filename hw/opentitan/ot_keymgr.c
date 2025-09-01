@@ -575,6 +575,20 @@ static const char *KEY_SINK_NAMES[] = {
          KEY_SINK_NAMES[(_st_)] : \
          "?")
 
+#define SIDELOAD_CLEAR_ENTRY(_st_) \
+    [KEYMGR_SIDELOAD_CLEAR_##_st_] = stringify(_st_)
+static const char *SIDELOAD_CLEAR_NAMES[] = {
+    SIDELOAD_CLEAR_ENTRY(NONE),
+    SIDELOAD_CLEAR_ENTRY(AES),
+    SIDELOAD_CLEAR_ENTRY(KMAC),
+    SIDELOAD_CLEAR_ENTRY(OTBN),
+};
+#undef SIDELOAD_CLEAR_ENTRY
+#define SIDELOAD_CLEAR_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(SIDELOAD_CLEAR_NAMES) ? \
+         SIDELOAD_CLEAR_NAMES[(_st_)] : \
+         "?")
+
 #define WORKING_STATE_ENTRY(_st_) \
     [KEYMGR_WORKING_STATE_##_st_] = stringify(_st_)
 static const char *WORKING_STATE_NAMES[] = {
@@ -899,6 +913,39 @@ static void ot_keymgr_push_kdf_key(OtKeyMgrState *s, const uint8_t *key_share0,
 
     ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, key_share0, key_share1, valid,
                        false);
+}
+
+static void ot_keymgr_sideload_clear(OtKeyMgrState *s)
+{
+    int sideload_clear =
+        (int)FIELD_EX32(s->regs[R_SIDELOAD_CLEAR], SIDELOAD_CLEAR, VAL);
+
+    trace_ot_keymgr_sideload_clear(s->ot_id,
+                                   SIDELOAD_CLEAR_NAME(sideload_clear),
+                                   sideload_clear);
+
+    /* @todo: this should use random dummy data instead */
+    uint8_t share0[KEYMGR_KEY_SIZE_MAX] = { 0 };
+    uint8_t share1[KEYMGR_KEY_SIZE_MAX] = { 0 };
+
+    switch (sideload_clear) {
+    case KEYMGR_SIDELOAD_CLEAR_NONE:
+        break;
+    case KEYMGR_SIDELOAD_CLEAR_AES:
+    case KEYMGR_SIDELOAD_CLEAR_OTBN:
+    case KEYMGR_SIDELOAD_CLEAR_KMAC: {
+        OtKeyMgrKeySink sink =
+            (OtKeyMgrKeySink)(sideload_clear - KEY_SINK_OFFSET);
+        ot_keymgr_push_key(s, sink, share0, share1, false, true);
+        break;
+    }
+    default:
+        /* continuously clear ALL slots if a non-enumerated value is written */
+        for (unsigned ix = 0; ix < KEYMGR_KEY_SINK_COUNT; ix++) {
+            ot_keymgr_push_key(s, (OtKeyMgrKeySink)ix, share0, share1, false,
+                               true);
+        }
+    }
 }
 
 /* check that 'data' is not all zeros or all ones */
@@ -1990,7 +2037,7 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= R_SIDELOAD_CLEAR_VAL_MASK;
         s->regs[reg] = val32;
-        /* @todo: implement R_SIDELOAD_CLEAR */
+        ot_keymgr_sideload_clear(s);
         break;
     case R_RESEED_INTERVAL_REGWEN:
         val32 &= R_RESEED_INTERVAL_REGWEN_EN_MASK;

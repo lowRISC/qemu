@@ -303,6 +303,7 @@ ot_keymgr_reset(const char *id, const char *stage) "%s: %s"
 ot_keymgr_restore_kmac_key(const char *id) "%s"
 ot_keymgr_schedule_fsm(const char *id, const char *func, int line) "%s @ %s:%d"
 ot_keymgr_seed_missing(const char *id, unsigned ix) "%s: #%u"
+ot_keymgr_sideload_clear(const char *id, const char *sc, unsigned nsc) "%s: [%s:%u]"
 ot_keymgr_update_alert(const char *id, int prev, int next) "%s: %d -> %d"
 
 # ot_keymgr_dpe.c
