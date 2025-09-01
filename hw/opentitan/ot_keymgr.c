@@ -1281,6 +1281,50 @@ ot_keymgr_operation_gen_output(OtKeyMgrState *s, OtKeyMgrStage stage, bool sw)
     ot_keymgr_send_kmac_req(s);
 }
 
+static void ot_keymgr_operation_gen_id(OtKeyMgrState *s, OtKeyMgrStage stage)
+{
+    uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+    OtKeyMgrCdi cdi = (OtKeyMgrCdi)FIELD_EX32(ctrl, CONTROL_SHADOWED, CDI_SEL);
+
+    trace_ot_keymgr_gen_output(s->ot_id, STAGE_NAME(stage), (int)stage,
+                               CDI_NAME(cdi), (int)cdi, "id");
+
+    ot_keymgr_reset_kdf_buffer(s);
+    size_t expected_kdf_len = 0u;
+
+    /* Identity seed (netlist constant i.e. seed)*/
+    const uint8_t *id_seed;
+    switch (stage) {
+    case KEYMGR_STAGE_CREATOR:
+        id_seed = s->seeds[KEYMGR_SEED_CREATOR_IDENTITY];
+        break;
+    case KEYMGR_STAGE_OWNER_INT:
+        id_seed = s->seeds[KEYMGR_SEED_OWNER_INT_IDENTITY];
+        break;
+    case KEYMGR_STAGE_OWNER:
+        id_seed = s->seeds[KEYMGR_SEED_OWNER_IDENTITY];
+        break;
+    case KEYMGR_STAGE_DISABLE:
+    default:
+        g_assert_not_reached();
+    }
+    expected_kdf_len +=
+        ot_keymgr_kdf_append_key_seed(s, id_seed, "IDENTITY_SEED");
+
+    g_assert(s->kdf_buf.length == expected_kdf_len);
+    g_assert(s->kdf_buf.length == KEYMGR_ID_DATA_BYTES);
+
+    /* send the current key state to KMAC as the KDF key */
+    g_assert(cdi < NUM_CDIS);
+    OtKeyMgrKey *key_state = &s->key_states[cdi];
+    ot_keymgr_push_kdf_key(s, key_state->share0, key_state->share1,
+                           key_state->valid);
+
+    /* transmit the contents of the KDF buffer to KMAC for computation */
+    ot_keymgr_dump_kdf_buf(s, "gen_id");
+    ot_keymgr_send_kmac_req(s);
+}
+
 static void ot_keymgr_start_operation(OtKeyMgrState *s)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
@@ -1296,9 +1340,7 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
                                     s->op_state.adv_cdi_cnt);
         break;
     case KEYMGR_OP_GENERATE_ID:
-        /* @todo: implement generate_id operation */
-        qemu_log_mask(LOG_UNIMP, "%s: %s, Operation %s is not implemented.\n",
-                      __func__, s->ot_id, OP_NAME(op));
+        ot_keymgr_operation_gen_id(s, s->op_state.stage);
         break;
     case KEYMGR_OP_GENERATE_SW_OUTPUT:
         ot_keymgr_operation_gen_output(s, s->op_state.stage, true);
@@ -1446,12 +1488,7 @@ ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
         op_complete = ot_keymgr_handle_kmac_resp_advance(s, rsp);
         break;
     case KEYMGR_OP_GENERATE_ID:
-        /* @todo: handle KMAC app responses to the `generate_id` operation */
-        op_complete = true;
-        qemu_log_mask(LOG_UNIMP,
-                      "%s: %s: KMAC response in op %s is not implemented.\n",
-                      __func__, s->ot_id, OP_NAME(s->state));
-        break;
+        /* the identity output is also placed into the SW share registers */
     case KEYMGR_OP_GENERATE_SW_OUTPUT:
         op_complete = ot_keymgr_handle_kmac_resp_gen_output_sw(s, rsp);
         break;
