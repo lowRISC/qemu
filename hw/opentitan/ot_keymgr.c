@@ -813,6 +813,16 @@ static void ot_keymgr_request_entropy(OtKeyMgrState *s)
     }
 }
 
+static void ot_keymgr_wipe_key_states(OtKeyMgrState *s)
+{
+    /* @todo: should wipe with random entropy, but just zero for now */
+    for (unsigned cdi = 0u; cdi < NUM_CDIS; cdi++) {
+        memset(s->key_states[cdi].share0, 0u, KEYMGR_KEY_BYTES);
+        memset(s->key_states[cdi].share1, 0u, KEYMGR_KEY_BYTES);
+        s->key_states[cdi].valid = false;
+    }
+}
+
 static void ot_keymgr_push_key(OtKeyMgrState *s, OtKeyMgrKeySink key_sink,
                                const uint8_t *key_share0,
                                const uint8_t *key_share1, bool valid)
@@ -1035,6 +1045,14 @@ static void ot_keymgr_send_kmac_req(OtKeyMgrState *s)
     kc->app_request(s->kmac, s->kmac_app, &req);
 }
 
+static void ot_keymgr_operation_disable(OtKeyMgrState *s)
+{
+    ot_keymgr_wipe_key_states(s);
+    ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_DISABLED);
+    s->op_state.op_ack = true;
+    ot_keymgr_schedule_fsm(s);
+}
+
 static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
                                         OtKeyMgrCdi cdi)
 {
@@ -1076,12 +1094,10 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
                                       "OWNER_SEED", &dvalid);
         break;
     case KEYMGR_STAGE_DISABLE:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: advance called in the %s key stage\n.", __func__,
-                      s->ot_id, STAGE_NAME(stage));
+        /* you can "advance" from the OwnerRootKey to the `Disabled` state */
+        ot_keymgr_operation_disable(s);
         return;
     default:
-        /* should only be called with a valid stage */
         g_assert_not_reached();
     }
 
@@ -1113,14 +1129,6 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
     ot_keymgr_send_kmac_req(s);
 }
 
-static void ot_keymgr_operation_disable(OtKeyMgrState *s)
-{
-    /* @todo: wipe the current keys with some dummy entropy data */
-    ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_DISABLED);
-    s->op_state.op_ack = true;
-    ot_keymgr_schedule_fsm(s);
-}
-
 static void ot_keymgr_start_operation(OtKeyMgrState *s)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
@@ -1134,6 +1142,13 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
         s->op_state.adv_cdi_cnt = (OtKeyMgrCdi)0;
         ot_keymgr_operation_advance(s, s->op_state.stage,
                                     s->op_state.adv_cdi_cnt);
+        break;
+    case KEYMGR_OP_GENERATE_ID:
+    case KEYMGR_OP_GENERATE_SW_OUTPUT:
+    case KEYMGR_OP_GENERATE_HW_OUTPUT:
+        /* @todo: implement generate operations */
+        qemu_log_mask(LOG_UNIMP, "%s: %s, Operation %s is not implemented.\n",
+                      __func__, s->ot_id, OP_NAME(op));
         break;
     case KEYMGR_OP_DISABLE:
         ot_keymgr_operation_disable(s);
@@ -1257,6 +1272,54 @@ ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
     }
 }
 
+static void ot_keymgr_fsm_key_stage(OtKeyMgrState *s, bool supports_generation,
+                                    OtKeyMgrStage advance,
+                                    OtKeyMgrStage generate)
+{
+    bool op_start = s->regs[R_START] & R_START_EN_MASK;
+    bool invalid_state = s->regs[R_FAULT_STATUS] & FAULT_STATUS_MASK;
+    uint32_t ctrl = ot_shadow_reg_peek(&s->control);
+
+    /* check for op errors before enablement & state validity */
+    uint32_t op = FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION);
+    bool invalid_op = false;
+    switch (op) {
+    case KEYMGR_OP_GENERATE_ID:
+    case KEYMGR_OP_GENERATE_HW_OUTPUT:
+    case KEYMGR_OP_GENERATE_SW_OUTPUT:
+        if (op_start && !supports_generation) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+            invalid_op = true;
+        }
+        break;
+    default:
+        break;
+    }
+
+    /* wipe if disabled or in an invalid state */
+    if (!s->enabled || invalid_state) {
+        ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
+        return;
+    }
+
+    if (!op_start || s->op_state.op_req || invalid_op) {
+        return; /* no state change if op_start is not set */
+    }
+
+    switch (op) {
+    case KEYMGR_OP_DISABLE:
+        s->op_state.stage = KEYMGR_STAGE_DISABLE;
+        break;
+    case KEYMGR_OP_ADVANCE:
+        s->op_state.stage = advance;
+        break;
+    default:
+        s->op_state.stage = generate;
+    }
+    s->op_state.op_req = true;
+    ot_keymgr_start_operation(s);
+}
+
 /* Tick the main FSM. Returns whether there was any state change this tick. */
 static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
 {
@@ -1341,34 +1404,47 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         break;
     case KEYMGR_ST_INIT:
         ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_INIT);
-        if (!s->enabled || invalid_state) {
-            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
-            break;
-        }
-        if (!op_start) {
-            break; /* no state change if op_start is not set */
-        }
-        uint32_t op = FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION);
-        bool valid_op = (op == KEYMGR_OP_ADVANCE) || (op == KEYMGR_OP_DISABLE);
-        if (!valid_op) {
-            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
-        } else if (!s->op_state.op_req) {
-            s->op_state.stage =
-                (op == KEYMGR_OP_ADVANCE) ? KEYMGR_STAGE_CREATOR :
-                                            KEYMGR_STAGE_DISABLE;
-            s->op_state.op_req = true;
-            ot_keymgr_start_operation(s);
-        }
+        ot_keymgr_fsm_key_stage(s, false, KEYMGR_STAGE_CREATOR,
+                                KEYMGR_STAGE_DISABLE);
         break;
     case KEYMGR_ST_CREATOR_ROOT_KEY:
+        ot_keymgr_change_working_state(s,
+                                       KEYMGR_WORKING_STATE_CREATOR_ROOT_KEY);
+        ot_keymgr_fsm_key_stage(s, true, KEYMGR_STAGE_OWNER_INT,
+                                KEYMGR_STAGE_CREATOR);
+        break;
     case KEYMGR_ST_OWNER_INT_KEY:
+        ot_keymgr_change_working_state(
+            s, KEYMGR_WORKING_STATE_OWNER_INTERMEDIATE_KEY);
+        ot_keymgr_fsm_key_stage(s, true, KEYMGR_STAGE_OWNER,
+                                KEYMGR_STAGE_OWNER_INT);
+        break;
     case KEYMGR_ST_OWNER_KEY:
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_OWNER_KEY);
+        ot_keymgr_fsm_key_stage(s, true, KEYMGR_STAGE_DISABLE,
+                                KEYMGR_STAGE_OWNER);
+        break;
     case KEYMGR_ST_DISABLED:
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_DISABLED);
+        if (!s->enabled || invalid_state) {
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
+        }
+        break;
     case KEYMGR_ST_WIPE:
+        /* whilst wiping, keymgr retains the previous working state */
+        ot_keymgr_wipe_key_states(s);
+        /* see OT keymgr_ctrl.sv RTL: maintain & complete ongoing ops */
+        if (op_start) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+        } else {
+            ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_INVALID);
+        }
+        break;
     case KEYMGR_ST_INVALID:
-        /* @todo: implement other keymgr FSM states */
-        qemu_log_mask(LOG_UNIMP, "%s: %s: FSM State %s is not implemented.\n",
-                      __func__, s->ot_id, FST_NAME(s->state));
+        ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_INVALID);
+        if (op_start) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+        }
         break;
     default:
         break;
