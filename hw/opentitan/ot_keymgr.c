@@ -883,7 +883,19 @@ static void ot_keymgr_push_kdf_key(OtKeyMgrState *s, const uint8_t *key_share0,
 {
     trace_ot_keymgr_push_kdf_key(s->ot_id, valid);
 
-    /* @todo: add additional KMAC KDF key integrity checks */
+    /*
+     * @todo: when key invalidating/wiping with entropy is implemented,
+     * pushing a new KDF key should perform a validity check for all 0s
+     * or all 1s, and set R_DEBUG_INVALID_KEY_MASK if so, i.e.:
+     *
+     * if (!ot_keymgr_valid_data_check(key_share0, OT_KMAC_KEY_SIZE)) {
+     *     s->regs[R_DEBUG] |= R_DEBUG_INVALID_KEY_MASK;
+     *     s->op_state.valid_inputs = false;
+     * }
+     *
+     * @todo: when KMAC masking is introduced, this should check both key
+     * shares and not just key share 0 for validity.
+     */
 
     ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, key_share0, key_share1, valid,
                        false);
@@ -932,7 +944,7 @@ static size_t ot_keymgr_kdf_append_rev_seed(OtKeyMgrState *s)
     return KEYMGR_SEED_BYTES;
 }
 
-static size_t ot_keymgr_kdf_append_rom_digest(OtKeyMgrState *s, bool *dvalid)
+static size_t ot_keymgr_kdf_append_rom_digest(OtKeyMgrState *s)
 {
     uint8_t rom_digest[OT_ROM_DIGEST_BYTES] = { 0u };
 
@@ -940,14 +952,17 @@ static size_t ot_keymgr_kdf_append_rom_digest(OtKeyMgrState *s, bool *dvalid)
     rcc->get_rom_digest(s->rom_ctrl, rom_digest);
 
     ot_keymgr_kdf_push_bytes(s, rom_digest, OT_ROM_DIGEST_BYTES);
-    *dvalid &= ot_keymgr_valid_data_check(rom_digest, OT_ROM_DIGEST_BYTES);
+    if (!ot_keymgr_valid_data_check(rom_digest, OT_ROM_DIGEST_BYTES)) {
+        s->regs[R_DEBUG] |= R_DEBUG_INVALID_DIGEST_MASK;
+        s->op_state.valid_inputs = false;
+    }
 
     ot_keymgr_dump_kdf_material(s, "ROM_DIGEST", rom_digest,
                                 OT_ROM_DIGEST_BYTES);
     return OT_ROM_DIGEST_BYTES;
 }
 
-static size_t ot_keymgr_kdf_append_km_div(OtKeyMgrState *s, bool *dvalid)
+static size_t ot_keymgr_kdf_append_km_div(OtKeyMgrState *s)
 {
     OtLcCtrlKeyMgrDiv km_div = { 0u };
 
@@ -955,22 +970,28 @@ static size_t ot_keymgr_kdf_append_km_div(OtKeyMgrState *s, bool *dvalid)
     lc->get_keymgr_div(s->lc_ctrl, &km_div);
 
     ot_keymgr_kdf_push_bytes(s, km_div.data, OT_LC_KEYMGR_DIV_BYTES);
-    *dvalid &= ot_keymgr_valid_data_check(km_div.data, OT_LC_KEYMGR_DIV_BYTES);
+    if (!ot_keymgr_valid_data_check(km_div.data, OT_LC_KEYMGR_DIV_BYTES)) {
+        s->regs[R_DEBUG] |= R_DEBUG_INVALID_HEALTH_STATE_MASK;
+        s->op_state.valid_inputs = false;
+    }
 
     ot_keymgr_dump_kdf_material(s, "KM_DIV", km_div.data,
                                 OT_LC_KEYMGR_DIV_BYTES);
     return OT_LC_KEYMGR_DIV_BYTES;
 }
 
-static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s, bool *dvalid)
+static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s)
 {
     OtOTPClass *otp_oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
     const OtOTPHWCfg *hw_cfg = otp_oc->get_hw_cfg(s->otp_ctrl);
 
     ot_keymgr_kdf_push_bytes(s, hw_cfg->device_id,
                              OT_OTP_HWCFG_DEVICE_ID_BYTES);
-    *dvalid &= ot_keymgr_valid_data_check(hw_cfg->device_id,
-                                          OT_OTP_HWCFG_DEVICE_ID_BYTES);
+    if (!ot_keymgr_valid_data_check(hw_cfg->device_id,
+                                    OT_OTP_HWCFG_DEVICE_ID_BYTES)) {
+        s->regs[R_DEBUG] |= R_DEBUG_INVALID_DEV_ID_MASK;
+        s->op_state.valid_inputs = false;
+    }
 
     ot_keymgr_dump_kdf_material(s, "DEVICE_ID", hw_cfg->device_id,
                                 OT_OTP_HWCFG_DEVICE_ID_BYTES);
@@ -979,7 +1000,7 @@ static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s, bool *dvalid)
 
 static size_t
 ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
-                                const char *seed_name, bool *dvalid)
+                                const char *seed_name, uint32_t debug_mask)
 {
     OtFlashKeyMgrSecret seed = { 0u };
 
@@ -987,9 +1008,12 @@ ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
     fc->get_keymgr_secret(s->flash_ctrl, type, &seed);
 
     ot_keymgr_kdf_push_bytes(s, seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
-    *dvalid &=
+    bool data_valid =
         ot_keymgr_valid_data_check(seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
-    *dvalid &= seed.valid;
+    if (!seed.valid || !data_valid) {
+        s->regs[R_DEBUG] |= debug_mask;
+        s->op_state.valid_inputs = false;
+    }
 
     ot_keymgr_dump_kdf_material(s, seed_name, seed.secret,
                                 OT_FLASH_KEYMGR_SECRET_BYTES);
@@ -1145,8 +1169,6 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
     trace_ot_keymgr_advance(s->ot_id, STAGE_NAME(stage), (int)stage,
                             CDI_NAME(cdi), (int)cdi);
 
-    bool dvalid = true;
-
     /* @todo: do we need to check for any error states here? */
 
     ot_keymgr_reset_kdf_buffer(s);
@@ -1159,25 +1181,27 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
         expected_kdf_len += ot_keymgr_kdf_append_rev_seed(s);
 
         /* Rom Digest (from rom_ctrl) */
-        expected_kdf_len += ot_keymgr_kdf_append_rom_digest(s, &dvalid);
+        expected_kdf_len += ot_keymgr_kdf_append_rom_digest(s);
 
         /* KeyManager Diversification (from lc_ctrl) */
-        expected_kdf_len += ot_keymgr_kdf_append_km_div(s, &dvalid);
+        expected_kdf_len += ot_keymgr_kdf_append_km_div(s);
 
         /* Device ID (from OTP) */
-        expected_kdf_len += ot_keymgr_kdf_append_dev_id(s, &dvalid);
+        expected_kdf_len += ot_keymgr_kdf_append_dev_id(s);
         break;
     case KEYMGR_STAGE_OWNER_INT:
         /* Creator Seed (from flash) */
         expected_kdf_len +=
             ot_keymgr_kdf_append_flash_seed(s, FLASH_KEYMGR_SECRET_CREATOR_SEED,
-                                            "CREATOR_SEED", &dvalid);
+                                            "CREATOR_SEED",
+                                            R_DEBUG_INVALID_CREATOR_SEED_MASK);
         break;
     case KEYMGR_STAGE_OWNER:
         /* Owner Seed (from flash) */
         expected_kdf_len +=
             ot_keymgr_kdf_append_flash_seed(s, FLASH_KEYMGR_SECRET_OWNER_SEED,
-                                            "OWNER_SEED", &dvalid);
+                                            "OWNER_SEED",
+                                            R_DEBUG_INVALID_OWNER_SEED_MASK);
         break;
     case KEYMGR_STAGE_DISABLE:
         /* you can "advance" from the OwnerRootKey to the `Disabled` state */
@@ -1192,14 +1216,6 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
 
     /* check that we have pushed all expected KDF data */
     g_assert(s->kdf_buf.length == expected_kdf_len);
-
-    /*
-     * @todo: store `dvalid` somewhere and, if the data is invalid, replace the
-     * KMAC response with decoy data (a random permutation of entropy share 1).
-     */
-    if (!dvalid) {
-        s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_KMAC_INPUT_MASK;
-    }
 
     g_assert(s->kdf_buf.length <= KEYMGR_ADV_DATA_BYTES);
     s->kdf_buf.length = KEYMGR_ADV_DATA_BYTES;
