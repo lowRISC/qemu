@@ -2,6 +2,7 @@
  * QEMU OpenTitan KMAC device
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -28,7 +29,6 @@
  * THE SOFTWARE.
  *
  * Note: This implementation is missing some features:
- *   - Side-loading
  *   - Masking (current implementation does not consume entropy)
  */
 
@@ -736,6 +736,22 @@ static void ot_kmac_process(void *opaque)
              * IDLE to START
              */
             g_assert_not_reached();
+        }
+
+        /*
+         * "If key is sideloaded and KMAC is SW initiated, hide the capacity
+         * from SW by zeroing", i.e. if not doing a SW-initiated sideloaded
+         * operation, the entire Keccak state (including the meaningless
+         * capacity bytes) should be loaded.
+         */
+        uint32_t reg_cfg = ot_shadow_reg_peek(&s->cfg);
+        bool sideload = FIELD_EX32(reg_cfg, CFG_SHADOWED, SIDELOAD) != 0;
+        if (!sideload || s->current_app) {
+            static_assert(sizeof(s->ltc_state.sha3.sb) == KECCAK_STATE_BYTES,
+                          "LibTomCrypt's Keccak state is an unexpected size");
+            /* manually extract entire Keccak state, including capacity */
+            memcpy(&s->keccak_state[0], s->ltc_state.sha3.sb,
+                   KECCAK_STATE_BYTES);
         }
 
         if (s->current_app) {
