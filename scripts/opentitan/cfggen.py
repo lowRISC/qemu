@@ -553,6 +553,8 @@ def main():
             ot_dir = abspath(ot_dir)
             log.info("OT directory: '%s'", ot_dir)
         log.info("Variant: '%s'", topvar)
+        top_dir = joinpath(ot_dir, 'hw', top)
+
         if not args.lifecycle:
             lcpath = joinpath(ot_dir, 'hw/ip/lc_ctrl/rtl/lc_ctrl_state_pkg.sv')
         else:
@@ -560,22 +562,22 @@ def main():
         if not isfile(lcpath):
             argparser.error(f"No such file '{lcpath}'")
 
-        if not args.otpconst:
+        ocfilename = 'otp_ctrl_part_pkg.sv'
+        ocpath = args.otpconst
+        if not ocpath:
             otp_constant_locations = [
-                joinpath(
-                    ot_dir, "hw", top, "ip_autogen/otp_ctrl/rtl/otp_ctrl_part_pkg.sv"
-                ),
-                joinpath(ot_dir, 'hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv'),
+                joinpath(top_dir, f'ip_autogen/otp_ctrl/rtl/{ocfilename}'),
+                joinpath(ot_dir, f'hw/ip/otp_ctrl/rtl/{ocfilename}'),
             ]
-            ocpath = None
             for maybe_ocpath in otp_constant_locations:
                 if isfile(maybe_ocpath):
                     ocpath = maybe_ocpath
                     break
-        else:
-            ocpath = args.otpconst
-        if ocpath is None or not isfile(lcpath):
+        if not ocpath:
+            argparser.error(f"Unknown location for '{ocfilename}'")
+        if not isfile(ocpath):
             argparser.error(f"No such file '{ocpath}'")
+        log.debug(f"'{ocfilename}' location: '%s'", ocpath)
 
         cfg.load_lifecycle(lcpath)
         cfg.load_otp_constants(ocpath)
