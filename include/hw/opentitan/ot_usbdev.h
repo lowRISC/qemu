@@ -1,0 +1,9 @@
+#ifndef HW_OPENTITAN_OT_USBDEV_H
+#define HW_OPENTITAN_OT_USBDEV_H
+
+#include "qom/object.h"
+
+#define TYPE_OT_USBDEV "ot-usbdev"
+OBJECT_DECLARE_SIMPLE_TYPE(OtUSBDEVState, OT_USBDEV)
+
+#endif /* HW_OPENTITAN_OT_USBDEV_H */

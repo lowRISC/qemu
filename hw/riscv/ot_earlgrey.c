@@ -66,6 +66,7 @@
 #include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
+#include "hw/opentitan/ot_usbdev.h"
 #include "hw/opentitan/ot_unimp.h"
 #include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties.h"
@@ -185,6 +186,14 @@ enum OtEGBoardDevice {
 };
 
 #define OT_EG_IBEX_WRAPPER_NUM_REGIONS 2u
+/* EarlGrey/CW310 Core clock is 24 MHz */
+#define OT_EG_CORE_CLK_HZ 24000000u
+#define OT_EG_USBDEV_CLK_HZ 48000000u
+/* EarlGrey/CW310 Peripheral clock is 6 MHz */
+#define OT_EG_PERIPHERAL_CLK_HZ ((OT_EG_CORE_CLK_HZ) / 4u)
+
+/* EarlGrey/CW310 AON clock is 250 kHz */
+#define OT_EG_AON_CLK_HZ 250000u
 
 static const uint8_t ot_eg_pmp_cfgs[] = {
     /* clang-format off */
@@ -749,21 +758,20 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_USBDEV] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_USBDEV,
+        // .cfg = &ibex_unimp_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40320000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "usbdev"),
-            IBEX_DEV_UINT_PROP("size", 0x1000u),
-            IBEX_DEV_UINT_PROP("irq-count", 18u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            // IBEX_DEV_STRING_PROP("ot_id", "usbdev"),
+            // IBEX_DEV_UINT_PROP("irq-count", 18u),
+            // IBEX_DEV_UINT_PROP("alert-count", 1u),
+            IBEX_DEV_UINT_PROP("pclk", OT_EG_USBDEV_CLK_HZ)
         ),
-        .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_ALERT(0, 21)
-        )
+        // .gpio = IBEXGPIOCONNDEFS(
+        //     OT_EG_SOC_GPIO_ALERT(0, 21)
+        // )
     },
     [OT_EG_SOC_DEV_PWRMGR] = {
         .type = TYPE_OT_PWRMGR,
