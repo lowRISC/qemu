@@ -62,7 +62,7 @@ struct OtOtpBeIfClass {
      *
      * @return the OTP characteristics
      */
-    const OtOtpBeCharacteristics *(*get_characteristics)(OtOtpBeIf *beif);
+    OtOtpBeCharacteristics *(*get_characteristics)(OtOtpBeIf *beif);
 };
 
 #endif /* HW_OPENTITAN_OT_OTP_BE_IF_H */
