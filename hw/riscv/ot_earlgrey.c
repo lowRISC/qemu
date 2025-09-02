@@ -674,6 +674,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("parent", OTP_CTRL)
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("write_ns", 25000u), /* 25 us */
+            IBEX_DEV_UINT_PROP("read_ns", 5000u) /* 5 us */
+        )
     },
     [OT_EG_SOC_DEV_LC_CTRL] = {
         .type = TYPE_OT_LC_CTRL,
