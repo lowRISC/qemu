@@ -112,6 +112,7 @@ static const char REG_NAMES[REGS_COUNT][6u] = {
     REG_NAME_ENTRY(CSR7),
 };
 #undef REG_NAME_ENTRY
+/* clang-format on */
 
 struct OtOtpOtBeState {
     SysBusDevice parent_obj;
@@ -169,7 +170,7 @@ static uint64_t ot_otp_ot_be_read(void *opaque, hwaddr addr, unsigned size)
 }
 
 static void ot_otp_ot_be_write(void *opaque, hwaddr addr, uint64_t value,
-                                unsigned size)
+                               unsigned size)
 {
     OtOtpOtBeState *s = opaque;
     (void)size;
@@ -210,7 +211,7 @@ static bool ot_otp_ot_be_is_ecc_enabled(OtOtpBeIf *beif)
     return true;
 }
 
-static const OtOtpBeCharacteristics*
+static const OtOtpBeCharacteristics *
 ot_otp_ot_be_get_characteristics(OtOtpBeIf *beif)
 {
     (void)beif;
@@ -221,7 +222,7 @@ ot_otp_ot_be_get_characteristics(OtOtpBeIf *beif)
 static Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
-                    DeviceState*),
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
