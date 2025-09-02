@@ -120,6 +120,7 @@ struct OtOtpOtBeState {
     MemoryRegion prim_mr;
 
     uint32_t regs[REGS_COUNT];
+    OtOtpBeCharacteristics characteristics;
 
     char *ot_id;
     DeviceState *parent;
@@ -214,15 +215,21 @@ static bool ot_otp_ot_be_is_ecc_enabled(OtOtpBeIf *beif)
 static const OtOtpBeCharacteristics *
 ot_otp_ot_be_get_characteristics(OtOtpBeIf *beif)
 {
-    (void)beif;
+    OtOtpOtBeState *s = OT_OTP_OT_BE(beif);
 
-    return &OTP_BE_CHARACTERISTICS;
+    return &s->characteristics;
 }
 
 static Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
                      DeviceState *),
+    DEFINE_PROP_UINT32("write_ns", OtOtpOtBeState,
+                       characteristics.timings.write_ns,
+                       OTP_BE_CHARACTERISTICS.timings.write_ns),
+    DEFINE_PROP_UINT32("read_ns", OtOtpOtBeState,
+                       characteristics.timings.read_ns,
+                       OTP_BE_CHARACTERISTICS.timings.read_ns),
     DEFINE_PROP_END_OF_LIST(),
 };
 
