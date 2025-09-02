@@ -555,12 +555,23 @@ def main():
         log.info("Variant: '%s'", topvar)
         top_dir = joinpath(ot_dir, 'hw', top)
 
-        if not args.lifecycle:
-            lcpath = joinpath(ot_dir, 'hw/ip/lc_ctrl/rtl/lc_ctrl_state_pkg.sv')
-        else:
-            lcpath = args.lifecycle
+        lcfilename = 'lc_ctrl_state_pkg.sv'
+        lcpath = args.lifecycle
+        if not lcpath:
+            lc_constant_locations = [
+                joinpath(top_dir, f'rtl/autogen/dev/{lcfilename}'),
+                joinpath(top_dir, f'rtl/autogen/{lcfilename}'),
+                joinpath(ot_dir, f'hw/ip/lc_ctrl/rtl/{lcfilename}'),
+            ]
+            for maybe_lcpath in lc_constant_locations:
+                if isfile(maybe_lcpath):
+                    lcpath = maybe_lcpath
+                    break
+        if not lcpath:
+            argparser.error(f"Unknown location for '{lcfilename}'")
         if not isfile(lcpath):
             argparser.error(f"No such file '{lcpath}'")
+        log.debug(f"'{lcfilename}' location: '%s'", lcpath)
 
         ocfilename = 'otp_ctrl_part_pkg.sv'
         ocpath = args.otpconst
