@@ -622,10 +622,11 @@ static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t *keylen)
         for (size_t ix = 0; ix < OT_KMAC_KEY_SIZE; ix++) {
             key[ix] = sl_key->share0[ix] ^ sl_key->share1[ix];
         }
-        /* only check key validity in App mode */
-        if (s->current_app && !sl_key->valid) {
-            ot_kmac_report_error(s, OT_KMAC_ERR_KEY_NOT_VALID,
-                                 s->current_app->index);
+
+        if (!sl_key->valid) {
+            /* HW defaults to info = app_id = 0 when in a SW operation. */
+            uint32_t err_info = s->current_app ? s->current_app->index : 0;
+            ot_kmac_report_error(s, OT_KMAC_ERR_KEY_NOT_VALID, err_info);
         }
         return;
     }
