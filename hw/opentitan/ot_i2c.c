@@ -1265,8 +1265,10 @@ static void ot_i2c_realize(DeviceState *dev, Error **errp)
 
     qdev_init_gpio_in_named(DEVICE(s), &ot_i2c_clock_input, "clock-in", 1);
 
-    /* TODO: check if the following can be moved to ot_i2c_dj_init */
-    s->bus = i2c_init_bus(dev, TYPE_OT_I2C);
+    /* TODO: check if the following can be moved to ot_i2c_init */
+    char *bus_name = g_strdup_printf("ot-%s", s->ot_id);
+    s->bus = i2c_init_bus(dev, bus_name);
+    g_free(bus_name);
     s->target = i2c_slave_create_simple(s->bus, TYPE_OT_I2C_TARGET, 0xff);
 }
 
