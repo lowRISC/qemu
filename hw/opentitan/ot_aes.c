@@ -25,7 +25,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *
- * Side-loading is not yet supported (need KeyManager implementation for this)
  */
 
 #include "qemu/osdep.h"
@@ -531,16 +530,11 @@ static void ot_aes_sideload_key(OtAESState *s)
     OtAESKey *key = s->sl_key;
     OtAESContext *c = s->ctx;
 
-    if (!key->valid) {
-        c->key_ready = false;
-        return;
-    }
-
     for (unsigned ix = 0u; ix < OT_AES_KEY_DWORD_COUNT; ix++) {
         c->key[ix] = key->share0[ix] ^ key->share1[ix];
     }
 
-    c->key_ready = true;
+    c->key_ready = key->valid;
 }
 
 static void ot_aes_update_key(OtAESState *s)
@@ -612,36 +606,38 @@ static inline bool ot_aes_can_process(const OtAESState *s)
 
     OtAESContext *c = s->ctx;
 
-    if (!c->key_ready) {
-        xtrace_ot_aes_debug(s->ot_id, "key not ready");
-        return false;
-    }
-
     if (need_iv && !c->iv_ready) {
         xtrace_ot_aes_debug(s->ot_id, "IV not ready");
         return false;
     }
 
-    if (!ot_aes_is_manual(r)) {
-        /* auto mode */
-        if (c->do_full) {
-            /* cannot schedule a round if output FIFO has not been emptied */
-            xtrace_ot_aes_debug(s->ot_id, "DO full");
-            return false;
-        }
-    } else {
+    if (ot_aes_is_manual(r)) {
         if (!(r->trigger & R_TRIGGER_START_MASK)) {
             /* cannot execute in manual mode w/o an explicit trigger */
             xtrace_ot_aes_debug(s->ot_id, "manual not triggered");
             return false;
         }
+
+        /* No other checks for inputs or key validity in manual mode */
+        return true;
+    }
+    /* auto mode */
+
+    if (!c->key_ready) {
+        xtrace_ot_aes_debug(s->ot_id, "key not ready");
+        return false;
+    }
+
+    if (c->do_full) {
+        /* cannot schedule a round if output FIFO has not been emptied */
+        xtrace_ot_aes_debug(s->ot_id, "DO full");
+        return false;
     }
 
     if (!c->di_full) {
         xtrace_ot_aes_debug(s->ot_id, "DI not filled");
     }
 
-    /* TODO: not sure if this also applies in manual mode */
     return c->di_full;
 }
 
@@ -708,7 +704,7 @@ static void ot_aes_update_config(OtAESState *s)
 
     OtAESContext *c = s->ctx;
 
-    if (!c->key_ready) {
+    if (!ot_aes_is_manual(s->regs) && !c->key_ready) {
         return;
     }
 
