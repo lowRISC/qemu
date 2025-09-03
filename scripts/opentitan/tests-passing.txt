@@ -95,9 +95,11 @@
 //sw/device/tests:kmac_mode_kmac_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:kmac_smoketest_sim_qemu_rom_with_fake_keys
 //sw/device/tests:otbn_ecdsa_op_irq_test_sim_qemu_rom_with_fake_keys
+//sw/device/tests:otbn_irq_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:otbn_isa_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:otbn_randomness_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:otbn_rsa_test_sim_qemu_rom_with_fake_keys
+//sw/device/tests:otbn_smoketest_sim_qemu_rom_with_fake_keys
 //sw/device/tests:plic_sw_irq_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:pmp_smoketest_napot_sim_qemu_rom_with_fake_keys
 //sw/device/tests:pmp_smoketest_tor_sim_qemu_rom_with_fake_keys
