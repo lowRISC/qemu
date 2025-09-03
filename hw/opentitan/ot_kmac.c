@@ -402,6 +402,7 @@ struct OtKMACState {
 
     OtKMACFsmState state; /* Main FSM state */
     bool invalid_state_read;
+    bool error_awaiting_sw; /* error awaiting SW acknowledgement */
     hash_state ltc_state; /* TomCrypt hash state */
     uint8_t keccak_state[KECCAK_STATE_BYTES];
 
@@ -501,6 +502,7 @@ static void ot_kmac_report_error(OtKMACState *s, int code, uint32_t info)
     error = FIELD_DP32(error, ERR_CODE, CODE, code);
     error = FIELD_DP32(error, ERR_CODE, INFO, info);
 
+    s->error_awaiting_sw = true;
     s->regs[R_ERR_CODE] = error;
     s->regs[R_INTR_STATE] |= INTR_KMAC_ERR_MASK;
     ot_kmac_update_irq(s);
@@ -663,6 +665,23 @@ static void ot_kmac_reset_state(OtKMACState *s)
 
 static void ot_kmac_start_pending_app(OtKMACState *s);
 
+static void ot_kmac_return_to_idle(OtKMACState *s)
+{
+    /* flush state */
+    ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
+    ot_kmac_reset_state(s);
+    ot_kmac_cancel_bh(s);
+    /* now is a good time to check for pending app requests */
+    ot_kmac_start_pending_app(s);
+}
+
+static void ot_kmac_complete_app_req(OtKMACState *s)
+{
+    trace_ot_kmac_app_finished(s->ot_id, s->current_app->index);
+    s->current_app = NULL;
+    ot_kmac_return_to_idle(s);
+}
+
 /* BH handler for processing FIFO and compute */
 static void ot_kmac_process(void *opaque)
 {
@@ -764,13 +783,9 @@ static void ot_kmac_process(void *opaque)
                 memset(&rsp.digest_share1[0], 0, sizeof(rsp.digest_share1));
                 s->current_app->fn(s->current_app->opaque, &rsp);
             }
-            ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
-            ot_kmac_reset_state(s);
-            ot_kmac_cancel_bh(s);
-            trace_ot_kmac_app_finished(s->ot_id, s->current_app->index);
-            s->current_app = NULL;
-            /* now is a good time to check for pending app requests */
-            ot_kmac_start_pending_app(s);
+            if (!s->error_awaiting_sw) {
+                ot_kmac_complete_app_req(s);
+            }
         } else {
             /* SW mode, go to ABSORBED state */
             ot_kmac_change_fsm_state(s, KMAC_ST_ABSORBED);
@@ -993,8 +1008,81 @@ static void ot_kmac_process_start(OtKMACState *s)
     }
 }
 
-static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
+static void ot_kmac_sw_err_processed(OtKMACState *s, int cmd)
 {
+    s->error_awaiting_sw = false;
+
+    if (s->current_app) {
+        /*
+         * If we have already received the entire app request data and sent a
+         * response, now we just need SW acknowledgement to complete.
+         *
+         * If we haven't got all the data, we should wait for it all before
+         * sending a response (but we store SW acknowledgement).
+         */
+        if (s->state == KMAC_ST_PROCESSING || s->state == KMAC_ST_SQUEEZING) {
+            ot_kmac_complete_app_req(s);
+        }
+    } else {
+        /* for SW: ignore further msg feed, absorb, report done & go to idle */
+        switch (s->state) {
+        case KMAC_ST_IDLE:
+        case KMAC_ST_MSG_FEED:
+            ot_kmac_change_fsm_state(s, KMAC_ST_PROCESSING);
+            /* fallthrough */
+        case KMAC_ST_PROCESSING:
+        case KMAC_ST_SQUEEZING:
+            ot_kmac_process((void *)s);
+            /* fallthrough */
+        case KMAC_ST_ABSORBED:
+            ot_kmac_return_to_idle(s);
+            break;
+        case KMAC_ST_TERMINAL_ERROR:
+            break;
+        default:
+            g_assert_not_reached();
+        }
+    }
+
+    /* Clear the status / alert */
+    s->regs[R_STATUS] &= ~R_STATUS_ALERT_RECOV_CTRL_UPDATE_ERR_MASK;
+    ot_kmac_update_alert(s);
+
+    /* Clear the error */
+    s->regs[R_ERR_CODE] = 0u;
+
+    /* SW shoud not send a command along with the err_processed bit */
+    if (cmd != OT_KMAC_CMD_NONE) {
+        if (s->current_app) {
+            ot_kmac_report_error(s, OT_KMAC_ERR_SW_ISSUED_CMD_IN_APP_ACTIVE,
+                                 cmd);
+        } else {
+            /* see error encoding in (hw/ip/kmac/rtl/kmac_pkg.sv) */
+            uint32_t info = (1 << 11u);
+            info |= (uint32_t)s->state << 8u;
+            info |= cmd;
+            ot_kmac_report_error(s, OT_KMAC_ERR_SW_CMD_SEQUENCE, info);
+        }
+    }
+}
+
+
+static void ot_kmac_process_sw_command(OtKMACState *s, uint32_t cmd_reg)
+{
+    bool err_processed = (cmd_reg & R_CMD_ERR_PROCESSED_MASK) != 0;
+    int cmd = (int)FIELD_EX32(cmd_reg, CMD, CMD);
+    if (s->error_awaiting_sw) {
+        if (err_processed) {
+            ot_kmac_sw_err_processed(s, cmd);
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: Control write without err_processed whilst "
+                          "KMAC is handling an error\n",
+                          __func__, s->ot_id);
+        }
+        return;
+    }
+
     uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
     bool err_swsequence = false;
     bool err_modestrength = false;
@@ -1075,12 +1163,7 @@ static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
             ot_kmac_change_fsm_state(s, KMAC_ST_SQUEEZING);
             ot_kmac_trigger_deferred_bh(s);
         } else if (cmd == OT_KMAC_CMD_DONE) {
-            /* flush state */
-            ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
-            ot_kmac_reset_state(s);
-            ot_kmac_cancel_bh(s);
-            /* now is a good time to check for pending app requests */
-            ot_kmac_start_pending_app(s);
+            ot_kmac_return_to_idle(s);
         } else {
             err_swsequence = true;
         }
@@ -1124,7 +1207,7 @@ static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
             g_assert_not_reached();
         }
         ot_kmac_report_error(s, code, info);
-    } else {
+    } else if (!s->error_awaiting_sw) {
         s->regs[R_ERR_CODE] = 0;
     }
 }
@@ -1339,9 +1422,7 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         }
         break;
     case R_CMD: {
-        int cmd = (int)FIELD_EX32(val32, CMD, CMD);
-
-        ot_kmac_process_sw_command(s, cmd);
+        ot_kmac_process_sw_command(s, val32);
 
         if (val32 & R_CMD_ENTROPY_REQ_MASK) {
             /* TODO: implement entropy */
@@ -1355,12 +1436,6 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             qemu_log_mask(LOG_UNIMP,
                           "%s: %s: CMD.HASH_CNT_CLR is not supported\n",
                           __func__, s->ot_id);
-        }
-
-        if (val32 & R_CMD_ERR_PROCESSED_MASK) {
-            /* TODO: implement entropy */
-            s->regs[R_STATUS] &= ~R_STATUS_ALERT_RECOV_CTRL_UPDATE_ERR_MASK;
-            ot_kmac_update_alert(s);
         }
         break;
     }
@@ -1777,6 +1852,7 @@ static void ot_kmac_reset_enter(Object *obj, ResetType type)
     s->current_app = NULL;
     s->pending_apps = 0;
     s->invalid_state_read = false;
+    s->error_awaiting_sw = false;
     memset(s->regs, 0, sizeof(*(s->regs)));
     s->regs[R_STATUS] = 0x4001u;
     ot_shadow_reg_init(&s->cfg, 0u);
