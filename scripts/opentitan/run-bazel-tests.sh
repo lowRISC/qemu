@@ -37,12 +37,6 @@ qemu_path="$(realpath "$qemu_path")"
 passing_tests_path="${qemu_path}/scripts/opentitan/tests-passing.txt"
 flaky_tests_path="${qemu_path}/scripts/opentitan/tests-flaky.txt"
 
-# Check the test lists are sorted:
-if ! sort --check "$passing_tests_path" || ! sort --check "$flaky_tests_path"; then
-  echo >&2 "ERROR: test lists must be sorted!"
-  exit 1
-fi
-
 # Ensure QEMU has already been built in `./build`:
 if [ ! -x "${qemu_path}/build/qemu-system-riscv32" ]; then
   echo >&2 "ERROR: expected QEMU binary at '${qemu_path}/build/qemu-system-riscv32'"
@@ -80,11 +74,11 @@ cd "$opentitan_path" >/dev/null
 
 ## COMPARE RESULTS
 
-# Write the flaky test list to a flat file:
-printf "%s\n" "$flaky_tests_path" | sort > "$flaky"
+# Ensure the flaky tests are sorted with the current locale.
+sort "$flaky_tests_path" > "$flaky"
 
 # Load the list of passing tests and strip flaky tests:
-comm -23 "$passing_tests_path" "$flaky" > "$expected"
+sort "$passing_tests_path" | comm -23 - "$flaky" > "$expected"
 
 # Find all the tests which passed in Bazel:
 grep "PASSED" "$results" | cut -d' ' -f1 | sort > "$all_passed"
