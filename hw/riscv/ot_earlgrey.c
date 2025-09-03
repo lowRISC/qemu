@@ -50,6 +50,7 @@
 #include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
+#include "hw/opentitan/ot_i2c.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
@@ -527,54 +528,51 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_I2C0] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_I2C,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40080000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "i2c0"),
-            IBEX_DEV_UINT_PROP("size", 0x80u),
-            IBEX_DEV_UINT_PROP("irq-count", 15u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_ALERT(0, 6)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
         )
     },
     [OT_EG_SOC_DEV_I2C1] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_I2C,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40090000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "i2c1"),
-            IBEX_DEV_UINT_PROP("size", 0x80u),
-            IBEX_DEV_UINT_PROP("irq-count", 15u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_ALERT(0, 7)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
         )
     },
     [OT_EG_SOC_DEV_I2C2] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_I2C,
         .memmap = MEMMAPENTRIES(
             { .base = 0x400a0000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "i2c2"),
-            IBEX_DEV_UINT_PROP("size", 0x80u),
-            IBEX_DEV_UINT_PROP("irq-count", 15u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_ALERT(0, 8)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
         )
     },
     [OT_EG_SOC_DEV_PATTGEN] = {

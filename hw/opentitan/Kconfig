@@ -72,7 +72,10 @@ config OT_GPIO_EG
 config OT_HMAC
     bool
 
-config OT_I2C_DJ
+config OT_I2C
+    imply I2C_ECHO
+    imply DS1338
+    select I2C
     bool
 
 config OT_IBEX_WRAPPER

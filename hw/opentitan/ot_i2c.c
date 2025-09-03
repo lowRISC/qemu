@@ -1,10 +1,12 @@
 /*
- * QEMU OpenTitan I2C Darjeeling device
+ * QEMU OpenTitan I2C device
  *
  * Copyright (c) 2024-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Duncan Laurie <duncan@rivosinc.com>
+ *  Alice Ziuziakowska <a.ziuziakowska@lowrisc.org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -32,11 +34,6 @@
  * and target mode enabled at the same time but notes it may not be validated
  * in hardware.  The register, FIFO, and interrupt interfaces are separate so
  * enabling host and target mode at the same time is supported in QEMU.
- *
- * This implementation currently only supports the OpenTitan Darjeeling
- * (Integrated Admissible Architecture) configuration which has diverged from
- * the OpenTitan Earl Grey Standalone Chip) configuration that is still under
- * active development.
  */
 
 /*
@@ -59,7 +56,8 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
-#include "hw/opentitan/ot_i2c_dj.h"
+#include "hw/opentitan/ot_i2c.h"
+#include "hw/qdev-clock.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_clock_src.h"
@@ -83,8 +81,8 @@ typedef enum {
     ACQ_FULL,
     UNEXP_STOP,
     HOST_TIMEOUT,
-    OT_I2C_DJ_IRQ_NUM
-} OtI2CDjInterrupt;
+    OT_I2C_IRQ_NUM
+} OtI2CInterrupt;
 
 /* clang-format off */
 REG32(INTR_STATE, 0x00u)
@@ -230,7 +228,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #undef REG_NAME_ENTRY
 
 #define IRQ_NAME_ENTRY(_irq_) [_irq_] = stringify(_irq_)
-static const char *IRQ_NAMES[OT_I2C_DJ_IRQ_NUM] = {
+static const char *IRQ_NAMES[OT_I2C_IRQ_NUM] = {
     /* clang-format off */
     IRQ_NAME_ENTRY(FMT_THRESHOLD),
     IRQ_NAME_ENTRY(RX_THRESHOLD),
@@ -251,16 +249,16 @@ static const char *IRQ_NAMES[OT_I2C_DJ_IRQ_NUM] = {
 };
 #undef IRQ_NAME_ENTRY
 
-#define OT_I2C_DJ_FIFO_SIZE 64u
+#define OT_I2C_FIFO_SIZE 64u
 
 typedef enum {
     SIGNAL_NONE,
     SIGNAL_START,
     SIGNAL_STOP,
     SIGNAL_RESTART
-} OtI2CDjSignal;
+} OtI2CSignal;
 
-struct OtI2CDjState {
+struct OtI2CState {
     SysBusDevice parent_obj;
 
     I2CBus *bus;
@@ -269,7 +267,7 @@ struct OtI2CDjState {
     MemoryRegion mmio;
 
     uint32_t regs[REGS_COUNT];
-    IbexIRQ irqs[OT_I2C_DJ_IRQ_NUM];
+    IbexIRQ irqs[OT_I2C_IRQ_NUM];
     IbexIRQ alert;
 
     /* FMT: Scheduled operations for host mode. */
@@ -282,7 +280,7 @@ struct OtI2CDjState {
     /*
      * ACQ: Received bytes + signals for target mode.
      * [7:0] = Data byte
-     * [9:8] = Signal (OtI2CDjSignal)
+     * [9:8] = Signal (OtI2CSignal)
      */
     OtFifo32 target_rx_fifo;
 
@@ -303,16 +301,16 @@ struct OtI2CDjState {
     DeviceState *clock_src;
 };
 
-struct OtI2CDjClass {
+struct OtI2CClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 };
 
-struct OtI2CDjTarget {
+struct OtI2CTarget {
     I2CSlave i2c;
 };
 
-static void ot_i2c_dj_update_irqs(OtI2CDjState *s)
+static void ot_i2c_update_irqs(OtI2CState *s)
 {
     uint32_t state_masked = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
 
@@ -327,8 +325,7 @@ static void ot_i2c_dj_update_irqs(OtI2CDjState *s)
     }
 }
 
-static void ot_i2c_dj_irq_set_state(OtI2CDjState *s, OtI2CDjInterrupt irq,
-                                    bool en)
+static void ot_i2c_irq_set_state(OtI2CState *s, OtI2CInterrupt irq, bool en)
 {
     unsigned long *addr = (unsigned long *)&s->regs[R_INTR_STATE];
 
@@ -347,20 +344,20 @@ static void ot_i2c_dj_irq_set_state(OtI2CDjState *s, OtI2CDjInterrupt irq,
         clear_bit(irq, addr);
     }
 
-    ot_i2c_dj_update_irqs(s);
+    ot_i2c_update_irqs(s);
 }
 
-static bool ot_i2c_dj_host_enabled(const OtI2CDjState *s)
+static bool ot_i2c_host_enabled(const OtI2CState *s)
 {
     return (bool)ARRAY_FIELD_EX32(s->regs, CTRL, ENABLEHOST);
 }
 
-static bool ot_i2c_dj_target_enabled(const OtI2CDjState *s)
+static bool ot_i2c_target_enabled(const OtI2CState *s)
 {
     return (bool)ARRAY_FIELD_EX32(s->regs, CTRL, ENABLETARGET);
 }
 
-static uint32_t ot_i2c_dj_get_tx_threshold(const OtI2CDjState *s)
+static uint32_t ot_i2c_get_tx_threshold(const OtI2CState *s)
 {
     const uint32_t fmt_level[] = { 1u, 4u, 8u, 16u };
     uint32_t fmt_ilvl;
@@ -369,7 +366,7 @@ static uint32_t ot_i2c_dj_get_tx_threshold(const OtI2CDjState *s)
     return fmt_level[fmt_ilvl > ARRAY_SIZE(fmt_level) ? 1u : fmt_ilvl];
 }
 
-static uint32_t ot_i2c_dj_get_rx_threshold(const OtI2CDjState *s)
+static uint32_t ot_i2c_get_rx_threshold(const OtI2CState *s)
 {
     const uint32_t rx_level[] = { 1u, 4u, 8u, 16u, 30u };
     uint32_t rx_ilvl;
@@ -378,7 +375,7 @@ static uint32_t ot_i2c_dj_get_rx_threshold(const OtI2CDjState *s)
     return rx_level[rx_ilvl > ARRAY_SIZE(rx_level) ? 1u : rx_ilvl];
 }
 
-static void ot_i2c_dj_host_reset_tx_fifo(OtI2CDjState *s)
+static void ot_i2c_host_reset_tx_fifo(OtI2CState *s)
 {
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_FMT_THRESHOLD, 0);
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_FMT_OVERFLOW, 0);
@@ -386,29 +383,29 @@ static void ot_i2c_dj_host_reset_tx_fifo(OtI2CDjState *s)
     s->host_tx_threshold = 0;
 }
 
-static void ot_i2c_dj_host_reset_rx_fifo(OtI2CDjState *s)
+static void ot_i2c_host_reset_rx_fifo(OtI2CState *s)
 {
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_RX_THRESHOLD, 0);
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_RX_OVERFLOW, 0);
     fifo8_reset(&s->host_rx_fifo);
 }
 
-static void ot_i2c_dj_target_reset_tx_fifo(OtI2CDjState *s)
+static void ot_i2c_target_reset_tx_fifo(OtI2CState *s)
 {
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_TX_OVERFLOW, 0);
     fifo8_reset(&s->target_tx_fifo);
 }
 
-static void ot_i2c_dj_target_reset_rx_fifo(OtI2CDjState *s)
+static void ot_i2c_target_reset_rx_fifo(OtI2CState *s)
 {
     SHARED_ARRAY_FIELD_DP32(s->regs, R_INTR_STATE, INTR_ACQ_FULL, 0);
     ot_fifo32_reset(&s->target_rx_fifo);
     s->target_rx_nack = false;
 }
 
-static uint8_t ot_i2c_dj_host_read_rx_fifo(OtI2CDjState *s)
+static uint8_t ot_i2c_host_read_rx_fifo(OtI2CState *s)
 {
-    if (!ot_i2c_dj_host_enabled(s)) {
+    if (!ot_i2c_host_enabled(s)) {
         return 0;
     }
     if (fifo8_is_empty(&s->host_rx_fifo)) {
@@ -418,7 +415,7 @@ static uint8_t ot_i2c_dj_host_read_rx_fifo(OtI2CDjState *s)
     return fifo8_pop(&s->host_rx_fifo);
 }
 
-static void ot_i2c_dj_host_send(OtI2CDjState *s)
+static void ot_i2c_host_send(OtI2CState *s)
 {
     trace_ot_i2c_host_send(s->ot_id, fifo8_num_used(&s->host_tx_fifo),
                            s->host_tx_threshold);
@@ -427,7 +424,7 @@ static void ot_i2c_dj_host_send(OtI2CDjState *s)
     while (!fifo8_is_empty(&s->host_tx_fifo)) {
         if (i2c_send(s->bus, fifo8_pop(&s->host_tx_fifo))) {
             /* Error while sending byte, raise "no ACK" interrupt. */
-            ot_i2c_dj_irq_set_state(s, NAK, true);
+            ot_i2c_irq_set_state(s, NAK, true);
             break;
         }
     }
@@ -439,14 +436,14 @@ static void ot_i2c_dj_host_send(OtI2CDjState *s)
      */
     if (s->host_tx_threshold &&
         fifo8_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
-        ot_i2c_dj_irq_set_state(s, FMT_THRESHOLD, true);
+        ot_i2c_irq_set_state(s, FMT_THRESHOLD, true);
         s->host_tx_threshold = 0;
     }
 }
 
-static uint32_t ot_i2c_dj_target_read_rx_fifo(OtI2CDjState *s)
+static uint32_t ot_i2c_target_read_rx_fifo(OtI2CState *s)
 {
-    if (!ot_i2c_dj_target_enabled(s)) {
+    if (!ot_i2c_target_enabled(s)) {
         return 0;
     }
     if (ot_fifo32_is_empty(&s->target_rx_fifo)) {
@@ -456,9 +453,9 @@ static uint32_t ot_i2c_dj_target_read_rx_fifo(OtI2CDjState *s)
     return ot_fifo32_pop(&s->target_rx_fifo);
 }
 
-static void ot_i2c_dj_target_write_tx_fifo(OtI2CDjState *s, uint8_t val)
+static void ot_i2c_target_write_tx_fifo(OtI2CState *s, uint8_t val)
 {
-    if (!ot_i2c_dj_target_enabled(s)) {
+    if (!ot_i2c_target_enabled(s)) {
         return;
     }
 
@@ -466,7 +463,7 @@ static void ot_i2c_dj_target_write_tx_fifo(OtI2CDjState *s, uint8_t val)
     if (fifo8_is_full(&s->target_tx_fifo)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Target TX FIFO overflow\n",
                       __func__, s->ot_id);
-        ot_i2c_dj_irq_set_state(s, TX_OVERFLOW, true);
+        ot_i2c_irq_set_state(s, TX_OVERFLOW, true);
         return;
     }
 
@@ -474,7 +471,7 @@ static void ot_i2c_dj_target_write_tx_fifo(OtI2CDjState *s, uint8_t val)
     fifo8_push(&s->target_tx_fifo, val);
 }
 
-static bool ot_i2c_dj_check_timings(OtI2CDjState *s)
+static bool ot_i2c_check_timings(OtI2CState *s)
 {
     if (!s->pclk) {
         return 0;
@@ -605,9 +602,9 @@ static bool ot_i2c_dj_check_timings(OtI2CDjState *s)
     return res;
 }
 
-static void ot_i2c_dj_clock_input(void *opaque, int irq, int level)
+static void ot_i2c_clock_input(void *opaque, int irq, int level)
 {
-    OtI2CDjState *s = opaque;
+    OtI2CState *s = opaque;
 
     g_assert(irq == 0);
 
@@ -619,9 +616,9 @@ static void ot_i2c_dj_clock_input(void *opaque, int irq, int level)
     /* TODO: disable I2C transfers when PCLK is 0 */
 }
 
-static uint64_t ot_i2c_dj_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ot_i2c_read(void *opaque, hwaddr addr, unsigned size)
 {
-    OtI2CDjState *s = opaque;
+    OtI2CState *s = opaque;
     uint32_t val32 = 0;
     hwaddr reg = R32_OFF(addr);
     (void)size;
@@ -676,13 +673,13 @@ static uint64_t ot_i2c_dj_read(void *opaque, hwaddr addr, unsigned size)
         }
         break;
     case R_RDATA:
-        val32 = (uint32_t)ot_i2c_dj_host_read_rx_fifo(s);
+        val32 = (uint32_t)ot_i2c_host_read_rx_fifo(s);
         break;
     case R_ACQDATA:
-        val32 = (uint32_t)ot_i2c_dj_target_read_rx_fifo(s);
+        val32 = (uint32_t)ot_i2c_target_read_rx_fifo(s);
         /* Deassert level interrupt state if FIFO is not full. */
         if (!ot_fifo32_is_full(&s->target_rx_fifo)) {
-            ot_i2c_dj_irq_set_state(s, ACQ_FULL, false);
+            ot_i2c_irq_set_state(s, ACQ_FULL, false);
         }
         break;
     case R_FIFO_STATUS:
@@ -727,7 +724,7 @@ static uint64_t ot_i2c_dj_read(void *opaque, hwaddr addr, unsigned size)
     return (uint64_t)val32;
 }
 
-static unsigned ot_i2c_dj_host_recv_fill_fifo(OtI2CDjState *s, unsigned chunk)
+static unsigned ot_i2c_host_recv_fill_fifo(OtI2CState *s, unsigned chunk)
 {
     unsigned index = 0;
 
@@ -744,15 +741,15 @@ static unsigned ot_i2c_dj_host_recv_fill_fifo(OtI2CDjState *s, unsigned chunk)
     }
 
     /* Check if rx_threshold interrupt should be asserted. */
-    if (fifo8_num_used(&s->host_rx_fifo) > ot_i2c_dj_get_rx_threshold(s)) {
-        ot_i2c_dj_irq_set_state(s, RX_THRESHOLD, true);
+    if (fifo8_num_used(&s->host_rx_fifo) > ot_i2c_get_rx_threshold(s)) {
+        ot_i2c_irq_set_state(s, RX_THRESHOLD, true);
     }
 
     /* Return number of bytes read. */
     return index;
 }
 
-static void ot_i2c_dj_write_fdata(OtI2CDjState *s, uint32_t fdata)
+static void ot_i2c_write_fdata(OtI2CState *s, uint32_t fdata)
 {
     uint8_t fbyte = FIELD_EX32(fdata, FDATA, FBYTE);
     bool readb = FIELD_EX32(fdata, FDATA, READB);
@@ -760,7 +757,7 @@ static void ot_i2c_dj_write_fdata(OtI2CDjState *s, uint32_t fdata)
     bool stop = FIELD_EX32(fdata, FDATA, STOP);
     bool rcont = FIELD_EX32(fdata, FDATA, RCONT);
 
-    if (!ot_i2c_dj_host_enabled(s)) {
+    if (!ot_i2c_host_enabled(s)) {
         return;
     }
 
@@ -780,11 +777,11 @@ static void ot_i2c_dj_write_fdata(OtI2CDjState *s, uint32_t fdata)
         do {
             if (fifo8_is_full(&s->host_rx_fifo)) {
                 /* End the transfer and exit. */
-                ot_i2c_dj_irq_set_state(s, HOST_TIMEOUT, true);
+                ot_i2c_irq_set_state(s, HOST_TIMEOUT, true);
                 i2c_end_transfer(s->bus);
                 return;
             }
-            index = ot_i2c_dj_host_recv_fill_fifo(s, bytes_to_read);
+            index = ot_i2c_host_recv_fill_fifo(s, bytes_to_read);
             if (index == 0 || index >= bytes_to_read) {
                 break;
             }
@@ -805,7 +802,7 @@ static void ot_i2c_dj_write_fdata(OtI2CDjState *s, uint32_t fdata)
             if (fifo8_is_full(&s->host_tx_fifo)) {
                 qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: TX FIFO overflow\n",
                               __func__, s->ot_id);
-                ot_i2c_dj_irq_set_state(s, FMT_OVERFLOW, true);
+                ot_i2c_irq_set_state(s, FMT_OVERFLOW, true);
                 return;
             }
 
@@ -813,14 +810,14 @@ static void ot_i2c_dj_write_fdata(OtI2CDjState *s, uint32_t fdata)
             fifo8_push(&s->host_tx_fifo, fbyte);
 
             /* Check if threshold has been reached. */
-            s->host_tx_threshold = ot_i2c_dj_get_tx_threshold(s);
+            s->host_tx_threshold = ot_i2c_get_tx_threshold(s);
             if (fifo8_num_used(&s->host_tx_fifo) < s->host_tx_threshold) {
                 /* Reset the cached threshold level. */
                 s->host_tx_threshold = 0;
             }
 
             /* Try to send contents of TX FIFO to the target. */
-            ot_i2c_dj_host_send(s);
+            ot_i2c_host_send(s);
         }
     }
 
@@ -829,17 +826,17 @@ static void ot_i2c_dj_write_fdata(OtI2CDjState *s, uint32_t fdata)
         i2c_end_transfer(s->bus);
 
         /* Signal command completion. */
-        ot_i2c_dj_irq_set_state(s, CMD_COMPLETE, true);
+        ot_i2c_irq_set_state(s, CMD_COMPLETE, true);
 
         /* Allow target mode to process data. */
         i2c_schedule_pending_master(s->bus);
     }
 }
 
-static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
-                            unsigned size)
+static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
+                         unsigned size)
 {
-    OtI2CDjState *s = opaque;
+    OtI2CState *s = opaque;
     uint32_t val32 = val64;
     hwaddr reg = R32_OFF(addr);
     uint64_t pc = ibex_get_current_pc();
@@ -852,17 +849,17 @@ static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_INTR_STATE:
         val32 &= INTR_RW1C_MASK;
         s->regs[reg] &= ~val32;
-        ot_i2c_dj_update_irqs(s);
+        ot_i2c_update_irqs(s);
         break;
     case R_INTR_ENABLE:
         val32 &= INTR_MASK;
         s->regs[reg] = val32;
-        ot_i2c_dj_update_irqs(s);
+        ot_i2c_update_irqs(s);
         break;
     case R_INTR_TEST:
         val32 &= INTR_MASK;
         s->regs[R_INTR_STATE] |= val32;
-        ot_i2c_dj_update_irqs(s);
+        ot_i2c_update_irqs(s);
         break;
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
@@ -903,16 +900,16 @@ static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         if (s->regs[reg]) {
             /* check timings once, each time one or more timings are updated */
             if (s->check_timings) {
-                ot_i2c_dj_check_timings(s);
+                ot_i2c_check_timings(s);
                 s->check_timings = false;
             }
         }
         break;
     case R_FDATA:
-        ot_i2c_dj_write_fdata(s, val32);
+        ot_i2c_write_fdata(s, val32);
         break;
     case R_TXDATA:
-        ot_i2c_dj_target_write_tx_fifo(s, FIELD_EX8(val32, TXDATA, TXDATA));
+        ot_i2c_target_write_tx_fifo(s, FIELD_EX8(val32, TXDATA, TXDATA));
         break;
     case R_FIFO_CTRL:
         /* RX FIFO depth above this value raises rx_threshold interrupt. */
@@ -924,16 +921,16 @@ static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
                          FIELD_EX32(val32, FIFO_CTRL, FMTILVL));
 
         if (FIELD_EX32(val32, FIFO_CTRL, RXRST)) {
-            ot_i2c_dj_host_reset_rx_fifo(s);
+            ot_i2c_host_reset_rx_fifo(s);
         }
         if (FIELD_EX32(val32, FIFO_CTRL, TXRST)) {
-            ot_i2c_dj_target_reset_tx_fifo(s);
+            ot_i2c_target_reset_tx_fifo(s);
         }
         if (FIELD_EX32(val32, FIFO_CTRL, FMTRST)) {
-            ot_i2c_dj_host_reset_tx_fifo(s);
+            ot_i2c_host_reset_tx_fifo(s);
         }
         if (FIELD_EX32(val32, FIFO_CTRL, ACQRST)) {
-            ot_i2c_dj_target_reset_rx_fifo(s);
+            ot_i2c_target_reset_rx_fifo(s);
         }
         break;
     case R_OVRD:
@@ -984,8 +981,8 @@ static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
-static void ot_i2c_dj_target_set_acqdata(OtI2CDjState *s, uint32_t data,
-                                         OtI2CDjSignal signal)
+static void ot_i2c_target_set_acqdata(OtI2CState *s, uint32_t data,
+                                      OtI2CSignal signal)
 {
     uint32_t val32 = 0;
 
@@ -1003,7 +1000,7 @@ static void ot_i2c_dj_target_set_acqdata(OtI2CDjState *s, uint32_t data,
 
     /* See if this entry filled the queue. */
     if (ot_fifo32_is_full(&s->target_rx_fifo)) {
-        ot_i2c_dj_irq_set_state(s, ACQ_FULL, true);
+        ot_i2c_irq_set_state(s, ACQ_FULL, true);
     }
 
     trace_ot_i2c_target_set_acqdata(s->ot_id,
@@ -1011,32 +1008,32 @@ static void ot_i2c_dj_target_set_acqdata(OtI2CDjState *s, uint32_t data,
                                     data, signal);
 }
 
-static int ot_i2c_dj_target_event(I2CSlave *target, enum i2c_event event)
+static int ot_i2c_target_event(I2CSlave *target, enum i2c_event event)
 {
     BusState *abus = qdev_get_parent_bus(DEVICE(target));
-    OtI2CDjState *s = OT_I2C_DJ(abus->parent);
+    OtI2CState *s = OT_I2C(abus->parent);
     int ret = 0;
 
-    if (!ot_i2c_dj_target_enabled(s)) {
+    if (!ot_i2c_target_enabled(s)) {
         return -1;
     }
 
     switch (event) {
     case I2C_START_SEND_ASYNC:
         /* Set the first byte to the target address + RW bit as 0. */
-        ot_i2c_dj_target_set_acqdata(s, target->address << 1, SIGNAL_START);
+        ot_i2c_target_set_acqdata(s, target->address << 1u, SIGNAL_START);
         i2c_ack(s->bus);
         break;
     case I2C_START_RECV:
         /* Set the first byte to the target address + RW bit as 1. */
-        ot_i2c_dj_target_set_acqdata(s, target->address << 1 | 1, SIGNAL_START);
+        ot_i2c_target_set_acqdata(s, target->address << 1u | 1u, SIGNAL_START);
         if (ot_fifo32_num_used(&s->target_rx_fifo) > 1) {
             /*
              * Potentially an unhandled condition in the ACQ fifo. Datasheet
              * says to stretch the clock in this situation so assert that
              * interrupt and let the driver decide what to do.
              */
-            ot_i2c_dj_irq_set_state(s, TX_STRETCH, true);
+            ot_i2c_irq_set_state(s, TX_STRETCH, true);
         }
         s->target_rx_nack = false;
         i2c_ack(s->bus);
@@ -1051,11 +1048,11 @@ static int ot_i2c_dj_target_event(I2CSlave *target, enum i2c_event event)
          * Indicate whether a NACK was received in the first bit of
          * the data byte.  Only used for read and ignored for write.
          */
-        ot_i2c_dj_target_set_acqdata(s, s->target_rx_nack, SIGNAL_STOP);
+        ot_i2c_target_set_acqdata(s, s->target_rx_nack, SIGNAL_STOP);
         s->target_rx_nack = false;
 
         /* Assert command complete interrupt. */
-        ot_i2c_dj_irq_set_state(s, CMD_COMPLETE, true);
+        ot_i2c_irq_set_state(s, CMD_COMPLETE, true);
         break;
     default:
         qemu_log_mask(LOG_UNIMP, "%s: %s: I2C event %d unimplemented\n",
@@ -1066,13 +1063,13 @@ static int ot_i2c_dj_target_event(I2CSlave *target, enum i2c_event event)
     return ret;
 }
 
-static uint8_t ot_i2c_dj_target_recv(I2CSlave *target)
+static uint8_t ot_i2c_target_recv(I2CSlave *target)
 {
     BusState *abus = qdev_get_parent_bus(DEVICE(target));
-    OtI2CDjState *s = OT_I2C_DJ(abus->parent);
+    OtI2CState *s = OT_I2C(abus->parent);
     uint8_t data;
 
-    if (!ot_i2c_dj_target_enabled(s)) {
+    if (!ot_i2c_target_enabled(s)) {
         return 0;
     }
 
@@ -1087,58 +1084,58 @@ static uint8_t ot_i2c_dj_target_recv(I2CSlave *target)
     return data;
 }
 
-static void ot_i2c_dj_target_send_async(I2CSlave *target, uint8_t data)
+static void ot_i2c_target_send_async(I2CSlave *target, uint8_t data)
 {
     BusState *abus = qdev_get_parent_bus(DEVICE(target));
-    OtI2CDjState *s = OT_I2C_DJ(abus->parent);
+    OtI2CState *s = OT_I2C(abus->parent);
 
-    if (ot_i2c_dj_target_enabled(s)) {
+    if (ot_i2c_target_enabled(s)) {
         /* Send data byte with no signal flags. */
-        ot_i2c_dj_target_set_acqdata(s, data, SIGNAL_NONE);
+        ot_i2c_target_set_acqdata(s, data, SIGNAL_NONE);
         i2c_ack(s->bus);
     }
 }
 
-static void ot_i2c_dj_target_class_init(ObjectClass *klass, void *data)
+static void ot_i2c_target_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
     (void)data;
 
     dc->desc = "OpenTitan I2C Target";
-    sc->event = &ot_i2c_dj_target_event;
-    sc->send_async = &ot_i2c_dj_target_send_async;
-    sc->recv = &ot_i2c_dj_target_recv;
+    sc->event = &ot_i2c_target_event;
+    sc->send_async = &ot_i2c_target_send_async;
+    sc->recv = &ot_i2c_target_recv;
 }
 
-static const TypeInfo ot_i2c_dj_target_info = {
-    .name = TYPE_OT_I2C_DJ_TARGET,
+static const TypeInfo ot_i2c_target_info = {
+    .name = TYPE_OT_I2C_TARGET,
     .parent = TYPE_I2C_SLAVE,
-    .instance_size = sizeof(OtI2CDjState),
+    .instance_size = sizeof(OtI2CState),
+    .class_init = &ot_i2c_target_class_init,
     .class_size = sizeof(I2CSlaveClass),
-    .class_init = &ot_i2c_dj_target_class_init,
 };
 
-static const MemoryRegionOps ot_i2c_dj_ops = {
-    .read = &ot_i2c_dj_read,
-    .write = &ot_i2c_dj_write,
+static const MemoryRegionOps ot_i2c_ops = {
+    .read = &ot_i2c_read,
+    .write = &ot_i2c_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
 };
 
-static Property ot_i2c_dj_properties[] = {
-    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtI2CDjState, ot_id),
-    DEFINE_PROP_STRING("clock-name", OtI2CDjState, clock_name),
-    DEFINE_PROP_LINK("clock-src", OtI2CDjState, clock_src, TYPE_DEVICE,
+static Property ot_i2c_properties[] = {
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtI2CState, ot_id),
+    DEFINE_PROP_STRING("clock-name", OtI2CState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtI2CState, clock_src, TYPE_DEVICE,
                      DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ot_i2c_dj_reset_enter(Object *obj, ResetType type)
+static void ot_i2c_reset_enter(Object *obj, ResetType type)
 {
-    OtI2CDjClass *c = OT_I2C_DJ_GET_CLASS(obj);
-    OtI2CDjState *s = OT_I2C_DJ(obj);
+    OtI2CClass *c = OT_I2C_GET_CLASS(obj);
+    OtI2CState *s = OT_I2C(obj);
 
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
@@ -1153,10 +1150,10 @@ static void ot_i2c_dj_reset_enter(Object *obj, ResetType type)
 
     memset(s->regs, 0, sizeof(s->regs));
 
-    ot_i2c_dj_host_reset_tx_fifo(s);
-    ot_i2c_dj_host_reset_rx_fifo(s);
-    ot_i2c_dj_target_reset_tx_fifo(s);
-    ot_i2c_dj_target_reset_rx_fifo(s);
+    ot_i2c_host_reset_tx_fifo(s);
+    ot_i2c_host_reset_rx_fifo(s);
+    ot_i2c_target_reset_tx_fifo(s);
+    ot_i2c_target_reset_rx_fifo(s);
 
     if (!s->clock_src_name) {
         IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
@@ -1171,9 +1168,9 @@ static void ot_i2c_dj_reset_enter(Object *obj, ResetType type)
     s->check_timings = true;
 }
 
-static void ot_i2c_dj_realize(DeviceState *dev, Error **errp)
+static void ot_i2c_realize(DeviceState *dev, Error **errp)
 {
-    OtI2CDjState *s = OT_I2C_DJ(dev);
+    OtI2CState *s = OT_I2C(dev);
     (void)errp;
 
     g_assert(s->ot_id);
@@ -1181,61 +1178,61 @@ static void ot_i2c_dj_realize(DeviceState *dev, Error **errp)
     g_assert(s->clock_src);
     OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
 
-    qdev_init_gpio_in_named(DEVICE(s), &ot_i2c_dj_clock_input, "clock-in", 1);
+    qdev_init_gpio_in_named(DEVICE(s), &ot_i2c_clock_input, "clock-in", 1);
 
     /* TODO: check if the following can be moved to ot_i2c_dj_init */
-    s->bus = i2c_init_bus(dev, TYPE_OT_I2C_DJ);
-    s->target = i2c_slave_create_simple(s->bus, TYPE_OT_I2C_DJ_TARGET, 0xff);
+    s->bus = i2c_init_bus(dev, TYPE_OT_I2C);
+    s->target = i2c_slave_create_simple(s->bus, TYPE_OT_I2C_TARGET, 0xff);
 }
 
-static void ot_i2c_dj_init(Object *obj)
+static void ot_i2c_init(Object *obj)
 {
-    OtI2CDjState *s = OT_I2C_DJ(obj);
+    OtI2CState *s = OT_I2C(obj);
 
     for (unsigned index = 0; index < ARRAY_SIZE(s->irqs); index++) {
         ibex_sysbus_init_irq(obj, &s->irqs[index]);
     }
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
-    memory_region_init_io(&s->mmio, obj, &ot_i2c_dj_ops, s, TYPE_OT_I2C_DJ,
+    memory_region_init_io(&s->mmio, obj, &ot_i2c_ops, s, TYPE_OT_I2C,
                           REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
-    fifo8_create(&s->host_tx_fifo, OT_I2C_DJ_FIFO_SIZE);
-    fifo8_create(&s->host_rx_fifo, OT_I2C_DJ_FIFO_SIZE);
-    fifo8_create(&s->target_tx_fifo, OT_I2C_DJ_FIFO_SIZE);
-    ot_fifo32_create(&s->target_rx_fifo, OT_I2C_DJ_FIFO_SIZE);
+    fifo8_create(&s->host_tx_fifo, OT_I2C_FIFO_SIZE);
+    fifo8_create(&s->host_rx_fifo, OT_I2C_FIFO_SIZE);
+    fifo8_create(&s->target_tx_fifo, OT_I2C_FIFO_SIZE);
+    ot_fifo32_create(&s->target_rx_fifo, OT_I2C_FIFO_SIZE);
 }
 
-static void ot_i2c_dj_class_init(ObjectClass *klass, void *data)
+static void ot_i2c_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
     dc->desc = "OpenTitan I2C Host";
-    dc->realize = ot_i2c_dj_realize;
-    device_class_set_props(dc, ot_i2c_dj_properties);
+    dc->realize = ot_i2c_realize;
+    device_class_set_props(dc, ot_i2c_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
-    OtI2CDjClass *ic = OT_I2C_DJ_CLASS(klass);
-    resettable_class_set_parent_phases(rc, &ot_i2c_dj_reset_enter, NULL, NULL,
+    OtI2CClass *ic = OT_I2C_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_i2c_reset_enter, NULL, NULL,
                                        &ic->parent_phases);
 }
 
-static const TypeInfo ot_i2c_dj_info = {
-    .name = TYPE_OT_I2C_DJ,
+static const TypeInfo ot_i2c_info = {
+    .name = TYPE_OT_I2C,
     .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(OtI2CDjState),
-    .instance_init = &ot_i2c_dj_init,
-    .class_size = sizeof(OtI2CDjClass),
-    .class_init = &ot_i2c_dj_class_init,
+    .instance_size = sizeof(OtI2CState),
+    .instance_init = &ot_i2c_init,
+    .class_size = sizeof(OtI2CClass),
+    .class_init = &ot_i2c_class_init,
 };
 
-static void ot_i2c_dj_register_types(void)
+static void ot_i2c_register_types(void)
 {
-    type_register_static(&ot_i2c_dj_info);
-    type_register_static(&ot_i2c_dj_target_info);
+    type_register_static(&ot_i2c_info);
+    type_register_static(&ot_i2c_target_info);
 }
 
-type_init(ot_i2c_dj_register_types);
+type_init(ot_i2c_register_types);

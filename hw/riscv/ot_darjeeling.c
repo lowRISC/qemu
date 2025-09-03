@@ -49,7 +49,7 @@
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_gpio_dj.h"
 #include "hw/opentitan/ot_hmac.h"
-#include "hw/opentitan/ot_i2c_dj.h"
+#include "hw/opentitan/ot_i2c.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_keymgr_dpe.h"
 #include "hw/opentitan/ot_kmac.h"
@@ -1072,7 +1072,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_I2C0] = {
-        .type = TYPE_OT_I2C_DJ,
+        .type = TYPE_OT_I2C,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30080000u }
         ),

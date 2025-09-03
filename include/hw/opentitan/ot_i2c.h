@@ -1,10 +1,12 @@
 /*
- * QEMU OpenTitan I2C Darjeeling device
+ * QEMU OpenTitan I2C device
  *
  * Copyright (c) 2024-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Duncan Laurie <duncan@rivosinc.com>
+ *  Alice Ziuziakowska <a.ziuziakowska@lowrisc.org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,16 +27,16 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_I2C_DJ_H
-#define HW_OPENTITAN_OT_I2C_DJ_H
+#ifndef HW_OPENTITAN_OT_I2C_H
+#define HW_OPENTITAN_OT_I2C_H
 
 #include "qom/object.h"
 #include "hw/sysbus.h"
 
-#define TYPE_OT_I2C_DJ "ot-i2c-dj"
-OBJECT_DECLARE_TYPE(OtI2CDjState, OtI2CDjClass, OT_I2C_DJ)
+#define TYPE_OT_I2C "ot-i2c"
+OBJECT_DECLARE_TYPE(OtI2CState, OtI2CClass, OT_I2C)
 
-#define TYPE_OT_I2C_DJ_TARGET TYPE_OT_I2C_DJ "-target"
-OBJECT_DECLARE_SIMPLE_TYPE(OtI2CDjTarget, OT_I2C_DJ_TARGET)
+#define TYPE_OT_I2C_TARGET TYPE_OT_I2C "-target"
+OBJECT_DECLARE_SIMPLE_TYPE(OtI2CTarget, OT_I2C_TARGET)
 
-#endif /* HW_OPENTITAN_OT_I2C_DJ_H */
+#endif /* HW_OPENTITAN_OT_I2C_H */

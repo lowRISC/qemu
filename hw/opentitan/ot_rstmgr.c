@@ -37,7 +37,7 @@
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
-#include "hw/opentitan/ot_i2c_dj.h"
+#include "hw/opentitan/ot_i2c.h"
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
@@ -239,7 +239,7 @@ static const OtRstMgrConfig RSTMGR_CONFIG[OT_RSTMGR_VERSION_COUNT] = {
         .sw_resettable_devices = {
             [0u] = { TYPE_OT_SPI_DEVICE, 0u },
             [1u] = { TYPE_OT_SPI_HOST, 0u },
-            [2u] = { TYPE_OT_I2C_DJ, 0u },
+            [2u] = { TYPE_OT_I2C, 0u },
         }
     },
 };
