@@ -170,7 +170,7 @@ struct OtOTBNState {
     uint32_t intr_enable;
     uint32_t intr_test;
     uint32_t alert_test;
-    uint32_t fatal_alert_cause;
+    uint32_t errbits;
     uint32_t load_checksum;
 
     enum OtOTBNCommand last_cmd;
@@ -220,10 +220,42 @@ static void ot_otbn_update_irq(OtOTBNState *s)
 
 static void ot_otbn_update_alert(OtOTBNState *s)
 {
-    for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
-        bool level = (bool)(s->alert_test & (1u << ix));
-        if (ix == ALERT_FATAL) {
-            level |= (bool)s->fatal_alert_cause;
+    uint32_t levels = s->alert_test;
+
+    uint16_t recov_err_bits = (uint16_t)s->errbits;
+    if (recov_err_bits) {
+        levels |= 1u << ALERT_RECOVERABLE;
+    }
+
+    uint16_t fatal_err_bits = (uint16_t)(s->errbits >> 16u);
+    if (fatal_err_bits) {
+        levels |= 1u << ALERT_FATAL;
+    }
+
+    for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
+        int level = (int)((levels >> ix) & 0x1u);
+        if (level != ibex_irq_get_level(&s->alerts[ix])) {
+            trace_ot_otbn_update_alert(s->ot_id,
+                                       ibex_irq_get_level(&s->alerts[ix]),
+                                       level);
+        }
+        ibex_irq_set(&s->alerts[ix], level);
+    }
+
+    if (!s->alert_test && !recov_err_bits) {
+        return;
+    }
+    /* ALERT_TEST and recoverable error alerts are transient */
+    s->alert_test = 0u;
+    s->errbits &= ~UINT16_MAX;
+    levels = fatal_err_bits ? (1u << ALERT_FATAL) : 0u;
+
+    for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
+        int level = (int)((levels >> ix) & 0x1u);
+        if (level != ibex_irq_get_level(&s->alerts[ix])) {
+            trace_ot_otbn_update_alert(s->ot_id,
+                                       ibex_irq_get_level(&s->alerts[ix]),
+                                       level);
         }
         ibex_irq_set(&s->alerts[ix], level);
     }
@@ -233,10 +265,9 @@ static void ot_otbn_post_execute(void *opaque)
 {
     OtOTBNState *s = OT_OTBN(opaque);
 
-    uint32_t errbits = ot_otbn_proxy_get_err_bits(s->proxy);
+    s->errbits = ot_otbn_proxy_get_err_bits(s->proxy);
     uint32_t insncount = ot_otbn_proxy_get_instruction_count(s->proxy);
-    trace_ot_otbn_post_execute(s->ot_id, errbits, insncount);
-    s->fatal_alert_cause |= errbits >> 16U;
+    trace_ot_otbn_post_execute(s->ot_id, s->errbits, insncount);
     s->intr_state |= INTR_DONE_MASK;
     ot_otbn_proxy_acknowledge_execution(s->proxy);
     ot_otbn_update_alert(s);
@@ -496,7 +527,7 @@ static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = ot_otbn_proxy_get_err_bits(s->proxy);
         break;
     case R_FATAL_ALERT_CAUSE:
-        val32 = s->fatal_alert_cause;
+        val32 = s->errbits >> 16u;
         break;
     case R_INSN_CNT:
         val32 = ot_otbn_proxy_get_instruction_count(s->proxy);
@@ -714,7 +745,7 @@ static void ot_otbn_reset_enter(Object *obj, ResetType type)
     s->intr_enable = 0;
     s->intr_test = 0;
     s->alert_test = 0;
-    s->fatal_alert_cause = 0;
+    s->errbits = 0;
     s->load_checksum = 0;
 
     s->last_cmd = OT_OTBN_CMD_NONE;

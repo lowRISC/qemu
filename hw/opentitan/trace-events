@@ -366,6 +366,7 @@ ot_otbn_proxy_entropy_request(const char * id, unsigned rnd) "%s: %u"
 ot_otbn_proxy_entropy_req_bh(const char * id, void) "%s"
 ot_otbn_proxy_push_entropy(const char * id, const char *kind, bool fips) "%s: %s: fips %u"
 ot_otbn_request_entropy(const char * id, unsigned ep) "%s: ep:%u"
+ot_otbn_update_alert(const char * id, int prev, int next) "%s: %d -> %d"
 
 # ot_otp.c
 
