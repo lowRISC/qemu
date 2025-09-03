@@ -81,7 +81,7 @@ sort "$flaky_tests_path" > "$flaky"
 sort "$passing_tests_path" | comm -23 - "$flaky" > "$expected"
 
 # Find all the tests which passed in Bazel:
-grep "PASSED" "$results" | cut -d' ' -f1 | sort > "$all_passed"
+grep "PASSED[^:]" "$results" | cut -d' ' -f1 | sort > "$all_passed"
 
 # Filter out the flaky tests:
 comm -23 "$all_passed" "$flaky" > "$passed"
