@@ -57,6 +57,8 @@ of options and the available features.
 * `treillis/` directory contains the test application to test the [GPIO](gpio.md) device.
 * [`uartmux.py`](uartmux.md) is a tiny stream wrapper to help dealing with multiple QEMU output
   streams, typically multiple virtual UARTs.
+* [`run-bazel-tests.sh`](regressions.md) is a script for running the OpenTitan test suite against
+  a local build of QEMU.
 
 ## Python modules
 
