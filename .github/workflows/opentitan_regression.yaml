@@ -48,7 +48,9 @@ jobs:
           ninja -C build qemu-system-riscv32
 
       - name: Run OpenTitan regressions
+        shell: bash
         run: |
+          set -o pipefail
           ./qemu/scripts/opentitan/run-bazel-tests.sh ./ qemu \
             | tee test_results.txt
 
