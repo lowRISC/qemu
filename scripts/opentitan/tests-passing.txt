@@ -84,7 +84,9 @@
 //sw/device/tests:example_concurrency_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:example_test_from_flash_sim_qemu_rom_with_fake_keys
 //sw/device/tests:flash_ctrl_clock_freqs_test_sim_qemu_rom_with_fake_keys
+//sw/device/tests:flash_ctrl_mem_protection_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:flash_ctrl_ops_test_sim_qemu_rom_with_fake_keys
+//sw/device/tests:flash_ctrl_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:flash_ctrl_write_clear_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:hmac_enc_idle_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:hmac_enc_test_sim_qemu_rom_with_fake_keys
