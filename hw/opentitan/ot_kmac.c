@@ -444,6 +444,8 @@ ot_kmac_change_fsm_state_line(OtKMACState *s, OtKMACFsmState state, int line)
                                       s->state, STATE_NAME(state), state);
     }
 
+    ibex_irq_set(&s->clock_active, (bool)(state != KMAC_ST_IDLE));
+
     s->state = state;
 }
 
