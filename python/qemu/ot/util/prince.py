@@ -4,6 +4,8 @@
 """PRINCE cipher implementation.
 """
 
+from functools import lru_cache
+
 # pylint: disable=missing-docstring
 
 class PrinceCipher:
@@ -36,11 +38,6 @@ class PrinceCipher:
         0xd3b5a399ca0c2399, 0xc0ac29b7c97c50dd
     ]
 
-    SHIFT_ROWS_CONSTS = [
-        0x7bde, 0xbde7, 0xde7b, 0xe7bd
-    ]
-
-
     @classmethod
     def sbox(cls, in_: int, width: int, sbox: list[int]) -> int:
         full_mask = 0 if (width >= 64) else (1 << width) - 1
@@ -56,6 +53,7 @@ class PrinceCipher:
         return ret
 
     @classmethod
+    @lru_cache(maxsize=65536)
     def nibble_red16(cls, data: int) -> int:
         nib0 = (data >> 0) & 0xf
         nib1 = (data >> 4) & 0xf
@@ -63,17 +61,33 @@ class PrinceCipher:
         nib3 = (data >> 12) & 0xf
         return nib0 ^ nib1 ^ nib2 ^ nib3
 
+    @staticmethod
+    def mult_prim_const() -> list[tuple[int, tuple[int, int]]]:
+        bconsts = []
+        shift_rows_consts = [
+            0x7bde, 0xbde7, 0xde7b, 0xe7bd
+        ]
+        for blk_idx in range(4):
+            consts = []
+            start_sr_idx = 0 if blk_idx in (0, 3) else 1
+            blk_const = blk_idx * 16
+            for nibble_idx in range(4):
+                sr_idx = (start_sr_idx + 3 - nibble_idx) & 0x3
+                sr_const = shift_rows_consts[sr_idx]
+                shift_const = blk_const + nibble_idx * 4
+                consts.append((shift_const, sr_const))
+            bconsts.append((blk_const, consts))
+        return bconsts
+
+    MULT_PRIM_CONST = mult_prim_const()
+
     @classmethod
     def mult_prime(cls, data: int) -> int:
         ret = 0
-        for blk_idx in range(4):
-            data_hw = (data >> (16 * blk_idx)) & 0xffff
-            start_sr_idx = 0 if blk_idx in (0, 3) else 1
-            for nibble_idx in range(4):
-                sr_idx = (start_sr_idx + 3 - nibble_idx) & 0x3
-                sr_const = cls.SHIFT_ROWS_CONSTS[sr_idx]
-                nibble = cls.nibble_red16(data_hw & sr_const)
-                ret |= nibble << (16 * blk_idx + 4 * nibble_idx)
+        for blk_const, consts in cls.MULT_PRIM_CONST:
+            data_hw = data >> blk_const
+            for sh, sr in consts:
+                ret |= cls.nibble_red16(data_hw & sr) << sh
         return ret
 
     @classmethod
