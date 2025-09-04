@@ -91,6 +91,7 @@
 //sw/device/tests:hmac_secure_wipe_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:hmac_smoketest_sim_qemu_rom_with_fake_keys
 //sw/device/tests:kmac_endianess_test_sim_qemu_rom_with_fake_keys
+//sw/device/tests:kmac_idle_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:kmac_mode_cshake_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:kmac_mode_kmac_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:kmac_smoketest_sim_qemu_rom_with_fake_keys
