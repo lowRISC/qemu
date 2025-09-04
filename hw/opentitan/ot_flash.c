@@ -1113,6 +1113,8 @@ static void ot_flash_op_complete(OtFlashState *s)
         s->regs[R_OP_STATUS] |= R_OP_STATUS_DONE_MASK;
         s->regs[R_INTR_STATE] |= INTR_OP_DONE_MASK;
         ot_flash_update_irqs(s);
+        /* completing a sw op clears the remaining sw prog fifo */
+        ot_flash_reset_prog_fifo(s);
     }
     s->regs[R_CTRL_REGWEN] |= R_CTRL_REGWEN_EN_MASK;
     trace_ot_flash_op_complete(OP_NAME(s->op.kind), s->op.hw,
@@ -1837,8 +1839,6 @@ static void ot_flash_update_fifos_status(OtFlashState *s)
 
 static void ot_flash_op_execute(OtFlashState *s)
 {
-    s->regs[R_CTRL_REGWEN] &= ~R_CTRL_REGWEN_EN_MASK;
-
     switch (s->op.kind) {
     case OP_READ:
         trace_ot_flash_op_execute(OP_NAME(s->op.kind), s->op.hw);
@@ -1862,6 +1862,18 @@ static void ot_flash_op_execute(OtFlashState *s)
     if (!ot_flash_in_hw_operation(s)) {
         ot_flash_update_fifos_status(s);
     }
+}
+
+static void ot_flash_op_start(OtFlashState *s)
+{
+    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
+
+    s->regs[R_CTRL_REGWEN] &= ~R_CTRL_REGWEN_EN_MASK;
+    if (s->op.hw) {
+        /* hw op req will clear the prog fifo, whereas sw op req will not */
+        ot_flash_reset_prog_fifo(s);
+    }
+    ot_flash_op_execute(s);
 }
 
 static void ot_flash_update_exec(OtFlashState *s)
@@ -1984,8 +1996,7 @@ static void ot_flash_process_control_op(OtFlashState *s)
     }
     s->op.failed = false;
     s->op.remaining = s->op.count;
-    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
-    ot_flash_op_execute(s);
+    ot_flash_op_start(s);
 }
 
 static void ot_flash_init_complete(void *opaque)
