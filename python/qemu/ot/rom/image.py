@@ -10,6 +10,7 @@ from binascii import hexlify, unhexlify
 from configparser import RawConfigParser
 from io import BytesIO
 from logging import getLogger
+from functools import lru_cache
 from os.path import basename
 from typing import BinaryIO, Optional, TextIO, Union
 
@@ -350,12 +351,14 @@ class ROMImage:
         return (ecc << 32) | data
 
     @classmethod
+    @lru_cache
     def data_sp_enc(cls, val: int) -> int:
         """Encode (scramble) data."""
         return cls.subst_perm_enc(val, 0, cls.WORD_BITS,
                                   cls.DATA_SUBST_PERM_ROUNDS)
 
     @classmethod
+    @lru_cache
     def data_sp_dec(cls, val: int) -> int:
         """Decode (unscramble) data."""
         return cls.subst_perm_dec(val, 0, cls.WORD_BITS,
