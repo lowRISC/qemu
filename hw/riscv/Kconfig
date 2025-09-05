@@ -33,6 +33,7 @@ config OT_DARJEELING
     select OT_DEV_PROXY
     select OT_DM_TL
     select OT_DMA
+    select OT_ENTROPY_SRC_DJ
     select OT_EDN
     select OT_GPIO_DJ
     select OT_HMAC
@@ -50,12 +51,13 @@ config OT_DARJEELING
     select OT_PWRMGR
     select OT_RSTMGR
     select OT_ROM_CTRL
-    select OT_SOC_PROXY
+    select OT_SOCDBG_CTRL
     select OT_SPI_DEVICE
     select OT_SPI_HOST
     select OT_SRAM_CTRL
     select OT_TIMER
     select OT_UART
+    select OT_UNIMP
     select PULP_RV_DM
     select RISCV_DM
     select RISCV_DTM
