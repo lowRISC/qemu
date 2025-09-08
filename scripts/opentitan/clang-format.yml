@@ -89,7 +89,7 @@ AlwaysBreakBeforeMultilineStrings: false
 AttributeMacros:
 BinPackArguments: true
 BinPackParameters: BinPack
-BitFieldColonSpacing: Both
+BitFieldColonSpacing: None
 BraceWrapping:
   AfterCaseLabel:  false
   AfterClass:      false

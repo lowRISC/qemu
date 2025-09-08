@@ -689,16 +689,16 @@ typedef struct {
     uint16_t size;
     uint16_t offset;
     uint16_t digest_offset;
-    uint16_t hw_digest : 1;
-    uint16_t sw_digest : 1;
-    uint16_t secret : 1;
-    uint16_t buffered : 1;
-    uint16_t write_lock : 1;
-    uint16_t read_lock : 1;
-    uint16_t read_lock_csr : 1;
-    uint16_t integrity : 1;
-    uint16_t iskeymgr_creator : 1;
-    uint16_t iskeymgr_owner : 1;
+    uint16_t hw_digest:1;
+    uint16_t sw_digest:1;
+    uint16_t secret:1;
+    uint16_t buffered:1;
+    uint16_t write_lock:1;
+    uint16_t read_lock:1;
+    uint16_t read_lock_csr:1;
+    uint16_t integrity:1;
+    uint16_t iskeymgr_creator:1;
+    uint16_t iskeymgr_owner:1;
 } OtOTPPartDesc;
 
 #define OT_OTP_DJ_PARTS

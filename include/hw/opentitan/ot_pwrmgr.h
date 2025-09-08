@@ -55,16 +55,16 @@ typedef enum {
 /* Boot status packed as an IRQ */
 typedef union {
     struct {
-        unsigned main_ip_clk_en : 1;
-        unsigned io_ip_clk_en : 1;
-        unsigned usb_ip_clk_en : 1; /* ignored for now */
-        unsigned otp_done : 1;
-        unsigned lc_done : 1;
-        unsigned cpu_fetch_en : 1;
-        unsigned strap_sampled : 1;
-        unsigned light_reset : 1;
-        unsigned rom_done : 4;
-        unsigned rom_good : 4;
+        unsigned main_ip_clk_en:1;
+        unsigned io_ip_clk_en:1;
+        unsigned usb_ip_clk_en:1; /* ignored for now */
+        unsigned otp_done:1;
+        unsigned lc_done:1;
+        unsigned cpu_fetch_en:1;
+        unsigned strap_sampled:1;
+        unsigned light_reset:1;
+        unsigned rom_done:4;
+        unsigned rom_good:4;
     };
     int i32;
 } OtPwrMgrBootStatus;

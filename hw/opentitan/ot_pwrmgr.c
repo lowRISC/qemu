@@ -219,12 +219,12 @@ typedef struct {
 typedef union {
     uint32_t bitmap;
     struct {
-        uint8_t hw_reset : 1; /* HW reset request */
-        uint8_t sw_reset : 1; /* SW reset request */
-        uint8_t otp_done : 1;
-        uint8_t lc_done : 1;
-        uint8_t escalate : 1; /* escalation from alert handler */
-        uint8_t holdon_fetch : 1; /* custom extension */
+        uint8_t hw_reset:1; /* HW reset request */
+        uint8_t sw_reset:1; /* SW reset request */
+        uint8_t otp_done:1;
+        uint8_t lc_done:1;
+        uint8_t escalate:1; /* escalation from alert handler */
+        uint8_t holdon_fetch:1; /* custom extension */
         uint8_t rom_good; /* up to 8 ROMs */
         uint8_t rom_done; /* up to 8 ROMs */
     };
