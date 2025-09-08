@@ -721,7 +721,7 @@ enum {
     BIN_APP_COUNT,
 };
 
-#define OP_INIT_DURATION_NS     1000000u /* 1 ms */
+#define OP_INIT_DURATION_NS     10000u /* 10 us */
 #define ELFNAME_SIZE            256u
 #define OT_FLASH_READ_FIFO_SIZE 16u
 #define OT_FLASH_PROG_FIFO_SIZE 16u
@@ -2144,7 +2144,29 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
                 ot_flash_op_execute(s);
             }
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: Read empty FIFO\n", __func__);
+            /**
+             * @todo: technically, the hardware appears to stall the bus read
+             * from the read FIFO until there is valid data to read; this is
+             * fine in QEMU for most cases as we complete synchronously, except
+             * for initialisation, where we cannot trivially stall for
+             * completion to avoid blocking the main IO thread.
+             *
+             * For now, the initialization delay is set sufficiently small so
+             * as to make it unlikely that this case will be hit in OT testing;
+             * a better long term solution might be removing the initialisation
+             * delay entirely, or introducing some logic here to cancel the
+             * timer and complete init, though this would need to be careful
+             * with races and incomplete operations.
+             */
+            if (!ot_flash_is_initialized(s)) {
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "%s: Bus stalling on reads from uninit FIFO are "
+                              "not supported in QEMU\n",
+                              __func__);
+            } else {
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: Read empty FIFO\n",
+                              __func__);
+            }
             val32 = 0u;
         }
         break;
