@@ -23,6 +23,18 @@ class QEMUExecuter(Executer):
     """Test execution engine using a QEMU virtual machine
     """
 
+    LOG_SHORTCUTS = {
+        'A': 'in_asm',
+        'E': 'exec',
+        'G': 'guest_errors',
+        'H': 'help',
+        'I': 'int',
+        'M': 'mmu',
+        'R': 'cpu_reset',
+        'U': 'unimp',
+    }
+    """Shortcut names for QEMU log sources."""
+
     def _build_fw_args(self, args: Namespace) \
             -> tuple[str, Optional[str], list[str], Optional[str]]:
         rom_exec = bool(args.rom_exec)

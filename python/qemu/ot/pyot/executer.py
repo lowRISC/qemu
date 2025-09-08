@@ -49,6 +49,23 @@ class Executer:
         Wrapper.GUEST_ERROR_OFFSET + 1: 'FAIL',
         98: 'UNEXP_SUCCESS',
         99: 'CONTEXT',
+        # convention: exit code in [100..115] range report uncaught exceptions
+        100: 'INST_ADDR_MISALIGN',
+        101: 'INST_ACCESS_FAULT',
+        102: 'INST_ILLEGAL',
+        103: 'BREAKPOINT',
+        104: 'LOAD_ADDR_ALIGN',
+        105: 'LOAD_ACCESS_FAULT',
+        106: 'STORE_ADDR_ALIGN',
+        107: 'STORE_ACCESS_FAULT',
+        108: 'ECALL_U_MODE',
+        109: 'ECALL_S_MODE',
+        110: 'ECALL_H_MODE',
+        111: 'ECALL_M_MODE',
+        112: 'INST_PAGE_FAULT',
+        113: 'LOAD_PAGE_FAULT',
+        115: 'STORE_PAGE_FAULT',
+        # end of RISC-V exception converted to exit code
         124: 'TIMEOUT',
         125: 'DEADLOCK',
         126: 'CONTEXT',
@@ -62,18 +79,6 @@ class Executer:
 
     DEFAULT_SERIAL_PORT = 'serial0'
     """Default VCP name."""
-
-    LOG_SHORTCUTS = {
-        'A': 'in_asm',
-        'E': 'exec',
-        'G': 'guest_errors',
-        'H': 'help',
-        'I': 'int',
-        'M': 'mmu',
-        'R': 'cpu_reset',
-        'U': 'unimp',
-    }
-    """Shortcut names for QEMU log sources."""
 
     def __init__(self, tfm: FileManager, config: dict[str, any],
                  args: Namespace):
