@@ -31,6 +31,10 @@
 //sw/device/silicon_creator/lib/sigverify/sphincsplus/test:verify_test_kat9_sim_qemu_rom_with_fake_keys
 //sw/device/silicon_creator/lib/sigverify/sphincsplus/test:wots_test_sim_qemu_rom_with_fake_keys
 //sw/device/silicon_creator/lib/sigverify:spx_verify_functest_sim_qemu_rom_with_fake_keys
+//sw/device/silicon_creator/rom/e2e/keymgr:rom_e2e_keymgr_init_otp_invalid_meas_sim_qemu_rom_with_fake_keys
+//sw/device/silicon_creator/rom/e2e/keymgr:rom_e2e_keymgr_init_otp_meas_sim_qemu_rom_with_fake_keys
+//sw/device/silicon_creator/rom/e2e/keymgr:rom_e2e_keymgr_init_otp_no_meas_sim_qemu_rom_with_fake_keys
+//sw/device/silicon_creator/rom/e2e:rom_e2e_flash_ctrl_init_sim_qemu_rom_with_fake_keys
 //sw/device/tests:aes_entropy_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:aes_idle_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:aes_smoketest_sim_qemu_rom_with_fake_keys
@@ -84,6 +88,9 @@
 //sw/device/tests:example_concurrency_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:example_test_from_flash_sim_qemu_rom_with_fake_keys
 //sw/device/tests:flash_ctrl_clock_freqs_test_sim_qemu_rom_with_fake_keys
+//sw/device/tests:flash_ctrl_info_access_lc_prod_end_sim_qemu_rom_with_fake_keys
+//sw/device/tests:flash_ctrl_info_access_lc_prod_sim_qemu_rom_with_fake_keys
+//sw/device/tests:flash_ctrl_info_access_lc_rma_sim_qemu_rom_with_fake_keys
 //sw/device/tests:flash_ctrl_mem_protection_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:flash_ctrl_ops_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:flash_ctrl_test_sim_qemu_rom_with_fake_keys
