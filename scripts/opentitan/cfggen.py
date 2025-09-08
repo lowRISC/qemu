@@ -577,6 +577,7 @@ def main():
         lcpath = args.lifecycle
         if not lcpath:
             lc_constant_locations = [
+                joinpath(top_dir, f'rtl/autogen/testing/{lcfilename}'),
                 joinpath(top_dir, f'rtl/autogen/dev/{lcfilename}'),
                 joinpath(top_dir, f'rtl/autogen/{lcfilename}'),
                 joinpath(ot_dir, f'hw/ip/lc_ctrl/rtl/{lcfilename}'),
