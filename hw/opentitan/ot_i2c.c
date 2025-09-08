@@ -303,7 +303,8 @@ static const char *IRQ_NAMES[OT_I2C_IRQ_NUM] = {
 };
 #undef IRQ_NAME_ENTRY
 
-#define OT_I2C_FIFO_SIZE 64u
+#define OT_I2C_FIFO_SIZE     64u
+#define OT_I2C_ACQ_FIFO_SIZE 268u
 
 typedef enum {
     SIGNAL_NONE,
@@ -1344,7 +1345,7 @@ static void ot_i2c_init(Object *obj)
     ot_fifo32_create(&s->host_tx_fifo, OT_I2C_FIFO_SIZE);
     fifo8_create(&s->host_rx_fifo, OT_I2C_FIFO_SIZE);
     fifo8_create(&s->target_tx_fifo, OT_I2C_FIFO_SIZE);
-    ot_fifo32_create(&s->target_rx_fifo, OT_I2C_FIFO_SIZE);
+    ot_fifo32_create(&s->target_rx_fifo, OT_I2C_ACQ_FIFO_SIZE);
 }
 
 static void ot_i2c_class_init(ObjectClass *klass, void *data)
