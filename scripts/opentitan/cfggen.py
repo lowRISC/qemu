@@ -577,9 +577,13 @@ def main():
         lcpath = args.lifecycle
         if not lcpath:
             lc_constant_locations = [
+                # master branch development environment
                 joinpath(top_dir, f'rtl/autogen/testing/{lcfilename}'),
+                # (obsolete) master branch development environment
                 joinpath(top_dir, f'rtl/autogen/dev/{lcfilename}'),
+                # (obsolete) master branch
                 joinpath(top_dir, f'rtl/autogen/{lcfilename}'),
+                # earlgrey_1.0.0 branch
                 joinpath(ot_dir, f'hw/ip/lc_ctrl/rtl/{lcfilename}'),
             ]
             for maybe_lcpath in lc_constant_locations:
@@ -596,7 +600,9 @@ def main():
         ocpath = args.otpconst
         if not ocpath:
             otp_constant_locations = [
+                # master branch
                 joinpath(top_dir, f'ip_autogen/otp_ctrl/rtl/{ocfilename}'),
+                # earlgrey_1.0.0 branch
                 joinpath(ot_dir, f'hw/ip/otp_ctrl/rtl/{ocfilename}'),
             ]
             for maybe_ocpath in otp_constant_locations:
