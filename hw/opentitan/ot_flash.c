@@ -48,6 +48,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_flash.h"
+#include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
@@ -72,6 +73,12 @@
 
 #define FLASH_SEED_BANK           0u
 #define FLASH_SEED_INFO_PARTITION 0u
+#define FLASH_SEED_WIDTH          256u
+#define FLASH_SEED_WORDS          ((FLASH_SEED_WIDTH) / sizeof(uint32_t))
+#define FLASH_SEED_BYTES          ((FLASH_SEED_WIDTH) / 8u)
+
+static_assert(FLASH_SEED_BYTES == OT_FLASH_KEYMGR_SECRET_BYTES,
+              "Flash seed & keymgr secret sizes do not match");
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
@@ -682,6 +689,19 @@ static const char *PROGRAM_SELECTION_NAMES[] = {
          PROGRAM_SELECTION_NAMES[(_st_)] : \
          "?")
 
+#define SECRET_NAME_ENTRY(_st_) [FLASH_KEYMGR_SECRET_##_st_] = stringify(_st_)
+
+static const char *FLASH_KEYMGR_SECRET_NAMES[] = {
+    SECRET_NAME_ENTRY(CREATOR_SEED),
+    SECRET_NAME_ENTRY(OWNER_SEED),
+};
+
+#undef SECRET_NAME_ENTRY
+#define FLASH_KEYMGR_SECRET_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(FLASH_KEYMGR_SECRET_NAMES) ? \
+         FLASH_KEYMGR_SECRET_NAMES[(_st_)] : \
+         "?")
+
 /**
  * Bank 0 information partition type 0 pages.
  *
@@ -726,6 +746,8 @@ enum {
 #define OT_FLASH_READ_FIFO_SIZE 16u
 #define OT_FLASH_PROG_FIFO_SIZE 16u
 #define BUS_PGM_RES             ((REG_BUS_PGM_RES_BYTES) / (OT_TL_UL_D_WIDTH_BYTES))
+
+#define LC_BROADCAST_DELAY 200u /* 200 ns */
 
 #define WORD_ALIGN_ADDR(_addr_) ((_addr_) & ~3u)
 
@@ -790,6 +812,16 @@ typedef struct {
     uint32_t num;
 } OtFlashFifo;
 
+typedef struct {
+    QEMUTimer *timer;
+    uint16_t incoming_signal_bm; /* each bit tells if signal needs handling */
+    uint16_t incoming_level_bm; /* level (0/1) of the incoming signals */
+    uint16_t current_level_bm; /* current (latched) level of all signals */
+} OtFlashLcBroadcast;
+
+static_assert(OT_FLASH_LC_BROADCAST_COUNT < 8 * sizeof(uint16_t),
+              "Invalid OT_FLASH_LC_BROADCAST_COUNT");
+
 struct OtFlashState {
     SysBusDevice parent_obj;
 
@@ -808,6 +840,8 @@ struct OtFlashState {
     /* "sticky" alerts that should stay signaled after firing */
     uint32_t latched_alerts;
 
+    OtFlashKeyMgrSecret keymgr_seeds[FLASH_KEYMGR_SECRET_COUNT];
+
     struct {
         OtFlashOperation kind;
         unsigned count;
@@ -821,6 +855,7 @@ struct OtFlashState {
         bool hw; /* hw- or sw-requested operation? */
     } op;
     OtFlashLifeCyclePhase phase; /* HW LC phase for memory protection / RMA */
+    OtFlashLcBroadcast lc_broadcast;
     OtFifo32 rd_fifo;
     OtFifo32 prog_fifo;
     OtFlashStorage flash;
@@ -834,6 +869,7 @@ struct OtFlashState {
     BlockBackend *blk; /* Flash backend */
     OtVMapperState *vmapper; /* to disable execution from flash */
     bool no_mem_prot; /* Flag to disable mem protection features */
+    bool fatal_escalate;
 };
 
 /* Flash memory protection rules */
@@ -915,11 +951,6 @@ static const OtFlashHwInfoPageRule OT_FLASH_HW_INFO_PAGE_RULES[] = {
     },
 };
 
-struct OtFlashClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
-};
-
 static void ot_flash_update_irqs(OtFlashState *s)
 {
     uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
@@ -976,7 +1007,10 @@ static bool ot_flash_write_backend(OtFlashState *s, const void *buffer,
 
 static bool ot_flash_is_disabled(const OtFlashState *s)
 {
-    return s->regs[R_DIS] != OT_MULTIBITBOOL4_FALSE;
+    bool reg_dis = s->regs[R_DIS] != OT_MULTIBITBOOL4_FALSE;
+    bool lc_escalate_dis =
+        s->lc_broadcast.current_level_bm & BIT(OT_FLASH_LC_ESCALATE_EN);
+    return reg_dis || lc_escalate_dis;
 }
 
 static bool ot_flash_regs_is_wr_enabled(const OtFlashState *s, unsigned regwen)
@@ -1041,27 +1075,6 @@ static bool ot_flash_in_hw_operation(const OtFlashState *s)
 static bool ot_flash_operation_ongoing(const OtFlashState *s)
 {
     return s->op.kind != OP_NONE && s->op.count;
-}
-
-static void ot_flash_initialize(OtFlashState *s)
-{
-    if (ot_flash_in_operation(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot initialize while in op",
-                      __func__);
-        return;
-    }
-
-    s->phase = LC_PHASE_SEED;
-    trace_ot_flash_change_lc_phase(LC_PHASE_NAME(s->phase), s->phase);
-
-    s->op.kind = OP_INIT;
-    s->op.hw = false;
-    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
-    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 1u);
-    s->regs[R_PHY_STATUS] =
-        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 1u);
-    timer_mod(s->op_delay,
-              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
 }
 
 static void ot_flash_reset_rd_fifo(OtFlashState *s)
@@ -1215,29 +1228,30 @@ static OtFlashPropertyCfg ot_flash_get_info_page_reg_cfg(
  * https://opentitan.org/book/hw/top_earlgrey/ip_autogen/flash_ctrl/
  * index.html#secret-information-partitions
  *
+ * @s The flash device
  * @bank The bank being accessed
  * @info_partition The info partition being accessed
  * @page The page being accessed
  * @cfg The configuration to update/mask (outparam).
  */
-static void
-ot_flash_update_info_page_qualification(unsigned bank, unsigned info_partition,
-                                        unsigned page, OtFlashPropertyCfg *cfg)
+static void ot_flash_update_info_page_qualification(
+    const OtFlashState *s, unsigned bank, unsigned info_partition,
+    unsigned page, OtFlashPropertyCfg *cfg)
 {
     OtFlashPropertyCfg qual;
     qual.scramble_en = true;
     qual.ecc_en = true;
     qual.he_en = true;
 
-    /*
-     * TODO: these signals are stubbed out to always give permissions to any
-     * qualified info pages for now, but in reality they should be connected
-     * to the lc_ctrl broadcast signals.
-     */
-    bool creator_en = true;
-    bool owner_en = true;
-    bool isolated_rd_en = true;
-    bool isolated_wr_en = true;
+    /* extra quals depend on lc_ctrl broadcast signals */
+    bool creator_en = s->lc_broadcast.current_level_bm &
+                      BIT(OT_FLASH_LC_CREATOR_SEED_SW_RW_EN);
+    bool owner_en =
+        s->lc_broadcast.current_level_bm & BIT(OT_FLASH_LC_OWNER_SEED_SW_RW_EN);
+    bool isolated_rd_en =
+        s->lc_broadcast.current_level_bm & BIT(OT_FLASH_LC_ISO_PART_SW_RD_EN);
+    bool isolated_wr_en =
+        s->lc_broadcast.current_level_bm & BIT(OT_FLASH_LC_ISO_PART_SW_WR_EN);
 
     /* retrieve additional qualifications for pages containing secrets */
     if (bank != FLASH_SEED_BANK ||
@@ -1443,7 +1457,7 @@ static unsigned ot_flash_next_info_address(OtFlashState *s)
             return address;
         }
         cfg = ot_flash_get_info_page_reg_cfg(s, info_page_cfg_reg);
-        ot_flash_update_info_page_qualification(bank, info_partition, page,
+        ot_flash_update_info_page_qualification(s, bank, info_partition, page,
                                                 &cfg);
     }
 
@@ -1874,6 +1888,115 @@ static void ot_flash_op_start(OtFlashState *s)
         ot_flash_reset_prog_fifo(s);
     }
     ot_flash_op_execute(s);
+}
+
+static unsigned ot_flash_get_op_address_from_page(unsigned bank, unsigned page)
+{
+    return page * BYTES_PER_PAGE + bank * BYTES_PER_BANK;
+}
+
+static void ot_flash_read_keymgr_seed(OtFlashState *s, unsigned page,
+                                      OtFlashKeyMgrSecret *seed)
+{
+    ot_fifo32_reset(&s->hw_rd_fifo);
+
+    s->op.kind = OP_READ;
+    s->op.address = ot_flash_get_op_address_from_page(FLASH_SEED_BANK, page);
+    s->op.info_part = true;
+    s->op.info_sel = FLASH_SEED_INFO_PARTITION;
+    s->op.count = FLASH_SEED_WORDS;
+    /*
+     * init is triggered by SW, but the key reads during init are triggered by
+     * the flash controller HW
+     */
+    s->op.hw = true;
+    s->op.failed = false;
+    s->op.remaining = s->op.count;
+
+    ot_flash_op_start(s);
+
+    uint32_t seed_words[FLASH_SEED_WORDS] = { 0 };
+    ot_fifo32_pop_buf(&s->hw_rd_fifo, FLASH_SEED_WORDS, seed_words);
+    memcpy(seed->secret, seed_words, FLASH_SEED_BYTES);
+    seed->valid = !s->op.failed;
+
+    /* todo: dump the seed in the trace? */
+    trace_ot_flash_read_keymgr_seed(page, !s->op.failed);
+
+    if (s->op.failed) {
+        ot_flash_set_error(s, R_FAULT_STATUS_SEED_ERR_MASK, s->op.address);
+    }
+}
+
+static void ot_flash_initialize(OtFlashState *s)
+{
+    bool initialized = (bool)FIELD_EX32(s->regs[R_STATUS], STATUS, INITIALIZED);
+    bool init_wip = (bool)FIELD_EX32(s->regs[R_STATUS], STATUS, INIT_WIP);
+    if (ot_flash_in_operation(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: cannot initialize while in op",
+                      __func__);
+        return;
+    }
+    if (initialized) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: initialize is meaningless when already initialized",
+                      __func__);
+        return;
+    }
+    if (init_wip) {
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: initialize is meaningless when currently initializing",
+            __func__);
+        return;
+    }
+
+    /* Start the INIT operation. */
+    s->op.kind = OP_INIT;
+    s->op.hw = false;
+    trace_ot_flash_op_start(OP_NAME(s->op.kind), s->op.hw);
+    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 1u);
+    s->regs[R_PHY_STATUS] =
+        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 1u);
+
+    /*
+     * TODO: this flash life cycle management logic is currently missing the
+     * ability to receive RMA requests from the lc_ctrl and wipe.
+     *
+     * TODO: implement reading of flash address and data keys from OTP
+     */
+
+    /*
+     * only read the flash seeds if `lc_seed_hw_rd_en` is received from the
+     * lc_ctrl to indicate "good otp/lc initialization".
+     */
+    bool seed_hw_rd_en =
+        s->lc_broadcast.current_level_bm & BIT(OT_FLASH_LC_SEED_HW_RD_EN);
+    if (seed_hw_rd_en) {
+        /* Read & latch seeds stored in flash on initialisation */
+        s->phase = LC_PHASE_SEED;
+        trace_ot_flash_change_lc_phase(LC_PHASE_NAME(s->phase), s->phase);
+
+        ot_flash_read_keymgr_seed(
+            s, FLASH_QUAL_INFO_PAGE_CREATOR,
+            &s->keymgr_seeds[FLASH_KEYMGR_SECRET_CREATOR_SEED]);
+        ot_flash_read_keymgr_seed(
+            s, FLASH_QUAL_INFO_PAGE_OWNER,
+            &s->keymgr_seeds[FLASH_KEYMGR_SECRET_OWNER_SEED]);
+    } else {
+        /* TODO: Lock up & wait for RMA entry to reseed and then wipe */
+        s->phase = LC_PHASE_NONE;
+        trace_ot_flash_change_lc_phase(LC_PHASE_NAME(s->phase), s->phase);
+        /* TODO: should this still complete the init operation? */
+    }
+
+    /* continue the init operation */
+    s->op.kind = OP_INIT;
+    s->op.hw = false;
+
+    /* Delay to emulate taking time to process the `INIT` op. */
+    timer_mod(s->op_delay,
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
 }
 
 static void ot_flash_update_exec(OtFlashState *s)
@@ -2671,6 +2794,100 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
+static void ot_flash_lc_broadcast_recv(void *opaque, int n, int level)
+{
+    OtFlashState *s = opaque;
+    OtFlashLcBroadcast *bcast = &s->lc_broadcast;
+
+    g_assert((unsigned)n < OT_FLASH_LC_BROADCAST_COUNT);
+
+    uint16_t bit = 1u << (unsigned)n;
+    bcast->incoming_signal_bm |= bit;
+    /*
+     * As these signals are only used to change permissions, it is valid to
+     * override a signal value that has not been processed yet.
+     */
+    if (level) {
+        bcast->incoming_level_bm |= bit;
+    } else {
+        bcast->incoming_level_bm &= ~bit;
+    }
+
+    /* Use a short timer to decouple IRQ signaling from actual handling */
+    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+    timer_mod(s->lc_broadcast.timer, (int64_t)(now + LC_BROADCAST_DELAY));
+}
+
+static void ot_flash_lc_broadcast(void *opaque)
+{
+    OtFlashState *s = opaque;
+    OtFlashLcBroadcast *bcast = &s->lc_broadcast;
+
+    /* handle all flagged signals */
+    while (bcast->incoming_signal_bm) {
+        /* pick the first seen signal and clear it */
+        unsigned signal = ctz16(bcast->incoming_signal_bm);
+        uint16_t signal_mask = 1u << signal;
+        bcast->incoming_signal_bm &= ~signal_mask;
+        bcast->current_level_bm &= ~signal_mask;
+        bcast->current_level_bm |= (bcast->incoming_level_bm & signal_mask);
+        bool level = (bool)(bcast->current_level_bm & signal_mask);
+
+        trace_ot_flash_lc_broadcast(signal, level);
+
+        switch (signal) {
+        case OT_FLASH_LC_SEED_HW_RD_EN:
+        case OT_FLASH_LC_CREATOR_SEED_SW_RW_EN:
+        case OT_FLASH_LC_OWNER_SEED_SW_RW_EN:
+        case OT_FLASH_LC_ISO_PART_SW_RD_EN:
+        case OT_FLASH_LC_ISO_PART_SW_WR_EN:
+            /* nothing to do here, flag is latched in current_level */
+            break;
+        case OT_FLASH_LC_ESCALATE_EN:
+            /* flash disabling is detected from latch in current_level */
+            /* todo: also change the flash lcmgr lc_state? */
+            if (s->fatal_escalate) {
+                error_setg(&error_fatal, "%s: Flash LC escalate", __func__);
+            }
+            break;
+        case OT_FLASH_LC_NVM_DEBUG_EN:
+            qemu_log_mask(
+                LOG_UNIMP,
+                "%s: lc_nvm_debug_en for JTAG connection is ignored\n",
+                __func__);
+            break;
+        default:
+            error_setg(&error_fatal, "%s: unexpected LC broadcast %d", __func__,
+                       signal);
+            g_assert_not_reached();
+            break;
+        }
+    }
+}
+
+static void ot_flash_get_keymgr_secret(const OtFlashState *s,
+                                       OtFlashKeyMgrSecretType type,
+                                       OtFlashKeyMgrSecret *secret)
+{
+    trace_ot_flash_get_keymgr_secret(FLASH_KEYMGR_SECRET_NAME(type), type);
+
+    switch (type) {
+    case FLASH_KEYMGR_SECRET_CREATOR_SEED:
+    case FLASH_KEYMGR_SECRET_OWNER_SEED:
+        memcpy(secret, &s->keymgr_seeds[type], sizeof(OtFlashKeyMgrSecret));
+        bool invalid_seed =
+            (bool)(s->regs[R_FAULT_STATUS] & R_FAULT_STATUS_SEED_ERR_MASK);
+        secret->valid = !invalid_seed;
+        return;
+    default:
+        error_report("%s: invalid flash keymgr secret type: %d", __func__,
+                     type);
+        secret->valid = false;
+        memset(secret->secret, 0u, OT_FLASH_KEYMGR_SECRET_BYTES);
+        return;
+    }
+}
+
 static void ot_flash_load(OtFlashState *s, Error **errp)
 {
     OtFlashStorage *flash = &s->flash;
@@ -2877,6 +3094,7 @@ static Property ot_flash_properties[] = {
     /* Optionally disable memory protection, as searching for valid memory
     regions and checking their config can slow down regular operation. */
     DEFINE_PROP_BOOL("no-mem-prot", OtFlashState, no_mem_prot, false),
+    DEFINE_PROP_BOOL("fatal_escalate", OtFlashState, fatal_escalate, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2917,6 +3135,8 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
+
+    timer_del(s->lc_broadcast.timer);
 
     timer_del(s->op_delay);
     s->op.kind = OP_NONE;
@@ -3005,13 +3225,24 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
 
     s->latched_alerts = 0u;
 
+    s->lc_broadcast.incoming_signal_bm = 0u;
+    s->lc_broadcast.incoming_level_bm = 0u;
+    s->lc_broadcast.current_level_bm = 0u;
+
     s->phase = LC_PHASE_NONE;
+
+    /* wipe internal secrets latched on initialisation */
+    for (unsigned ix = 0; ix < FLASH_KEYMGR_SECRET_COUNT; ix++) {
+        memset(s->keymgr_seeds[ix].secret, 0u, OT_FLASH_KEYMGR_SECRET_BYTES);
+        s->keymgr_seeds[ix].valid = false;
+    }
 
     ot_flash_update_irqs(s);
     ot_flash_update_alerts(s);
 
     ot_flash_reset_rd_fifo(s);
     ot_flash_reset_prog_fifo(s);
+    ot_fifo32_reset(&s->hw_rd_fifo);
 }
 
 static void ot_flash_reset_exit(Object *obj, ResetType type)
@@ -3066,6 +3297,7 @@ static void ot_flash_init(Object *obj)
     s->regs = g_new0(uint32_t, REGS_COUNT);
     s->csrs = g_new0(uint32_t, CSRS_COUNT);
     ot_fifo32_create(&s->rd_fifo, OT_FLASH_READ_FIFO_SIZE);
+    ot_fifo32_create(&s->hw_rd_fifo, FLASH_SEED_WORDS);
     ot_fifo32_create(&s->prog_fifo, OT_FLASH_PROG_FIFO_SIZE);
 
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
@@ -3074,6 +3306,12 @@ static void ot_flash_init(Object *obj)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_flash_lc_broadcast_recv,
+                            OT_LC_BROADCAST, OT_FLASH_LC_BROADCAST_COUNT);
+
+    s->lc_broadcast.timer =
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_lc_broadcast, s);
     s->op_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_init_complete, s);
 }
 
@@ -3091,6 +3329,8 @@ static void ot_flash_class_init(ObjectClass *klass, void *data)
     resettable_class_set_parent_phases(rc, &ot_flash_reset_enter, NULL,
                                        &ot_flash_reset_exit,
                                        &fc->parent_phases);
+
+    fc->get_keymgr_secret = &ot_flash_get_keymgr_secret;
 }
 
 static const TypeInfo ot_flash_info = {
