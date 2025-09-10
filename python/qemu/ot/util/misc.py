@@ -192,3 +192,11 @@ def to_bool(value, permissive=True, prohibit_int=False):
     if permissive or (value.lower() in _FALSE_BOOLEANS):
         return False
     raise ValueError(f"Invalid boolean value: '{value}")
+
+def alphanum_key(text: str) -> list[Union[int, str]]:
+    """Alphanumerical sorting key.
+
+       :param text: the text to generate a sorting key from
+       :return: a list of alternating str and integer values
+    """
+    return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', text)]
