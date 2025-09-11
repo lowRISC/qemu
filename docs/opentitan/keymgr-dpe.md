@@ -42,6 +42,7 @@ Extras:
 ### Arguments
 
 * `-c` QEMU OT config file, which can be generated with the [`cfggen.py`](cfggen.md) script.
+  See also predefined files from the `docs/config/opentitan` directory.
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
@@ -123,12 +124,14 @@ options:
 ### Examples
 
 ````sh
-keymgr-dpe.py -vv -c ot.cfg -j otp_ctrl_mmap.hjson -m img_otp.vmem -l lc_ctrl_state_pkg.sv \
+keymgr-dpe.py -vv -c docs/config/opentitan/darjeeling.cfg \
+    -j otp_ctrl_mmap.hjson -m img_otp.vmem -l lc_ctrl_state_pkg.sv \
     -r base_rom.39.scr.hex -r second_rom.39.scr.hex -b 0 -b 0 -t AES -k 0 -s 0
 ````
 
 ````sh
-keymgr-dpe.py -vv -c ot.cfg -j otp_ctrl_mmap.hjson -m img_otp.vmem -l lc_ctrl_state_pkg.sv \
+keymgr-dpe.py -vv -c docs/config/opentitan/darjeeling.cfg \
+    -j otp_ctrl_mmap.hjson -m img_otp.vmem -l lc_ctrl_state_pkg.sv \
     -r rom0.elf -r keymgr-dpe-basic-test -z 64Ki -z 32Ki -t SW -k 0 -s 0
 ````
 

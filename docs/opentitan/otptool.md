@@ -298,7 +298,7 @@ scripts/opentitan/otptool.py -m img_rma.24.vmem -r otp.raw \
 Generate a QEMU RAW v2 image for the virtual OTP controller, here with an RMA OTP configuration,
 load Present constants from a QEMU configuration file.
 ````sh
-scripts/opentitan/otptool.py -m img_rma.24.vmem -r otp.raw -i ot.cfg
+scripts/opentitan/otptool.py -m img_rma.24.vmem -r otp.raw -i docs/config/opentitan/earlgrey.cfg
 ````
 
 Decode the content of an OTP VMEM file:
