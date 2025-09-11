@@ -1,4 +1,4 @@
-# Baremetal Tests for Earlgrey
+# Baremetal Tests for Earlgrey & Darjeeling
 
 baremetal-eg-tests:
   tags:
@@ -13,6 +13,7 @@ baremetal-eg-tests:
   variables:
     BASEDIR: bmtests/eg
     CI_EXEC: 1
+    DISABLE_FLAKY: 1
   script:
     - python3 -m virtualenv .venv
     - . .venv/bin/activate
@@ -21,7 +22,7 @@ baremetal-eg-tests:
     - mkdir -p ${BASEDIR}
     - zstd -d --stdout ot-eg-bmtest.tar.zst | tar xf - -C ${BASEDIR}
     - find ${BASEDIR}
-    - scripts/opentitan/pyot.py -vv -c ${BASEDIR}/data/qemu/ot-earlgrey/pyot.hjson
+    - scripts/opentitan/pyot.py -vv -c ${BASEDIR}/data/ot-earlgrey/qemu/pyot.hjson
          -w ot-earlgrey.csv -R -T 3
   artifacts:
     public: false
@@ -29,3 +30,34 @@ baremetal-eg-tests:
     name: "bm-ot-earlgrey"
     paths:
       - ot-earlgrey.csv
+
+baremetal-dj-tests:
+  tags:
+    - qemu_ot
+  stage: test
+  needs:
+    - "build-clang"
+    - project: rv/sandbox/rot/baremetal_test
+      job: build-dj
+      ref: $BAREMETAL_REF
+      artifacts: true
+  variables:
+    BASEDIR: bmtests/dj
+    CI_EXEC: 1
+    DISABLE_FLAKY: 1
+  script:
+    - python3 -m virtualenv .venv
+    - . .venv/bin/activate
+    - pip3 install -r scripts/opentitan/requirements.txt
+    - rm -rf ${BASEDIR}
+    - mkdir -p ${BASEDIR}
+    - zstd -d --stdout ot-dj-bmtest.tar.zst | tar xf - -C ${BASEDIR}
+    - find ${BASEDIR}
+    - scripts/opentitan/pyot.py -vv -c ${BASEDIR}/data/ot-darjeeling/qemu/pyot.hjson
+         -w ot-darjeeling.csv -R -T 3
+  artifacts:
+    public: false
+    expire_in: 1 year
+    name: "bm-ot-darjeeling"
+    paths:
+      - ot-darjeeling.csv
