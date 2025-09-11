@@ -23,12 +23,12 @@ import sys
 
 from ot.util.file import guess_file_type
 from ot.util.log import flush_memory_loggers
-from ot.util.misc import EasyDict, flatten
+from ot.util.misc import EasyDict, alphanum_key, flatten
 
 from . import DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_FACTOR
 from .context import ExecContext
 from .filemgr import FileManager
-from .util import TestResult
+from .util import TestCandidate, TestResult
 from .wrapper import Wrapper
 
 
@@ -41,6 +41,7 @@ class Executer:
     """
 
     RESULT_MAP = {
+        -1: 'SKIPPED',
         0: 'PASS',
         1: 'ERROR',
         6: 'ABORT',
@@ -114,11 +115,13 @@ class Executer:
         """Enumerate tests to execute.
         """
         self._argdict = dict(self._args.__dict__)
-        for tst in sorted(self._build_test_list()):
+        for candidate in sorted(self._build_test_list()):
+            tst, reason = candidate.name, candidate.reason
             tpath = self._virtual_tests.get(tst)
             ttype = guess_file_type(tpath or tst)
             rpath = f' [{basename(tpath)}]' if tpath else ''
-            yield f'{basename(tst)} ({ttype}){rpath}'
+            discarded = f' {{discarded: {reason}}}' if reason else ''
+            yield f'{basename(tst)} ({ttype}){rpath}{discarded}'
 
     def run(self, debug: bool, allow_no_test: bool) -> int:
         """Execute all requested tests.
@@ -162,18 +165,28 @@ class Executer:
                 return 1
             targs = None
             temp_files = {}
-            for tpos, test in enumerate(tests, start=1):
-                test_name = None
-                self._log.info('[TEST %s] (%d/%d)', self.get_test_radix(test),
-                               tpos, tcount)
+            for tpos, tcand in enumerate(tests, start=1):
+                test, reason = tcand.name, tcand.reason
+                test_name = self.get_test_radix(test)
                 vcplogfile = None
+                if reason:
+                    tret = -1
+                    sret = self.RESULT_MAP[tret]
+                    if csv:
+                        self._log.info('[TEST %s] (%d/%d) skipped',
+                                       test_name, tpos, tcount)
+                        csv.writerow(TestResult(test_name, sret, '',
+                                                '', reason.title()))
+                        cfp.flush()
+                        results[tret] += 1
+                    continue
                 try:
                     self._tfm.define_transient({
                         'UTPATH': test,
                         'UTDIR': normpath(dirname(test)),
                         'UTFILE': basename(test),
                     })
-                    test_name = self.get_test_radix(test)
+                    self._log.info('[TEST %s] (%d/%d)', test_name, tpos, tcount)
                     exec_info = self._build_test_command(test)
                     exec_info.test_name = test_name
                     vcplogfile = self._log_vcp_streams(exec_info)
@@ -234,7 +247,7 @@ class Executer:
                            self.RESULT_MAP.get(kind, kind),
                            results[kind])
         # sort by the largest occurence, discarding success
-        errors = sorted((x for x in results.items() if x[0]),
+        errors = sorted((x for x in results.items() if x[0] > 0),
                         key=lambda x: -x[1])
         # overall return code is the most common error, or success otherwise
         ret = errors[0][0] if errors else 0
@@ -297,7 +310,7 @@ class Executer:
         exec_info.expect_result = texp
         return exec_info
 
-    def _build_test_list(self, alphasort: bool = True) -> list[str]:
+    def _build_test_list(self) -> list[TestCandidate]:
         pathnames = set()
         testdir = normpath(self._tfm.interpolate(self._config.get('testdir',
                                                                   curdir)))
@@ -328,7 +341,10 @@ class Executer:
         inc_filters = self._build_config_list('include')
         if inc_filters:
             self._log.debug('Searching for tests from %s dir', testdir)
-            for path_filter in filter(None, inc_filters):
+            for candidate in inc_filters:
+                path_filter = candidate.name
+                if not path_filter:
+                    continue
                 if testdir:
                     path_filter = joinpath(testdir, path_filter)
                 paths = set(glob(path_filter, recursive=True))
@@ -354,29 +370,44 @@ class Executer:
             return []
         roms = self._argdict.get('rom', [])
         pathnames -= {normpath(rom) for rom in roms}
-        xtfilters = [f[1:].strip() for f in cfilters if f.startswith('!')]
+
+        xtfilters = [TestCandidate(f[1:].strip(), 'CMDLINE')
+                     for f in cfilters if f.startswith('!')]
         exc_filters = self._build_config_list('exclude')
         xtfilters.extend(exc_filters)
+        discarded: set[TestCandidate] = set()
         if xtfilters:
-            for path_filter in filter(None, xtfilters):
+            for candidate in xtfilters:
+                path_filter, reason = candidate.name, candidate.reason
+                if not path_filter:
+                    continue
                 if testdir:
                     path_filter = joinpath(testdir, path_filter)
                 paths = set(glob(path_filter, recursive=True))
+                if reason:
+                    discarded.update(TestCandidate(t, reason)
+                                     for t in pathnames & paths)
                 pathnames -= paths
                 vdiscards: set[str] = set()
                 for vpath in vtests:
                     if fnmatchcase(vpath, basename(path_filter)):
                         vdiscards.add(vpath)
+                if reason:
+                    discarded.update(TestCandidate(t, reason)
+                                     for t in pathnames & vdiscards)
                 pathnames -= vdiscards
-        pathnames -= set(self._enumerate_from('exclude_from'))
-        if alphasort:
-            return sorted(pathnames, key=basename)
-        return list(pathnames)
+        ftfilters = set(self._enumerate_from('exclude_from'))
+        pathnames -= ftfilters
+        candidates = set(TestCandidate(t) for t in pathnames)
+        candidates.update(discarded)
+        return sorted(candidates,
+                      key=lambda tc: alphanum_key(basename(tc.name)))
 
     def _enumerate_from(self, config_entry: str) -> Iterator[str]:
         incf_filters = self._build_config_list(config_entry)
         if incf_filters:
-            for incf in incf_filters:
+            for candidate in incf_filters:
+                incf = candidate.name
                 incf = normpath(self._tfm.interpolate(incf))
                 if not isfile(incf):
                     raise ValueError(f'Invalid test file: "{incf}"')
@@ -392,8 +423,8 @@ class Executer:
                             testfile = joinpath(incf_dir, testfile)
                         yield normpath(testfile)
 
-    def _build_config_list(self, config_entry: str) -> list:
-        cfglist = []
+    def _build_config_list(self, config_entry: str) -> list[TestCandidate]:
+        cfglist: list[str] = []
         items = self._config.get(config_entry)
         if not items:
             return cfglist
@@ -402,7 +433,7 @@ class Executer:
                              f'"{config_entry}" is not a list')
         for item in items:
             if isinstance(item, str):
-                cfglist.append(item)
+                cfglist.append(TestCandidate(item))
                 continue
             if isinstance(item, dict):
                 for dname, dval in item.items():
@@ -417,7 +448,7 @@ class Executer:
                     if isinstance(dval, list):
                         for sitem in dval:
                             if isinstance(sitem, str):
-                                cfglist.append(sitem)
+                                cfglist.append(TestCandidate(sitem, dname))
         return cfglist
 
     def _build_test_args(self, test_name: str) \

@@ -22,6 +22,13 @@ class ExecTime(float):
         return f'{self*1000:.0f} ms'
 
 
+class TestCandidate(NamedTuple):
+    """Test candidate.
+    """
+    name: str
+    reason: Optional[str] = None
+
+
 class TestResult(NamedTuple):
     """Test result.
     """
