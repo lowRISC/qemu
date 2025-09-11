@@ -1083,7 +1083,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io")
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_DJ_SOC_DEV_I2C0] = {
@@ -1113,7 +1113,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io")
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_DJ_SOC_DEV_TIMER] = {
@@ -1130,7 +1130,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("clock-name", "timers.io")
+            IBEX_DEV_STRING_PROP("clock-name", "timers.io_div4")
         ),
     },
     [OT_DJ_SOC_DEV_OTP_CTRL] = {
@@ -1245,7 +1245,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("n_classes", 4u),
             IBEX_DEV_UINT_PROP("n_lpg", 18u),
             IBEX_DEV_UINT_PROP("edn-ep", 4u),
-            IBEX_DEV_STRING_PROP("clock-name", "secure.io"),
+            IBEX_DEV_STRING_PROP("clock-name", "secure.io_div4"),
             IBEX_DEV_STRING_PROP("clock-name-edn", "secure.main")
         ),
     },
@@ -1280,7 +1280,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io"),
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4"),
             IBEX_DEV_UINT_PROP("version", OT_SPI_HOST_VERSION_DJ_PRE)
         ),
     },
@@ -1323,7 +1323,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("clock_ctrl", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("clocks", "main,io,usb"),
+            IBEX_DEV_STRING_PROP("clocks", "main,io"),
             IBEX_DEV_UINT_PROP("num-rom", 2u),
             IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_DJ_PRE)
         ),
@@ -1356,18 +1356,18 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("clock-src", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("topclocks", "main:16,io:16,usb:16,aon:1"),
+            IBEX_DEV_STRING_PROP("topclocks", "main:16,io:16,aon:1"),
             IBEX_DEV_STRING_PROP("refclock", "aon"),
             IBEX_DEV_STRING_PROP("subclocks",
                 "io_div2:io:2,io_div4:io:4,"
                 "aes:main:1,hmac:main:1,kmac:main:1,otbn:main:1"),
             IBEX_DEV_STRING_PROP("groups",
-                "powerup:io_div4+aon+main+io+usb+io_div2,"
+                "powerup:aon+io+io_div2+io_div4+main,"
                 "trans:aes+hmac+kmac+otbn,"
-                "infra:io_div4+main+aon+usb+io,"
-                "secure:io_div4+main+aon,"
-                "peri:io_div4+io_div2+io+aon+usb,"
-                "timers:io_div4+aon"),
+                "infra:aon+io_div4+main,"
+                "secure:io_div4+main,"
+                "peri:aon+io_div2+io_div4,"
+                "timers:aon+io_div4"),
             IBEX_DEV_STRING_PROP("swcg", "peri"),
             IBEX_DEV_STRING_PROP("hint", "trans"),
             IBEX_DEV_UINT_PROP("version", OT_CLKMGR_VERSION_DJ_PRE)
@@ -1432,7 +1432,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("clock-name", "timers.io"),
+            IBEX_DEV_STRING_PROP("clock-name", "timers.io_div4"),
             IBEX_DEV_STRING_PROP("clock-name-aon", "timers.aon")
         ),
     },
@@ -1443,7 +1443,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("topclocks",
-                "main:1000000000,io:1000000000,usb:1000000000,aon:62500000"),
+                "main:1000000000,io:1000000000,aon:62500000"),
             IBEX_DEV_STRING_PROP("aonclocks", "aon")
         ),
     },

@@ -934,18 +934,18 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             /* topclocks property overridden in ot_eg_soc_ast_configure */
-            IBEX_DEV_STRING_PROP("topclocks", "main:240,io:240,usb:480,aon:25"),
+            IBEX_DEV_STRING_PROP("topclocks", "main:500,io:480,usb:240,aon:1"),
             IBEX_DEV_STRING_PROP("refclock", "aon"),
             IBEX_DEV_STRING_PROP("subclocks",
                 "io_div2:io:2,io_div4:io:4,"
                 "aes:main:1,hmac:main:1,kmac:main:1,otbn:main:1"),
             IBEX_DEV_STRING_PROP("groups",
-                "powerup:io_div4+aon+main+io+usb+io_div2,"
+                "powerup:aon+io+io_div2+io_div4+main+usb,"
                 "trans:aes+hmac+kmac+otbn,"
-                "infra:io_div4+main+usb+io,"
-                "secure:io_div4+main+aon,"
-                "peri:io_div4+io_div2+io+aon+usb,"
-                "timers:io_div4+aon"),
+                "infra:io+io_div2+io_div4+main+usb,"
+                "secure:aon+io_div4+main,"
+                "peri:aon+io+io_div2+io_div4+usb,"
+                "timers:aon+io_div4"),
             IBEX_DEV_STRING_PROP("swcg", "peri"),
             IBEX_DEV_STRING_PROP("hint", "trans"),
             IBEX_DEV_UINT_PROP("version", OT_CLKMGR_VERSION_EG_1_0_0)
