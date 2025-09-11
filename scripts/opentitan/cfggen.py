@@ -12,10 +12,10 @@
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from logging import getLogger
-from os.path import abspath, dirname, isdir, isfile, join as joinpath, normpath
+from os.path import (abspath, basename, dirname, isdir, isfile,
+                     join as joinpath, normpath)
 from traceback import format_exc
 from typing import NamedTuple, Optional, TextIO
-import re
 import sys
 
 QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
@@ -31,10 +31,11 @@ except ImportError as hjson_exc:
         """dummy func if HJSON module is not available"""
         return {}
 
+from ot.lc_ctrl.const import LcCtrlConstants
 from ot.otp.const import OtpConstants
-from ot.otp.lifecycle import OtpLifecycle
+from ot.otp.secret import OtpSecretConstants
 from ot.util.log import configure_loggers
-from ot.util.misc import camel_to_snake_case, to_bool
+from ot.util.misc import ArgError, alphanum_key, to_bool
 
 
 OtParamRegex = str
@@ -87,63 +88,82 @@ class OtClockGroup(NamedTuple):
 
 
 class OtConfiguration:
-    """QEMU configuration file generator."""
+    """QEMU configuration file generator.
+
+       This may seem complicated and duplicated, since it is. This script tries
+       to deal with the many way to define constants that have been used in many
+       implementations of OpenTitan and that have changed over time. YMMV.
+    """
+
+    MODULES = {
+        'rom_ctrl': (True, r'RndCnstScr(.*)'),
+        'otp_ctrl': (False, r'RndCnst(.*)Init'),
+        'lc_ctrl': (False, r'RndCnstLcKeymgrDiv(.*)'),
+        'keymgr':  (False, r'RndCnst((?:.*)Seed)',
+                           # The CDI keymgr seed does not match 'RndCnst.*Seed'
+                           r'RndCnst(Cdi)'),
+        'keymgr_dpe': (False, r'RndCnst((?:.*)Seed)'),
+    }
+    """Secrets to extract from OT modules, defined as regexes where the first
+       capturing group of the first matching string in the module defines the
+       secret name to store.
+    """
+
+    TRANSLATIONS = {
+        'keymgr': {'cdi': 'cdi_seed'}
+    }
+    """Secret name translations from OT definitions to QEMU property names."""
 
     def __init__(self):
         self._log = getLogger('cfggen.cfg')
-        self._lc_states: tuple[str, str] = ('', '')
-        self._lc_transitions: tuple[str, str] = ('', '')
-        self._socdbg: tuple[str, str] = ('', '')
-        self._ownership: tuple[str, str] = ('', '')
-        self._roms: dict[Optional[int], dict[str, str]] = {}
-        self._otp: dict[str, str] = {}
-        self._lc: dict[str, str] = {}
-        self._keymgr: dict[str, str] = {}
-        self._keymgr_name: Optional[str] = None
+        self._otpconst = OtpConstants()
+        self._lcconst = LcCtrlConstants()
+        self._constants: dict[str, dict[Optional[int], dict[str, str]]] = {}
         self._top_clocks: dict[str, OtClock] = {}
         self._sub_clocks: dict[str, OtDerivedClock] = {}
         self._clock_groups: dict[str, OtClockGroup] = {}
         self._mod_clocks: dict[str, list[str]] = {}
         self._top_name: Optional[str] = None
+        self._exclusions: dict[str, set[str]] = {}
 
     @property
     def top_name(self) -> Optional[str]:
         """Return the name of the top as defined in a configuration file."""
         return self._top_name
 
-    def load_top_config(self, toppath: str) -> None:
-        """Load data from HJSON top configuration file."""
+    def load_config(self, toppath: str) -> None:
+        """Load data from HJSON configuration file."""
         assert not _HJSON_ERROR
         with open(toppath, 'rt') as tfp:
             cfg = hjload(tfp, object_pairs_hook=dict)
         self._top_name = cfg.get('name')
+        topbase = basename(toppath)
+
         for module in cfg.get('module') or []:
             modtype = module.get('type')
-            if modtype == 'rom_ctrl':
-                self._load_top_values(module, self._roms, True,
-                                      r'RndCnstScr(.*)')
+            moddefs = self.MODULES.get(modtype)
+            if not moddefs:
                 continue
-            if modtype == 'otp_ctrl':
-                self._load_top_values(module, self._otp, False,
-                                      r'RndCnst(.*)Init')
+            multi, regexes = moddefs[0], moddefs[1:]
+            consts = {}
+            OtpSecretConstants.load_values(module, consts, multi, *regexes)
+            if not consts:
                 continue
-            if modtype == 'lc_ctrl':
-                self._load_top_values(module, self._lc, False,
-                                      r'RndCnstLcKeymgrDiv(.*)')
-                continue
-            if modtype.startswith('keymgr'):
-                self._keymgr_name = modtype
-                self._load_top_values(
-                    module,
-                    self._keymgr,
-                    False,
-                    r"RndCnst((?:.*)Seed)",
-                    # The CDI keymgr seed does not match `RndCnst.*Seed`
-                    r"RndCnst(Cdi)",
-                )
-                if "cdi" in self._keymgr:
-                    self._keymgr["cdi_seed"] = self._keymgr.pop("cdi")
-                continue
+            for cname, tname in self.TRANSLATIONS.get(modtype, {}).items():
+                if cname in consts:
+                    consts[tname] = consts.pop(cname)
+            self._log.debug('Constants for %s loaded from %s', modtype, topbase)
+            exist = modtype in self._constants
+            if multi:
+                if not exist:
+                    self._constants[modtype] = consts
+                else:
+                    self._constants[modtype].update(consts)
+            else:
+                if exist:
+                    raise ValueError(f'Redefinition of {modtype}')
+                self._constants[modtype] = {None: consts}
+
         clocks = cfg.get('clocks', {})
         for clock in clocks.get('srcs', []):
             name = clock['name']
@@ -215,75 +235,105 @@ class OtConfiguration:
             mod_clocks[name] = clocks
         self._mod_clocks = mod_clocks
 
-    def load_lifecycle(self, lcpath: str) -> None:
-        """Load LifeCycle data from RTL file."""
-        lcext = OtpLifecycle()
-        with open(lcpath, 'rt') as lfp:
-            lcext.load(lfp)
-        states = lcext.get_configuration('LC_STATE')
-        if not states:
-            raise ValueError('Cannot obtain LifeCycle states')
-        for raw in {s for s in states if int(s, 16) == 0}:
-            del states[raw]
-        ostates = list(states)
-        self._lc_states = ostates[0], ostates[-1]
-        self._log.info("States first: '%s', last '%s'",
-                       states[self._lc_states[0]], states[self._lc_states[1]])
-        trans = lcext.get_configuration('LC_TRANSITION_CNT')
-        if not trans:
-            raise ValueError('Cannot obtain LifeCycle transitions')
-        for raw in {s for s in trans if int(s, 16) == 0}:
-            del trans[raw]
-        otrans = list(trans)
-        self._lc_transitions = otrans[0], otrans[-1]
-        self._log.info('Transitions first: %d, last %d',
-                       int(trans[self._lc_transitions[0]]),
-                       int(trans[self._lc_transitions[1]]))
-        self._lc.update(lcext.get_tokens(False, False))
-        socdbg = lcext.get_configuration('SOCDBG')
-        if socdbg:
-            for raw in {s for s in socdbg if int(s, 16) == 0}:
-                del socdbg[raw]
-            osoc = list(socdbg)
-            self._socdbg = osoc[0], osoc[-1]
-            self._log.info("Socdbg first: '%s', last '%s'",
-                           socdbg[self._socdbg[0]], socdbg[self._socdbg[1]])
-        ownership = lcext.get_configuration('OWNERSHIP')
-        if ownership:
-            for raw in {s for s in ownership if int(s, 16) == 0}:
-                del ownership[raw]
-            osoc = list(ownership)
-            self._ownership = osoc[0], osoc[-1]
-            self._log.info("Ownership first: '%s', last '%s'",
-                           ownership[self._ownership[0]],
-                           ownership[self._ownership[1]])
+    def load_lifecycle(self, svpath: str) -> None:
+        """Load LifeCycle data from RTL file.
 
-    def load_otp_constants(self, otppath: str) -> None:
-        """Load OTP data from RTL file."""
-        otpconst = OtpConstants()
-        with open(otppath, 'rt') as cfp:
-            otpconst.load(cfp)
+           :param svpath: System Verilog file with OTP constants
+        """
+        with open(svpath, 'rt') as cfp:
+            self._log.debug('Loading LC constants from %s', svpath)
+            self._lcconst.load_sv(cfp)
+
+    def load_otp_constants(self, svpath: str) -> None:
+        """Load OTP data from RTL file.
+
+           :param svpath: System Verilog file with OTP constants
+        """
+        with open(svpath, 'rt') as cfp:
+            self._log.debug('Loading OTP constants from %s', svpath)
+            self._otpconst.load_sv(cfp)
+
+    def load_constants(self, hjpath: Optional[str]) -> None:
+        """Load definitions from HJSON file.
+
+           :param hjpath: HJSON file with constants
+        """
+        if not hjpath:
+            return
+        assert not _HJSON_ERROR
+        self._log.debug('Loading secrets from %s', hjpath)
+        hjbase = basename(hjpath)
+        with open(hjpath, 'rt') as tfp:
+            cfg = hjload(tfp, object_pairs_hook=dict)
+        for module in cfg.get('module') or []:
+            modtype = module.get('type')
+            moddefs = self.MODULES.get(modtype)
+            if not moddefs:
+                continue
+            multi, regexes = moddefs[0], moddefs[1:]
+            consts = {}
+            OtpSecretConstants.load_values(module, consts, multi, *regexes)
+            if not consts:
+                continue
+            for cname, tname in self.TRANSLATIONS.get(modtype, {}).items():
+                if cname in consts:
+                    consts[tname] = consts.pop(cname)
+            self._log.debug('Constants for %s loaded from %s',
+                            modtype, hjbase)
+            exist = modtype in self._constants
+            if multi:
+                if not exist:
+                    self._constants[modtype] = consts
+                else:
+                    self._constants[modtype].update(consts)
+            else:
+                if exist:
+                    raise ValueError(f'Redefinition of {modtype}')
+                self._constants[modtype] = {None: consts}
+        self._otpconst.load_secrets(cfg)
+
+    def prepare(self) -> None:
+        """Prepare generation of data, aggregating several sources.
+        """
         digests = {
             'cnsty_digest': 'digest',
             'flash_data_key': 'flash_data',
             'flash_addr_key': 'flash_addr',
             'sram_data_key': 'sram',
         }
-        avail_digests = otpconst.get_digests()
+        avail_digests = self._otpconst.get_digests()
+        otp_ctrl = self._constants['otp_ctrl'][None]
         for digest, prefix in digests.items():
             if digest not in avail_digests:
                 continue
-            pair = otpconst.get_digest_pair(digest, prefix)
-            self._otp.update(pair)
+            pair = self._otpconst.get_digest_pair(digest, prefix)
+            otp_ctrl.update(pair)
         idx = 0
         while True:
             try:
-                defaults = otpconst.get_partition_inv_defaults(idx)
+                defaults = self._otpconst.get_partition_inv_defaults(idx)
                 if defaults:
-                    self._otp[f'inv_default_part_{idx}'] = defaults
+                    otp_ctrl[f'inv_default_part_{idx}'] = defaults
                 idx += 1
             except ValueError:
                 break
+        lc_ctrl = self._constants['lc_ctrl'][None]
+        lc_ctrl.update(self._lcconst.tokens)
+
+    def exclude(self, exclusions: list[str]) -> None:
+        """Add property exclusions.
+
+           :param exclusions: property defined as <device>.<name_prefix> to
+                              exclude from generation
+        """
+        for exclude in exclusions:
+            try:
+                dev, prop = exclude.split('.')
+            except ValueError as exc:
+                raise ArgError(f'Invalid exclusion format: {exclude}') from exc
+            if dev not in self._exclusions:
+                self._exclusions[dev] = set()
+            self._exclusions[dev].add(prop)
 
     def save(self, variant: str, socid: Optional[str], count: Optional[int],
              ofp: Optional[TextIO]) -> None:
@@ -293,7 +343,7 @@ class OtConfiguration:
         cfg = ConfigParser()
         self._generate_roms(cfg, socid, count or 1)
         self._generate_otp(cfg, variant, socid)
-        self._generate_life_cycle(cfg, socid)
+        self._generate_lc_ctrl(cfg, socid)
         self._generate_key_mgr(cfg, socid)
         self._generate_ast(cfg, variant, socid)
         self._generate_clkmgr(cfg, socid)
@@ -306,43 +356,20 @@ class OtConfiguration:
         for modname, modclocks in sorted(self._mod_clocks.items()):
             print(f'{modname:{mod_max_len}s}', ', '.join(modclocks), file=ofp)
 
-    @classmethod
-    def add_pair(cls, data: dict[str, str], kname: str, value: str) -> None:
+    def add_pair(self, devname: str, data: dict[str, str], kname: str,
+                 value: str) -> None:
         """Helper to create key, value pair entries."""
+        for exc in self._exclusions.get(devname, []):
+            if kname.startswith(exc):
+                self._log.debug('Discarding %s.%s property', devname, kname)
+                return
         if value:
             data[f'  {kname}'] = f'"{value}"'
-
-    def _load_top_values(self, module: dict, odict: dict, multi: bool,
-                         *regexes: tuple[OtParamRegex, ...]) -> None:
-        modname = module.get('name')
-        if not modname:
-            return
-        for params in module.get('param_list', []):
-            if not isinstance(params, dict):
-                continue
-            for regex in regexes:
-                pmo = re.match(regex, params['name'])
-                if not pmo:
-                    continue
-                value = params.get('default')
-                if not value:
-                    continue
-                if value.startswith('0x'):
-                    value = value[2:]
-                kname = camel_to_snake_case(pmo.group(1))
-                if multi:
-                    imo = re.search(r'(\d+)$', modname)
-                    idx = int(imo.group(1)) if imo else None
-                    if idx not in odict:
-                        odict[idx] = {}
-                    odict[idx][kname] = value
-                else:
-                    odict[kname] = value
 
     def _generate_roms(self, cfg: ConfigParser, socid: Optional[str] = None,
                        count: int = 1) -> None:
         for cnt in range(count):
-            for rom, data in self._roms.items():
+            for rom, data in self._constants['rom_ctrl'].items():
                 nameargs = ['ot-rom_ctrl']
                 if socid:
                     if count > 1:
@@ -354,7 +381,7 @@ class OtConfiguration:
                 romname = '.'.join(nameargs)
                 romdata = {}
                 for kname, val in sorted(data.items()):
-                    self.add_pair(romdata, kname, val)
+                    self.add_pair(romname, romdata, kname, val)
                 cfg[f'ot_device "{romname}"'] = romdata
 
     def _generate_otp(self, cfg: ConfigParser, variant: str,
@@ -364,40 +391,46 @@ class OtConfiguration:
             nameargs.append(socid)
         otpname = '.'.join(nameargs)
         otpdata = {}
-        for kname, val in self._otp.items():
-            self.add_pair(otpdata, kname, val)
-        otpdata = dict(sorted(otpdata.items()))
+        otp_ctrl = self._constants['otp_ctrl'][None]
+        for kname, val in otp_ctrl.items():
+            self.add_pair(otpname, otpdata, kname, val)
+
+        otpdata = dict(sorted(otpdata.items(),
+                              key=lambda x: alphanum_key(x[0])))
         cfg[f'ot_device "{otpname}"'] = otpdata
 
-    def _generate_life_cycle(self, cfg: ConfigParser,
-                             socid: Optional[str] = None) -> None:
+    def _generate_lc_ctrl(self, cfg: ConfigParser,
+                          socid: Optional[str] = None) -> None:
         nameargs = ['ot-lc_ctrl']
         if socid:
             nameargs.append(socid)
         lcname = '.'.join(nameargs)
         lcdata = {}
-        self.add_pair(lcdata, 'lc_state_first', self._lc_states[0])
-        self.add_pair(lcdata, 'lc_state_last', self._lc_states[1])
-        self.add_pair(lcdata, 'lc_trscnt_first', self._lc_transitions[0])
-        self.add_pair(lcdata, 'lc_trscnt_last', self._lc_transitions[1])
-        self.add_pair(lcdata, 'ownership_first', self._ownership[0])
-        self.add_pair(lcdata, 'ownership_last', self._ownership[1])
-        self.add_pair(lcdata, 'socdbg_first', self._socdbg[0])
-        self.add_pair(lcdata, 'socdbg_last', self._socdbg[1])
-        for kname, value in self._lc.items():
-            self.add_pair(lcdata, kname, value)
+        for name, states in self._lcconst.states.items():
+            self.add_pair(lcname, lcdata, f'{name}_first', states[0])
+            self.add_pair(lcname, lcdata, f'{name}_last', states[1])
+        lc_ctrl = self._constants['lc_ctrl'][None]
+        for kname, value in lc_ctrl.items():
+            self.add_pair(lcname, lcdata, kname, value)
         lcdata = dict(sorted(lcdata.items()))
         cfg[f'ot_device "{lcname}"'] = lcdata
 
     def _generate_key_mgr(self, cfg: ConfigParser,
                           socid: Optional[str] = None) -> None:
-        nameargs = [f'ot-{self._keymgr_name}']
+        keymgr = None
+        for keymgr_name in ('keymgr', 'keymgr_dpe'):
+            if keymgr_name in self._constants:
+                keymgr = self._constants[keymgr_name][None]
+                break
+        else:
+            return
+        nameargs = [f'ot-{keymgr_name}']
         if socid:
             nameargs.append(socid)
         kmname = '.'.join(nameargs)
         kmdata = {}
-        for kname, value in self._keymgr.items():
-            self.add_pair(kmdata, kname, value)
+        for kname, value in keymgr.items():
+            self.add_pair(kmname, kmdata, kname, value)
             kmdata = dict(sorted(kmdata.items()))
             cfg[f'ot_device "{kmname}"'] = kmdata
 
@@ -406,15 +439,15 @@ class OtConfiguration:
         nameargs = [f'ot-ast-{variant}']
         if socid:
             nameargs.append(socid)
-        clkname = '.'.join(nameargs)
-        clkdata = {}
+        astname = '.'.join(nameargs)
+        astdata = {}
         topclockstr = ','.join(f'{c.name}:{c.frequency}'
                                for c in self._top_clocks.values())
         aonclockstr = ','.join(c.name for c in self._top_clocks.values()
                                if c.aon)
-        self.add_pair(clkdata, 'topclocks', topclockstr)
-        self.add_pair(clkdata, 'aonclocks', aonclockstr)
-        cfg[f'ot_device "{clkname}"'] = clkdata
+        self.add_pair(astname, astdata, 'topclocks', topclockstr)
+        self.add_pair(astname, astdata, 'aonclocks', aonclockstr)
+        cfg[f'ot_device "{astname}"'] = astdata
 
     def _generate_clkmgr(self, cfg: ConfigParser,
                          socid: Optional[str] = None) -> None:
@@ -436,28 +469,28 @@ class OtConfiguration:
             clkrefname = None
             clfrefval = None
         topclockdefs = []
-        for clkname, clkval in self._top_clocks.items():
+        for ckname, ckval in self._top_clocks.items():
             if clfrefval:
-                clkratio = clkval.frequency // clfrefval.frequency
+                clkratio = ckval.frequency // clfrefval.frequency
             else:
                 clkratio = 1
-            topclockdefs.append(f'{clkname}:{clkratio}')
+            topclockdefs.append(f'{ckname}:{clkratio}')
         topclockstr = ','.join(topclockdefs)
         subclockstr = ','.join(f'{c.name}:{c.source}:{c.div}'
                                for c in self._sub_clocks.values())
         groupstr = ','.join(f'{g.name}:{"+".join(sorted(g.sources))}'
                             for g in self._clock_groups.values())
-        swcfgstr = ','.join(g.name for g in self._clock_groups.values()
+        swcgstr = ','.join(g.name for g in self._clock_groups.values()
                             if g.sw_cg)
         hintstr = ','.join(g.name for g in self._clock_groups.values()
                             if g.hint)
-        self.add_pair(clkdata, 'topclocks', topclockstr)
+        self.add_pair(clkname, clkdata, 'topclocks', topclockstr)
         if clkrefname:
-            self.add_pair(clkdata, 'refclock', clkrefname)
-        self.add_pair(clkdata, 'subclocks', subclockstr)
-        self.add_pair(clkdata, 'groups', groupstr)
-        self.add_pair(clkdata, 'swcfg', swcfgstr)
-        self.add_pair(clkdata, 'hint', hintstr)
+            self.add_pair(clkname, clkdata, 'refclock', clkrefname)
+        self.add_pair(clkname, clkdata, 'subclocks', subclockstr)
+        self.add_pair(clkname, clkdata, 'groups', groupstr)
+        self.add_pair(clkname, clkdata, 'swcg', swcgstr)
+        self.add_pair(clkname, clkdata, 'hint', hintstr)
         cfg[f'ot_device "{clkname}"'] = clkdata
 
     def _generate_pwrmgr(self, cfg: ConfigParser,
@@ -469,7 +502,7 @@ class OtConfiguration:
         pwrdata = {}
         clockstr = ','.join(c.name for c in self._top_clocks.values()
                                if not c.aon)
-        self.add_pair(pwrdata, 'clocks', clockstr)
+        self.add_pair(pwrname, pwrdata, 'clocks', clockstr)
         cfg[f'ot_device "{pwrname}"'] = pwrdata
 
 
@@ -495,6 +528,8 @@ def main():
                            help='OTP Constant SV file (default: auto)')
         files.add_argument('-l', '--lifecycle', metavar='SV',
                            help='LifeCycle SV file (default: auto)')
+        files.add_argument('-S', '--secrets', metavar='HJSON',
+                           help='Secret HJSON file (default: auto)')
         files.add_argument('-t', '--topcfg', metavar='HJSON',
                            help='OpenTitan top HJSON config file '
                                 '(default: auto)')
@@ -507,6 +542,10 @@ def main():
         mods.add_argument('-a', '--action', choices=actions,
                           action='append', default=[],
                           help=f'Action(s) to perform, default: {actions[0]}')
+        mods.add_argument('-x', '--exclude', action='append',
+                          metavar='DEVICE.NAME', default=[],
+                          help='Discard any property from DEVICE that starts '
+                               'with NAME (may be repeated)')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -515,7 +554,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        log = configure_loggers(args.verbose, 'cfggen', 'otp')[0]
+        log = configure_loggers(args.verbose, 'cfggen', 'lc', 'otp')[0]
 
         if _HJSON_ERROR:
             argparser.error(f'Missing HJSON module: {_HJSON_ERROR}')
@@ -541,11 +580,11 @@ def main():
             if not isfile(topcfg):
                 argparser.error(f"No such file '{topcfg}'")
             log.info("Top config: '%s'", topcfg)
-            cfg.load_top_config(topcfg)
+            cfg.load_config(topcfg)
         else:
             if not isfile(topcfg):
                 argparser.error(f'No such top file: {topcfg}')
-            cfg.load_top_config(topcfg)
+            cfg.load_config(topcfg)
             ltop = cfg.top_name
             if not ltop:
                 argparser.error('Unknown top name')
@@ -615,15 +654,36 @@ def main():
             argparser.error(f"No such file '{ocpath}'")
         log.debug(f"'{ocfilename}' location: '%s'", ocpath)
 
+        secpath = args.secrets
+        if secpath:
+            if not isfile(secpath):
+                argparser.error('No such secret file: {secpath}')
+        else:
+            sec_constant_locations = [
+                # master branch development environment
+                joinpath(top_dir,
+                         f'data/autogen/{top}.secrets.testing.gen.hjson'),
+                # (obsolete) master branch development environment
+                joinpath(top_dir, f'data/autogen/{top}.secrets.dev.gen.hjson'),
+            ]
+            for maybe_secpath in sec_constant_locations:
+                if isfile(maybe_secpath):
+                    secpath = maybe_secpath
+                    break
+
         cfg.load_lifecycle(lcpath)
         cfg.load_otp_constants(ocpath)
+        cfg.load_constants(secpath)
+        cfg.prepare()
+        cfg.exclude(args.exclude)
+
         with open(args.out, 'wt') if args.out else sys.stdout as ofp:
             if 'config' in args.action:
                 cfg.save(topvar, args.socid, args.count, ofp)
             if 'clock' in args.action:
                 cfg.show_clocks(ofp)
 
-    except (IOError, ValueError, ImportError) as exc:
+    except (ArgError, IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)
         if debug:
             print(format_exc(chain=False), file=sys.stderr)

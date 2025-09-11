@@ -12,8 +12,8 @@ the QEMU binary.
 
 ````text
 usage: cfggen.py [-h] [-T {darjeeling,earlgrey}] [-o CFG] [-c SV] [-l SV]
-                 [-t HJSON] [-s SOCID] [-C COUNT] [-a {config,clock}] [-v]
-                 [-d]
+                 [-S HJSON] [-t HJSON] [-s SOCID] [-C COUNT]
+                 [-a {config,clock}] [-x DEVICE.NAME] [-v] [-d]
                  [OTDIR]
 
 OpenTitan QEMU configuration file generator.
@@ -28,6 +28,7 @@ Files:
   -o, --out CFG         Filename of the config file to generate
   -c, --otpconst SV     OTP Constant SV file (default: auto)
   -l, --lifecycle SV    LifeCycle SV file (default: auto)
+  -S, --secrets HJSON   Secret HJSON file (default: auto)
   -t, --topcfg HJSON    OpenTitan top HJSON config file (default: auto)
 
 Modifiers:
@@ -37,6 +38,9 @@ Modifiers:
 Actions:
   -a, --action {config,clock}
                         Action(s) to perform, default: config
+  -x, --exclude DEVICE.NAME
+                        Discard any property from DEVICE that starts with NAME
+                        (may be repeated)
 
 Extras:
   -v, --verbose         increase verbosity
@@ -63,6 +67,8 @@ which can be overidden with options `-c`, `-l` and `-t`.
 * `-o` the filename of the configuration file to generate. It not specified, the generated content
   is printed out to the standard output.
 
+* `-S` path to the generated file that contains all the "secret" constants of the _top_.
+
 * `-s` specify a SoC identifier for OT platforms with mulitple SoCs
 
 * `-T` specify the OpenTitan _top_ name, such as `darjeeling`, `earlgrey`, ... This option is
@@ -72,6 +78,9 @@ which can be overidden with options `-c`, `-l` and `-t`.
 
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
+* `-x` can be used to prevent some device properties from being emitted in the output stream. This
+  can be useful while implementing a device, whose emulation does not support the comprehensive
+  feature set of its HW counterpart.
 
 ### Examples
 
@@ -80,6 +89,8 @@ which can be overidden with options `-c`, `-l` and `-t`.
 ````
 
 ````sh
+# do not emit any 'flash*' properties for the EarlGrey OTP controller
 ./scripts/opentitan/cfggen.py -o opentitan.cfg \
     -t ../opentitan/hw/top_earlgrey/data/autogen/top_earlgrey.gen.hjson
+    -x ot-otp-eg.flash
 ````
