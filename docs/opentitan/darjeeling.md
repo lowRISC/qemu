@@ -209,6 +209,12 @@ virtual machine. It contains three ASCII chars `QMU` followed with a configurabl
 the MSB, whose meaning is not defined. It can be any 8-byte value, and defaults to 0x0. To configure
 this version field, use the `qemu_version` property of the Ibex Wrapper device.
 
+The `DV_SIM_STATUS` register (address 0 of the `DV_SIM_WINDOW`) can be used to exit QEMU with a
+passing or failing status code. The lower half of the word is written either `900d` (good) or `baad`
+(bad). If an error code is written to the upper half of the word, QEMU will exit with that status
+code for failures. The `-global ot-ibex_wrapper.dv-sim-status-exit=[on|off]` can be used to control
+whether QEMU shuts down when this register is written.
+
 There are two modes to handle address remapping, with different limitations:
 
 - default mode: use an MMU-like implementation (via ot_vmapper) to remap addresses. This mode

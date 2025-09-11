@@ -238,6 +238,7 @@ struct OtIbexWrapperState {
     uint8_t qemu_version;
     bool lc_ignore;
     bool alias_mode;
+    bool dv_sim_status_exit;
     CharBackend chr;
 };
 
@@ -1136,30 +1137,39 @@ static void ot_ibex_wrapper_write_dv_sim_status(OtIbexWrapperState *s,
     (void)reg;
 
     ot_ibex_wrapper_status_report(s, value);
-    switch (value & DV_SIM_STATUS_CODE_MASK) {
-    case TEST_STATUS_PASSED:
-        trace_ot_ibex_wrapper_exit(s->ot_id, "DV SIM success, exiting", 0);
-        qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_SHUTDOWN,
-                                               0);
-        break;
-    case TEST_STATUS_FAILED: {
-        uint32_t info = SHARED_FIELD_EX32(value, DV_SIM_STATUS_INFO);
-        int ret;
-        if (info == 0) {
-            /* no extra info */
-            ret = 1;
-        } else {
-            ret = (int)(info & 0x7fu);
+
+    if (s->dv_sim_status_exit) {
+        switch (value & DV_SIM_STATUS_CODE_MASK) {
+        case TEST_STATUS_PASSED:
+            trace_ot_ibex_wrapper_exit(s->ot_id, "DV SIM success, exiting", 0);
+            qemu_system_shutdown_request_with_code(
+                SHUTDOWN_CAUSE_GUEST_SHUTDOWN, 0);
+            break;
+        case TEST_STATUS_FAILED: {
+            uint32_t info = SHARED_FIELD_EX32(value, DV_SIM_STATUS_INFO);
+            int ret;
+            if (info == 0) {
+                /* no extra info */
+                ret = 1;
+            } else {
+                ret = (int)(info & 0x7fu);
+            }
+            trace_ot_ibex_wrapper_exit(s->ot_id, "DV SIM failure, exiting",
+                                       ret);
+            qemu_system_shutdown_request_with_code(
+                SHUTDOWN_CAUSE_GUEST_SHUTDOWN, ret);
+            break;
         }
-        trace_ot_ibex_wrapper_exit(s->ot_id, "DV SIM failure, exiting", ret);
-        qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_SHUTDOWN,
-                                               ret);
-        break;
+        default:
+            break;
+        }
+    } else {
+        trace_ot_ibex_wrapper_exit(s->ot_id,
+                                   "dv-sim-status-exit disabled, not exiting",
+                                   0);
     }
-    default:
-        s->regs.dv_sim_win[DV_SIM_STATUS] = value;
-        break;
-    }
+
+    s->regs.dv_sim_win[DV_SIM_STATUS] = value;
 }
 
 static void ot_ibex_wrapper_write_dv_sim_log(OtIbexWrapperState *s,
@@ -1381,6 +1391,8 @@ static Property ot_ibex_wrapper_properties[] = {
     DEFINE_PROP_UINT8("edn-ep", OtIbexWrapperState, edn_ep, UINT8_MAX),
     DEFINE_PROP_BOOL("lc-ignore", OtIbexWrapperState, lc_ignore, false),
     DEFINE_PROP_BOOL("alias-mode", OtIbexWrapperState, alias_mode, false),
+    DEFINE_PROP_BOOL("dv-sim-status-exit", OtIbexWrapperState,
+                     dv_sim_status_exit, true),
     DEFINE_PROP_UINT8("qemu_version", OtIbexWrapperState, qemu_version, 0),
     DEFINE_PROP_STRING("lc-ignore-ids", OtIbexWrapperState, lc_ignore_ids),
     DEFINE_PROP_CHR("logdev", OtIbexWrapperState, chr),
