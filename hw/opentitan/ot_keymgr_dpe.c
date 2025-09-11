@@ -578,6 +578,24 @@ static const char *FST_NAMES[] = {
 #define FST_NAME(_st_) \
     (((unsigned)(_st_)) < ARRAY_SIZE(FST_NAMES) ? FST_NAMES[(_st_)] : "?")
 
+#define SEED_ENTRY(_sd_) [KEYMGR_DPE_SEED_##_sd_] = stringify(_sd_)
+static const char *SEED_NAMES[] = {
+    /* clang-format off */
+    SEED_ENTRY(LFSR),
+    SEED_ENTRY(REV),
+    SEED_ENTRY(SW_OUT),
+    SEED_ENTRY(HW_OUT),
+    SEED_ENTRY(AES),
+    SEED_ENTRY(KMAC),
+    SEED_ENTRY(OTBN),
+    SEED_ENTRY(NONE),
+    SEED_ENTRY(COUNT),
+    /* clang-format on */
+};
+#undef SEED_ENTRY
+#define SEED_NAME(_sd_) \
+    (((unsigned)(_sd_)) < ARRAY_SIZE(SEED_NAMES) ? SEED_NAMES[(_sd_)] : "?")
+
 #define OT_KEYMGR_DPE_HEXSTR_SIZE 256u
 
 #define ot_keymgr_dpe_dump_bigint(_s_, _b_, _l_) \
@@ -1962,15 +1980,15 @@ static void ot_keymgr_dpe_configure_constants(OtKeyMgrDpeState *s)
             seed_len_bytes = 8u;
         }
         if (len != (seed_len_bytes * 2u)) {
-            error_setg(&error_fatal, "%s: %s invalid seed #%u length\n",
-                       __func__, s->ot_id, ix);
+            error_setg(&error_fatal, "%s: %s invalid seed %s length: %zu\n",
+                       __func__, s->ot_id, SEED_NAME(ix), len);
             continue;
         }
 
         if (ot_common_parse_hexa_str(s->seeds[ix], s->seed_xstrs[ix],
                                      seed_len_bytes, true, true)) {
-            error_setg(&error_fatal, "%s: %s unable to parse seed #%u\n",
-                       __func__, s->ot_id, ix);
+            error_setg(&error_fatal, "%s: %s unable to parse seed %s\n",
+                       __func__, s->ot_id, SEED_NAME(ix));
             continue;
         }
     }
