@@ -29,6 +29,7 @@ Please check out `hw/opentitan/ot_ref.log`
 * OTP controller
   * read and write features are supported, Present scrambling is supported w/ digest checks,
     ECC (detection and correction) is supported.
+  * zero-ization is not yet supported
 * [RISC-V Debug Module](jtag-dm.md) and Pulp Debug Module
 * [ROM controller](rom_ctrl.md)
 * SoC Debug controller
@@ -264,7 +265,7 @@ To force QEMU to execute an application despite this feature, bypassing the DFT 
 
 ### SPI Device
 
-* See [SPI device](spi_devide.md) for options.
+* See [SPI device](spi_device.md) for options.
 
 ### SPI Host
 
