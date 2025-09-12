@@ -3322,13 +3322,6 @@ static void ot_otp_eg_pwr_load(OtOTPEgState *s)
     otp->ecc_granule = 0u;
 
     if (s->blk) {
-        bool write = blk_supports_write_perm(s->blk);
-        uint64_t perm = BLK_PERM_CONSISTENT_READ | (write ? BLK_PERM_WRITE : 0);
-        if (blk_set_perm(s->blk, perm, perm, &error_fatal)) {
-            warn_report("%s: %s: OTP backend is R/O", __func__, s->ot_id);
-            write = false;
-        }
-
         int rc = blk_pread(s->blk, 0, (int64_t)otp_size, otp->storage, 0);
         if (rc < 0) {
             error_setg(&error_fatal,
@@ -3365,6 +3358,7 @@ static void ot_otp_eg_pwr_load(OtOTPEgState *s)
                           otp->ecc_bit_count);
         }
 
+        bool write = blk_supports_write_perm(s->blk);
         trace_ot_otp_load_backend(s->ot_id, otp_hdr->version,
                                   write ? "R/W" : "R/O", otp->ecc_bit_count,
                                   otp->ecc_granule);
@@ -3931,6 +3925,19 @@ static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->ot_id);
     g_assert(s->otp_backend);
+
+    /*
+     * Set the OTP drive's permissions now during realization. We can't leave it
+     * until reset because QEMU might have `-deamonize`d and changed directory,
+     * invalidating the filesystem path to the OTP image.
+     */
+    if (s->blk) {
+        bool write = blk_supports_write_perm(s->blk);
+        uint64_t perm = BLK_PERM_CONSISTENT_READ | (write ? BLK_PERM_WRITE : 0);
+        if (blk_set_perm(s->blk, perm, perm, &error_fatal)) {
+            warn_report("%s: %s: OTP backend is R/O", __func__, s->ot_id);
+        }
+    }
 
     ot_otp_eg_configure_scrmbl_key(s);
     ot_otp_eg_configure_digest(s);
