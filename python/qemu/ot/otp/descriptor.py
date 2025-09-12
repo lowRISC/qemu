@@ -20,6 +20,7 @@ class OtpPartitionDesc:
         'size': None,
         'offset': None,
         'digest_offset': None,
+        'zer_offset': None,
         'hw_digest': '',
         'sw_digest': '',
         'secret': '',
@@ -27,6 +28,7 @@ class OtpPartitionDesc:
         'write_lock': 'wlock',
         'read_lock': 'rlock',
         'integrity': '',
+        'zeroizable': '',
         'iskeymgr': '',
         'iskeymgr_creator': '',
         'iskeymgr_owner': '',
@@ -51,6 +53,12 @@ class OtpPartitionDesc:
             print(f'    [OTP_PART_{part.name}] = {{', file=cfp)
             print(f'        .size = {part.size}u,', file=cfp)
             print(f'        .offset = {part.offset}u,', file=cfp)
+            if part.zer_offset is not None:
+                print(f'        .zer_offset = {part.zer_offset}u,',
+                      file=cfp)
+            else:
+                print(f'        .zer_offset = UINT16_MAX,',   # noqa: F541
+                      file=cfp)
             if part.digest_offset is not None:
                 print(f'        .digest_offset = {part.digest_offset}u,',
                       file=cfp)

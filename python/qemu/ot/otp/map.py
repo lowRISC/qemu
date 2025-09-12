@@ -123,6 +123,9 @@ class OtpMap:
             has_digest = any(part.get(f'{k}w_digest') for k in 'sh')
             if has_digest:
                 items_size += OtpPartition.DIGEST_SIZE
+            has_zero = part.get('zeroizable', False)
+            if has_zero:
+                items_size += OtpPartition.ZER_SIZE
             if part_size:
                 assert items_size <= part_size
             else:
@@ -136,9 +139,12 @@ class OtpMap:
                 part[kmm[0]] = kmm[1]
             prefix = name.title().replace('_', '')
             partname = f'{prefix}Part'
-            newpart = type(partname, (OtpPartition,),
+            # create an OtpPartition class specialized for the current partition
+            partcls = type(partname, (OtpPartition,),
                            {'name': name, '__doc__': desc})
-            self._partitions.append(newpart(part))
+            # instantiate a new partition of this type
+            partobj = partcls(part)
+            self._partitions.append(partobj)
 
     def _check_keymgr_materials(self, partname: str, items: dict[str, dict]) \
             -> Optional[tuple[str, bool]]:
@@ -186,12 +192,21 @@ class OtpMap:
         for part in self._partitions:
             part_offset = 0
             for part in self._partitions:
+                zeroizable = getattr(part, 'zeroizable', False)
+                if zeroizable:
+                    zer_offset = part_offset + part.size - OtpPartition.ZER_SIZE
+                else:
+                    zer_offset = None
                 if part.sw_digest or part.hw_digest:
-                    digest_offset = part_offset + part.size - 8
+                    digest_offset = (part_offset + part.size -
+                                     OtpPartition.DIGEST_SIZE)
+                    if zeroizable:
+                        digest_offset -= OtpPartition.ZER_SIZE
                 else:
                     digest_offset = None
                 setattr(part, 'offset', part_offset)
                 setattr(part, 'digest_offset', digest_offset)
+                setattr(part, 'zer_offset', zer_offset)
                 part_offset += part.size
         assert part_offset == self._otp_size, "Unexpected partition offset"
 

@@ -60,6 +60,8 @@ class OtpPartition:
 
     DIGEST_SIZE = 8  # bytes
 
+    ZER_SIZE = 8  # bytes
+
     MAX_DATA_WIDTH = 20
 
     def __init__(self, params):
@@ -68,6 +70,7 @@ class OtpPartition:
         self._log = getLogger('otp.part')
         self._data = b''
         self._digest_bytes: Optional[bytes] = None
+        self._zer_bytes: Optional[bytes] = None
 
     @property
     def has_digest(self) -> bool:
@@ -86,9 +89,16 @@ class OtpPartition:
                 self._digest_bytes != bytes(self.DIGEST_SIZE))
 
     @property
+    def is_zeroizable(self) -> bool:
+        """Check if the partition supports zeroization."""
+        return getattr(self, 'zeroizable', False)
+
+    @property
     def is_empty(self) -> bool:
         """Report if the partition is empty."""
         if self._digest_bytes and sum(self._digest_bytes):
+            return False
+        if self._zer_bytes and sum(self._zer_bytes):
             return False
         return sum(self._data) == 0
 
@@ -100,6 +110,10 @@ class OtpPartition:
         data = bfp.read(self.size)
         if len(data) != self.size:
             raise IOError(f'{self.name} Cannot load {self.size} from stream')
+        zer_data = None
+        if self.is_zeroizable:
+            data, zer_data = data[:-self.ZER_SIZE], data[-self.ZER_SIZE:]
+            self._zer_bytes = zer_data
         if self.has_digest:
             data, digest = data[:-self.DIGEST_SIZE], data[-self.DIGEST_SIZE:]
             self._digest_bytes = digest
@@ -110,6 +124,7 @@ class OtpPartition:
         pos = bfp.tell()
         bfp.write(self._data)
         bfp.write(self._digest_bytes)
+        bfp.write(self._zer_bytes)
         size = bfp.tell() - pos
         if size != self.size:
             raise RuntimeError(f"Failed to save partition {self.name} content")
@@ -148,9 +163,9 @@ class OtpPartition:
         if Present is None:
             raise RuntimeError('Cannot check digest, Present module not found')
         block_sz = OtpMap.BLOCK_SIZE
-        assert block_sz == 8  # should be 64 bits for Present to work
+        assert block_sz == Present.BLOCK_BIT_SIZE // 8
         if len(data) % block_sz != 0:
-            # this case is valid but not yet impplemented (paddding)
+            # this case is valid but not yet implemented (paddding)
             raise RuntimeError('Invalid partition size')
         block_count = len(data) // block_sz
         if block_count & 1:
@@ -177,9 +192,11 @@ class OtpPartition:
         buf = BytesIO(self._data)
         if ofp:
             def emit(fmt, *args):
-                print(fmt % args, file=ofp)
+                print(f'%-52s %s {fmt}' % args, file=ofp)
         else:
-            emit = self._log.info
+            def emit(fmt, *args):
+                fmt = f'%-52s %s {fmt}'
+                self._log.info(fmt, *args)
         pname = self.name
         offset = 0
         soff = 0
@@ -190,6 +207,8 @@ class OtpPartition:
             filter_re = r'.*'
         for itname, itdef in self.items.items():
             itsize = itdef['size']
+            if not itsize:
+                self._log.error('Zero sized %s.%s', self.name, itname)
             itvalue = buf.read(itsize)
             soff = f'[{f"{base+offset:d}":>5s}]' if base is not None else ''
             offset += itsize
@@ -205,31 +224,42 @@ class OtpPartition:
                 if decode and self._decoder:
                     dval = self._decoder.decode(itname, sval)
                     if dval is not None:
-                        emit('%-48s %s (decoded) %s', name, soff, dval)
+                        emit('(decoded) %s', name, soff, dval)
                         continue
                 ssize = f'{{{itsize}}}'
                 if not sum(itvalue) and wide < 2:
                     if decode:
-                        emit('%-48s %s %5s (empty)', name, soff, ssize)
+                        emit('%5s (empty)', name, soff, ssize)
                     else:
-                        emit('%-48s %s %5s 0...', name, soff, ssize)
+                        emit('%5s 0...', name, soff, ssize)
                 else:
                     if not wide and itsize > self.MAX_DATA_WIDTH:
                         sval = f'{sval[:self.MAX_DATA_WIDTH*2]}...'
-                    emit('%-48s %s %5s %s', name, soff, ssize, sval)
+                    emit('%5s %s', name, soff, ssize, sval)
             else:
                 ival = int.from_bytes(itvalue, 'little')
                 if decode:
                     if itdef.get('ismubi'):
-                        emit('%-48s %s (decoded) %s',
+                        emit('(decoded) %s',
                              name, soff,
                              str(OtpMap.MUBI8_BOOLEANS.get(ival, ival)))
                         continue
                     if itsize == 4 and ival in OtpMap.HARDENED_BOOLEANS:
-                        emit('%-48s %s (decoded) %s',
+                        emit('(decoded) %s',
                              name, soff, str(OtpMap.HARDENED_BOOLEANS[ival]))
                         continue
-                emit('%-48s %s %x', name, soff, ival)
+                emit('%x', name, soff, ival)
+        offset = (offset + OtpMap.BLOCK_SIZE - 1) & ~(OtpMap.BLOCK_SIZE - 1)
+        rpos = self.size
+        dsoff = zsoff = f'[{"":5s}]'
+        if self.is_zeroizable:
+            rpos -= self.ZER_SIZE
+            if base is not None:
+                zsoff = f'[{f"{base+rpos:d}":>5s}]'
+        if self.has_digest:
+            rpos -= self.DIGEST_SIZE
+            if base is not None:
+                dsoff = f'[{f"{base+rpos:d}":>5s}]'
         if self._digest_bytes is not None:
             if match(filter_re, 'DIGEST', IGNORECASE):
                 if not sum(self._digest_bytes) and decode:
@@ -237,7 +267,17 @@ class OtpPartition:
                 else:
                     val = hexlify(self._digest_bytes).decode()
                 ssize = f'{{{len(self._digest_bytes)}}}'
-                emit('%-48s %s %5s %s', f'{pname}:DIGEST', soff, ssize, val)
+                emit('%5s %s', f'{pname}:DIGEST', dsoff, ssize, val)
+        if self._zer_bytes is not None:
+            if match(filter_re, 'ZER', IGNORECASE):
+                if not sum(self._zer_bytes) and decode:
+                    val = '(empty)'
+                else:
+                    val = hexlify(self._zer_bytes).decode()
+                ssize = f'{{{len(self._zer_bytes)}}}'
+                emit('%5s %s', f'{pname}:ZER', zsoff, ssize, val)
+        if offset != rpos:
+            self._log.warning('%s: offset %d, size %d', self.name, offset, rpos)
 
     def empty(self) -> None:
         """Empty the partition, including its digest if any."""
