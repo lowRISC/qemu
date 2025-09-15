@@ -6,6 +6,7 @@
 //sw/device/lib/crypto/drivers:rv_core_ibex_test_sim_qemu_rom_with_fake_keys
 //sw/device/silicon_creator/lib/drivers:hmac_functest_sim_qemu_rom_with_fake_keys
 //sw/device/silicon_creator/lib/drivers:kmac_functest_sim_qemu_rom_with_fake_keys
+//sw/device/silicon_creator/lib/drivers:keymgr_functest_sim_qemu_rom_with_fake_keys
 //sw/device/silicon_creator/lib/drivers:retention_sram_functest_sim_qemu_rom_with_fake_keys
 //sw/device/silicon_creator/lib/drivers:rnd_functest_sim_qemu_rom_with_fake_keys
 //sw/device/silicon_creator/lib/drivers:rstmgr_functest_sim_qemu_rom_with_fake_keys
