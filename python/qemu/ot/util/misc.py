@@ -33,11 +33,14 @@ class HexInt(int):
         return f'0x{self:x}'
 
     @staticmethod
-    def parse(val: Optional[str], base: Optional[int] = None) \
+    def parse(val: Optional[Union[str, int]], base: Optional[int] = None,
+              accept_int: bool = False) \
             -> Optional['HexInt']:
         """Simple helper to support hexadecimal integer in argument parser."""
         if val is None:
             return None
+        if accept_int and isinstance(val, int):
+            return HexInt(val)
         if base is not None:
             return HexInt(int(val, base))
         return HexInt(int(val, val.startswith('0x') and 16 or 10))
