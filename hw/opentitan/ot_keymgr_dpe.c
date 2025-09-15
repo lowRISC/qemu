@@ -28,8 +28,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <assert.h>
-#include <stdint.h>
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
