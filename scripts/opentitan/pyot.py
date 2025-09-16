@@ -61,6 +61,7 @@ def main():
     tmp_result: Optional[str] = None
     result_file: Optional[str] = None
     rlog: Optional[RemoteLogService] = None
+    ret = None
     try:
         args: Optional[Namespace] = None
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
@@ -326,10 +327,12 @@ def main():
             rfmt = ResultFormatter()
             try:
                 rfmt.load(result_file)
-                rfmt.show(True)
+                rfmt.show(True, QEMUExecuter.RESULT_MAP.get(ret))
             # pylint: disable=broad-except
             except Exception as exc:
                 print(f'Cannot generate result file: {exc}', file=sys.stderr)
+                if debug:
+                    print(format_exc(chain=False), file=sys.stderr)
         if tmp_result and isfile(tmp_result):
             unlink(tmp_result)
 

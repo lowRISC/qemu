@@ -55,23 +55,32 @@ class ResultFormatter:
             for row in csv:
                 self._results.append(row)
 
-    def show(self, spacing: bool = False) -> None:
+    def show(self, spacing: bool = False, result: Optional[str] = None) -> None:
         """Print a simple formatted ASCII table with loaded CSV results.
 
            :param spacing: add an empty line before and after the table
+           :param result: overall result, if any
         """
         results = [r[:-1] + [shorten(r[-1], width=100)] for r in self._results]
         if not results:
             return
         if spacing:
             print('')
+        # third row is time, always defined as ms, see ExecTime
+        total_time = sum(float(r[2].strip().split(' ')[0])
+                               for r in self._results[1:])
+        tt_str = f'{total_time / 1000:.1f} s'
+        last_row = ['TEST SESSION', result or '?', tt_str]
+        last_row.extend([''] * (len(self._results) - len(last_row)))
+        results.append(last_row)
         widths = [max(len(x) for x in col) for col in zip(*results)]
         self._show_line(widths, '-')
         self._show_row(widths, results[0])
         self._show_line(widths, '=')
-        for row in results[1:]:
+        last_rix = len(self._results) - 2
+        for rix, row in enumerate(results[1:]):
             self._show_row(widths, row)
-            self._show_line(widths, '-')
+            self._show_line(widths, '-' if rix != last_rix else '=')
         if spacing:
             print('')
 

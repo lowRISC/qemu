@@ -28,7 +28,7 @@ from ot.util.misc import EasyDict, alphanum_key, flatten
 from . import DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_FACTOR
 from .context import ExecContext
 from .filemgr import FileManager
-from .util import TestCandidate, TestResult
+from .util import ExecTime, TestCandidate, TestResult
 from .wrapper import Wrapper
 
 
@@ -213,7 +213,7 @@ class Executer:
                     if debug:
                         print(format_exc(chain=False), file=sys.stderr)
                     tret = 99
-                    xtime = 0.0
+                    xtime = ExecTime(0.0)
                     err = str(exc)
                 finally:
                     self._discard_vcp_log(vcplogfile)
