@@ -426,6 +426,7 @@ typedef struct OtKeyMgrState {
 
     /* key states */
     OtKeyMgrKey *key_states;
+    OtKeyMgrKey *saved_kmac_key; /* store KMAC key & restore when completing */
 
     char *hexstr;
 
@@ -823,9 +824,9 @@ static void ot_keymgr_wipe_key_states(OtKeyMgrState *s)
     }
 }
 
-static void ot_keymgr_push_key(OtKeyMgrState *s, OtKeyMgrKeySink key_sink,
-                               const uint8_t *key_share0,
-                               const uint8_t *key_share1, bool valid)
+static void ot_keymgr_push_key(
+    OtKeyMgrState *s, OtKeyMgrKeySink key_sink, const uint8_t *key_share0,
+    const uint8_t *key_share1, bool valid, bool sideload_key)
 {
     g_assert((unsigned)key_sink < KEYMGR_KEY_SINK_COUNT);
 
@@ -834,10 +835,21 @@ static void ot_keymgr_push_key(OtKeyMgrState *s, OtKeyMgrKeySink key_sink,
 
     g_assert(sink);
 
+    /*
+     * Save the latest KMAC sideloading key, as it needs to be restored after
+     * any keymgr operations that load the KMAC KDF key to offload KDF.
+     */
+    if (key_share0 && key_share1 && sideload_key &&
+        key_sink == KEYMGR_KEY_SINK_KMAC) {
+        memcpy(s->saved_kmac_key->share0, key_share0, key_size);
+        memcpy(s->saved_kmac_key->share1, key_share1, key_size);
+        s->saved_kmac_key->valid = valid;
+    }
+
     if (trace_event_get_state(TRACE_OT_KEYMGR_PUSH_KEY)) {
         if (!key_share0 || !key_share1) {
-            trace_ot_keymgr_push_key(s->ot_id, KEY_SINK_NAME(key_sink), valid,
-                                     "");
+            trace_ot_keymgr_push_key(s->ot_id, KEY_SINK_NAME(key_sink),
+                                     sideload_key, valid, "");
         } else {
             /* compute the unmasked key for tracing */
             uint8_t key_value[KEYMGR_KEY_SIZE_MAX];
@@ -845,7 +857,8 @@ static void ot_keymgr_push_key(OtKeyMgrState *s, OtKeyMgrKeySink key_sink,
                 key_value[ix] = key_share0[ix] ^ key_share1[ix];
             }
 
-            trace_ot_keymgr_push_key(s->ot_id, KEY_SINK_NAME(key_sink), valid,
+            trace_ot_keymgr_push_key(s->ot_id, KEY_SINK_NAME(key_sink),
+                                     sideload_key, valid,
                                      ot_keymgr_dump_bigint(s, key_value,
                                                            key_size));
         }
@@ -857,6 +870,17 @@ static void ot_keymgr_push_key(OtKeyMgrState *s, OtKeyMgrKeySink key_sink,
     g_assert(kc->push_key);
 
     kc->push_key(ki, key_share0, key_share1, key_size, valid);
+}
+
+static void ot_keymgr_push_kdf_key(OtKeyMgrState *s, const uint8_t *key_share0,
+                                   const uint8_t *key_share1, bool valid)
+{
+    trace_ot_keymgr_push_kdf_key(s->ot_id, valid);
+
+    /* @todo: add additional KMAC KDF key integrity checks */
+
+    ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, key_share0, key_share1, valid,
+                       false);
 }
 
 /* check that 'data' is not all zeros or all ones */
@@ -1121,8 +1145,8 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
     /* send the current key state to KMAC as the KDF key */
     g_assert(cdi < NUM_CDIS);
     OtKeyMgrKey *key_state = &s->key_states[cdi];
-    ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, key_state->share0,
-                       key_state->share1, key_state->valid);
+    ot_keymgr_push_kdf_key(s, key_state->share0, key_state->share1,
+                           key_state->valid);
 
     /* transmit the contents of the KDF buffer to KMAC for computation */
     ot_keymgr_dump_kdf_buf(s, "adv");
@@ -1159,11 +1183,14 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
     }
 }
 
-static void ot_keymgr_reset_kmac_key(OtKeyMgrState *s)
+static void ot_keymgr_restore_kmac_key(OtKeyMgrState *s)
 {
-    /* @todo: when not in use, this should be filled with dummy entropy */
-    trace_ot_keymgr_reset_kmac_key(s->ot_id);
-    ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, NULL, NULL, false);
+    trace_ot_keymgr_restore_kmac_key(s->ot_id);
+
+    /* restore saved KMAC sideload key now that offloaded KDF KMAC is done */
+    ot_keymgr_push_key(s, KEYMGR_KEY_SINK_KMAC, s->saved_kmac_key->share0,
+                       s->saved_kmac_key->share1, s->saved_kmac_key->valid,
+                       true);
 }
 
 static bool
@@ -1190,7 +1217,6 @@ ot_keymgr_handle_kmac_resp_advance(OtKeyMgrState *s, const OtKMACAppRsp *rsp)
     }
 
     /* all CDIs have been advanced, so complete the advance operation */
-    ot_keymgr_reset_kmac_key(s);
     s->op_state.adv_cdi_cnt = 0u;
 
     /* SW can lock the `SW_BINDING` regs, and HW unlocks after an advance */
@@ -1266,6 +1292,9 @@ ot_keymgr_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
     }
 
     if (op_complete) {
+        /* reload the sideloaded key into the KMAC key sink */
+        ot_keymgr_restore_kmac_key(s);
+
         /* complete the operation, and reschedule the FSM */
         s->op_state.op_ack = true;
         ot_keymgr_schedule_fsm(s);
@@ -2036,6 +2065,7 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
 
     /* reset key state */
     memset(s->key_states, 0u, NUM_CDIS * sizeof(OtKeyMgrKey));
+    memset(s->saved_kmac_key, 0u, sizeof(OtKeyMgrKey));
 
     /* update IRQ and alert states */
     ot_keymgr_update_irq(s);
@@ -2061,7 +2091,7 @@ static void ot_keymgr_reset_exit(Object *obj, ResetType type)
     /* invalidate all sideloaded keys when exiting reset */
     for (unsigned ix = 0u; ix < KEYMGR_KEY_SINK_COUNT; ix++) {
         OtKeyMgrKeySink key_sink = (OtKeyMgrKeySink)ix;
-        ot_keymgr_push_key(s, key_sink, NULL, NULL, false);
+        ot_keymgr_push_key(s, key_sink, NULL, NULL, false, true);
     }
 }
 
@@ -2116,6 +2146,7 @@ static void ot_keymgr_init(Object *obj)
         s->seeds[ix] = g_new0(uint8_t, KEYMGR_SEED_BYTES);
     }
     s->key_states = g_new0(OtKeyMgrKey, NUM_CDIS);
+    s->saved_kmac_key = g_new0(OtKeyMgrKey, 1u);
 
     s->fsm_tick_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_keymgr_fsm_tick, s);
 
