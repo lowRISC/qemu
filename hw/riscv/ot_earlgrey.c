@@ -1435,6 +1435,14 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
 /* Type definitions */
 /* ------------------------------------------------------------------------ */
 
+/* Temporary storage for reset iteration */
+typedef struct {
+    OtEGSoCState *soc;
+    ResettableChildCallback cb; /* the callback to call for each child */
+    void *opaque; /* opaque data for the callback */
+    ResetType type; /* type of reset */
+} OtEgSocChildReset;
+
 struct OtEGSoCClass {
     DeviceClass parent_class;
     DeviceRealize parent_realize;
@@ -1444,11 +1452,15 @@ struct OtEGSoCClass {
 struct OtEGSoCState {
     SysBusDevice parent_obj;
 
+    BusState *ot_bus; /* private OpenTitan bus */
+
     DeviceState **devices;
 };
 
 struct OtEGBoardState {
     DeviceState parent_obj;
+
+    DeviceState **devices;
 
     /* optional SPI data flash (type of device) */
     char *spiflash[OT_EG_MTD_SPI_COUNT];
@@ -1604,6 +1616,43 @@ static void ot_eg_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
 /* SoC */
 /* ------------------------------------------------------------------------ */
 
+static int ot_eg_soc_reset_child(Object *child, void *opaque)
+{
+    OtEgSocChildReset *cr = opaque;
+
+    if (object_dynamic_cast(child, TYPE_SYS_BUS_DEVICE)) {
+        /*
+         * sysbus devices being connected to the OT bus, and the bus performing
+         * its own children traversal to perform reset, skip this kind of
+         * devices to avoid resetting each of them twice
+         */
+        return 0;
+    }
+
+    if (object_dynamic_cast(child, TYPE_RESETTABLE_INTERFACE)) {
+        cr->cb(child, cr->opaque, cr->type);
+    }
+
+    /* resume with next child */
+    return 0;
+}
+
+static void ot_eg_soc_reset_child_foreach(
+    Object *obj, ResettableChildCallback cb, void *opaque, ResetType type)
+{
+    OtEGSoCState *s = RISCV_OT_EG_SOC(obj);
+
+    OtEgSocChildReset r = {
+        .soc = s,
+        .cb = cb,
+        .opaque = opaque,
+        .type = type,
+    };
+
+    /* execute reset stage for each child */
+    object_child_foreach(obj, &ot_eg_soc_reset_child, &r);
+}
+
 static void ot_eg_soc_hw_reset(void *opaque, int irq, int level)
 {
     OtEGSoCState *s = opaque;
@@ -1611,11 +1660,7 @@ static void ot_eg_soc_hw_reset(void *opaque, int irq, int level)
     g_assert(irq == 0);
 
     if (level) {
-        CPUState *cs = CPU(s->devices[OT_EG_SOC_DEV_HART]);
-        cpu_synchronize_state(cs);
-        bus_cold_reset(sysbus_get_default());
-        resettable_reset(OBJECT(cs), RESET_TYPE_COLD);
-        cpu_synchronize_post_reset(cs);
+        resettable_reset(OBJECT(s), RESET_TYPE_COLD);
     }
 }
 
@@ -1628,16 +1673,15 @@ static void ot_eg_soc_reset_hold(Object *obj, ResetType type)
         c->parent_phases.hold(obj, type);
     }
 
-    resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_DTM]), type);
-    resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_DM]), type);
-    resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_VMAPPER]), type);
-
     /*
+     * This function is called after all children have been reset_hold,
+     * before any child has been reset_exit.
+     *
      * Power-On-Reset: leave hart disabled on reset
      * PowerManager takes care of managing Ibex reset when ready
      */
     CPUState *cs = CPU(s->devices[OT_EG_SOC_DEV_HART]);
-    cs->disabled = 1;
+    cs->disabled = false;
 }
 
 static void ot_eg_soc_reset_exit(Object *obj, ResetType type)
@@ -1659,9 +1703,17 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
     OtEGSoCState *s = RISCV_OT_EG_SOC(dev);
     (void)errp;
 
+    CPUState *cpu = CPU(s->devices[OT_EG_SOC_DEV_HART]);
+    cpu->memory = get_system_memory();
+    cpu->cpu_index = 0;
+
+    /* Create the private bus on which all OpenTitan IPs are connected */
+    s->ot_bus = BUS(object_new(TYPE_SYSTEM_BUS));
+    qbus_init(s->ot_bus, sizeof(*s->ot_bus), TYPE_SYSTEM_BUS, DEVICE(s),
+              "ot.bus");
+
     /* Link, define properties and realize devices, then connect GPIOs */
-    BusState *bus = sysbus_get_default();
-    ot_common_configure_devices_with_id(s->devices, bus, "soc", false,
+    ot_common_configure_devices_with_id(s->devices, s->ot_bus, "soc", false,
                                         ot_eg_soc_devices,
                                         ARRAY_SIZE(ot_eg_soc_devices));
 
@@ -1677,7 +1729,7 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
     ot_common_check_rom_configuration();
 
     /* load kernel if provided */
-    ibex_load_kernel(NULL);
+    ibex_load_kernel(cpu);
 }
 
 static void ot_eg_soc_init(Object *obj)
@@ -1701,6 +1753,7 @@ static void ot_eg_soc_class_init(ObjectClass *oc, void *data)
     resettable_class_set_parent_phases(rc, NULL, &ot_eg_soc_reset_hold,
                                        &ot_eg_soc_reset_exit,
                                        &sc->parent_phases);
+    rc->child_foreach = &ot_eg_soc_reset_child_foreach;
     dc->realize = &ot_eg_soc_realize;
     dc->user_creatable = false;
 }
@@ -1745,14 +1798,28 @@ static void ot_eg_board_set_spiflash1(Object *obj, const char *value,
     board->spiflash[OT_EG_MTD_SPI1] = g_strdup(value);
 }
 
+static void ot_eg_board_child_foreach(Object *obj, ResettableChildCallback cb,
+                                      void *opaque, ResetType type)
+{
+    OtEGBoardState *s = RISCV_OT_EG_BOARD(obj);
+
+    for (unsigned ix = 0; ix < OT_EG_BOARD_DEV_COUNT; ix++) {
+        /* flash devices are optional */
+        if (s->devices[ix]) {
+            cb(OBJECT(s->devices[ix]), opaque, type);
+        }
+    }
+}
+
 static void ot_eg_board_realize(DeviceState *dev, Error **errp)
 {
     OtEGBoardState *board = RISCV_OT_EG_BOARD(dev);
 
-    DeviceState *soc = qdev_new(TYPE_RISCV_OT_EG_SOC);
-
+    DeviceState *soc = board->devices[OT_EG_BOARD_DEV_SOC];
     object_property_add_child(OBJECT(board), "soc", OBJECT(soc));
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(soc), &error_fatal);
+
+    BusState *bus = sysbus_get_default();
+    qdev_realize_and_unref(soc, bus, &error_fatal);
 
     for (unsigned fix = 0; fix < OT_EG_MTD_SPI_COUNT; fix++) {
         const char *flash_type = board->spiflash[OT_EG_MTD_SPI0 + fix];
@@ -1799,6 +1866,8 @@ static void ot_eg_board_realize(DeviceState *dev, Error **errp)
         /* connect it as a peripheral of the SPI host controller bus */
         ssi_realize_and_unref(flash, SSI_BUS(spibus), errp);
 
+        board->devices[OT_EG_BOARD_DEV_FLASH0 + fix] = flash;
+
         /*
          * finally, connect the first CS line of the SPI controller to control
          * to select this SPI flash device
@@ -1819,6 +1888,11 @@ static void ot_eg_board_init(Object *obj)
     object_property_add_str(obj, "spiflash1", NULL, &ot_eg_board_set_spiflash1);
     object_property_set_description(obj, "spiflash1",
                                     "SPI dataflash on SPI1 bus");
+
+    OtEGBoardState *s = RISCV_OT_EG_BOARD(obj);
+
+    s->devices = g_new0(DeviceState *, OT_EG_BOARD_DEV_COUNT);
+    s->devices[OT_EG_BOARD_DEV_SOC] = qdev_new(TYPE_RISCV_OT_EG_SOC);
 }
 
 static void ot_eg_board_class_init(ObjectClass *oc, void *data)
@@ -1827,6 +1901,9 @@ static void ot_eg_board_class_init(ObjectClass *oc, void *data)
     (void)data;
 
     dc->realize = &ot_eg_board_realize;
+
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
+    rc->child_foreach = &ot_eg_board_child_foreach;
 }
 
 static const TypeInfo ot_eg_board_type_info = {
@@ -1897,26 +1974,19 @@ static void ot_eg_machine_set_verilator(Object *obj, bool value, Error **errp)
     s->verilator = value;
 }
 
-static ResettableState *ot_eg_get_reset_state(Object *obj)
+static ResettableState *ot_eg_machine_get_reset_state(Object *obj)
 {
     OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
 
     return &s->reset;
 }
 
-static void ot_eg_reset_hold(Object *obj, ResetType type)
+static void ot_eg_machine_child_foreach(Object *obj, ResettableChildCallback cb,
+                                        void *opaque, ResetType type)
 {
-    (void)obj;
+    Object *board = object_property_get_link(obj, "board", &error_fatal);
 
-    /*
-     * The way the resettable APIs are implemented does not allow to call the
-     * legacy qemu_devices_reset from the enter phase, where a global static
-     * variable singleton enforces that entering reset is exclusive. However
-     * qemu_devices_reset implements the full enter/hold/exit reset sequence.
-     * This legacy function is therefore invoked from the hold stage of the
-     * machine reset sequence.
-     */
-    qemu_devices_reset(type);
+    cb(board, opaque, type);
 }
 
 static void ot_eg_machine_reset(MachineState *ms, ResetType reason)
@@ -1953,12 +2023,6 @@ static void ot_eg_machine_init(MachineState *state)
 
     object_property_add_child(OBJECT(state), "board", OBJECT(dev));
 
-    /*
-     * any object not part of the default system bus hiearchy is never reset
-     * otherwise
-     */
-    qemu_register_reset(resettable_cold_reset_fn, dev);
-
     qdev_realize(dev, NULL, &error_fatal);
 }
 
@@ -1971,23 +2035,16 @@ static void ot_eg_machine_class_init(ObjectClass *oc, void *data)
     mc->init = ot_eg_machine_init;
     mc->reset = &ot_eg_machine_reset;
     mc->max_cpus = 1u;
-    mc->default_cpu_type = ot_eg_soc_devices[OT_EG_SOC_DEV_HART].type;
-    const IbexDeviceDef *sram =
-        &ot_eg_soc_devices[OT_EG_SOC_DEV_SRAM_MAIN_CTRL];
-    mc->default_ram_id = sram->type;
-    mc->default_ram_size = SRAM_MAIN_SIZE;
+    mc->default_cpus = 1u;
+
     /*
      * Implement the resettable interface to ensure the proper initialization
      * sequence.
-     * The hold stage is used to perform most of the device reset sequence.
      */
     ResettableClass *rc = RESETTABLE_CLASS(oc);
 
-    rc->get_state = &ot_eg_get_reset_state;
-
-    OtEGMachineClass *sc = RISCV_OT_EG_MACHINE_CLASS(oc);
-    resettable_class_set_parent_phases(rc, NULL, &ot_eg_reset_hold, NULL,
-                                       &sc->parent_phases);
+    rc->get_state = &ot_eg_machine_get_reset_state;
+    rc->child_foreach = &ot_eg_machine_child_foreach;
 }
 
 static const TypeInfo ot_eg_machine_type_info = {
@@ -1995,7 +2052,6 @@ static const TypeInfo ot_eg_machine_type_info = {
     .parent = TYPE_MACHINE,
     .instance_size = sizeof(OtEGMachineState),
     .instance_init = &ot_eg_machine_instance_init,
-    .class_size = sizeof(OtEGMachineClass),
     .class_init = &ot_eg_machine_class_init,
     .interfaces = (InterfaceInfo[]){ { TYPE_RESETTABLE_INTERFACE }, {} },
 };
