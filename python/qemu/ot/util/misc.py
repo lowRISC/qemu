@@ -150,6 +150,14 @@ def camel_to_snake_case(camel: str) -> str:
     return re.sub(pattern, '_', camel).lower()
 
 
+def camel_to_snake_uppercase(name: str) -> str:
+    """Extended version of camel_to_snake_case to convert device/parameter
+       names.
+    """
+    pattern = r'(?<=[\d])(?=[A-Z]{2,})'
+    return re.sub(pattern, '_', camel_to_snake_case(name).upper())
+
+
 def to_bool(value, permissive=True, prohibit_int=False):
     """Parse a string and convert it into a boolean value if possible.
 
