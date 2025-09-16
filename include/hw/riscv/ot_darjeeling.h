@@ -26,7 +26,7 @@
 #include "qom/object.h"
 
 #define TYPE_RISCV_OT_DJ_MACHINE MACHINE_TYPE_NAME("ot-darjeeling")
-OBJECT_DECLARE_TYPE(OtDjMachineState, OtDjMachineClass, RISCV_OT_DJ_MACHINE)
+OBJECT_DECLARE_SIMPLE_TYPE(OtDjMachineState, RISCV_OT_DJ_MACHINE)
 
 #define TYPE_RISCV_OT_DJ_BOARD "riscv.ot_darjeeling.board"
 OBJECT_DECLARE_SIMPLE_TYPE(OtDjBoardState, RISCV_OT_DJ_BOARD)

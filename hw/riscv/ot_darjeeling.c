@@ -1,15 +1,11 @@
 /*
- * QEMU RISC-V Board Compatible with OpenTitan "integrated" Darjeeling platform
+ * QEMU RISC-V Board Compatible with OpenTitan Darjeeling platform
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *  Loïc Lefort <loic@rivosinc.com>
- *
- * This implementation is based on:
- *  https://docs.google.com/document/d/
- *         1jGeVNqmEUEJcmOfQ0mEZ_E8pG-RYovtVMelVTQZECcA
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -275,6 +271,13 @@ enum OtDjPinmuxMioOut {
     MIO_OUT_SOC_PROXY_SOC_GPO15, /* 3 */
     MIO_OUT_OTP_CTRL_TEST0, /* 4 */
     MIO_OUT_COUNT, /* 5 */
+};
+
+enum OtDjBoardDevice {
+    OT_DJ_BOARD_DEV_SOC,
+    OT_DJ_BOARD_DEV_FLASH,
+    OT_DJ_BOARD_DEV_DEV_PROXY,
+    OT_DJ_BOARD_DEV_COUNT,
 };
 
 #define OT_DJ_PRIVATE_REGION_OFFSET 0x00000000u
@@ -1467,16 +1470,17 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     /* clang-format on */
 };
 
-enum OtDjBoardDevice {
-    OT_DJ_BOARD_DEV_SOC,
-    OT_DJ_BOARD_DEV_FLASH,
-    OT_DJ_BOARD_DEV_DEV_PROXY,
-    OT_DJ_BOARD_DEV_COUNT,
-};
-
 /* ------------------------------------------------------------------------ */
 /* Type definitions */
 /* ------------------------------------------------------------------------ */
+
+/* Temporary storage for reset iteration */
+typedef struct {
+    OtDjSoCState *soc;
+    ResettableChildCallback cb; /* the callback to call for each child */
+    void *opaque; /* opaque data for the callback */
+    ResetType type; /* type of reset */
+} OtDjSocChildReset;
 
 struct OtDjSoCClass {
     DeviceClass parent_class;
@@ -1486,6 +1490,8 @@ struct OtDjSoCClass {
 
 struct OtDjSoCState {
     SysBusDevice parent_obj;
+
+    BusState *ot_bus; /* private OpenTitan bus */
 
     DeviceState **devices;
 };
@@ -1503,11 +1509,6 @@ struct OtDjMachineState {
 
     bool no_epmp_cfg;
     bool ignore_elf_entry;
-};
-
-struct OtDjMachineClass {
-    MachineClass parent_class;
-    ResettablePhases parent_phases;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1612,6 +1613,43 @@ static void ot_dj_soc_uart_configure(DeviceState *dev, const IbexDeviceDef *def,
 /* SoC */
 /* ------------------------------------------------------------------------ */
 
+static int ot_dj_soc_reset_child(Object *child, void *opaque)
+{
+    OtDjSocChildReset *cr = opaque;
+
+    if (object_dynamic_cast(child, TYPE_SYS_BUS_DEVICE)) {
+        /*
+         * sysbus devices being connected to the OT bus, and the bus performing
+         * its own children traversal to perform reset, skip this kind of
+         * devices to avoid resetting each of them twice
+         */
+        return 0;
+    }
+
+    if (object_dynamic_cast(child, TYPE_RESETTABLE_INTERFACE)) {
+        cr->cb(child, cr->opaque, cr->type);
+    }
+
+    /* resume with next child */
+    return 0;
+}
+
+static void ot_dj_soc_reset_child_foreach(
+    Object *obj, ResettableChildCallback cb, void *opaque, ResetType type)
+{
+    OtDjSoCState *s = RISCV_OT_DJ_SOC(obj);
+
+    OtDjSocChildReset r = {
+        .soc = s,
+        .cb = cb,
+        .opaque = opaque,
+        .type = type,
+    };
+
+    /* execute reset stage for each child */
+    object_child_foreach(obj, &ot_dj_soc_reset_child, &r);
+}
+
 static void ot_dj_soc_hw_reset(void *opaque, int irq, int level)
 {
     OtDjSoCState *s = opaque;
@@ -1619,11 +1657,7 @@ static void ot_dj_soc_hw_reset(void *opaque, int irq, int level)
     g_assert(irq == 0);
 
     if (level) {
-        CPUState *cs = CPU(s->devices[OT_DJ_SOC_DEV_HART]);
-        cpu_synchronize_state(cs);
-        bus_cold_reset(sysbus_get_default());
-        resettable_reset(OBJECT(cs), RESET_TYPE_COLD);
-        cpu_synchronize_post_reset(cs);
+        resettable_reset(OBJECT(s), RESET_TYPE_COLD);
     }
 }
 
@@ -1636,18 +1670,15 @@ static void ot_dj_soc_reset_hold(Object *obj, ResetType type)
         c->parent_phases.hold(obj, type);
     }
 
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_LC_CTRL]), type);
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM_MBX]), type);
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DTM]), type);
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM]), type);
-    resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_VMAPPER]), type);
-
     /*
+     * This function is called after all children have been reset_hold,
+     * before any child has been reset_exit.
+     *
      * Power-On-Reset: leave hart disabled on reset
      * PowerManager takes care of managing Ibex reset when ready
      */
     CPUState *cs = CPU(s->devices[OT_DJ_SOC_DEV_HART]);
-    cs->disabled = 1;
+    cs->disabled = true;
 }
 
 static void ot_dj_soc_reset_exit(Object *obj, ResetType type)
@@ -1675,9 +1706,14 @@ static void ot_dj_soc_realize(DeviceState *dev, Error **errp)
     cpu->memory = get_system_memory();
     cpu->cpu_index = 0;
 
+    /* Create the private bus on which all OpenTitan IPs are connected */
+    s->ot_bus = BUS(object_new(TYPE_SYSTEM_BUS));
+    qbus_init(s->ot_bus, sizeof(*s->ot_bus), TYPE_SYSTEM_BUS, DEVICE(s),
+              "ot.bus");
+
     /* Link, define properties and realize devices, then connect GPIOs */
-    ot_common_configure_devices_with_id(s->devices, dev->parent_bus, "soc",
-                                        false, ot_dj_soc_devices,
+    ot_common_configure_devices_with_id(s->devices, s->ot_bus, "soc", false,
+                                        ot_dj_soc_devices,
                                         ARRAY_SIZE(ot_dj_soc_devices));
 
     Object *oas;
@@ -1786,6 +1822,7 @@ static void ot_dj_soc_class_init(ObjectClass *oc, void *data)
     resettable_class_set_parent_phases(rc, NULL, &ot_dj_soc_reset_hold,
                                        &ot_dj_soc_reset_exit,
                                        &sc->parent_phases);
+    rc->child_foreach = &ot_dj_soc_reset_child_foreach;
     dc->realize = &ot_dj_soc_realize;
     dc->user_creatable = false;
 }
@@ -1810,12 +1847,14 @@ type_init(ot_dj_soc_register_types);
 /* Board */
 /* ------------------------------------------------------------------------ */
 
-static void ot_dj_board_reset(DeviceState *dev)
+static void ot_dj_board_child_foreach(Object *obj, ResettableChildCallback cb,
+                                      void *opaque, ResetType type)
 {
-    OtDjBoardState *s = RISCV_OT_DJ_BOARD(dev);
+    OtDjBoardState *s = RISCV_OT_DJ_BOARD(obj);
 
-    resettable_reset(OBJECT(s->devices[OT_DJ_BOARD_DEV_DEV_PROXY]),
-                     RESET_TYPE_COLD);
+    for (unsigned ix = 0; ix < OT_DJ_BOARD_DEV_COUNT; ix++) {
+        cb(OBJECT(s->devices[ix]), opaque, type);
+    }
 }
 
 static void ot_dj_board_realize(DeviceState *dev, Error **errp)
@@ -1840,7 +1879,7 @@ static void ot_dj_board_realize(DeviceState *dev, Error **errp)
     OtDjSoCState *s = RISCV_OT_DJ_SOC(soc);
 
     BusState *bus = sysbus_get_default();
-    qdev_realize_and_unref(DEVICE(soc), bus, &error_fatal);
+    qdev_realize_and_unref(soc, bus, &error_fatal);
 
     /* CTN RAM */
     MemoryRegion *ctn_ram = g_new0(MemoryRegion, 1u);
@@ -1891,8 +1930,10 @@ static void ot_dj_board_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &ot_dj_board_reset);
     dc->realize = &ot_dj_board_realize;
+
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
+    rc->child_foreach = &ot_dj_board_child_foreach;
 }
 
 static const TypeInfo ot_dj_board_type_info = {
@@ -1947,26 +1988,19 @@ ot_dj_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
     s->ignore_elf_entry = value;
 }
 
-static ResettableState *ot_dj_get_reset_state(Object *obj)
+static ResettableState *ot_dj_machine_get_reset_state(Object *obj)
 {
     OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
 
     return &s->reset;
 }
 
-static void ot_dj_reset_hold(Object *obj, ResetType type)
+static void ot_dj_machine_child_foreach(Object *obj, ResettableChildCallback cb,
+                                        void *opaque, ResetType type)
 {
-    (void)obj;
+    Object *board = object_property_get_link(obj, "board", &error_fatal);
 
-    /*
-     * The way the resettable APIs are implemented does not allow to call the
-     * legacy qemu_devices_reset from the enter phase, where a global static
-     * variable singleton enforces that entering reset is exclusive. However
-     * qemu_devices_reset implements the full enter/hold/exit reset sequence.
-     * This legacy function is therefore invoked from the hold stage of the
-     * machine reset sequence.
-     */
-    qemu_devices_reset(type);
+    cb(board, opaque, type);
 }
 
 static void ot_dj_machine_reset(MachineState *ms, ResetType reason)
@@ -2000,12 +2034,6 @@ static void ot_dj_machine_init(MachineState *state)
 
     object_property_add_child(OBJECT(state), "board", OBJECT(dev));
 
-    /*
-     * any object not part of the default system bus hiearchy is never reset
-     * otherwise
-     */
-    qemu_register_reset(resettable_cold_reset_fn, dev);
-
     qdev_realize(dev, NULL, &error_fatal);
 }
 
@@ -2023,15 +2051,11 @@ static void ot_dj_machine_class_init(ObjectClass *oc, void *data)
     /*
      * Implement the resettable interface to ensure the proper initialization
      * sequence.
-     * The hold stage is used to perform most of the device reset sequence.
      */
     ResettableClass *rc = RESETTABLE_CLASS(oc);
 
-    rc->get_state = &ot_dj_get_reset_state;
-
-    OtDjMachineClass *sc = RISCV_OT_DJ_MACHINE_CLASS(oc);
-    resettable_class_set_parent_phases(rc, NULL, &ot_dj_reset_hold, NULL,
-                                       &sc->parent_phases);
+    rc->get_state = &ot_dj_machine_get_reset_state;
+    rc->child_foreach = &ot_dj_machine_child_foreach;
 }
 
 static const TypeInfo ot_dj_machine_type_info = {
@@ -2039,7 +2063,6 @@ static const TypeInfo ot_dj_machine_type_info = {
     .parent = TYPE_MACHINE,
     .instance_size = sizeof(OtDjMachineState),
     .instance_init = &ot_dj_machine_instance_init,
-    .class_size = sizeof(OtDjMachineClass),
     .class_init = &ot_dj_machine_class_init,
     .interfaces = (InterfaceInfo[]){ { TYPE_RESETTABLE_INTERFACE }, {} },
 };
