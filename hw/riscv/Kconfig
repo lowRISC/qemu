@@ -34,7 +34,6 @@ config OT_DARJEELING
     select OT_DM_TL
     select OT_DMA
     select OT_EDN
-    select OT_ENTROPY_SRC_DJ
     select OT_GPIO_DJ
     select OT_HMAC
     select OT_I2C
@@ -63,7 +62,6 @@ config OT_DARJEELING
     select SIFIVE_PLIC
     select SPLIT_IRQ
     select TAP_CTRL_RBB
-    select UNIMP
 
 config OT_EARLGREY
     bool
