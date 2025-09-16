@@ -78,6 +78,10 @@ config OT_I2C
     select I2C
     bool
 
+config OT_I2C_HOST_PROXY
+    select I2C
+    bool
+
 config OT_IBEX_WRAPPER
     select OT_VMAPPER
     bool
