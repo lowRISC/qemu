@@ -231,6 +231,14 @@ class DebugModule:
         return btf.decode(self.sbcs)
 
     @property
+    def is_available(self) -> bool:
+        """Report whether the currently selected hart is available."""
+        btf = self.BITFIELDS['DMSTATUS']
+        val = self.dmstatus
+        status = btf.decode(val)
+        return not status['anyunavail']
+
+    @property
     def is_halted(self) -> bool:
         """Report whether the currently selected hart is halted."""
         btf = self.BITFIELDS['DMSTATUS']

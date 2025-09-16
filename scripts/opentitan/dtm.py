@@ -14,7 +14,7 @@ from io import BytesIO
 from os import linesep
 from os.path import dirname, join as joinpath, normpath
 from socket import create_connection, socket, AF_UNIX, SOCK_STREAM
-from time import sleep
+from time import sleep, time as now
 from traceback import format_exc
 from typing import Optional
 import sys
@@ -198,6 +198,17 @@ def main():
                 if not rvdm:
                     rvdm = DebugModule(dtm, args.base)
                     rvdm.initialize()
+                # it may take some time for a hart to be initialized and to
+                # be up and running as HW initialization (ROM check, etc.)
+                # takes time. Wait for the hart to become available before
+                # attempting to halt it
+                timeout = now() + 2.0
+                while now() < timeout:
+                    if rvdm.is_available:
+                        break
+                    sleep(0.1)
+                else:
+                    raise ValueError('Hart did not become available')
                 rvdm.halt()
                 dmver = rvdm.status['version']
                 if args.info:
