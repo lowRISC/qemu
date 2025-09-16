@@ -12,6 +12,7 @@
 //sw/device/tests/crypto:aes_gcm_timing_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:rsa_2048_keygen_functest_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:rsa_4096_encryption_functest_sim_qemu_rom_with_fake_keys
+//sw/device/tests/crypto:rsa_4096_signature_functest_sim_qemu_rom_with_fake_keys
 //sw/device/tests/qemu:i2c_qemu_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:edn_auto_mode_sim_qemu_rom_with_fake_keys
 //sw/device/tests:rv_core_ibex_rnd_test_sim_qemu_rom_with_fake_keys
