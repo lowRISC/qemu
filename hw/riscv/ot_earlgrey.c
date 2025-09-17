@@ -545,6 +545,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_SPI_DEVICE] = {
         .type = TYPE_OT_SPI_DEVICE,
         .cfg = &ot_eg_soc_spi_device_configure,
+        .instance = IBEX_MAKE_INSTANCE_NUM(0),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40050000u }
         ),
@@ -562,6 +563,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_I2C0] = {
         .type = TYPE_OT_I2C,
+        .instance = IBEX_MAKE_INSTANCE_NUM(0),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40080000u }
         ),
@@ -593,6 +595,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_I2C1] = {
         .type = TYPE_OT_I2C,
+        .instance = IBEX_MAKE_INSTANCE_NUM(1),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40090000u }
         ),
@@ -624,6 +627,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_I2C2] = {
         .type = TYPE_OT_I2C,
+        .instance = IBEX_MAKE_INSTANCE_NUM(2),
         .memmap = MEMMAPENTRIES(
             { .base = 0x400a0000u }
         ),
@@ -824,6 +828,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_OT_SPI_HOST,
+        .instance = IBEX_MAKE_INSTANCE_NUM(0),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40300000u }
         ),
@@ -844,6 +849,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_SPI_HOST1] = {
         .type = TYPE_OT_SPI_HOST,
+        .instance = IBEX_MAKE_INSTANCE_NUM(1),
         .memmap = MEMMAPENTRIES(
             { .base = 0x40310000u }
         ),
