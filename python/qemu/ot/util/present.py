@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Python PRESENT implementation
 #
 # Copyright (c) 2008
@@ -53,6 +51,8 @@ class Present:
        :param key: the 128-bit key as an integer
        :param rounds: the number of rounds as an integer
     """
+
+    BLOCK_BIT_SIZE = 64
 
     SBOX = (12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2)
 

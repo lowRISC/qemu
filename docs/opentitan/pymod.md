@@ -6,8 +6,9 @@ using a TCP socket).
 
 * `python/qemu/jtag`: JTAG / TAP controller client, using the _Remote BitBang Protocol_
 * `python/qemu/ot`: OpenTitan tools
-  * `dtm`: Debug Transport Module support,
+  * `devproxy`: implementation of the communication channel with the QEMU devproxy device.
   * `dm`: RISC-V Debug Module support,
+  * `dtm`: Debug Transport Module support,
   * `eflash`: Embedded Flash support,
   * `gpio`: GPIO support,
   * `km`: Key Manager support,
@@ -22,7 +23,7 @@ using a TCP socket).
   * `spi`: support SPI device communication, _i.e._ acts as a SPI master connected to QEMU SPI
      device port,
   * `util`: miscellaneous utililies such as ELF format tools and logging utilities,
-  * `devproxy`: implementation of the communication channel with the QEMU devproxy device.
+     scrambler/descrambler used in OTP image files for HW digest verification.
 
 Please check the [Python tools](tools.md) documentation for details and scripts that rely
 on these APIs.

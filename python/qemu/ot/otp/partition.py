@@ -16,7 +16,7 @@ from .lifecycle import OtpLifecycle
 
 try:
     # try to load Present if available
-    from present import Present
+    from ot.util.present import Present
 except ImportError:
     Present = None
 
