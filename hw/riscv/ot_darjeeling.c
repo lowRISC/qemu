@@ -875,9 +875,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "rom0"),
             IBEX_DEV_UINT_PROP("size", 0x8000u),
-            IBEX_DEV_UINT_PROP("kmac-app", 2u),
-            IBEX_DEV_STRING_PROP("nonce", "a7bdb05fe921615b"),
-            IBEX_DEV_STRING_PROP("key", "f2ff984540f7d43ece76b4eb13363774")
+            IBEX_DEV_UINT_PROP("kmac-app", 2u)
         ),
     },
     [OT_DJ_SOC_DEV_ROM_CTRL1] = {
@@ -899,9 +897,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "rom1"),
             IBEX_DEV_UINT_PROP("size", 0x10000u),
-            IBEX_DEV_UINT_PROP("kmac-app", 3u),
-            IBEX_DEV_STRING_PROP("nonce", "ed2ed45545e927f6"),
-            IBEX_DEV_STRING_PROP("key", "d9e4abac398d42c745eef646c1464dca")
+            IBEX_DEV_UINT_PROP("kmac-app", 3u)
         ),
     },
     [OT_DJ_SOC_DEV_IBEX_WRAPPER] = {
@@ -1204,21 +1200,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("product_id", 0x4000u),
             IBEX_DEV_UINT_PROP("revision_id", 0x1u),
             IBEX_DEV_BOOL_PROP("volatile_raw_unlock", true),
-            IBEX_DEV_UINT_PROP("kmac-app", 1u),
-            IBEX_DEV_STRING_PROP("raw_unlock_token",
-                                 "ea2b3f32cbe77554e43c8ea7ebf197c2"),
-            IBEX_DEV_STRING_PROP("lc_state_first",
-                "ee75b407d2314d2ef84185ac8c990f536071632c"
-                "086d4c924070be92d2948d6228b2711e9b2d8c4d"),
-            IBEX_DEV_STRING_PROP("lc_state_last",
-                "ee75fe0ffe7b6f3ffc5f9ffd9ff96fdb7f736f6c"
-                "9e6fdcd35277fef2d3bdcd6ffbb2f59fdf3fbedd"),
-            IBEX_DEV_STRING_PROP("lc_trscnt_first",
-                "dfb6c45a241f85ce9f42229e8627462fdb02c6701242f14b"
-                "41891180045c09c26c52744267c04aa055921b9461bb07da"),
-            IBEX_DEV_STRING_PROP("lc_trscnt_last",
-                "dfb6f4fabf1fefcebf5ba2ffc677c6afdbabcefeb672f36b"
-                "4fbdb3988dfe1be67e7e77ca77c76af7ddde3b9e7fbfe7de")
+            IBEX_DEV_UINT_PROP("kmac-app", 1u)
         )
     },
     [OT_DJ_SOC_DEV_ALERT_HANDLER] = {

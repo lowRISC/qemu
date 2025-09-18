@@ -781,21 +781,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_UINT_PROP("product_id", 0x0002u),
             IBEX_DEV_UINT_PROP("revision_id", 0x1u),
             IBEX_DEV_BOOL_PROP("volatile_raw_unlock", true),
-            IBEX_DEV_UINT_PROP("kmac-app", 1u),
-            IBEX_DEV_STRING_PROP("raw_unlock_token",
-                                 "51e6121c8694c6bc41f36e2175199296"),
-            IBEX_DEV_STRING_PROP("lc_state_first",
-                "f29f2eb011e290c9210fb1d4302b323db0e81df4"
-                "a59985e47749732c6c910d3015a62e61b0c383c1"),
-            IBEX_DEV_STRING_PROP("lc_state_last",
-                "f29f3fb41fe3d2fda7afffd676abb3ffbaeefff4"
-                "a5ffefe4ff4f7fbeed9ddff29db77ee5b7d3d7e5"),
-            IBEX_DEV_STRING_PROP("lc_trscnt_first",
-                "3cfc8321c4f818ac4d53d244a4c4631e90656423004b81ba"
-                "aa5b692c13f2f21d609b685ec45d05042876e8628a8b0dd0"),
-            IBEX_DEV_STRING_PROP("lc_trscnt_last",
-                "3cfcfb23eef99fad6f7ffb44e6ce7b5ed47767e753cbabfe"
-                "bf5fe96e77f3f35d6f9f68ffde5d5564be76fd6bfb8fcdfb")
+            IBEX_DEV_UINT_PROP("kmac-app", 1u)
         )
     },
     [OT_EG_SOC_DEV_ALERT_HANDLER] = {
@@ -1309,14 +1295,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "rom"),
             IBEX_DEV_UINT_PROP("size", 0x8000u),
-            IBEX_DEV_UINT_PROP("kmac-app", 2u),
-            /*
-             * Nonce & Key for Earlgrey 1.0.0, taken from the auto-generated
-             * `hw/top_earlgrey/rtl/autogen/top_earlgrey_rnd_cnst_pkg.sv`
-             * `RndCnstRomCtrlScrNonce` and `RndCnstRomCtrlScrKey` values.
-             */
-            IBEX_DEV_STRING_PROP("nonce", "fee457dee82b6e06"),
-            IBEX_DEV_STRING_PROP("key", "663c291739ff0e7d644758fee1c58564")
+            IBEX_DEV_UINT_PROP("kmac-app", 2u)
         ),
     },
     [OT_EG_SOC_DEV_IBEX_WRAPPER] = {

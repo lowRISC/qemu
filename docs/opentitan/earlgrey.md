@@ -103,6 +103,7 @@ Some just use generic `UNIMP` devices to define a memory region.
 
 ````sh
 qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -display none -serial mon:stdio \
+  -readconfig docs/config/opentitan/earlgrey.cfg \
   -kernel hello.elf
 ````
 
@@ -112,6 +113,7 @@ See the section "Useful execution options" for documentation about the `no_epmp_
 
 ````sh
 qemu-system-riscv32 -M ot-earlgrey -display none -serial mon:stdio \
+  -readconfig docs/config/opentitan/earlgrey.cfg \
   -object ot-rom_img,id=rom,file=rom_with_fake_keys_fpga_cw310.elf \
   -drive if=pflash,file=otp-rma.raw,format=raw \
   -drive if=mtd,bus=2,file=flash.raw,format=raw
