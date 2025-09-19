@@ -8,6 +8,7 @@
 
 from io import BytesIO
 from sys import stdout
+from textwrap import dedent, indent
 from typing import Any, Iterable, Optional, TextIO, Union
 import re
 
@@ -193,6 +194,7 @@ def to_bool(value, permissive=True, prohibit_int=False):
         return False
     raise ValueError(f"Invalid boolean value: '{value}")
 
+
 def alphanum_key(text: str) -> list[Union[int, str]]:
     """Alphanumerical sorting key.
 
@@ -200,3 +202,17 @@ def alphanum_key(text: str) -> list[Union[int, str]]:
        :return: a list of alternating str and integer values
     """
     return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', text)]
+
+
+def redent(text: str, spc: int = 0, strip_end: bool = False) -> str:
+    """Utility function to re-indent code string.
+
+        :param text: the text to re-indent
+        :param spc: the number of leading empty space chars to prefix lines
+        :param strip_end: whether to strip trailing whitespace and newline
+    """
+    text = dedent(text.lstrip('\n'))
+    text = indent(text, ' ' * spc)
+    if strip_end:
+        text = text.rstrip(' ').rstrip('\n')
+    return text
