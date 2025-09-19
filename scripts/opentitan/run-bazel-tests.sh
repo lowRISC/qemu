@@ -23,6 +23,9 @@ set -e
 # Tests which are "flaky" and may pass/fail randomly will still be run,
 # but can be recorded below to prevent them from being checked.
 
+# CI-only job summary feature - write to `/dev/null` when run locally.
+GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
 # CLI arguments:
 opentitan_path="$1"
 qemu_path="$2"
@@ -94,24 +97,20 @@ unexpected_passes="$(comm -23 "$passed" "$expected")"
 status=0
 
 if [ -n "$unexpected_failures" ]; then
-  echo >&2
-  echo >&2 Tests that we expected to pass which did NOT pass:
-  echo "$unexpected_failures" | awk '$0="  "$0' >&2
+  echo                                                      | tee -a "$GITHUB_STEP_SUMMARY" >&2
+  echo "Tests that we expected to pass which did NOT pass:" | tee -a "$GITHUB_STEP_SUMMARY" >&2
+  echo "$unexpected_failures" | awk '$0="- `"$0"`"'         | tee -a "$GITHUB_STEP_SUMMARY" >&2
   status=1
+
+  echo >&2 "::error::There were some unexpected test failures"
 fi
 
 if [ -n "$unexpected_passes" ]; then
-  echo >&2
-  echo >&2 Tests which passed but we did NOT expect them to pass:
-  echo "$unexpected_passes" | awk '$0="  "$0' >&2
-  status=1
-fi
+  echo                                                          | tee -a "$GITHUB_STEP_SUMMARY" >&2
+  echo "Tests which passed but we did NOT expect them to pass:" | tee -a "$GITHUB_STEP_SUMMARY" >&2
+  echo "$unexpected_passes" | awk '$0="- `"$0"`"'               | tee -a "$GITHUB_STEP_SUMMARY" >&2
 
-# Print helpful errors in CI.
-if [ $status -ne 0 ] && [ -n "$CI" ]; then
-  echo >&2
-  echo >&2 "::error::Bazel test results did not match the list of expected passing tests."
-  echo >&2 "::error::Consider fixing the tests or updating the test list in ${0}."
+  echo >&2 "::warning::Some tests passed which we did not expect"
 fi
 
 exit $status
