@@ -1173,13 +1173,16 @@ static int ot_i2c_target_event(I2CSlave *target, enum i2c_event event)
     }
 
     switch (event) {
+    case I2C_START_SEND:
     case I2C_START_SEND_ASYNC:
         /* Set the first byte to the matched target address + RW bit as 0. */
         ot_i2c_target_set_acqdata(s,
                                   ot_i2c_address_abyte(s->matched_address,
                                                        false),
                                   SIGNAL_START);
-        i2c_ack(s->bus);
+        if (event == I2C_START_SEND_ASYNC) {
+            i2c_ack(s->bus);
+        }
         break;
     case I2C_START_RECV:
         ot_i2c_target_set_acqdata(s,
@@ -1242,6 +1245,18 @@ static uint8_t ot_i2c_target_recv(I2CSlave *target)
     return data;
 }
 
+static int ot_i2c_target_send(I2CSlave *target, uint8_t data)
+{
+    BusState *abus = qdev_get_parent_bus(DEVICE(target));
+    OtI2CState *s = OT_I2C(abus->parent);
+    if (!ot_i2c_target_enabled(s)) {
+        return -1;
+    }
+
+    ot_i2c_target_set_acqdata(s, data, SIGNAL_NONE);
+    return 0;
+}
+
 static void ot_i2c_target_send_async(I2CSlave *target, uint8_t data)
 {
     BusState *abus = qdev_get_parent_bus(DEVICE(target));
@@ -1289,6 +1304,7 @@ static void ot_i2c_target_class_init(ObjectClass *klass, void *data)
     dc->desc = "OpenTitan I2C Target";
     sc->match_and_add = &ot_i2c_target_match_and_add;
     sc->event = &ot_i2c_target_event;
+    sc->send = &ot_i2c_target_send;
     sc->send_async = &ot_i2c_target_send_async;
     sc->recv = &ot_i2c_target_recv;
 }
