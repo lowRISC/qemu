@@ -7,6 +7,8 @@
 """
 
 from io import BytesIO
+from os.path import abspath, dirname, exists, isdir, isfile, join as joinpath
+from subprocess import check_output
 from sys import stdout
 from textwrap import dedent, indent
 from typing import Any, Iterable, Optional, TextIO, Union
@@ -216,3 +218,61 @@ def redent(text: str, spc: int = 0, strip_end: bool = False) -> str:
     if strip_end:
         text = text.rstrip(' ').rstrip('\n')
     return text
+
+
+def retrieve_git_version(path: str, max_tag_dist: int = 100) \
+        -> Optional[str]:
+    """Return a Git identifier whenever possible.
+
+        :param path: the configuration file or directory to track the repository
+                     version identifier. Note that the returned Git identifier
+                     is not the commit version of this file / directory, but the
+                     one of the repo top-level directory.
+        :param max_tag_dist: maximum distance (in commit number) to the closest
+                             tag. If distance is greater, only emit the commit
+                             identifier
+        :return: Git version of the top-level directory
+    """
+    cfgdir: Optional[str] = None
+    path = abspath(path)
+    if isfile(path):
+        cfgdir = dirname(path)
+    elif isdir(path):
+        cfgdir = path
+    else:
+        return None
+    while cfgdir and isdir(cfgdir):
+        gitdir = joinpath(cfgdir, '.git')
+        if exists(gitdir):  # either a dir or a file for worktree
+            break
+        cfgdir = dirname(cfgdir)
+    else:
+        return None
+    assert cfgdir is not None
+    try:
+        descstr = check_output(['git', 'describe', '--long', '--dirty'],
+                               text=True, cwd=cfgdir).strip()
+        gmo = re.match(r'^(?P<tag>.*)-(?P<dist>\d+)-g(?P<commit>[0-9a-f]+)'
+                       r'(?:-(?P<dirty>dirty))?$', descstr)
+        if not gmo:
+            raise ValueError('Unknown Git describe format')
+        distance = int(gmo.group('dist'))
+        dirty = gmo.group('dirty')
+        if distance == 0:
+            return '-'.join(filter(None, (gmo.group('tag'), dirty)))
+        if distance <= max_tag_dist:
+            return descstr
+        return  '-'.join(filter(None, (gmo.group('commit'), dirty)))
+    except (OSError, ValueError):
+        pass
+    try:
+        change = check_output(['git', 'status', '--porcelain'],
+                              text=True, cwd=cfgdir).strip()
+        descstr = check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                               text=True, cwd=cfgdir).strip()
+        if len(change) > 1:
+            descstr = f'{descstr}-dirty'
+        return descstr
+    except OSError:
+        pass
+    return None
