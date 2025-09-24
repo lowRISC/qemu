@@ -706,18 +706,18 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
 
     timer_del(f->irq_timer);
     FLASH_CHANGE_STATE(s, IDLE);
-    f->address = 0;
-    f->last_read_addr = 0;
+    f->address = 0u;
+    f->last_read_addr = 0u;
     f->cmd_info = UINT32_MAX;
-    f->pos = 0;
-    f->len = 0;
+    f->pos = 0u;
+    f->len = 0u;
     f->type = SPI_FLASH_CMD_NONE;
     g_assert(s->sram);
     f->payload = &((uint8_t *)s->sram)[SPI_SRAM_PAYLOAD_OFFSET];
     f->payload += SPI_SRAM_INGRESS_OFFSET;
-    memset(f->buffer, 0, SPI_FLASH_BUFFER_SIZE);
+    memset(f->buffer, 0u, SPI_FLASH_BUFFER_SIZE);
 
-    memset(s->sram, 0, SRAM_SIZE);
+    memset(s->sram, 0u, SRAM_SIZE);
 }
 
 static uint32_t ot_spi_device_get_status(const OtSPIDeviceState *s)
