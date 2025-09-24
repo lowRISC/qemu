@@ -394,6 +394,7 @@ typedef struct {
     unsigned len; /* Meaning depends on command and current state */
     unsigned slot; /* Command slot */
     uint32_t address; /* Address tracking */
+    uint32_t last_read_addr; /* Last address read before increment */
     uint32_t cmd_info; /* Selected command info slot */
     uint8_t *src; /* Selected read data source (alias) */
     uint8_t *payload; /* Selected write data sink (alias) */
@@ -706,6 +707,7 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     timer_del(f->irq_timer);
     FLASH_CHANGE_STATE(s, IDLE);
     f->address = 0;
+    f->last_read_addr = 0;
     f->cmd_info = UINT32_MAX;
     f->pos = 0;
     f->len = 0;
@@ -841,9 +843,10 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
          *  Read SFDP command’s address."
          */
         if (ot_spi_device_is_hw_read_command(s) &&
-            !ot_spi_device_is_mailbox_match(s, f->address)) {
-            trace_ot_spi_device_update_last_read_addr(s->ot_id, f->address);
-            s->spi_regs[R_LAST_READ_ADDR] = f->address;
+            !ot_spi_device_is_mailbox_match(s, f->last_read_addr)) {
+            trace_ot_spi_device_update_last_read_addr(s->ot_id,
+                                                      f->last_read_addr);
+            s->spi_regs[R_LAST_READ_ADDR] = f->last_read_addr;
         }
         FLASH_CHANGE_STATE(s, IDLE);
         break;
@@ -1228,6 +1231,7 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
         }
     }
 
+    f->last_read_addr = f->address;
     f->address += 1u;
 
     /*
