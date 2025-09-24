@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-"""QEMU OT tool to generate register definition for OT device.
+"""Generate device definitions for OpenTitan device.
 
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
@@ -12,10 +12,9 @@ from argparse import ArgumentParser, FileType
 from enum import StrEnum, auto
 from io import StringIO
 from logging import getLogger
-from os.path import dirname, join as joinpath, normpath
+from os.path import basename, dirname, join as joinpath, normpath
 from time import localtime
 from traceback import format_exception
-from textwrap import dedent, indent
 from typing import Any, NamedTuple, Optional, TextIO, Union
 
 import sys
@@ -28,7 +27,7 @@ sys.path.append(QEMU_PYPATH)
 from ot.util.eval import safe_eval
 from ot.util.log import configure_loggers
 from ot.util.misc import (HexInt, camel_to_snake_case, camel_to_snake_uppercase,
-                          classproperty)
+                          classproperty, flatten, redent, retrieve_git_version)
 
 try:
     _HJSON_ERROR = None
@@ -37,7 +36,7 @@ except ImportError as hjson_exc:
     _HJSON_ERROR = str(hjson_exc)
 
 
-class QEMUAccess(StrEnum):
+class AutoAccess(StrEnum):
     """Type of access to a register or a field."""
     UNDEF = auto()
     RO = auto()
@@ -51,31 +50,32 @@ class QEMUAccess(StrEnum):
     URO = auto()  # "unused read/only"
 
 
-class QEMUField(NamedTuple):
-    """A register field."""
+class AutoField(NamedTuple):
+    """Register field."""
 
     name: str
     desc: Optional[str]
     offset: int
     width: int
-    access: QEMUAccess
-    reset: int
+    access: AutoAccess
+    reset: int = 0
 
 
-class QEMURegister(NamedTuple):
-    """A register."""
+class AutoRegister(NamedTuple):
+    """Device register."""
 
     name: str
     desc: Optional[str]
     address: int
-    access: QEMUAccess
-    fields: list[QEMUField]
-    reset: Optional[int]
+    access: AutoAccess
+    fields: list[AutoField] = []
+    reset: Optional[int] = None
+    count: int = 1
     shared_fields: bool = False
 
 
-class QEMUAutoReg:
-    """QEMU register definition generator.
+class AutoReg:
+    """Register definition generator.
 
        :param devname: the name of the generated QEMU device
        :param ignore_prefix: an optional prefix to discard useless register
@@ -91,10 +91,11 @@ class QEMUAutoReg:
         self._log = getLogger('autoreg')
         self._devname = devname
         self._ignore_prefix = ignore_prefix
+        self._git_version = 'unknown'
         self._resets = resets or []
         self._parameters: dict[str, Union[int, bool]] = {}
-        self._regwidth = 0
-        self._registers: list[QEMURegister] = []
+        self._regwidth = 0  # bits
+        self._registers: list[AutoRegister] = []
         self._copyright = '@todo Add copyright attributions'
 
     @classproperty
@@ -102,29 +103,22 @@ class QEMUAutoReg:
         """Provide a list of supported generators."""
         # pylint: disable=no-self-argument
         actions: list[str] = []
-        for item in cls.__dict__:
-            if not item.startswith('generate_'):
+        prefix = 'generate_'
+        for item in dir(cls):
+            if not item.startswith(prefix):
                 continue
-            actions.append(item[len('generate_'):])
+            actions.append(item.removeprefix(prefix))
         actions.sort()
         return actions
 
-    @classmethod
-    def redent(cls, text: str, spc: int = 0, strip_end: bool = False) -> str:
-        """Utility function to re-indent code string.
-
-           :param text: the text to re-indent
-           :param spc: the number of leading empty space chars to prefix lines
-           :param strip_end: whether to strip trailing whitespace and newline
-        """
-        text = dedent(text.lstrip('\n'))
-        text = indent(text, ' ' * spc)
-        if strip_end:
-            text = text.rstrip(' ').rstrip('\n')
-        return text
-
     def load(self, hfp: TextIO) -> None:
         """Load a register map definition from an OT HJSON file."""
+        if hfp.name:
+            git_version = retrieve_git_version(hfp.name)
+            if git_version:
+                self._git_version = git_version
+                self._log.info('Git info for %s: %s', basename(hfp.name),
+                               self._git_version)
         hjson = hjload(hfp, object_pairs_hook=dict)
         # heuristics
         # registers -seem- to either be a list of registers, or a map of buses
@@ -143,12 +137,12 @@ class QEMUAutoReg:
         self._regwidth = int(hjson.get('regwidth', 32))
         addr_inc = self._regwidth // 8
         address = 0
-        registers: list[QEMURegister] = []
+        registers: list[AutoRegister] = []
         registers.extend(self._parse_interrupts(hjson, address, addr_inc))
         address = len(registers) * addr_inc
         registers.extend(self._parse_alerts(hjson, address))
         address = len(registers) * addr_inc
-        regnames: set[str] = set()
+        regnames: set[str] = set(r.name for r in registers)
         regdefs = hjson['registers']
         if bus_if:
             self._log.info("Using registers from bus '%s'", bus_if)
@@ -158,18 +152,35 @@ class QEMUAutoReg:
                 address = HexInt.parse(item['skipto'])
                 continue
             if 'multireg' in item:
-                regs = self._parse_registers(address, item['multireg'])
-                for reg in regs:
-                    if reg.name in regnames:
-                        raise ValueError(f'Register {reg.name} redefined')
-                    regnames.add(reg.name)
-                registers.extend(regs)
-                address += addr_inc * len(regs)
+                item = item['multireg']
+                reg = self._parse_register(address, item)
+                count = safe_eval(item['count'], self._parameters)
+                reg = reg._replace(count=count)
+                regnames.add((f'{reg.name}_{ix}' for ix in range(count)))
+                registers.append(reg)
+                address += addr_inc * count
+                continue
+            if 'window' in item:
+                item = item['window']
+                reg = self._parse_register(address, item)
+                count = safe_eval(item['items'], self._parameters)
+                fields = reg.fields
+                if not reg.fields:
+                    validbits = item.get('validbits')
+                    if validbits:
+                        field = AutoField("data", desc=None, offset=0,
+                                          width=int(validbits),
+                                          access=reg.access)
+                        fields = [field]
+                reg = reg._replace(count=count, fields=fields)
+                regnames.add((f'{reg.name}_{ix}' for ix in range(count)))
+                registers.append(reg)
+                address += addr_inc * count
                 continue
             reg = self._parse_register(address, item)
             if reg:
                 if reg.name in regnames:
-                    prefix = reg.name.split('_')
+                    prefix = reg.name.split('_')[0]
                     if prefix in ('INTR', 'ALERT'):
                         # Comportable registers may already be defined, discard
                         continue
@@ -192,28 +203,6 @@ class QEMUAutoReg:
         """
         self._copyright = copyright_str
 
-    def generate_all(self, tfp: TextIO) -> None:
-        """Generate a QEMU device template file based on the register map.
-
-           :param tfp: output file stream
-        """
-        for gen in 'header register mask regname struct io device'.split():
-            getattr(self, f'generate_{gen}')(tfp)
-
-    def generate_header(self, tfp: TextIO) -> None:
-        """Generate the template for the header of a device driver.
-
-           :param tfp: output file stream
-        """
-        self._generate_header(tfp)
-
-    def generate_struct(self, tfp: TextIO) -> None:
-        """Generate the template for the device state and class stucts.
-
-           :param tfp: output file stream
-        """
-        self._generate_struct(tfp)
-
     def generate_register(self, tfp: TextIO) -> None:
         """Generate the register map.
 
@@ -221,142 +210,94 @@ class QEMUAutoReg:
         """
         max_addr = max(reg.address for reg in self._registers)
         nibcount = (max_addr.bit_length() + 3) // 4
-        print('/* clang-format off */', file=tfp)
-        for reg in self._registers:
-            self._generate_register(reg, nibcount, tfp)
-        print('/* clang-format on */\n', file=tfp)
+        self._generate_registers(nibcount, tfp)
 
-    def generate_param(self, tfp: TextIO) -> None:
-        """Generate the parameter constants.
-
-           :param tfp: output file stream
-        """
-        self._generate_parameters(tfp)
-
-    def generate_reset(self, tfp: TextIO) -> None:
-        """Generate one or more reset functions, based on the selected reset
-           list defined at instantiation time.
-
-           :param tfp: output file stream
-        """
-        nibcount = self._regwidth // 4
-        for reg in self._registers:
-            self._generate_reg_reset(reg, nibcount, tfp)
-
-    def generate_mask(self, tfp: TextIO) -> None:
-        """Generate the write mask associated with the register map.
-
-           :param tfp: output file stream
-        """
-        for reg in self._registers:
-            self._generate_mask(reg, tfp)
-
-    def generate_io(self, tfp: TextIO) -> None:
-        """Generate the template for the MMIO read and write functions.
-
-           :param tfp: output file stream
-        """
-        self._generate_io(self._registers, False, tfp)
-        self._generate_io(self._registers, True, tfp)
-
-    def generate_regname(self, tfp: TextIO) -> None:
-        """Generate the array of register names.
-
-           :param tfp: output file stream
-        """
-        self._generate_reg_wrappers(self._registers, tfp)
-        self._generate_regname_array(self._registers, tfp)
-
-    def generate_device(self, tfp: TextIO) -> None:
-        """Generate the template for the device initializationfunctions.
-
-           :param tfp: output file stream
-        """
-        self._generate_mr_ops(tfp)
-        self._generate_props(tfp)
-        for reset_type in self._resets:
-            self._generate_reset(tfp, reset_type)
-        self._generate_realize(tfp)
-        self._generate_init(tfp)
-        self._generate_class_init(tfp)
-        self._generate_type(tfp)
-
-    def _parse_interrupts(self, hjson:dict[str, Any], address: int,
-                          addr_inc: int) -> list[QEMURegister]:
-        fields: list[QEMUField] = []
+    def _parse_interrupts(self, hjson: dict[str, Any], address: int,
+                          addr_inc: int) -> list[AutoRegister]:
+        fields: list[AutoField] = []
         if hjson.get('no_auto_intr_regs', False):
             self._log.info('Comportable interrupt generation disabled')
             return []
         for fpos, item in enumerate(hjson.get('interrupt_list', [])):
             access = 'ro' if item.get('type') == 'status' else 'rw1c'
             fieldargs = [item['name'].upper(), item['desc'], fpos, 1,
-                         QEMUAccess(access), 0]
-            fields.append(QEMUField(*fieldargs))
+                         AutoAccess(access), 0]
+            fields.append(AutoField(*fieldargs))
         if not fields:
             return []
-        registers: list[QEMURegister] = []
-        access = self._build_reg_access(fields)
-        regargs = ['INTR_STATE', 'Interrupt state', address, access, fields, 0,
-                   True]
-        registers.append(QEMURegister(*regargs))
+        registers: list[AutoRegister] = []
+        # pylint: disable=use-dict-literal
+        regargs = dict(
+            name='INTR_STATE',
+            desc='Interrupt state',
+            address=address,
+            access=self._build_reg_access(fields),
+            fields=fields,
+            reset=0,
+            count=1,
+            shared_fields=True
+        )
+        registers.append(AutoRegister(**regargs))
         address += addr_inc
-        ro_acc = QEMUAccess('ro')
-        regargs = ['INTR_ENABLE', 'Interrupt enable', address, ro_acc, [], 0]
-        registers.append(QEMURegister(*regargs))
+        regargs = dict(
+            name='INTR_ENABLE',
+            desc='Interrupt enable',
+            address=address,
+            access=AutoAccess('rw'),
+        )
+        registers.append(AutoRegister(**regargs))
         address += addr_inc
-        wo_acc = QEMUAccess('wo')
-        regargs = ['INTR_TEST', 'Interrupt test', address, wo_acc, [], 0]
-        registers.append(QEMURegister(*regargs))
+        regargs = dict(
+            name='INTR_TEST',
+            desc='Interrupt test',
+            address=address,
+            access=AutoAccess('wo'),
+        )
+        registers.append(AutoRegister(**regargs))
         return registers
 
     def _parse_alerts(self, hjson:dict[str, Any], address: int) \
-            -> list[QEMURegister]:
-        fields: list[QEMUField] = []
+            -> list[AutoRegister]:
+        fields: list[AutoField] = []
         if hjson.get('no_auto_alert_regs', False):
             self._log.info('Comportable alert generation disabled')
             return []
-        wo_acc = QEMUAccess('wo')
+        wo_acc = AutoAccess('wo')
         for fpos, item in enumerate(hjson.get('alert_list', [])):
             fieldargs = [item['name'].upper(), item['desc'], fpos, 1, wo_acc, 0]
-            fields.append(QEMUField(*fieldargs))
+            fields.append(AutoField(*fieldargs))
         if not fields:
             return []
-        regargs = ['ALERT_TEST', 'Alert test', address, wo_acc, fields, 0]
-        return [QEMURegister(*regargs)]
+        # pylint: disable=use-dict-literal
+        regargs = dict(
+            name='ALERT_TEST',
+            desc='Alert test',
+            address=address,
+            access=wo_acc,
+            fields=fields,
+            reset=0
+        )
+        return [AutoRegister(**regargs)]
 
     def _parse_register(self, address: int, reg: dict[str, Any]) \
-            -> Optional[QEMURegister]:
+            -> Optional[AutoRegister]:
         name = reg.get('name')
         if not name:
             return None
         if self._ignore_prefix and name.startswith(self._ignore_prefix):
             return None
         desc = reg.get('desc')
-        self._log.info('Register: %s', name)
+        self._log.debug('Register: %s', name)
         fields = self._parse_reg_fields(reg)
         fields.sort(key=lambda f: f.offset)
         reset = self._build_reg_reset(fields)
         access = self._build_reg_access(fields)
         rname = camel_to_snake_case(name).upper()
         regargs = [rname, desc, address, access, fields, reset]
-        return QEMURegister(*regargs)
+        return AutoRegister(*regargs)
 
-    def _parse_registers(self, address: int, reg: dict[str, Any]) \
-            -> list[QEMURegister]:
-        count = safe_eval(reg['count'], self._parameters)
-        freg = self._parse_register(address, reg)
-        regs = []
-        self._log.info('Generating multireg %s[%d]', freg.name, count)
-        for rpos in range(count):
-            fields = freg.fields if rpos == 0 else []
-            regs.append(
-                freg._replace(name=f'{freg.name}_{rpos}', address=address,
-                              shared_fields=(rpos == 0), fields=fields))
-            address += 4
-        return regs
-
-    def _parse_reg_fields(self, reg: dict[str, Any]) -> list[QEMUField]:
-        fields: list[QEMUField] = []
+    def _parse_reg_fields(self, reg: dict[str, Any]) -> list[AutoField]:
+        fields: list[AutoField] = []
         bitfield = 0
         reg_swaccess = reg.get('swaccess')
         rname = reg['name']
@@ -386,7 +327,7 @@ class QEMUAutoReg:
                                  f'0x{bitmask:0{nibcount}x}')
             bitfield |= bitmask
             try:
-                access = getattr(QEMUAccess,
+                access = getattr(AutoAccess,
                     field.get('swaccess', reg_swaccess).upper())
             except KeyError as exc:
                 raise RuntimeError(f'Cannot find swaccess for {name}') from exc
@@ -395,7 +336,7 @@ class QEMUAutoReg:
                 if resval else HexInt(0)
             fname = camel_to_snake_case(name).upper()
             fieldargs = [fname, desc, offset, width, access, reset]
-            fields.append(QEMUField(*fieldargs))
+            fields.append(AutoField(*fieldargs))
         bitmask = (1 << self._regwidth) - 1
         if bitfield &~ bitmask:
             raise ValueError(f'Bitfield {name} out of range: '
@@ -445,44 +386,104 @@ class QEMUAutoReg:
         access = set(f.access for f in fields)
         if len(access) == 1:
             return access.pop()
-        return QEMUAccess.UNDEF
+        return AutoAccess.UNDEF
 
-    def _generate_register(self, reg: QEMURegister, nibcount: int,
-                           tfp: TextIO) -> None:
-        print(f'REG{self._regwidth}({reg.name}, 0x{reg.address:0{nibcount}x}u)',
-              file=tfp)
-        if not reg.shared_fields:
-            if len(reg.fields) > 1:
-                for field in reg.fields:
-                    print(f'    FIELD({reg.name}, {field.name}, '
-                          f'{field.offset}u, '
-                          f'{field.width}u)', file=tfp)
-            elif reg.fields:
-                field = reg.fields[0]
-                if reg.name != field.name:
-                    fdname = field.name
-                else:
-                    fdname = field.name.rsplit('_', 1)[-1]
-                print(f'    FIELD({reg.name}, {fdname}, {field.offset}u, '
-                      f'{field.width}u)', file=tfp)
-        else:
-            name = '_'.join(reg.name.rsplit('_', 1)[:-1])
-            if len(reg.fields) > 1:
-                for field in reg.fields:
-                    print(f'    SHARED_FIELD({name}_{field.name}, '
-                          f'{field.offset}u, '
-                          f'{field.width}u)', file=tfp)
-            elif reg.fields:
-                field = reg.fields[0]
-                if name != field.name:
-                    shname = f'{name}_{field.name}'
-                else:
-                    shname = name
-                print(f'    SHARED_FIELD({shname}, '
-                        f'{field.offset}u, '
-                        f'{field.width}u)', file=tfp)
+    def _generate_registers(self, nibcount: int, tfp: TextIO) -> None:
+        raise NotImplementedError("Abstract base class")
 
-    def _generate_parameters(self, tfp: TextIO) -> None:
+
+class QEMUAutoReg(AutoReg):
+    """Generator for QEMU skeleton files."""
+
+    def generate_all(self, tfp: TextIO) -> None:
+        """Generate a QEMU device skeleton file based on the register map.
+
+           :param tfp: output file stream
+        """
+        self.generate_header(tfp)
+        self.generate_register(tfp)
+        self.generate_mask(tfp)
+        self.generate_regname(tfp)
+        self.generate_struct(tfp)
+        self.generate_io(tfp)
+        self.generate_device(tfp)
+
+    def generate_header(self, tfp: TextIO) -> None:
+        """Generate the skeleton for the header of a device driver.
+
+           :param tfp: output file stream
+        """
+        dname = self._devname
+        pname = dname.title().replace('_', ' ')
+        year = localtime().tm_year
+        code = f'''
+        /*
+         * QEMU {pname} device
+         *
+         * Copyright (c) {year} {self.copyright}
+         *
+         * Author(s):
+         *
+         * Permission is hereby granted, free of charge, to any person obtaining a copy
+         * of this software and associated documentation files (the "Software"), to deal
+         * in the Software without restriction, including without limitation the rights
+         * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+         * copies of the Software, and to permit persons to whom the Software is
+         * furnished to do so, subject to the following conditions:
+         *
+         * The above copyright notice and this permission notice shall be included in
+         * all copies or substantial portions of the Software.
+         *
+         * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+         * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+         * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+         * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+         * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+         * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+         * THE SOFTWARE.
+         *
+         * Based on OpenTitan {self._git_version}
+         */
+
+        #include "qemu/osdep.h"
+        #include "qemu/log.h"
+        #include "hw/qdev-properties.h"
+        #include "hw/registerfields.h"
+        #include "hw/sysbus.h"
+        #include "trace.h"
+
+        '''
+        print(redent(code), file=tfp)
+
+    def generate_struct(self, tfp: TextIO) -> None:
+        """Generate the skeleton for the device state and class structs.
+
+           :param tfp: output file stream
+        """
+        dname = self._devname
+        hdname = dname.title().replace('_', '')
+        code = f'''
+        struct {hdname}State {{
+            SysBusDevice parent_obj;
+
+            MemoryRegion mmio;
+
+            char *ot_id;
+        }};
+
+        struct {hdname}Class {{
+            SysBusDeviceClass parent_class;
+            ResettablePhases parent_phases;
+        }};
+
+        '''
+        print(redent(code), file=tfp)
+
+    def generate_param(self, tfp: TextIO) -> None:
+        """Generate the parameter constants.
+
+           :param tfp: output file stream
+        """
         cat_params: dict[str, dict[str, int]] = {}
         max_length = 0
         name_first = ('NUM', )
@@ -522,54 +523,174 @@ class QEMUAutoReg:
                       file=tfp)
             print(file=tfp)
 
-    def _generate_reg_reset(self, reg: QEMURegister, nibcount: int,
+    def generate_reset(self, tfp: TextIO) -> None:
+        """Generate reset initialization values.
+
+           :param tfp: output file stream
+        """
+        nibcount = self._regwidth // 4
+        for reg in self._registers:
+            self._generate_reg_reset(reg, nibcount, tfp)
+
+    def generate_mask(self, tfp: TextIO) -> None:
+        """Generate the write mask associated with the register map.
+
+           :param tfp: output file stream
+        """
+        for reg in self._registers:
+            if len(reg.fields) < 2:
+                return
+            bitmask = sum(((1 << bf.width) - 1) << bf.offset
+                          for bf in reg.fields)
+            bitfield = (1 << self._regwidth) - 1
+            if bitfield & ~bitmask == 0:
+                return
+            if not reg.shared_fields:
+                masks: list[str] = [
+                    f'R_{reg.name}_{field.name}_MASK' for field in reg.fields
+                    if field.access not in (AutoAccess.RO,)
+                ]
+            else:
+                name = '_'.join(reg.name.rsplit('_', 1)[:-1]) or reg.name
+                masks: list[str] = [
+                    f'{name}_{field.name}_MASK' for field in reg.fields
+                    if field.access not in (AutoAccess.RO,)
+                ]
+            if not masks:
+                return
+            maskstr = ' | \\\n     '.join(masks)
+            if not reg.shared_fields:
+                name = reg.name
+            else:
+                name = '_'.join(reg.name.rsplit('_', 1)[:-1]) or reg.name
+            print(f'#define {name}_WMASK \\\n    ({maskstr})\n', file=tfp)
+            # special cast for interrupt testing with mixed fields
+            if (reg.name == 'INTR_STATE' and reg.shared_fields and
+                reg.access == AutoAccess.UNDEF):
+                masks: list[str] = [
+                    f'{name}_{field.name}_MASK' for field in reg.fields
+                ]
+                maskstr = ' | \\\n     '.join(masks)
+                print(f'#define INTR_TEST_WMASK \\\n    ({maskstr})\n',
+                      file=tfp)
+
+    def generate_io(self, tfp: TextIO) -> None:
+        """Generate the skeleton for the MMIO read and write functions.
+
+           :param tfp: output file stream
+        """
+        self._generate_io(self._registers, False, tfp)
+        self._generate_io(self._registers, True, tfp)
+
+    def generate_regname(self, tfp: TextIO) -> None:
+        """Generate the array of register names.
+
+           :param tfp: output file stream
+        """
+        self._generate_reg_wrappers(self._registers, tfp)
+        self._generate_regname_array(self._registers, tfp)
+
+    def generate_device(self, tfp: TextIO) -> None:
+        """Generate the skeleton for the device initialization functions.
+
+           :param tfp: output file stream
+        """
+        self._generate_mr_ops(tfp)
+        self._generate_props(tfp)
+        for reset_type in self._resets:
+            self._generate_reset(tfp, reset_type)
+        self._generate_realize(tfp)
+        self._generate_init(tfp)
+        self._generate_class_init(tfp)
+        self._generate_type(tfp)
+
+    def _generate_registers(self, nibcount: int, tfp: TextIO) -> None:
+        print('/* clang-format off */', file=tfp)
+        for reg in self._registers:
+            if reg.count == 1:
+                self._generate_register(reg, nibcount, tfp)
+                continue
+            address = reg.address
+            addr_inc = self._regwidth // 8
+            for rpos in range(reg.count):
+                rreg = reg._replace(name=f'{reg.name}_{rpos}',
+                                    address=address, count=1,
+                                    fields=reg.fields if rpos == 0 else [],
+                                    shared_fields=rpos == 0)
+                self._generate_register(rreg, nibcount, tfp)
+                address += addr_inc
+        print('/* clang-format on */\n', file=tfp)
+
+    def _generate_register(self, reg: AutoRegister, nibcount: int,
+                           tfp: TextIO) -> None:
+        print(f'REG{self._regwidth}({reg.name}, 0x{reg.address:0{nibcount}x}u)',
+              file=tfp)
+        if not reg.shared_fields:
+            if len(reg.fields) > 1:
+                for field in reg.fields:
+                    print(f'    FIELD({reg.name}, {field.name}, '
+                          f'{field.offset}u, '
+                          f'{field.width}u)', file=tfp)
+            elif reg.fields:
+                field = reg.fields[0]
+                if field.width != self._regwidth:
+                    if reg.name != field.name:
+                        fdname = field.name
+                    else:
+                        fdname = field.name.rsplit('_', 1)[-1]
+                    print(f'    FIELD({reg.name}, {fdname}, {field.offset}u, '
+                          f'{field.width}u)', file=tfp)
+        else:
+            name = '_'.join(reg.name.rsplit('_', 1)[:-1])
+            if len(reg.fields) > 1:
+                for field in reg.fields:
+                    print(f'    SHARED_FIELD({name}_{field.name}, '
+                          f'{field.offset}u, '
+                          f'{field.width}u)', file=tfp)
+            elif reg.fields:
+                field = reg.fields[0]
+                if field.width != self._regwidth:
+                    if name != field.name:
+                        shname = f'{name}_{field.name}'
+                    else:
+                        shname = name
+                    print(f'    SHARED_FIELD({shname}, '
+                          f'{field.offset}u, '
+                          f'{field.width}u)', file=tfp)
+
+    def _generate_reg_reset(self, reg: AutoRegister, nibcount: int,
                             tfp: TextIO) -> None:
         if reg.reset:
             print(f'    s->regs[R_{reg.name}] = 0x{reg.reset:0{nibcount}x}u;',
                   file=tfp)
 
-    def _generate_mask(self, reg: QEMURegister, tfp: TextIO) -> None:
-        if len(reg.fields) < 2:
-            return
-        bitmask = sum(((1 << bf.width) - 1) << bf.offset for bf in reg.fields)
-        bitfield = (1 << self._regwidth) - 1
-        if bitfield & ~bitmask == 0:
-            return
-        if not reg.shared_fields:
-            masks: list[str] = [
-                f'R_{reg.name}_{field.name}_MASK' for field in reg.fields
-                if field.access not in (QEMUAccess.RO,)
-            ]
-        else:
-            name = '_'.join(reg.name.rsplit('_', 1)[:-1])
-            masks: list[str] = [
-                f'{name}_{field.name}_MASK' for field in reg.fields
-                if field.access not in (QEMUAccess.RO,)
-            ]
-        if not masks:
-            return
-        maskstr = ' | \\\n     '.join(masks)
-        if not reg.shared_fields:
-            name = reg.name
-        else:
-            name = '_'.join(reg.name.rsplit('_', 1)[:-1])
-        print(f'#define {name}_WMASK \\\n    ({maskstr})\n', file=tfp)
-
-    def _generate_io(self, regs: list[QEMURegister], write: bool,
-                    tfp: TextIO) -> None:
-        nregs = {r.name: r for r in regs}
+    def _generate_io(self, regs: list[AutoRegister], write: bool,
+                     tfp: TextIO) -> None:
+        unfold_regs: list[AutoRegister] = []
+        for reg in regs:
+            if reg.count > 1:
+                addr_inc = self._regwidth // 8
+                for rpos in range(reg.count):
+                    unfold_regs.append(
+                        reg._replace(name=f'{reg.name}_{rpos}',
+                                     address=reg.address + addr_inc * rpos,
+                                     count=1))
+            else:
+                unfold_regs.append(reg)
+        nregs = {r.name: r for r in unfold_regs}
         reg_names = set(nregs)
         reg_defs = {r.name: (sum(((1 << bf.width) - 1) << bf.offset
-                                 for bf in r.fields), r.access) for r in regs}
+                                 for bf in r.fields), r.access)
+                    for r in unfold_regs}
         if write:
-            noaccess_types = (QEMUAccess.RO, QEMUAccess.URO)
+            noaccess_types = (AutoAccess.RO, AutoAccess.URO)
         else:
-            noaccess_types = (QEMUAccess.WO, )
+            noaccess_types = (AutoAccess.WO, )
         noaccess_names = {
-            r.name for r in regs if r.access in noaccess_types
+            r.name for r in unfold_regs if r.access in noaccess_types
         }
         rc_names = {
-            r.name for r in regs if r.access == QEMUAccess.RC
+            r.name for r in unfold_regs if r.access == AutoAccess.RC
         }
         reg_names -= noaccess_names
         if not write and rc_names:
@@ -611,7 +732,7 @@ class QEMUAutoReg:
 
                 hwaddr reg = R{rwidth}_OFF(addr);
             '''
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
         lines = []
         lines.append('    switch (reg) {')
         bitfield = (1 << rwidth) - 1
@@ -631,15 +752,15 @@ class QEMUAutoReg:
                 rbm, racc = reg_defs[rname]
                 if bitfield & rbm:
                     lines.append(f'    {vnm} &= R_{rname}_WMASK;')
-                if racc in (QEMUAccess.RW1C, QEMUAccess.R0W1C):
+                if racc in (AutoAccess.RW1C, AutoAccess.R0W1C):
                     lines.append(f'    s->regs[reg] &= ~{vnm}; '
                                  f'/* {racc.upper()} */')
-                elif racc == QEMUAccess.RW0C:
+                elif racc == AutoAccess.RW0C:
                     lines.append(f'    s->regs[reg] &= {vnm}; /* RW0C */')
-                elif racc == QEMUAccess.RW1S:
+                elif racc == AutoAccess.RW1S:
                     lines.append(f'    s->regs[reg] |= {vnm}; /* RW1S */')
                 else:
-                    if racc == QEMUAccess.UNDEF:
+                    if racc == AutoAccess.UNDEF:
                         self._log.warning(
                             "Register '%s' has multiple access types which is "
                             "not supported by this script, defaulting to RW.",
@@ -652,7 +773,7 @@ class QEMUAutoReg:
             for rname in sorted(noaccess_names, key=lambda r: nregs[r].address):
                 lines.append(f'case R_{rname}:')
             a = 'R' if write else 'W'
-            lines.append(self.redent(f'''
+            lines.append(redent(f'''
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: {a}/O register 0x%02" HWADDR_PRIx " (%s)\\n",
                           __func__, s->ot_id, addr, REG_NAME(reg));
@@ -675,13 +796,19 @@ class QEMUAutoReg:
                 return {rval};
             }}
             '''
-        print(self.redent(code), '', file=tfp)
+        print(redent(code), '', file=tfp)
 
-    def _generate_reg_wrappers(self, regs: list[QEMURegister],
+    def _generate_reg_wrappers(self, regs: list[AutoRegister],
                                tfp: TextIO) -> None:
-        last = regs[-1].name
+        last = regs[-1]
         lines = []
-        lines.append(f'#define R_LAST_REG (R_{last})')
+        lines.append(f'#define R{self._regwidth}_OFF(_r_) ((_r_) / '
+                     f'sizeof(uint{self._regwidth}_t))')
+        lines.append('')
+        if last.count:
+            lines.append(f'#define R_LAST_REG (R_{last.name}_{last.count-1})')
+        else:
+            lines.append(f'#define R_LAST_REG (R_{last.name})')
         lines.append('#define REGS_COUNT (R_LAST_REG + 1u)')
         lines.append(f'#define REGS_SIZE  (REGS_COUNT * '
                      f'sizeof(uint{self._regwidth}_t))')
@@ -691,7 +818,7 @@ class QEMUAutoReg:
         lines.append('')
         print('\n'.join(lines), file=tfp)
 
-    def _generate_regname_array(self, regs: list[QEMURegister],
+    def _generate_regname_array(self, regs: list[AutoRegister],
                                 tfp: TextIO) -> None:
         lines = []
         lines.append(
@@ -699,72 +826,16 @@ class QEMUAutoReg:
         lines.append('static const char *REG_NAMES[REGS_COUNT] = {')
         lines.append('    /* clang-format off */')
         for reg in regs:
-            lines.append(f'    REG_NAME_ENTRY({reg.name}),')
+            if reg.count > 1:
+                for rpos in range(reg.count):
+                    lines.append(f'    REG_NAME_ENTRY({reg.name}_{rpos}),')
+            else:
+                lines.append(f'    REG_NAME_ENTRY({reg.name}),')
         lines.append('    /* clang-format on */')
         lines.append('};')
+        lines.append('#undef REG_NAME_ENTRY')
         lines.append('')
         print('\n'.join(lines), file=tfp)
-
-    def _generate_header(self, tfp: TextIO) -> None:
-        dname = self._devname
-        pname = dname.title().replace('_', ' ')
-        year = localtime().tm_year
-        code = f'''
-        /*
-         * QEMU {pname} device
-         *
-         * Copyright (c) {year} {self.copyright}
-         *
-         * Author(s):
-         *
-         * Permission is hereby granted, free of charge, to any person obtaining a copy
-         * of this software and associated documentation files (the "Software"), to deal
-         * in the Software without restriction, including without limitation the rights
-         * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-         * copies of the Software, and to permit persons to whom the Software is
-         * furnished to do so, subject to the following conditions:
-         *
-         * The above copyright notice and this permission notice shall be included in
-         * all copies or substantial portions of the Software.
-         *
-         * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-         * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-         * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-         * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-         * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-         * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-         * THE SOFTWARE.
-         */
-
-        #include "qemu/osdep.h"
-        #include "qemu/log.h"
-        #include "hw/qdev-properties.h"
-        #include "hw/registerfields.h"
-        #include "hw/sysbus.h"
-        #include "trace.h"
-
-        '''
-        print(self.redent(code), file=tfp)
-
-    def _generate_struct(self, tfp: TextIO) -> None:
-        dname = self._devname
-        hdname = dname.title().replace('_', '')
-        code = f'''
-        struct {hdname}State {{
-            SysBusDevice parent_obj;
-
-            MemoryRegion mmio;
-
-            char *ot_id;
-        }};
-
-        struct {hdname}Class {{
-            SysBusDeviceClass parent_class;
-            ResettablePhases parent_phases;
-        }};
-
-        '''
-        print(self.redent(code), file=tfp)
 
     def _generate_mr_ops(self, tfp: TextIO) -> None:
         dname = self._devname
@@ -779,7 +850,7 @@ class QEMUAutoReg:
             }},
         }};
         '''
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
 
     def _generate_props(self, tfp: TextIO) -> None:
         dname = self._devname
@@ -790,18 +861,17 @@ class QEMUAutoReg:
             DEFINE_PROP_END_OF_LIST(),
         }};
         '''
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
 
     def _generate_reset(self, tfp: TextIO, reset_type: str) -> None:
         dname = self._devname
         hdname = dname.title().replace('_', '')
         uname = dname.upper()
-
         regio = StringIO()
         nibcount = self._regwidth // 4
         for reg in self._registers:
             self._generate_reg_reset(reg, nibcount, regio)
-        regcode = self.redent(regio.getvalue(), 12, strip_end=True).lstrip()
+        regcode = redent(regio.getvalue(), 12, strip_end=True).lstrip()
 
         code = f'''
         static void {dname}_reset_{reset_type}(Object *obj, ResetType type)
@@ -822,7 +892,7 @@ class QEMUAutoReg:
             code += f'{regcode}\n{spacer}}}\n'
         else:
             code += '}\n'
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
 
     def _generate_realize(self, tfp: TextIO) -> None:
         dname = self._devname
@@ -835,7 +905,7 @@ class QEMUAutoReg:
             (void)errp;
         }}
         '''
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
 
     def _generate_init(self, tfp: TextIO) -> None:
         dname = self._devname
@@ -853,7 +923,7 @@ class QEMUAutoReg:
             s->regs = g_new0(uint{self._regwidth}_t, REGS_COUNT);
         }}
         '''
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
 
     def _generate_class_init(self, tfp: TextIO) -> None:
         dname = self._devname
@@ -877,7 +947,7 @@ class QEMUAutoReg:
                                                &mc->parent_phases);
         }}
         '''
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
 
     def _generate_type(self, tfp: TextIO) -> None:
         dname = self._devname
@@ -900,36 +970,164 @@ class QEMUAutoReg:
 
         type_init({dname}_register_types);
         '''
-        print(self.redent(code), file=tfp)
+        print(redent(code), file=tfp)
+
+
+class BmTestAutoReg(AutoReg):
+    """Generator for Baremetal Test skeleton files."""
+
+    def generate_all(self, tfp: TextIO) -> None:
+        """Generate a QEMU device skeleton file based on the register map.
+
+           :param tfp: output file stream
+        """
+        self.generate_header(tfp)
+        self.generate_struct(tfp)
+        self.generate_register(tfp)
+
+    def generate_header(self, tfp: TextIO) -> None:
+        """Generate the skeleton for the header of a device driver.
+
+           :param tfp: output file stream
+        """
+        year = localtime().tm_year
+        code = f'''
+        // Copyright (c) {year} {self.copyright}
+        // Licensed under the Apache License, Version 2.0, see LICENSE for details.
+        // SPDX-License-Identifier: Apache-2.0
+
+        #![no_std]
+
+        use tock_registers::interfaces::{{ReadWriteable, Readable, Writeable}};
+        use tock_registers::registers::{{ReadOnly, ReadWrite, WriteOnly}};
+        use tock_registers::{{register_bitfields, register_structs}};
+        '''
+        # @todo ideally RW/RO/WO use should depend on the actual register
+        # definitions. This is not yet supported.
+        print(redent(code), file=tfp)
+
+    def generate_struct(self, tfp: TextIO) -> None:
+        """Generate the skeleton for the device state and class structs.
+
+           :param tfp: output file stream
+        """
+        dname = self._devname
+        hdname = dname.title().replace('_', '')
+        code = f'''
+        pub struct {hdname} {{
+            regs: &'static mut {hdname}Regs,
+        }}
+        '''
+        print(redent(code), file=tfp)
+
+    def _generate_registers(self, nibcount: int, tfp: TextIO) -> None:
+        dname = self._devname
+        hdname = dname.title().replace('_', '')
+        print('register_structs! {', file=tfp)
+        print(f'    pub {hdname}Regs {{', file=tfp)
+        shared_fields: dict[str, tuple[list[AutoField], set[str]]] = {}
+        bitfields: dict[str, list[AutoField]] = {}
+        for reg in self._registers:
+            radix = reg.name.rsplit('_', 1)[0]
+            if reg.shared_fields:
+                if radix in shared_fields:
+                    raise RuntimeError(f"Redefinition of shared field for "
+                                       f"'{radix}'")
+                shared_fields[radix] = (reg.fields, {reg.name})
+                bitfields[radix] = reg.fields
+            elif radix in shared_fields:
+                shared_fields[radix][1].add(reg.name)
+            else:
+                flds = reg.fields
+                if flds and (len(flds) > 1 or flds[0].width != self._regwidth):
+                    bitfields[reg.name] = reg.fields
+        reg = None
+        for reg in self._registers:
+            self._generate_register(reg, shared_fields, nibcount, reg.count,
+                                    tfp)
+        address = reg.address + (reg.count * self._regwidth) // 8 if reg else 0
+        print(f'        (0x{address:0{nibcount}x} => @END),', file=tfp)
+        print('    }\n}\n', file=tfp)
+        print(f'register_bitfields! [u{self._regwidth},', file=tfp)
+        for name, fields in bitfields.items():
+            print(f'    {name} [', file=tfp)
+            for fld in fields:
+                print(f'        {fld.name} OFFSET({fld.offset}) '
+                      f'NUMBITS({fld.width}) [],', file=tfp)
+            print('    ],', file=tfp)
+        print('];\n', file=tfp)
+
+    def _generate_register(self, reg: AutoRegister,
+            shfields: dict[str, tuple[list[AutoField], set[str]]],
+            nibcount: int, repcount:int, tfp: TextIO) -> None:
+        regtype = {
+            AutoAccess.RO: 'ReadOnly',
+            AutoAccess.WO: 'WriteOnly',
+        }.get(reg.access, 'ReadWrite')
+        regdesc = ''
+        radix = reg.name.rsplit('_', 1)[0]
+        if radix in shfields and reg.name in shfields[radix][1]:
+            fields = shfields[radix][0]
+            regdescname = radix
+        else:
+            fields = reg.fields
+            regdescname = reg.name
+        if fields and (len(fields) > 1 or fields[0].width != self._regwidth):
+            regdesc = f', {regdescname.upper()}::Register'
+        if repcount > 1:
+            print(f'        (0x{reg.address:0{nibcount}x} => '
+                  f'{reg.name.lower()}: '
+                  f'[{regtype}<u{self._regwidth}{regdesc}>; {repcount}]),',
+                  file=tfp)
+        else:
+            print(f'        (0x{reg.address:0{nibcount}x} => '
+                  f'{reg.name.lower()}: '
+                  f'{regtype}<u{self._regwidth}{regdesc}>),', file=tfp)
+        self._log.warning('Reg: %s', reg)
 
 
 def main():
     """Main routine"""
     debug = True
-    desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
+    mod = sys.modules[__name__]
+    desc = mod.__doc__.split('.', 1)[0].strip()
     argparser = ArgumentParser(description=f'{desc}.')
+    base = 'AutoReg'
+    autoregs = {
+        name.removesuffix(base).lower(): tit
+        for name, tit in [(m, getattr(mod, m)) for m in dir(mod)]
+        if isinstance(tit, type) and issubclass(tit, AutoReg) and name != base
+    }
+    default_outkind = 'qemu'
+    outkinds = sorted(autoregs, key=lambda n: '' if n == default_outkind else n)
+    assert len(outkinds) > 0
+    generators = sorted(set(flatten([areg.generators
+                                     for areg in autoregs.values()])))
     try:
-
         files = argparser.add_argument_group(title='Files')
         files.add_argument('-c', '--config', type=FileType('rt'),
                            metavar='HJSON', required=True,
                            help='input HJSON definition file')
         files.add_argument('-o', '--output', type=FileType('wt'),
                            metavar='FILE',
-                           help='output C file')
+                           help='output source file')
         params = argparser.add_argument_group(title='Parameters')
         files.add_argument('-C', '--copyright',
                            help='define copyright string')
         params.add_argument('-g', '--generate', action='append',
-                           choices=QEMUAutoReg.generators, required=True,
-                           help='what to generate')
+                            choices=generators, required=True,
+                            help='what to generate')
         params.add_argument('-n', '--name', default='foo',
-                           help='device name')
+                            help='device name')
         params.add_argument('-p', '--ignore', metavar='PREFIX',
-                           help='ignore register/fields starting with prefix')
+                            help='ignore register/fields starting with prefix')
         params.add_argument('-r', '--reset', action='append',
-                           choices=QEMUAutoReg.RESETS,
-                           help='generate reset code')
+                            choices=AutoReg.RESETS,
+                            help='generate reset code')
+        params.add_argument('-k', '--out-kind', choices=outkinds,
+                            default=outkinds[0],
+                            help=f'output file format '
+                                 f'(default: {outkinds[0]})')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -944,12 +1142,16 @@ def main():
 
         configure_loggers(args.verbose, 'autoreg')
 
-        areg = QEMUAutoReg(args.name, args.ignore, args.reset)
+        reggen = autoregs[args.out_kind]
+        areg = reggen(args.name, args.ignore, args.reset)
         if args.copyright:
             areg.copyright = args.copyright
         areg.load(args.config)
         for gen in args.generate or []:
-            getattr(areg, f'generate_{gen}')(args.output or sys.stdout)
+            generate = getattr(areg, f'generate_{gen}', None)
+            if not generate:
+                argparser.error(f'{gen} is not supported for {args.out_kind}')
+            generate(args.output or sys.stdout)
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)
