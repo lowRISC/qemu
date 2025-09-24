@@ -366,7 +366,8 @@ class DeviceProxy:
             if group.out == out:
                 yield name, group
 
-    def signal_interrupt(self, group: str, irq: int, level: int | bool) -> None:
+    def signal_interrupt(self, group: str, irq: int, level: Union[int, bool]) \
+            -> None:
         """Set the level of an input interrupt line.
 
            :param group: the name of the group
