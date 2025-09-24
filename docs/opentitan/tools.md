@@ -37,6 +37,8 @@ of options and the available features.
 
 * [`autoregs.py`] is a Python script that generates register definitions and function templates to
   create a skeleton file QEMU system bus device emulation.
+* [`autotop.py`] is a Python script that generates machine definitions to create a skeleton file for
+  a QEMU OpenTitan machine.
 * [`checkregs.py`](checkregs.md) is an internal tool design to check the discrepancies between
    OpenTitan generated register definition files and their QEMU counterparts. It is only useful to
    develop the machine itself.

@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
-"""QEMU OT tool to generate machine definition for OT device.
+"""Generate machine definitions for OpenTitan top.
 
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
@@ -13,7 +13,6 @@ from logging import getLogger
 from os import listdir
 from os.path import (abspath, basename, commonprefix, dirname, isdir, isfile,
                      join as joinpath)
-from textwrap import dedent, indent
 from traceback import format_exception
 from typing import Any, NamedTuple, TextIO
 import re
@@ -26,7 +25,7 @@ sys.path.append(QEMU_PYPATH)
 # ruff: noqa: E402
 from ot.util.arg import ArgError
 from ot.util.log import configure_loggers
-from ot.util.misc import HexInt, camel_to_snake_uppercase, classproperty
+from ot.util.misc import HexInt, camel_to_snake_uppercase, classproperty, redent
 
 try:
     _HJSON_ERROR = None
@@ -50,7 +49,7 @@ class QEMUSignal(NamedTuple):
     index: int
 
 
-class QEMUAutoTop:
+class AutoTop:
     """Helper class to generate QEMU machine definition from Top definitions.
     """
 
@@ -98,20 +97,6 @@ class QEMUAutoTop:
         self._load_pinmux(hjson)
 
     @classmethod
-    def redent(cls, text: str, spc: int = 0, strip_end: bool = False) -> str:
-        """Utility function to re-indent code string.
-
-           :param text: the text to re-indent
-           :param spc: the number of leading empty space chars to prefix lines
-           :param strip_end: whether to strip trailing whitespace and newline
-        """
-        text = dedent(text.lstrip('\n'))
-        text = indent(text, ' ' * spc)
-        if strip_end:
-            text = text.rstrip(' ').rstrip('\n')
-        return text
-
-    @classmethod
     def device_name(cls, name: str, discard_aon: bool = False) -> str:
         """Generate the devices name.
 
@@ -123,40 +108,40 @@ class QEMUAutoTop:
             pname = pname.replace('_AON', '')
         return cls.DEVICE_MAP.get(pname, pname)
 
-    # pylint: disable=no-self-argument
     @classproperty
-    def languages(cls) -> list[str]:
-        """Report which language generations are supported.
+    def outkinds(cls) -> list[str]:
+        """Report which generation output formats are supported.
         """
+        # pylint: disable=no-self-argument
         prefix = 'generate_'
-        return list(sorted(f[len(prefix):]
-                    for f in dir(cls) if f.startswith(prefix)))
+        return [f.removeprefix(prefix) for f in dir(cls)
+                if f.startswith(prefix)]
 
-    def generate_c(self, prefix: str, tfp: TextIO) -> None:
+    def generate_qemu(self, prefix: str, tfp: TextIO) -> None:
         """Generate a QEMU template file or machine definition.
 
            :param prefix: prefix for C definition
            :param tfp: output file stream
         """
         lprefix = prefix.lower()
-        self._generate_c_dev_enum(prefix, tfp)
-        self._generate_c_pinmux(prefix, tfp)
+        self._generate_qemu_dev_enum(prefix, tfp)
+        self._generate_qemu_pinmux(prefix, tfp)
         print(f'static const IbexDeviceDef {lprefix}_devices[] = {{', file=tfp)
         print('/* clang-format off */', file=tfp)
         for devname in sorted(self._devices, key=self._device_address):
-            self._generate_c_devices(prefix, devname, tfp)
+            self._generate_qemu_devices(prefix, devname, tfp)
         print('/* clang-format on */', file=tfp)
         print('};', file=tfp)
 
-    def generate_rust(self, _: str, tfp: TextIO) -> None:
+    def generate_bmtest(self, _: str, tfp: TextIO) -> None:
         """Generate a Rust template file for machine definition.
 
            :param tfp: output file stream
         """
-        self._generate_rust_base_addresses(tfp)
-        self._generate_rust_interrupts(tfp)
-        self._generate_rust_alerts(tfp)
-        self._generate_rust_pinmux(tfp)
+        self._generate_bmtest_base_addresses(tfp)
+        self._generate_bmtest_interrupts(tfp)
+        self._generate_bmtest_alerts(tfp)
+        self._generate_bmtest_pinmux(tfp)
 
     def _load_devices(self, topdir: str) -> None:
         iptopdir = f'{topdir}/ip'
@@ -318,18 +303,18 @@ class QEMUAutoTop:
             self._mbox_indices[udev] = len(self._mbox_indices)
         return self._mbox_indices[udev]
 
-    def _generate_c_dev_enum(self, prefix: str, tfp: TextIO) -> None:
+    def _generate_qemu_dev_enum(self, prefix: str, tfp: TextIO) -> None:
         lines = []
         uprefix = prefix.upper()
         tprefix = prefix.title().replace('_', '')
         print(f'enum {tprefix}Device {{', file=tfp)
         for dev in sorted(self._devices):
             lines.append(f'{uprefix}_DEV_{dev}')
-        code = self.redent(',\n'.join(lines), 4)
+        code = redent(',\n'.join(lines), 4)
         print(code, file=tfp)
         print('}\n', file=tfp)
 
-    def _generate_c_pinmux(self, prefix: str, tfp: TextIO) -> None:
+    def _generate_qemu_pinmux(self, prefix: str, tfp: TextIO) -> None:
         tprefix = prefix.title().replace('_', '')
         for ioname, pinmux in self._pinmux.items():
             lines = []
@@ -342,16 +327,17 @@ class QEMUAutoTop:
                 lines.append(f'{u_ioname}_{us_ion}, /* {val} */')
                 max_val = max(val, max_val)
             lines.append(f'{u_ioname}_COUNT, /* {max_val + 1} */')
-            code = self.redent('\n'.join(lines), 4)
+            code = redent('\n'.join(lines), 4)
             print(code, file=tfp)
             print('}\n', file=tfp)
 
-    def _generate_c_devices(self, prefix: str, dev: str, tfp: TextIO) -> None:
+    def _generate_qemu_devices(self, prefix: str, dev: str, tfp: TextIO) \
+            -> None:
         lines: list[str] = []
         uprefix = prefix.upper()
-        irq_defs = self._generate_c_irq_defs(uprefix, dev)
-        alert_defs = self._generate_c_alert_defs(uprefix, dev)
-        mmap_defs = self._generate_c_mmap_defs(dev)
+        irq_defs = self._generate_qemu_irq_defs(uprefix, dev)
+        alert_defs = self._generate_qemu_alert_defs(uprefix, dev)
+        mmap_defs = self._generate_qemu_mmap_defs(dev)
         if dev not in self._devices:
             self._log.warning('%s not in devices', dev)
         lines.append(f'[{uprefix}_DEV_{dev}] = {{')
@@ -382,20 +368,20 @@ class QEMUAutoTop:
             lines.append(f'    .type = TYPE_OT_{devbase},')
             if mmap_defs:
                 lines.append('    .memmap = MEMMAPENTRIES(')
-                lines.append(self.redent(',\n'.join(mmap_defs), 8))
+                lines.append(redent(',\n'.join(mmap_defs), 8))
                 lines.append('    ),')
             if irq_defs or alert_defs:
                 defs = []
                 defs.extend(irq_defs)
                 defs.extend(alert_defs)
                 lines.append('    .gpio = IBEXGPIOCONNDEFS(')
-                lines.append(self.redent(',\n'.join(defs), 8))
+                lines.append(redent(',\n'.join(defs), 8))
                 lines.append('    ),')
         lines.append('},')
-        code = self.redent('\n'.join(lines), 4)
+        code = redent('\n'.join(lines), 4)
         print(code, file=tfp)
 
-    def _generate_c_mmap_defs(self, device: str) -> list[str]:
+    def _generate_qemu_mmap_defs(self, device: str) -> list[str]:
         # sorting memory range the weird way (hack ahead)
         # we want the IBEX bus to be seen first (vs. debug or external buses)
         # and appear in the logical address order
@@ -412,20 +398,20 @@ class QEMUAutoTop:
             mmaps.append(f'{{ .base = 0x{dev.base:{width}x}u }}')
         return mmaps
 
-    def _generate_c_alert_defs(self, prefix: str, dev: str) -> list[str]:
+    def _generate_qemu_alert_defs(self, prefix: str, dev: str) -> list[str]:
         alerts = []
         for pos, alert in enumerate(self._alerts.get(dev, [])):
             alerts.append(f'{prefix}_GPIO_ALERT({pos}, {alert.index})')
         return alerts
 
-    def _generate_c_irq_defs(self, prefix: str, dev: str) -> list[str]:
+    def _generate_qemu_irq_defs(self, prefix: str, dev: str) -> list[str]:
         irqs = []
         for pos, irq in enumerate(self._interrupts.get(dev, [])):
             irqs.append(f'{prefix}_GPIO_SYSBUS_IRQ({pos}, PLIC, '
                         f'{irq.index})')
         return irqs
 
-    def _generate_rust_base_addresses(self, tfp):
+    def _generate_bmtest_base_addresses(self, tfp):
         utop = self._topname.upper()
         print('pub mod base_addresses {', file=tfp)
         for dev in sorted(self._devices, key=self._device_address):
@@ -456,7 +442,7 @@ class QEMUAutoTop:
                       file=tfp)
         print('}\n', file=tfp)
 
-    def _generate_rust_interrupts(self, tfp):
+    def _generate_bmtest_interrupts(self, tfp):
         irqs: dict[str, int] = {}
         if not self._interrupts:
             return
@@ -475,7 +461,7 @@ class QEMUAutoTop:
         print(f'    pub const COUNT: usize = {max_val + 1};', file=tfp)
         print('}\n', file=tfp)
 
-    def _generate_rust_alerts(self, tfp) -> None:
+    def _generate_bmtest_alerts(self, tfp) -> None:
         alerts: dict[str, int] = {}
         if not self._alerts:
             return
@@ -490,7 +476,7 @@ class QEMUAutoTop:
         print(f'    pub const COUNT: usize = {max_val};', file=tfp)
         print('}\n', file=tfp)
 
-    def _generate_rust_pinmux(self, tfp) -> None:
+    def _generate_bmtest_pinmux(self, tfp) -> None:
         for ioname, pinmux in self._pinmux.items():
             if not pinmux:
                 continue
@@ -510,7 +496,10 @@ def main():
     desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
     argparser = ArgumentParser(description=f'{desc}.')
     try:
-        languages = list(QEMUAutoTop.languages)
+        default_outkind = 'qemu'
+        outkinds = sorted(AutoTop.outkinds,
+                          key=lambda n: '' if n == default_outkind else n)
+        assert len(outkinds) > 0
         top = argparser.add_argument_group(title='Top')
         top.add_argument('opentitan', nargs='?', metavar='OTDIR',
                            help='OpenTitan root directory')
@@ -522,10 +511,10 @@ def main():
                            help='output file name')
         files.add_argument('-p', '--prefix', default='ot_dj_soc',
                            help='constant prefix (default: ot_dj_soc)')
-        files.add_argument('-l', '--language', choices=languages,
-                           default=languages[0],
-                           help=f'output file language '
-                                f'(default: {languages[0]})')
+        files.add_argument('-k', '--out-kind', choices=outkinds,
+                            default=outkinds[0],
+                            help=f'output file format '
+                                 f'(default: {outkinds[0]})')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -545,9 +534,9 @@ def main():
             argparser.error('OTDIR is required is no top file is specified')
         if not isdir(ot_dir):
             argparser.error('Invalid OpenTitan root directory')
-        atop = QEMUAutoTop(args.top)
+        atop = AutoTop(args.top)
         atop.load(ot_dir)
-        getattr(atop, f'generate_{args.language}')(args.prefix,
+        getattr(atop, f'generate_{args.out_kind}')(args.prefix,
                                                    args.output or sys.stdout)
 
     except ArgError as exc:
