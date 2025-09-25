@@ -40,6 +40,8 @@ class Executer:
        :param args: parsed arguments
     """
 
+    CONTEXT_ERROR = 99
+
     RESULT_MAP = {
         -1: 'SKIPPED',
         0: 'PASS',
@@ -49,7 +51,7 @@ class Executer:
         Wrapper.GUEST_ERROR_OFFSET - 1: 'GUEST_ESC',
         Wrapper.GUEST_ERROR_OFFSET + 1: 'FAIL',
         98: 'UNEXP_SUCCESS',
-        99: 'CONTEXT',
+        CONTEXT_ERROR: 'CONTEXT',
         # convention: exit code in [100..115] range report uncaught exceptions
         100: 'INST_ADDR_MISALIGN',
         101: 'INST_ACCESS_FAULT',
@@ -190,7 +192,9 @@ class Executer:
                     exec_info = self._build_test_command(test)
                     exec_info.test_name = test_name
                     vcplogfile = self._log_vcp_streams(exec_info)
-                    exec_info.context.execute('pre')
+                    context = 'pre'
+                    exec_info.context.execute(context)
+                    context = 'with'
                     tret, xtime, err = qot.run(exec_info)
                     cret = exec_info.context.finalize()
                     if exec_info.expect_result != 0:
@@ -203,16 +207,18 @@ class Executer:
                                               'error %d, assume error', tret)
                             tret = 98
                     if tret == 0 and cret != 0:
-                        tret = 99
+                        tret = self.CONTEXT_ERROR
                     if tret and not err:
                         err = exec_info.context.first_error
-                    exec_info.context.execute('post', tret)
+                    if not tret:
+                        context = 'post'
+                    exec_info.context.execute(context, 'post')
                 # pylint: disable=broad-except
                 except Exception as exc:
                     self._log.critical('%s', str(exc))
                     if debug:
                         print(format_exc(chain=False), file=sys.stderr)
-                    tret = 99
+                    tret = self.CONTEXT_ERROR
                     xtime = ExecTime(0.0)
                     err = str(exc)
                 finally:
@@ -223,7 +229,9 @@ class Executer:
                     flush_memory_loggers(['pyot', 'pyot.vcp', 'pyot.ctx',
                                           'pyot.file'], LOG_INFO)
                 results[tret] += 1
-                sret = self.RESULT_MAP.get(tret, tret)
+                sret = self.RESULT_MAP.get(tret) or str(tret)
+                if tret == self.CONTEXT_ERROR:
+                    sret = f'{sret} ({context.upper()})'
                 try:
                     targs = exec_info.args
                     icount = self.get_namespace_arg(targs, 'icount')
