@@ -17,6 +17,7 @@ from ot.util.file import guess_file_type
 from ot.util.misc import EasyDict
 
 from ..executer import Executer
+from .wrapper import Wrapper
 
 
 class QEMUExecuter(Executer):
@@ -34,6 +35,9 @@ class QEMUExecuter(Executer):
         'U': 'unimp',
     }
     """Shortcut names for QEMU log sources."""
+
+    WRAPPER = Wrapper
+    """QEMU wrapper."""
 
     def _build_fw_args(self, args: Namespace) \
             -> tuple[str, Optional[str], list[str], Optional[str]]:

@@ -83,6 +83,9 @@ class Executer:
     DEFAULT_SERIAL_PORT = 'serial0'
     """Default VCP name."""
 
+    WRAPPER = Wrapper
+    """Default wrapper."""
+
     def __init__(self, tfm: FileManager, config: dict[str, any],
                  args: Namespace):
         self._log = getLogger('pyot.exec')
@@ -131,7 +134,7 @@ class Executer:
            :return: success or the code of the first encountered error
         """
         log_classifiers = self._config.get('logclass', {})
-        qot = Wrapper(log_classifiers, debug)
+        qot = self.WRAPPER(log_classifiers, debug)
         ret = 0
         results = defaultdict(int)
         result_file = self._argdict.get('result')
