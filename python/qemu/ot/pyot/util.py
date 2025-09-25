@@ -67,8 +67,8 @@ class ResultFormatter:
         if spacing:
             print('')
         # third row is time, always defined as ms, see ExecTime
-        total_time = sum(float(r[2].strip().split(' ')[0])
-                               for r in self._results[1:])
+        exec_times = [r[2].strip().split(' ')[0] for r in self._results[1:]]
+        total_time = sum(float(t) for t in exec_times if t)
         tt_str = f'{total_time / 1000:.1f} s'
         last_row = ['TEST SESSION', result or '?', tt_str]
         last_row.extend([''] * (len(self._results) - len(last_row)))
