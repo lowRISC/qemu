@@ -184,7 +184,7 @@ class KeyManagerDpe:
             devtype = devdescs[0]
             if devtype == 'ot-lc_ctrl' and devtype not in loaded:
                 loaded.add(devtype)
-                for opt in ('invalid', 'production', 'test_dev_rma'):
+                for opt in 'invalid production test_unlocked dev rma'.split():
                     sval = self._config.get(section, opt)
                     if not sval:
                         raise ValueError(f'Unable to load {opt} LC KM div')
