@@ -153,6 +153,11 @@ REG32(INT_SRC_WR_VAL_8, 0x14cu)
 REG32(INT_SRC_WR_VAL_9, 0x150u)
 REG32(INT_SRC_WR_VAL_10, 0x154u)
 
+/*
+ * Check presence of .role bitfield extension to MemTxAttrs.
+ * It may only exist in downstream extensions, where it defines the role of the
+ * initiator for every memory request.
+ */
 #if defined(MEMTXATTRS_HAS_ROLE) && (MEMTXATTRS_HAS_ROLE != 0)
 #define OT_DMA_HAS_ROLE
 #else
@@ -224,6 +229,7 @@ typedef struct {
     dma_addr_t size;
     MemTxAttrs attrs;
     MemTxResult res;
+    unsigned chunk;
     bool write;
 } OtDMAOp;
 
@@ -403,6 +409,8 @@ static const char *STATE_NAMES[] = {
 
 #define CHANGE_STATE(_f_, _sst_) \
     ot_dma_change_state_line(_f_, SM_##_sst_, __LINE__)
+
+#define DMA_FATAL_ERROR(_s_) ot_dma_trigger_fatal_error(_s_, __func__, __LINE__)
 
 #define ot_dma_set_xerror(_s_, _err_) \
     trace_ot_dma_set_error((_s_)->ot_id, __func__, __LINE__, \
@@ -783,6 +791,8 @@ static bool ot_dma_go(OtDMAState *s)
 
     OtDMAOp *op = &s->op;
 
+    memset(op, 0u, sizeof(OtDMAOp));
+
     if (s->state != SM_ERROR) {
         op->attrs.unspecified = false;
 #ifdef OT_DMA_HAS_ROLE
@@ -963,6 +973,25 @@ static void ot_dma_abort(OtDMAState *s)
     timer_mod(s->timer, (int64_t)now);
 }
 
+static void ot_dma_trigger_fatal_error(OtDMAState *s, const char *func,
+                                       int line)
+{
+    const OtDMAOp *op = &s->op;
+
+    error_report("%s: %s: DMA fatal error @ line %d", func, s->ot_id, line);
+    error_report("  %s addr 0x" DMA_ADDR_FMT " size 0x" DMA_ADDR_FMT
+                 " chunk %u",
+                 op->write ? "WR" : "RD", op->addr, op->size, op->chunk);
+    error_report("  asix %s mr %s (%p)", AS_NAME(op->asix),
+                 op->mr ? op->mr->name : "null", op->mr);
+#ifdef OT_DMA_HAS_ROLE
+    error_report("  res %d (role 0x%x)", op->res, (unsigned)op->attrs.role);
+#else
+    error_report("  res %d", op->res);
+#endif
+    g_assert_not_reached();
+}
+
 static void ot_dma_complete(OtDMAState *s)
 {
     OtDMAOp *op = &s->op;
@@ -984,35 +1013,42 @@ static void ot_dma_complete(OtDMAState *s)
 
         trace_ot_dma_complete(s->ot_id, (int)op->res);
 
-        if (op->mr) {
-            memory_region_unref(op->mr);
-            op->mr = NULL;
-        } else {
-            g_assert_not_reached();
-        }
-
-        if (op->size) {
-            g_assert_not_reached();
-        }
-
         switch (op->res) {
         case MEMTX_OK:
+            /* on success, there should be no more data to transfer */
+            if (op->size) {
+                DMA_FATAL_ERROR(s);
+            }
             s->regs[R_STATUS] |= R_STATUS_DONE_MASK;
             break;
         /* device returned an error */
         case MEMTX_ERROR:
             ot_dma_set_xerror(s, ERR_BUS);
-            return;
+            break;
         /* nothing at that address */
         case MEMTX_DECODE_ERROR:
             ot_dma_set_xerror(s, op->write ? ERR_DEST_ADDR : ERR_SRC_ADDR);
-            return;
+            break;
         /* access denied */
         case MEMTX_ACCESS_ERROR:
             ot_dma_set_xerror(s, ERR_BUS);
-            return;
+            break;
+        /* undocumented address_space_rw() error */
         default:
-            g_assert_not_reached();
+            DMA_FATAL_ERROR(s);
+        }
+
+        /* any DMA completion (success or failure) should have run with a MR */
+        if (!op->mr) {
+            DMA_FATAL_ERROR(s);
+        }
+
+        memory_region_unref(op->mr);
+        op->mr = NULL;
+
+        /* on failure, do not resume transfer with next chunk */
+        if (op->res != MEMTX_OK) {
+            return;
         }
 
         OtDMASHA *sha = &s->sha;
@@ -1037,7 +1073,7 @@ static void ot_dma_complete(OtDMAState *s)
 
         CHANGE_STATE(s, IDLE);
     } else {
-        g_assert_not_reached();
+        DMA_FATAL_ERROR(s);
     }
 
     ot_dma_update_irqs(s);
@@ -1062,6 +1098,8 @@ static void ot_dma_transfer(void *opaque)
                               AS_NAME(op->asix), op->addr, size);
         op->res = address_space_rw(op->as, op->addr, op->attrs, op->buf, size,
                                    op->write);
+
+        op->chunk += 1;
 
         if (op->res == MEMTX_OK) {
             OtDMASHA *sha = &s->sha;
