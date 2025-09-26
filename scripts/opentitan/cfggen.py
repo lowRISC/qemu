@@ -34,8 +34,9 @@ except ImportError as hjson_exc:
 from ot.lc_ctrl.const import LcCtrlConstants
 from ot.otp.const import OtpConstants
 from ot.otp.secret import OtpSecretConstants
+from ot.util.arg import ArgError
 from ot.util.log import configure_loggers
-from ot.util.misc import ArgError, alphanum_key, to_bool
+from ot.util.misc import alphanum_key, to_bool
 
 
 OtParamRegex = str

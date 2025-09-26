@@ -24,9 +24,9 @@ QEMU_PYPATH = joinpath(dirname(dirname(dirname(abspath(__file__)))),
 sys.path.append(QEMU_PYPATH)
 
 # ruff: noqa: E402
+from ot.util.arg import ArgError
 from ot.util.log import configure_loggers
-from ot.util.misc import (ArgError, HexInt, camel_to_snake_uppercase,
-                          classproperty)
+from ot.util.misc import HexInt, camel_to_snake_uppercase, classproperty
 
 try:
     _HJSON_ERROR = None

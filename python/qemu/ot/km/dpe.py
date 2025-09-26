@@ -24,7 +24,7 @@ sys.path.append(QEMU_PYPATH)
 
 from ..otp import OtpImage, OtpLifecycleExtension, OtpMap
 from ..rom.image import ROMImage
-from ..util.misc import ArgError
+from ..util.arg import ArgError
 
 # ruff: noqa: E402
 _CRYPTO_EXC: Optional[Exception] = None

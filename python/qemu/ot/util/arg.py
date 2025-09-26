@@ -12,6 +12,14 @@ from argparse import ArgumentParser as _ArgumentParser, FileType
 from sys import stderr
 
 
+class ArgError(Exception):
+    """Argument error.
+
+       ArgError may be used to signal an argument parser error from a call
+       stack back to the ArgumentParser instance.
+    """
+
+
 class ArgumentParser(_ArgumentParser):
     """Report usage error first, before printing out the usage. This enables
        catching the first line as the main error message.

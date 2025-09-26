@@ -24,8 +24,9 @@ sys.path.append(QEMU_PYPATH)
 from ot.km.dpe import KeyManagerDpe
 from ot.km.engine import KeyManagerDpeEngine
 from ot.otp.image import OtpImage
+from ot.util.arg import ArgError
 from ot.util.log import configure_loggers
-from ot.util.misc import ArgError, HexInt
+from ot.util.misc import HexInt
 
 
 def main():
