@@ -94,6 +94,11 @@ class OtpPartition:
         return getattr(self, 'zeroizable', False)
 
     @property
+    def is_absorb(self) -> bool:
+        """Check if the partition can use unassigned storage."""
+        return getattr(self, 'absorb', False)
+
+    @property
     def is_empty(self) -> bool:
         """Report if the partition is empty."""
         if self._digest_bytes and sum(self._digest_bytes):
@@ -278,6 +283,43 @@ class OtpPartition:
                 emit('%5s %s', f'{pname}:ZER', zsoff, ssize, val)
         if offset != rpos:
             self._log.warning('%s: offset %d, size %d', self.name, offset, rpos)
+
+    def dispatch_absorb(self) -> None:
+        """Request the partition to resize its fields."""
+        if not self.is_absorb:
+            raise RuntimeError('Partition cannot absorb free space')
+        absorb_fields = {n: v for n, v in self.items.items()
+                         if v.get('absorb', False)}
+        avail_size = self.size
+        if self.has_digest:
+            avail_size -= self.DIGEST_SIZE
+        if self.is_zeroizable:
+            avail_size -= self.ZER_SIZE
+        avail_blocks = avail_size // OtpMap.BLOCK_SIZE
+        if not absorb_fields:
+            # a version of OTP where absorb is defined as a partition property
+            # but not defined for fields. In such a case, it is expected that
+            # the partition contains a single field.
+            itemcnt = len(self.items)
+            if itemcnt != 1:
+                raise RuntimeError(f'No known absorption method with {itemcnt} '
+                                   f'items in partition {self.name}')
+            # nothing to do here
+            return
+        absorb_count = len(absorb_fields)
+        blk_per_field = avail_blocks // absorb_count
+        extra_blocks = avail_blocks % absorb_count
+        self._log.info("%s: %d bytes (%d blocks) to absorb into %d field%s",
+                       self.name, avail_size, avail_blocks, absorb_count,
+                       's' if absorb_count > 1 else '')
+        for itname, itfield in absorb_fields.items():
+            fsize = itfield['size']
+            itfield['size'] += OtpMap.BLOCK_SIZE * blk_per_field
+            if extra_blocks:
+                itfield['size'] += OtpMap.BLOCK_SIZE
+                extra_blocks -= 1
+            self._log.info('%s.%s size augmented from %u to %u bytes',
+                            self.name, itname, fsize, itfield['size'])
 
     def empty(self) -> None:
         """Empty the partition, including its digest if any."""

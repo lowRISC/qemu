@@ -110,7 +110,8 @@ class OtpMap:
                 # assume name & size are always defined for each item
                 item_name = item['name']
                 del item['name']
-                item_size = int(item['size'])
+                # absorbing items may have no size
+                item_size = int(item.get('size', 0))
                 item['size'] = item_size
                 assert item_name not in items
                 items[item_name] = item
@@ -187,8 +188,9 @@ class OtpMap:
             if extra_blocks:
                 part.size += self.BLOCK_SIZE
                 extra_blocks -= 1
-            self._log.info('Partition %s size augmented from %u to %u',
+            self._log.info('Partition %s size augmented from %u to %u bytes',
                            part.name, psize, part.size)
+            part.dispatch_absorb()
         for part in self._partitions:
             part_offset = 0
             for part in self._partitions:
