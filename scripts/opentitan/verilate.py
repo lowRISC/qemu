@@ -36,7 +36,7 @@ sys.path.append(QEMU_PYPATH)
 
 getLogger = logging.getLogger
 
-from ot.util.argparse import ArgumentParser, FileType  # noqa: E402
+from ot.util.arg import ArgumentParser, FileType  # noqa: E402
 from ot.util.file import guess_file_type, make_vmem_from_elf
 from ot.util.log import ColorLogFormatter, configure_loggers
 
