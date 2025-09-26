@@ -10,6 +10,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      opentitan_repo:
+        description: OpenTitan repository to be checked out
+        required: true
+        default: lowRISC/opentitan
+        type: string
       opentitan_ref:
         description: Branch, tag, or commit ref from OpenTitan to test
         required: true
@@ -24,7 +29,7 @@ jobs:
       - name: Checkout OpenTitan
         uses: actions/checkout@v5
         with:
-          repository: lowRISC/opentitan
+          repository: ${{ inputs.opentitan_repo || 'lowRISC/opentitan' }}
           ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
 
       - name: Prepare OpenTitan environment
