@@ -14,7 +14,7 @@ usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
                   [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
                   [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT]
                   [--write ADDR/HEXBYTES] [--patch-token NAME=VALUE]
-                  [--out-kind {qemu,bmtest}] [-v] [-d]
+                  [--out-kind {qemu,bmtest}] [--top-name TOP_NAME] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -69,6 +69,7 @@ Commands:
   --out-kind {qemu,bmtest}
                         select output format for code generation (default:
                         qemu)
+  --top-name TOP_NAME   optional top name for code generation (default: auto)
 
 Extras:
   -v, --verbose         increase verbosity
@@ -229,6 +230,9 @@ Fuse RAW images only use the v1 type.
 * `--toggle-bit` toggles the specified bit in the OTP data. This flag may be repeated. This option
   is only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
   a condition exists. See [Bit position syntax](#bit-syntax) for how to specify a bit.
+
+* `--top-name` defines the OpenTitan top name for some code generation feature. It overrides any
+  top name that may be automatically retrieved from the configuration file hierarchy.
 
 * `--write` overrides any data (not ECC). If can be combined with `--fix-ecc` to automatically
   rebuild the ECC of the data slot that have been altered. This option may be repeated. The argument

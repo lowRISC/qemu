@@ -10,10 +10,12 @@
 
 from argparse import ArgumentParser, FileType
 from binascii import unhexlify
-from os.path import basename, dirname, join as joinpath, normpath
+from io import IOBase
+from os.path import (basename, dirname, isfile, join as joinpath, normpath,
+                     split as splitpath)
 from re import match as re_match
 from traceback import format_exception
-from typing import Optional
+from typing import Optional, Union
 import sys
 
 QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
@@ -28,6 +30,7 @@ except ModuleNotFoundError as exc:
     _EXC = exc
 from ot.otp import (OtpImage, OtpLifecycleExtension, OtpMap, OtpPartition,
                     OtpPartitionDesc, OtpRegisterDef)
+from ot.top import OpenTitanTop
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt, to_bool
 
@@ -48,6 +51,31 @@ def parse_lc_token(tkdesc: str) -> tuple[str, 'LifeCycleTokenPair']:
     except ValueError as exc:
         raise ValueError(f"No valid token '{token_name}'") from exc
     return token_name, tkeng.build_from_text(tktext)
+
+
+def get_top_name(*filepaths: list[Union[str, IOBase]]) -> Optional[str]:
+    """Try to retrieve the top name from a list of configuration files.
+
+       :param filepaths: list of file path or file objects
+       :return: the name of the identified top, if found
+    """
+    for filepath in filepaths:
+        if not isinstance(filepath, str):
+            filepath = getattr(filepath, 'name', None)
+            if not filepath:
+                continue
+        if not isfile(filepath):
+            continue
+        fdir = dirname(filepath)
+        top_names = set(OpenTitanTop.names)
+        while fdir:
+            fdir, tail = splitpath(fdir)
+            top_prefix = 'top_'
+            if tail.startswith(top_prefix):
+                candidate = tail.removeprefix(top_prefix)
+                if candidate in top_names:
+                    return candidate
+        return None
 
 
 def main():
@@ -143,6 +171,9 @@ def main():
                               default=outkinds[0],
                               help=f'select output format for code generation'
                                    f' (default: {outkinds[0]})')
+        commands.add_argument('--top-name',
+                              help='optional top name for code generation '
+                                   '(default: auto)')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -226,8 +257,11 @@ def main():
                 partdesc.save(args.out_kind, basename(args.otp_map.name),
                               basename(sys.argv[0]), output)
             elif args.generate == 'REGS':
+                topname = args.top_name
+                if not topname:
+                    topname = get_top_name(args.otp_map)
                 regdef = OtpRegisterDef(otpmap)
-                regdef.save(args.out_kind, basename(args.otp_map.name),
+                regdef.save(args.out_kind, topname, basename(args.otp_map.name),
                             basename(sys.argv[0]), output)
             elif args.generate == 'LCVAL':
                 lcext.save(args.out_kind, output, True)

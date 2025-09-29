@@ -7,9 +7,10 @@
 """
 
 from logging import getLogger
-from typing import NamedTuple, TYPE_CHECKING, TextIO
+from typing import NamedTuple, Optional, TYPE_CHECKING, TextIO
 
-from ..util.misc import redent
+from ot.top import OpenTitanTop
+from ot.util.misc import redent
 from .partition import OtpPartition
 
 if TYPE_CHECKING:
@@ -160,11 +161,12 @@ class OtpRegisterDef:
         self._log = getLogger('otp.reg')
         self._otpmap = otpmap
 
-    def save(self, kind: str, hjname: str, scriptname: str, cfp: TextIO) \
-            -> None:
+    def save(self, kind: str, topname: Optional[str], hjname: str,
+             scriptname: str, cfp: TextIO) -> None:
         """Generate a source file with register definition for the partitions.
 
            :param kind: kind of generation output
+           :param topname: the name of the OpenTitan top
            :param hjname: the name of the input HJSON configuration file
            :param scriptname: the name of the script that generates this output
            :param cfp: the output text stream
@@ -199,11 +201,11 @@ class OtpRegisterDef:
                 slots.append(OtpSlotDescriptor(f'{part.name}_ZER', offset,
                                                OtpPartition.ZER_SIZE, True))
 
-        save(hjname, scriptname, cfp, slots)
+        save(topname, hjname, scriptname, cfp, slots)
 
-    def _save_qemu(self, hjname: str, scriptname: str, cfp: TextIO,
-                   slots: list[OtpSlotDescriptor]) -> None:
-        print(f'/* Generated from {hjname} with {scriptname} */')
+    def _save_qemu(self, topname: Optional[str], hjname: str, scriptname: str,
+                   cfp: TextIO, slots: list[OtpSlotDescriptor]) -> None:
+        print(f'/* Generated from {hjname} with {scriptname} */', file=cfp)
         print(file=cfp)
         for slot in slots:
             if slot.part:
@@ -293,12 +295,17 @@ class OtpRegisterDef:
         #undef CASE_DIGEST
         }
         '''
+        if topname:
+            tname = OpenTitanTop.short_name(topname)
+            if tname:
+                code = code.replace('ot_otp_swcfg_reg_name',
+                                    f'ot_otp_{tname}_swcfg_reg_name')
         code = redent(code)
         code = code.replace('_CASES_', '\n        '.join(cases))
         print(redent(code), '', file=cfp)
 
-    def _save_bmtest(self, hjname: str, scriptname: str, cfp: TextIO,
-                     slots: list[OtpSlotDescriptor]) -> None:
+    def _save_bmtest(self, topname: Optional[str], hjname: str, scriptname: str,
+                     cfp: TextIO, slots: list[OtpSlotDescriptor]) -> None:
         # pylint: disable=unused-argument
         print(f'// Generated from {hjname} with {scriptname}', file=cfp)
         print(file=cfp)
