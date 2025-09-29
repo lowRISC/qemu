@@ -429,8 +429,8 @@ static GList *ot_vmapper_range_discretize(OtVMapperState *s, GList *rglist)
                     OtRegionRange *right = g_new0(OtRegionRange, 1);
                     right->start = VMAP_RANGE(next)->end + 1u;
                     right->end = VMAP_RANGE(current)->end;
-                    right->dest =
-                        right->dest + right->start - VMAP_RANGE(current)->start;
+                    right->dest = VMAP_RANGE(current)->dest + right->start -
+                                  VMAP_RANGE(current)->start;
                     right->prio = VMAP_RANGE(current)->prio;
                     right->execute = VMAP_RANGE(current)->execute;
                     right->active = true;
