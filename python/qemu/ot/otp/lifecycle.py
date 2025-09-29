@@ -9,7 +9,6 @@
 from binascii import unhexlify
 from io import StringIO
 from logging import getLogger
-from os.path import basename
 from textwrap import fill
 from typing import TextIO
 import re
@@ -96,14 +95,16 @@ class OtpLifecycle:
                 seq = ''.join((f'{x:04x}'for x in map(codes.get, seq)))
                 self._tables[mkind][seq] = conv(ref)
 
-    def save(self, cfp: TextIO, data_mode: bool) -> None:
-        """Save OTP life cycle definitions as a C file.
+    def save(self, kind: str, cfp: TextIO, data_mode: bool) -> None:
+        """Save OTP life cycle definitions as a source file.
 
+           :param kind: output format
            :param cfp: output text stream
            :param data_mode: whether to output data or template
         """
-        print(f'/* Section auto-generated with {basename(__file__)} '
-              f'script */', file=cfp)
+        if kind.lower() != 'qemu':
+            raise NotImplementedError(f'No support for {kind}')
+        print(f'/* Section auto-generated with {__name__} module */', file=cfp)
         if data_mode:
             self._save_data(cfp)
         else:
@@ -143,7 +144,7 @@ class OtpLifecycle:
 
     def _save_template(self, cfp: TextIO) -> None:
         print('/* clang-format off */', file=cfp)
-        states = self._sequences.get('st') or {}
+        states = self._sequences.get('lcst') or {}
         print('static const uint8_t', file=cfp)
         print('LC_STATES_TPL[LC_STATE_VALID_COUNT][LC_STATE_SLOT_COUNT] = {',
               file=cfp)

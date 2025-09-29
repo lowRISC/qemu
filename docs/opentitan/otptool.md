@@ -13,7 +13,8 @@ usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
                   [-G PART] [--change PART:FIELD=VALUE] [--empty PARTITION]
                   [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
                   [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT]
-                  [--write ADDR/HEXBYTES] [--patch-token NAME=VALUE] [-v] [-d]
+                  [--write ADDR/HEXBYTES] [--patch-token NAME=VALUE]
+                  [--out-kind {qemu,bmtest}] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -47,7 +48,7 @@ Commands:
   -D, --digest          check the OTP HW partition digest
   -U, --update          update RAW file after ECC recovery or bit changes
   -g, --generate {LCVAL,LCTPL,PARTS,REGS}
-                        generate C code, see doc for options
+                        generate code, see doc for options
   -F, --fix-ecc         rebuild ECC
   -G, --fix-digest PART
                         rebuild HW digest
@@ -65,6 +66,9 @@ Commands:
                         write bytes at specified location
   --patch-token NAME=VALUE
                         change a LC hashed token, using Rust file
+  --out-kind {qemu,bmtest}
+                        select output format for code generation (default:
+                        qemu)
 
 Extras:
   -v, --verbose         increase verbosity
@@ -129,9 +133,9 @@ Fuse RAW images only use the v1 type.
 * `-G` can be used to (re)build the HW digest of a partition after altering one or more of its
   fields, see `--change` option.
 
-* `-g` can be used to generate C code for QEMU, from OTP and LifeCycle known definitions. See the
+* `-g` can be used to generate skeleton files, from OTP and LifeCycle known definitions. See the
   [Generation](#generation) section for details. See option `-o` to specify the path to the file to
-  generate
+  generate. See also the `--out-kind` option for output formats.
 
 * `-i` specify the initialization vector for the Present scrambler used for partition digests.
   This value is "usually" found within the `hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv` OT file,
@@ -205,6 +209,9 @@ Fuse RAW images only use the v1 type.
 * `--erase` reset a specific field within a partition. The flag may be repeated.
 
 * `--no-version` disable OTP image version reporting when `-s` is used.
+
+* `--out-kind` define the output format for code generation for the `-g` option. Note that only a
+  subset of the generation types are available in some output kinds.
 
 * `--patch-token` patch a Life Cycle hashed token. This feature is primary aimed at testing the
   Life Cycle controller. With this option, the partition to update is automatically found using

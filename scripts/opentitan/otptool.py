@@ -54,6 +54,7 @@ def main():
     """Main routine"""
     debug = True
     genfmts = 'LCVAL LCTPL PARTS REGS'.split()
+    outkinds = ('qemu', 'bmtest')
     try:
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
@@ -110,7 +111,7 @@ def main():
                               help='update RAW file after ECC recovery or bit '
                                    'changes')
         commands.add_argument('-g', '--generate', choices=genfmts,
-                              help='generate C code, see doc for options')
+                              help='generate code, see doc for options')
         commands.add_argument('-F', '--fix-ecc', action='store_true',
                               help='rebuild ECC')
         commands.add_argument('-G', '--fix-digest', action='append',
@@ -138,6 +139,10 @@ def main():
         commands.add_argument('--patch-token', action='append',
                               metavar='NAME=VALUE', default=[],
                               help='change a LC hashed token, using Rust file')
+        commands.add_argument('--out-kind', choices=outkinds,
+                              default=outkinds[0],
+                              help=f'select output format for code generation'
+                                   f' (default: {outkinds[0]})')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -213,22 +218,24 @@ def main():
 
         output = sys.stdout if not args.output else args.output
 
-        if not args.generate:
-            pass
-        elif args.generate == 'PARTS':
-            partdesc = OtpPartitionDesc(otpmap)
-            partdesc.save(basename(args.otp_map.name), basename(sys.argv[0]),
-                          output)
-        elif args.generate == 'REGS':
-            regdef = OtpRegisterDef(otpmap)
-            regdef.save(basename(args.otp_map.name), basename(sys.argv[0]),
-                        output)
-        elif args.generate == 'LCVAL':
-            lcext.save(output, True)
-        elif args.generate == 'LCTPL':
-            lcext.save(output, False)
-        else:
-            argparser.error(f'Unsupported generation: {args.generate}')
+        try:
+            if not args.generate:
+                pass
+            elif args.generate == 'PARTS':
+                partdesc = OtpPartitionDesc(otpmap)
+                partdesc.save(args.out_kind, basename(args.otp_map.name),
+                              basename(sys.argv[0]), output)
+            elif args.generate == 'REGS':
+                regdef = OtpRegisterDef(otpmap)
+                regdef.save(args.out_kind, basename(args.otp_map.name),
+                            basename(sys.argv[0]), output)
+            elif args.generate == 'LCVAL':
+                lcext.save(args.out_kind, output, True)
+            elif args.generate == 'LCTPL':
+                lcext.save(args.out_kind, output, False)
+        except NotImplementedError:
+            argparser.error(f'Cannot generate {args.generate} in '
+                            f'{args.out_kind}')
 
         if args.vmem:
             otp.load_vmem(args.vmem, args.kind)
