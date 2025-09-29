@@ -34,6 +34,7 @@ except ImportError as hjson_exc:
 from ot.lc_ctrl.const import LcCtrlConstants
 from ot.otp.const import OtpConstants
 from ot.otp.secret import OtpSecretConstants
+from ot.top import OpenTitanTop
 from ot.util.arg import ArgError
 from ot.util.log import configure_loggers
 from ot.util.misc import alphanum_key, to_bool
@@ -510,10 +511,6 @@ class OtConfiguration:
 def main():
     """Main routine"""
     debug = True
-    top_map = {
-        'darjeeling': 'dj',
-        'earlgrey': 'eg',
-    }
     actions = ['config', 'clock']
     try:
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
@@ -521,7 +518,7 @@ def main():
         files = argparser.add_argument_group(title='Files')
         files.add_argument('opentitan', nargs='?', metavar='OTDIR',
                            help='OpenTitan root directory')
-        files.add_argument('-T', '--top', choices=top_map.keys(),
+        files.add_argument('-T', '--top', choices=OpenTitanTop.names,
                            help='OpenTitan top name')
         files.add_argument('-o', '--out', metavar='CFG',
                            help='Filename of the config file to generate')
@@ -576,7 +573,7 @@ def main():
                 argparser.error('Top name is required if no top file is '
                                 'specified')
             top = f'top_{args.top}'
-            topvar = top_map[args.top]
+            topvar = OpenTitanTop.short_name(args.top)
             topcfg = joinpath(ot_dir, f'hw/{top}/data/autogen/{top}.gen.hjson')
             if not isfile(topcfg):
                 argparser.error(f"No such file '{topcfg}'")
@@ -589,9 +586,9 @@ def main():
             ltop = cfg.top_name
             if not ltop:
                 argparser.error('Unknown top name')
-            log.info("Top: '%s'", cfg.top_name)
+            log.info("Top: '%s'", ltop)
             ltop = ltop.lower()
-            topvar = {k.lower(): v for k, v in top_map.items()}.get(ltop)
+            topvar = OpenTitanTop.short_name(cfg.top_name)
             if not topvar:
                 argparser.error(f'Unsupported top name: {cfg.top_name}')
             top = f'top_{ltop}'
