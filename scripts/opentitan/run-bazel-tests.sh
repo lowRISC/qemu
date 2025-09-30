@@ -45,6 +45,25 @@ if [ ! -x "${qemu_path}/build/qemu-system-riscv32" ]; then
   exit 1
 fi
 
+# Check if needed Bazel repository override files exist
+prev_bazel_files=false
+if [ -f "${qemu_path}/REPO.bazel" ]; then
+  prev_bazel_files=true
+else
+  # Add temporary Bazel `REPO.bazel` file
+  touch "${qemu_path}/REPO.bazel"
+fi
+
+if [ -f "${qemu_path}/BUILD" ]; then
+  prev_bazel_files=true
+else
+  # Add temporary Bazel 'BUILD' file
+  ln -s                                                             \
+    "${opentitan_path}/third_party/qemu/BUILD.qemu_opentitan.bazel" \
+    "${qemu_path}/BUILD"
+fi
+
+
 # Temporary files used by this script:
 results="$(mktemp)"
 flaky="$(mktemp)"
@@ -52,16 +71,12 @@ expected="$(mktemp)"
 all_passed="$(mktemp)"
 passed="$(mktemp)"
 cleanup() {
-  rm -f "${qemu_path}/REPO.bazel" "${qemu_path}/BUILD"
+  if [ "$prev_bazel_files" != "true" ]; then
+    rm -f "${qemu_path}/REPO.bazel" "${qemu_path}/BUILD"
+  fi
   rm -f "$results" "$flaky" "$expected" "$all_passed" "$passed" 
 }
 trap "cleanup" EXIT
-
-## Add temporary `REPO.bazel` and `BUILD` files from Bazel:
-touch "${qemu_path}/REPO.bazel"
-ln -s                                                             \
-  "${opentitan_path}/third_party/qemu/BUILD.qemu_opentitan.bazel" \
-  "${qemu_path}/BUILD"
 
 ## RUN BAZEL TESTS
 cd "$opentitan_path" >/dev/null
