@@ -739,6 +739,10 @@ static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_DIGEST_13:
     case R_DIGEST_14:
     case R_DIGEST_15:
+        /* make sure we've processed any input blocks before reading */
+        if (!fifo8_is_empty(&s->input_fifo) && ot_hmac_get_curlen(s) != 0) {
+            ot_hmac_process_fifo(s);
+        }
         /*
          * We use a SHA library that computes in native (little) endian-ness,
          * but produces a big-endian digest upon termination. To ensure
