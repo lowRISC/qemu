@@ -52,7 +52,8 @@ of options and the available features.
 * [`keymgre-dpe.py`](keymgre-dpe.md) is a simple Python tool to generate KeyManager DPE output keys
   using the same parameters as the KeyManager DPE. It is dedicated to unit test purposes.
 * `ot-format.sh` is a simple shell wrapper to run clang-format (code formatter) on OpenTitan files
-* `ot-tidy.sh` is a simple shell wrapper to run clang-tidy (C linter) on OpenTitan files
+* `ot-tidy.py` is a python wrapper script to run clang-tidy (the LLVM C linter) on OpenTitan files,
+  optionally in parallel, and locally or for CI.
 * [spidevice.py](spidevice.md) is a tiny script to upload a binary using the SPI device.
 * `treillis/` directory contains the test application to test the [GPIO](gpio.md) device.
 * [`uartmux.py`](uartmux.md) is a tiny stream wrapper to help dealing with multiple QEMU output

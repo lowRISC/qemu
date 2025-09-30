@@ -37,6 +37,7 @@ build-clang:
       - build/*.h
       - build/qapi/*.h
       - build/trace/*.h
+      - build/config.status
       - build/compile_commands.json.tpl
       - build/qemu-system-riscv32
       - build/qemu-img
@@ -73,4 +74,4 @@ tidy:
   script:
     - QEMU_DIR="$(pwd -P)"; cat build/compile_commands.json.tpl |
         sed -E 's,@QEMU_DIR@,'"$QEMU_DIR"',g' > build/compile_commands.json
-    - scripts/opentitan/ot-tidy.sh --ci -p build
+    - scripts/opentitan/ot-tidy.py --build-dir build --ci-files -j
