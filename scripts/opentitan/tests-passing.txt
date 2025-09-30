@@ -87,7 +87,6 @@
 //sw/device/tests/crypto:rsa_3072_verify_functest_hardcoded_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:rsa_4096_encryption_functest_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:rsa_4096_signature_functest_sim_qemu_rom_with_fake_keys
-//sw/device/tests/crypto:sha256_functest_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:sha384_functest_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:sha512_functest_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:symmetric_keygen_functest_sim_qemu_rom_with_fake_keys
