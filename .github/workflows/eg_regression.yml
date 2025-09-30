@@ -1,5 +1,5 @@
 #------------------------------------------------------------------------------
-# OpenTitan regression runner
+# OpenTitan regression run definition
 #
 # Copyright (c) 2025 lowRISC CIC
 # SPDX-License-Identifier: Apache License 2.0
@@ -7,9 +7,13 @@
 
 name: OpenTitan Regression
 on:
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      exec_env:
+        description: OpenTitan QEMU execution environment to test
+        required: true
+        default: qemu  # Default tag, captures all QEMU exec envs in OpenTitan
+        type: string
       opentitan_repo:
         description: OpenTitan repository to be checked out
         required: true
@@ -22,8 +26,8 @@ on:
         type: string
 
 jobs:
-  earlgrey:
-    name: Earlgrey
+  regression:
+    name: EG Regression
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout OpenTitan
@@ -57,11 +61,12 @@ jobs:
         run: |
           set -o pipefail
           ./qemu/scripts/opentitan/run-bazel-tests.sh ./ qemu \
-            | tee test_results.txt
+            ${{ inputs.exec_env }} \
+            | tee ${{ inputs.exec_env }}_test_results.txt
 
       - name: Upload Bazel test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bazel-test-results
-          path: test_results.txt
+          name: ${{ inputs.exec_env }}-bazel-test-results
+          path: ${{ inputs.exec_env }}_test_results.txt

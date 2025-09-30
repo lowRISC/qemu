@@ -29,12 +29,18 @@ GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 # CLI arguments:
 opentitan_path="$1"
 qemu_path="$2"
+qemu_exec_env="$3"
 if [ ! -d "$opentitan_path" ] || [ ! -d "$qemu_path" ]; then
-  echo "USAGE: ${0} <OPENTITAN REPO> <QEMU REPO>"
+  echo "USAGE: ${0} <OPENTITAN REPO> <QEMU REPO> [<EXEC ENV>]"
   exit 1
 fi
 opentitan_path="$(realpath "$opentitan_path")"
 qemu_path="$(realpath "$qemu_path")"
+if [ ! "$qemu_exec_env" ]; then
+  # catch-all tag for all QEMU exec envs
+  qemu_exec_env="qemu"
+  echo "Using default 'qemu' tag to test all exec envs"
+fi
 
 # Lists of passing and flaky OpenTitan tests:
 tests_path="${qemu_path}/tests/opentitan/data/earlgrey-tests.txt"
@@ -82,7 +88,7 @@ trap "cleanup" EXIT
 cd "$opentitan_path" >/dev/null
 
 ./bazelisk.sh test //...                                    \
-  --test_tag_filters="qemu"                                 \
+  --test_tag_filters="$qemu_exec_env"                       \
   --test_summary="short"                                    \
   --test_output=all                                         \
   --override_repository="+qemu+qemu_opentitan=${qemu_path}" \
@@ -92,10 +98,10 @@ cd "$opentitan_path" >/dev/null
 ## COMPARE RESULTS
 
 # Ensure the flaky tests are sorted with the current locale.
-grep "flaky:" "$tests_path" | cut -d" " -f2 | sort -u > "$flaky"
+grep "flaky:.*$qemu_exec_env" "$tests_path" | cut -d" " -f2 | sort -u > "$flaky"
 
 # Load the list of passing tests
-grep -E "pass(ing)?:" "$tests_path" | cut -d" " -f2 | sort -u > "$expected"
+grep -E "pass(ing)?:.*$qemu_exec_env" "$tests_path" | cut -d" " -f2 | sort -u > "$expected"
 
 # Find all the tests which passed in Bazel:
 grep "PASSED[^:]" "$results" | cut -d' ' -f1 | sort > "$all_passed"

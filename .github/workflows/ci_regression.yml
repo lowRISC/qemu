@@ -1,0 +1,41 @@
+#------------------------------------------------------------------------------
+# OpenTitan CI regression runner
+#
+# Copyright (c) 2025 lowRISC CIC
+# SPDX-License-Identifier: Apache License 2.0
+#------------------------------------------------------------------------------
+
+name: OT Tests
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      opentitan_repo:
+        description: OpenTitan repository to be checked out
+        required: true
+        default: lowRISC/opentitan
+        type: string
+      opentitan_ref:
+        description: Branch, tag, or commit ref from OpenTitan to test
+        required: true
+        default: earlgrey_1.0.0
+        type: string
+
+jobs:
+  earlgrey_rom_with_fake_keys:
+    name: ROM
+    uses: ./.github/workflows/eg_regression.yml
+    secrets: inherit
+    with:
+      exec_env: sim_qemu_rom_with_fake_keys
+      opentitan_repo: ${{ inputs.opentitan_repo || 'lowRISC/opentitan' }}
+      opentitan_ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
+
+  earlgrey_sival_rom_ext:
+    name: SiVal ROM_EXT
+    uses: ./.github/workflows/eg_regression.yml
+    secrets: inherit
+    with:
+      exec_env: sim_qemu_sival_rom_ext
+      opentitan_repo: ${{ inputs.opentitan_repo || 'lowRISC/opentitan' }}
+      opentitan_ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
