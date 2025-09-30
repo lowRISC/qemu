@@ -37,7 +37,7 @@ opentitan_path="$(realpath "$opentitan_path")"
 qemu_path="$(realpath "$qemu_path")"
 
 # Lists of passing and flaky OpenTitan tests:
-tests_path="${qemu_path}/scripts/opentitan/earlgrey-tests.txt"
+tests_path="${qemu_path}/tests/opentitan/data/earlgrey-tests.txt"
 
 # Ensure QEMU has already been built in `./build`:
 if [ ! -x "${qemu_path}/build/qemu-system-riscv32" ]; then
