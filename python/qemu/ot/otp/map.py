@@ -155,7 +155,7 @@ class OtpMap:
         for props in items.values():
             for prop, value in props.items():
                 if prop.startswith(kmprefix):
-                    kind = prop[len(kmprefix):]
+                    kind = prop.removeprefix(kmprefix)
                     if kind not in kms:
                         kms[kind] = set()
                     kms[kind].add(value)

@@ -356,9 +356,7 @@ class Wrapper:
                 self._post_process_asan(asan_file)
         xtime = ExecTime(xend-xstart) if xstart and xend else 0.0
         app_cmd_lead = f'{basename(tdef.command[0])}: '
-        if last_error.startswith(app_cmd_lead):
-            last_error = last_error[len(app_cmd_lead):]
-        return abs(ret) or 0, xtime, last_error
+        return abs(ret) or 0, xtime, last_error.removeprefix(app_cmd_lead)
 
     @classmethod
     def classify_log(cls, line: str, default: int = logging.ERROR,

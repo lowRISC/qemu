@@ -176,9 +176,10 @@ class KeyManagerDpe:
         self._config.read_file(config_file)
         loaded: set[str] = set()
         for section in self._config.sections():
-            if not section.startswith('ot_device '):
+            prefix = 'ot_device '
+            if not section.startswith(prefix):
                 continue
-            devname = section[len('ot_device '):].strip(' "')
+            devname = section.removeprefix(prefix).strip(' "')
             devdescs = devname.split('.')
             devtype = devdescs[0]
             if devtype == 'ot-lc_ctrl' and devtype not in loaded:
