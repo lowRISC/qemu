@@ -37,8 +37,7 @@ opentitan_path="$(realpath "$opentitan_path")"
 qemu_path="$(realpath "$qemu_path")"
 
 # Lists of passing and flaky OpenTitan tests:
-passing_tests_path="${qemu_path}/scripts/opentitan/tests-passing.txt"
-flaky_tests_path="${qemu_path}/scripts/opentitan/tests-flaky.txt"
+tests_path="${qemu_path}/scripts/opentitan/earlgrey-tests.txt"
 
 # Ensure QEMU has already been built in `./build`:
 if [ ! -x "${qemu_path}/build/qemu-system-riscv32" ]; then
@@ -78,10 +77,10 @@ cd "$opentitan_path" >/dev/null
 ## COMPARE RESULTS
 
 # Ensure the flaky tests are sorted with the current locale.
-sort "$flaky_tests_path" > "$flaky"
+grep "flaky:" "$tests_path" | cut -d" " -f2 | sort -u > "$flaky"
 
-# Load the list of passing tests and strip flaky tests:
-sort "$passing_tests_path" | comm -23 - "$flaky" > "$expected"
+# Load the list of passing tests
+grep -E "pass(ing)?:" "$tests_path" | cut -d" " -f2 | sort -u > "$expected"
 
 # Find all the tests which passed in Bazel:
 grep "PASSED[^:]" "$results" | cut -d' ' -f1 | sort > "$all_passed"
