@@ -1836,8 +1836,6 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         ot_keymgr_update_irq(s);
     } else if (op_start) {
         ot_keymgr_change_op_status(s, KEYMGR_OP_STATUS_WIP);
-    } else {
-        ot_keymgr_change_op_status(s, KEYMGR_OP_STATUS_IDLE);
     }
 
     /* lock CFG_REGWEN when an operation is ongoing */
