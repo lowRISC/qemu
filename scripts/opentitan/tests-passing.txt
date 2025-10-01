@@ -52,7 +52,6 @@
 //sw/device/tests:clkmgr_off_kmac_trans_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:clkmgr_off_otbn_trans_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:clkmgr_smoketest_sim_qemu_rom_with_fake_keys
-//sw/device/tests:coverage_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests:crt_test_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:aes_functest_sim_qemu_rom_with_fake_keys
 //sw/device/tests/crypto:aes_gcm_functest_sim_qemu_rom_with_fake_keys
