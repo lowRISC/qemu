@@ -215,6 +215,7 @@ ot_flash_op_prog(const char* id, unsigned op_addr, unsigned count, unsigned rema
 ot_flash_op_start(const char* id, const char *op, bool hw) "%s: %s (hw=%u)"
 ot_flash_prog_word(const char* id, bool info_part, unsigned word_addr, uint32_t word) "%s: info_part %u word_addr %u word %u"
 ot_flash_read_keymgr_seed(const char* id, unsigned page, bool success) "%s: %u: %u"
+ot_flash_reset(const char *id, const char *phase) "%s: %s"
 ot_flash_reset_fifo(const char* id, const char *name) "%s: %s"
 ot_flash_set_error(const char* id, const char *op, bool hw, uint32_t err_code, uint32_t err_addr) "%s: %s (hw=%u): err=0x%08x at addr=0x%06x"
 ot_flash_update_alert(const char* id, int prev, int next) "%s: %d -> %d"

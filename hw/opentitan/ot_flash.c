@@ -3175,6 +3175,8 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
     OtFlashClass *c = OT_FLASH_GET_CLASS(obj);
     OtFlashState *s = OT_FLASH(obj);
 
+    trace_ot_flash_reset(s->ot_id, "enter");
+
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
@@ -3292,6 +3294,8 @@ static void ot_flash_reset_exit(Object *obj, ResetType type)
 {
     OtFlashClass *c = OT_FLASH_GET_CLASS(obj);
     OtFlashState *s = OT_FLASH(obj);
+
+    trace_ot_flash_reset(s->ot_id, "exit");
 
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj, type);
