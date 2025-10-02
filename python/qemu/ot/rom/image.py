@@ -45,11 +45,13 @@ class ROMImage:
        Support scrambling, descrambling, file format conversions.
 
        :param name: an optional name for logging purposes
+       :param snp: use legacy substitute and permute stages
     """
 
     ADDR_SUBST_PERM_ROUNDS = 2
     DATA_SUBST_PERM_ROUNDS = 2
-    PRINCE_HALF_ROUNDS = 2
+    PRINCE_HALF_ROUNDS_SNP = 2  # legacy mode
+    PRINCE_HALF_ROUNDS = 3  # new mode w/o S&P
     DATA_BITS = 4 * 8
     ECC_BITS = 7
     WORD_BITS = DATA_BITS + ECC_BITS
@@ -69,11 +71,14 @@ class ROMImage:
     VMEM_LINE_WIDTH = 80
     """Number of max char per line on generated VMEM files."""
 
-    def __init__(self, name: Union[str, int, None] = None):
+    def __init__(self, name: Union[str, int, None] = None, snp: bool = False):
         logname = 'romimg'
         if isinstance(name, (int, str)):
             logname = f'{logname}.{name}'
         self._log = getLogger(logname)
+        self._snp = snp
+        self._prince_half_rounds = (self.PRINCE_HALF_ROUNDS if not snp else
+                                    self.PRINCE_HALF_ROUNDS_SNP)
         self._name = name
         self._clear_data = bytearray()
         self._scrambled_words: list[int] = []  # in logical address order
@@ -534,15 +539,19 @@ class ROMImage:
     def _get_keystream(self, addr: int):
         scramble = (self._data_nonce << self._addr_width) | addr
         stream = PrinceCipher.run(scramble, self._khi, self._klo,
-                                  self.PRINCE_HALF_ROUNDS)
+                                  self._prince_half_rounds)
         return stream & ((1 << self.WORD_BITS) - 1)
 
     def _scramble_word(self, addr: int, value: int):
         keystream = self._get_keystream(addr)
+        if not self._snp:
+            return keystream ^ value
         return self.data_sp_enc(keystream ^ value)
 
     def _unscramble_word(self, addr: int, value: int):
         keystream = self._get_keystream(addr)
+        if not self._snp:
+            return keystream ^ value
         spd = self.data_sp_dec(value)
         return keystream ^ spd
 
