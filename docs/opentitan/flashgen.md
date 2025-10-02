@@ -77,13 +77,13 @@ matching signed binary files to help with debugging.
   may also be hardcoded in the ROM_EXT application. Changing the default offset may cause the
   ROM_EXT to fail to load the BL0 application.
 
-* `-t binfile@address[:elfile]` specify a binary file to store into the data partition of the flash.
+* `-t binfile@address` specify a binary file to store into the data partition of the flash.
   This is a compatibility option introduced to support the original `opentitantool image assemble`
-  syntax. In this mode, the file kind and the destination flash bank are guessed from the specified
-  address. The address should be specified in hexadecimal format. It is possible to specify an
-  matching ELF file by appending its path after a column separator following the address value. This
-  option may be repeated to specify multiple files such as the ROM EXT and a bootloader for example.
-  This option is mutually exclusive with `-b`, `-B`, `-x`, `-X` and `-a`.
+  syntax. The provided address should be specified in hexadecimal format. Currently, it is not
+  possible to specify a matching ELF file as the flash debug trailer format is hardcoded to only
+  support ROM EXT and bootloader binaries in both banks, and does not support arbitrary ELFs.
+  This option may be repeated to specify multiple files such as the ROM EXT and a bootloader for
+  example. This option is mutually exclusive with `-b`, `-B`, `-x`, `-X` and `-a`.
 
 * `-X elf` specify an alternative path to the ROM_EXT ELF file. If not specified, the ELF path file
   is reconstructed from the specified binary file (from the same directory). The ELF file is only

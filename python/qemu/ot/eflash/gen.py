@@ -359,13 +359,11 @@ class FlashGen:
         self._store_debug_info(ename, elfpath)
 
     def store_ot_files(self, otdescs: list[str]) -> None:
-        for dpos, otdesc in enumerate(otdescs, start=1):
-            parts = otdesc.rsplit(':', 1)
-            if len(parts) > 1:
-                otdesc = parts[0]
-                elf_filename = parts[1]
-            else:
-                elf_filename = None
+        for otdesc in otdescs:
+            # @TODO: add back support for ELFs for convenience debug symbols
+            # when the flash debug trailer format is changed to support
+            # arbitrary numbers (and locations) of ELFs, which is also
+            # needed due to mutable flash.
             parts = otdesc.split('@', 1)
             if len(parts) < 2:
                 raise ValueError('Missing address in OT descriptor')
@@ -376,16 +374,18 @@ class FlashGen:
                 address = int(parts[1], 16)
             except ValueError as exc:
                 raise ValueError('Invalid address in OT descriptor') from exc
-            bank = address // self.BYTES_PER_BANK
-            address %= self.BYTES_PER_BANK
-            kind = 'rom_ext' if address < self.CHIP_ROM_EXT_SIZE_MAX else \
-                'bootloader'
-            self._log.info(
-                'Handling file #%d as %s @ 0x%x in bank %d with%s ELF',
-                dpos, kind, address, bank, '' if elf_filename else 'out')
+            max_offset = self.NUM_BANKS * self.BYTES_PER_BANK
+            if not 0 <= address < max_offset:
+                raise ValueError(f'Invalid address 0x{address:x} for bin '
+                                 f'{basename(bin_filename)}')
             with open(bin_filename, 'rb') as bfp:
-                # func decode should never fail, so no error handling here
-                getattr(self, f'store_{kind}')(bank, bfp, elf_filename)
+                data = bfp.read()
+            address_end = address + len(data)
+            if not 0 <= address_end <= max_offset:
+                raise ValueError(f'Binary {basename(bin_filename)} at '
+                                 f'0x{address:x}:0x{address_end:x} does not '
+                                 f'fit in flash size 0x{max_offset:x}')
+            self._write(self._header_size + address, data)
 
     def _compare_bin_elf(self, bindesc: RuntimeDescriptor, elfpath: str) \
             -> Optional[bool]:
