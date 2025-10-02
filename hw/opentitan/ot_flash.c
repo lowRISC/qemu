@@ -3268,6 +3268,9 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
 
     s->csrs[R_CSR0_REGWEN] = 0x1u;
 
+    /* restore flash memory region enablement if previously disabled */
+    memory_region_set_enabled(&s->mmio.mem, true);
+
     s->latched_alerts = 0u;
 
     s->lc_broadcast.incoming_signal_bm = 0u;
