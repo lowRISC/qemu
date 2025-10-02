@@ -113,10 +113,13 @@ static gint ot_vmapper_compare(gconstpointer a, gconstpointer b)
     const OtRegionRange *ra = (const OtRegionRange *)a;
     const OtRegionRange *rb = (const OtRegionRange *)b;
 
-    return (gint)((ra->start == rb->start) ?
-                      ((ra->end == rb->end) ? (ra->prio - rb->prio) :
-                                              (ra->end - rb->end)) :
-                      (ra->start - rb->start));
+    if (ra->start == rb->start) {
+        if (ra->end == rb->end) {
+            return (gint)ra->prio - (gint)rb->prio;
+        }
+        return (ra->end < rb->end) ? -1 : 1;
+    }
+    return (ra->start < rb->start) ? -1 : 1;
 }
 
 /*
