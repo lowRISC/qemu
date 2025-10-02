@@ -48,6 +48,7 @@ static OtRomImgFormat ot_rom_img_guess_image_format(const char *filename)
 
     uint8_t data[128u];
     ssize_t len = read(fd, data, sizeof(data));
+    data[sizeof(data) - 1u] = '\0';
     close(fd);
 
     if (len < sizeof(data)) {
@@ -58,10 +59,28 @@ static OtRomImgFormat ot_rom_img_guess_image_format(const char *filename)
         return OT_ROM_IMG_FORMAT_ELF;
     }
 
-    if (data[0] == '@') { /* likely a VMEM file */
+    /*
+     * Discard comments; only cope with single-line comments:
+     * we do not need to handle more, since OT-generated files do not contain
+     * multi-line comments in VMEM files; keep it as simple as possible.
+     */
+    if (data[0u] == '/' && (data[1u] == '*' || data[1u] == '/')) {
+        for (unsigned ix = 2u; ix < sizeof(data) - 1u; ix++) {
+            if (data[ix] == '\n') {
+                unsigned rem = sizeof(data) - 1u - ix;
+                memmove(&data[0], &data[ix + 1u], rem);
+                len = read(fd, &data[rem], sizeof(data) - rem);
+                (void)len; /* GCC unused result warning */
+                data[sizeof(data) - 1u] = '\0';
+                break;
+            }
+        }
+    }
+
+    if (data[0u] == '@') { /* likely a VMEM file */
         bool addr = true;
-        unsigned dlen = 0;
-        for (unsigned ix = 1; ix < sizeof(data); ix++) {
+        unsigned dlen = 0u;
+        for (unsigned ix = 1u; ix < sizeof(data); ix++) {
             if (data[ix] == ' ') { /* separator */
                 if (addr) {
                     addr = false;
@@ -87,9 +106,9 @@ static OtRomImgFormat ot_rom_img_guess_image_format(const char *filename)
     }
 
     bool hexa_only = true;
-    unsigned cr = 0;
+    unsigned cr = 0u;
     unsigned ix;
-    for (ix = 0; ix < sizeof(data); ix++) {
+    for (ix = 0u; ix < sizeof(data); ix++) {
         if (data[ix] == '\r') {
             cr = ix;
             continue;
