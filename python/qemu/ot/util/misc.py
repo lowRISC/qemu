@@ -6,6 +6,7 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
+from collections.abc import Callable
 from io import BytesIO
 from os.path import abspath, dirname, exists, isdir, isfile, join as joinpath
 from subprocess import check_output
@@ -273,3 +274,15 @@ def retrieve_git_version(path: str, max_tag_dist: int = 100) \
     except OSError:
         pass
     return None
+
+
+def split_map_join(sep: str, seq: str, func: Callable[[str], str]) -> str:
+    """Split then re-join a string, applying a conversion function on
+       each elememnt.
+
+        :param sep: the separator character for splitting and joining
+        :param seq: the string to process
+        :param func: the conversion function that accepts a string as its
+                    unique argument and return the converted string
+    """
+    return sep.join(func(val) for val in seq.split(sep))
