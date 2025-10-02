@@ -282,6 +282,8 @@ pass: //sw/device/tests:rv_core_ibex_mem_test_prod_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rv_core_ibex_mem_test_prod_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:rv_timer_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rv_timer_smoketest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:spi_device_flash_smoketest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:spi_device_flash_smoketest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:spi_host_irq_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:spi_host_irq_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:sram_ctrl_execution_test_sim_qemu_rom_with_fake_keys
