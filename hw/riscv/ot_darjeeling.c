@@ -1514,6 +1514,7 @@ struct OtDjMachineState {
 
     bool no_epmp_cfg;
     bool ignore_elf_entry;
+    bool verilator;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1994,6 +1995,22 @@ ot_dj_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
     s->ignore_elf_entry = value;
 }
 
+static bool ot_dj_machine_get_verilator(Object *obj, Error **errp)
+{
+    OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
+    (void)errp;
+
+    return s->verilator;
+}
+
+static void ot_dj_machine_set_verilator(Object *obj, bool value, Error **errp)
+{
+    OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
+    (void)errp;
+
+    s->verilator = value;
+}
+
 static ResettableState *ot_dj_machine_get_reset_state(Object *obj)
 {
     OtDjMachineState *s = RISCV_OT_DJ_MACHINE(obj);
@@ -2032,6 +2049,9 @@ static void ot_dj_machine_instance_init(Object *obj)
                              &ot_dj_machine_set_ignore_elf_entry);
     object_property_set_description(obj, "ignore-elf-entry",
                                     "Do not set vCPU PC with ELF entry point");
+    object_property_add_bool(obj, "verilator", &ot_dj_machine_get_verilator,
+                             &ot_dj_machine_set_verilator);
+    object_property_set_description(obj, "verilator", "Use Verilator clocks");
 }
 
 static void ot_dj_machine_init(MachineState *state)
