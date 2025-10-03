@@ -286,6 +286,9 @@ class OtpPartition:
         """Request the partition to resize its fields."""
         if not self.is_absorb:
             raise RuntimeError('Partition cannot absorb free space')
+        if not self.items:
+            # no field to dispatch spare space into
+            return
         absorb_fields = {n: v for n, v in self.items.items()
                          if v.get('absorb', False)}
         avail_size = self.size
@@ -295,15 +298,13 @@ class OtpPartition:
             avail_size -= self.ZER_SIZE
         avail_blocks = avail_size // OtpMap.BLOCK_SIZE
         if not absorb_fields:
-            # a version of OTP where absorb is defined as a partition property
-            # but not defined for fields. In such a case, it is expected that
-            # the partition contains a single field.
-            itemcnt = len(self.items)
-            if itemcnt != 1:
-                raise RuntimeError(f'No known absorption method with {itemcnt} '
-                                   f'items in partition {self.name}')
-            # nothing to do here
-            return
+            # This version of OTP defines 'absorb' as a partition property but
+            # does not document which fields can absorb the extra space.
+            # Allocate it to the last field of the partition.
+            last = list(self.items)[-1]
+            absorb_fields = {last: self.items[last]}
+            self._log.warning("No absorption defined for partition %s, "
+                              "assigning to last field '%s'", self.name, last)
         absorb_count = len(absorb_fields)
         blk_per_field = avail_blocks // absorb_count
         extra_blocks = avail_blocks % absorb_count
@@ -317,7 +318,7 @@ class OtpPartition:
                 itfield['size'] += OtpMap.BLOCK_SIZE
                 extra_blocks -= 1
             self._log.info('%s.%s size augmented from %u to %u bytes',
-                            self.name, itname, fsize, itfield['size'])
+                           self.name, itname, fsize, itfield['size'])
 
     def empty(self) -> None:
         """Empty the partition, including its digest if any."""
