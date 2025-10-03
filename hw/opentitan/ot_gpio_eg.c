@@ -718,10 +718,8 @@ static void ot_gpio_eg_reset_enter(Object *obj, ResetType type)
 
     /* reset_* fields are properties, never get reset */
     s->data_ii = s->reset_in;
-    s->data_ib = 0;
     s->data_out = s->reset_out;
     s->data_oe = s->reset_oe;
-    s->data_bi = UINT32_MAX;
     /* all input disable until signal is received, or output is forced */
     s->data_gi = ~s->reset_oe;
     s->pull_en = 0;
@@ -733,7 +731,13 @@ static void ot_gpio_eg_reset_enter(Object *obj, ResetType type)
     s->regs[R_DIRECT_OUT] = s->reset_out;
     s->regs[R_DIRECT_OE] = s->reset_oe;
 
-    ot_gpio_eg_update_irqs(s);
+    /*
+     * Sample the input lines (e.g. the chardev) which persist their state
+     * across reset. This is important for cases like straps which are held
+     * asserted across a reset.
+     */
+    ot_gpio_eg_update_data_in(s);
+
     ibex_irq_set(&s->alert, 0);
 
     trace_ot_gpio_reset(s->ot_id, "< enter");
@@ -798,6 +802,10 @@ static void ot_gpio_eg_init(Object *obj)
                             PARAM_NUM_IO);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_gpio_eg_pad_attr_change,
                             OT_PINMUX_PAD, PARAM_NUM_IO);
+
+    /* Backend state persists across reset so initialise it once now */
+    s->data_ib = 0u;
+    s->data_bi = UINT32_MAX;
 }
 
 static void ot_gpio_eg_class_init(ObjectClass *klass, void *data)
