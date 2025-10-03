@@ -948,7 +948,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DEVLINK("clock-src", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            /* topclocks property overridden in ot_eg_soc_ast_configure */
             IBEX_DEV_STRING_PROP("topclocks", "main:500,io:480,usb:240,aon:1"),
             IBEX_DEV_STRING_PROP("refclock", "aon"),
             IBEX_DEV_STRING_PROP("subclocks",

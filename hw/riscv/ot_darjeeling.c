@@ -82,7 +82,8 @@
 /* ------------------------------------------------------------------------ */
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
-
+static void ot_dj_soc_ast_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                    DeviceState *parent);
 static void ot_dj_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
                                    DeviceState *parent);
 static void ot_dj_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
@@ -1420,12 +1421,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_AST] = {
         .type = TYPE_OT_AST_DJ,
+        .cfg = &ot_dj_soc_ast_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30480000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("topclocks",
-                "main:1000000000,io:1000000000,aon:62500000"),
             IBEX_DEV_STRING_PROP("aonclocks", "aon")
         ),
     },
@@ -1520,6 +1520,26 @@ struct OtDjMachineState {
 /* ------------------------------------------------------------------------ */
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
+
+static void ot_dj_soc_ast_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                    DeviceState *parent)
+{
+    (void)def;
+    (void)parent;
+
+    bool verilator_mode =
+        object_property_get_bool(qdev_get_machine(), "verilator", NULL);
+    const char *clock_cfg;
+    if (!verilator_mode) {
+        /* Defaults for Darjeeling HW */
+        clock_cfg = "main:1000000000,io:1000000000,aon:62500000";
+    } else {
+        /* From verilator model */
+        clock_cfg = "main:500000,io:500000,aon:125000";
+    }
+
+    qdev_prop_set_string(dev, "topclocks", clock_cfg);
+}
 
 static void ot_dj_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
                                    DeviceState *parent)
