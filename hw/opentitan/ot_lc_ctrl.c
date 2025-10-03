@@ -146,6 +146,9 @@ REG32(MANUF_STATE_7, 0x88u)
 #define LC_TOKEN_WIDTH          16u /* 128 bits */
 #define LC_TOKEN_DWORDS         (LC_TOKEN_WIDTH / sizeof(uint64_t))
 
+#define LC_DEV_ID_WIDTH      OT_REG_SPAN(DEVICE_ID, 7)
+#define LC_MANUF_STATE_WIDTH OT_REG_SPAN(MANUF_STATE, 7)
+
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
     REG_NAME_ENTRY(ALERT_TEST),
@@ -435,7 +438,11 @@ typedef struct {
 } OtLcCtrlTransitionDesc;
 
 static_assert(sizeof(OtOTPTokenValue) == LC_TOKEN_WIDTH,
-              "Unexpected LC TOLEN WIDTH");
+              "Unexpected LC Token width");
+static_assert(OT_OTP_HWCFG_DEVICE_ID_BYTES == LC_DEV_ID_WIDTH,
+              "Unexpected LC Device ID width");
+static_assert(OT_OTP_HWCFG_MANUF_STATE_BYTES == LC_MANUF_STATE_WIDTH,
+              "Unexpected LC Manufacturing State width");
 
 #define KECCAK_STATE_BITS  1600u
 #define KECCAK_STATE_BYTES (KECCAK_STATE_BITS / 8u)
@@ -1211,10 +1218,14 @@ static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
     OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
     const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(s->otp_ctrl);
 
-    memcpy(&s->regs[R_DEVICE_ID_0], &hw_cfg->device_id[0],
-           sizeof(*hw_cfg->device_id));
+    static_assert(sizeof(hw_cfg->device_id) == LC_DEV_ID_WIDTH,
+                  "HW_CFG Device ID size does not match size in registers");
+    memcpy(&s->regs[R_DEVICE_ID_0], &hw_cfg->device_id[0], LC_DEV_ID_WIDTH);
+
+    static_assert(sizeof(hw_cfg->manuf_state) == LC_MANUF_STATE_WIDTH,
+                  "HW_CFG Manuf State size does not match size in registers");
     memcpy(&s->regs[R_MANUF_STATE_0], &hw_cfg->manuf_state[0],
-           sizeof(*hw_cfg->manuf_state));
+           LC_MANUF_STATE_WIDTH);
 
     if (!s->socdbg) {
         return;
