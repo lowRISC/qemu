@@ -256,13 +256,7 @@ There are two modes to handle address remapping, with different limitations:
 
 ### UART
 
-* `-serial mon:stdio`, used as the first `-serial` option, redirects the virtual UART0 to the
-  current console/shell.
-
-* `-chardev socket,id=serial1,host=localhost,port=8001,server=on,wait=off` and
-  `-serial chardev:serial1` can be used to redirect UART1 (in this example) to a TCP socket. These
-  options are not specific to OpenTitan emulation, but are useful to communicate over a UART.
-  Note that QEMU offers many `chardev` backends, please check QEMU documentation for details.
+See documentation in [`uart.md`](./uart.md).
 
 ### I2C
 
