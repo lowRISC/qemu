@@ -875,12 +875,20 @@ struct OtFlashState {
      */
     OtFifo32 hw_rd_fifo;
 
+    char *hexstr;
+
+    /* properties */
     char *ot_id;
     BlockBackend *blk; /* Flash backend */
     OtVMapperState *vmapper; /* to disable execution from flash */
     bool no_mem_prot; /* Flag to disable mem protection features */
     bool fatal_escalate;
 };
+
+#define OT_FLASH_HEXSTR_SIZE (FLASH_SEED_BYTES * 2u + 2u)
+
+#define ot_flash_dump_bigint(_s_, _b_, _l_) \
+    ot_common_lhexdump(_b_, _l_, true, (_s_)->hexstr, OT_FLASH_HEXSTR_SIZE)
 
 /* Flash memory protection rules */
 
@@ -1947,8 +1955,11 @@ static void ot_flash_read_keymgr_seed(OtFlashState *s, unsigned page,
     memcpy(seed->secret, seed_words, FLASH_SEED_BYTES);
     seed->valid = !s->op.failed;
 
-    /* todo: dump the seed in the trace? */
-    trace_ot_flash_read_keymgr_seed(s->ot_id, page, !s->op.failed);
+    if (trace_event_get_state(TRACE_OT_FLASH_READ_KEYMGR_SEED)) {
+        const char *hexstr =
+            ot_flash_dump_bigint(s, seed->secret, FLASH_SEED_BYTES);
+        trace_ot_flash_read_keymgr_seed(s->ot_id, page, !s->op.failed, hexstr);
+    }
 
     if (s->op.failed) {
         ot_flash_set_error(s, R_FAULT_STATUS_SEED_ERR_MASK, s->op.address);
@@ -3369,6 +3380,8 @@ static void ot_flash_init(Object *obj)
     s->lc_broadcast.timer =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_lc_broadcast, s);
     s->op_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_flash_init_complete, s);
+
+    s->hexstr = g_new0(char, OT_FLASH_HEXSTR_SIZE);
 }
 
 static void ot_flash_class_init(ObjectClass *klass, void *data)
