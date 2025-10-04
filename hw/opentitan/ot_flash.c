@@ -1937,8 +1937,13 @@ static void ot_flash_read_keymgr_seed(OtFlashState *s, unsigned page,
 
     ot_flash_op_start(s);
 
-    uint32_t seed_words[FLASH_SEED_WORDS] = { 0 };
-    ot_fifo32_pop_buf(&s->hw_rd_fifo, FLASH_SEED_WORDS, seed_words);
+    uint32_t words_read = ot_fifo32_num_used(&s->hw_rd_fifo);
+    g_assert(words_read == FLASH_SEED_WORDS);
+
+    uint32_t seed_words[FLASH_SEED_WORDS];
+    for (size_t ix = 0; ix < FLASH_SEED_WORDS; ix++) {
+        seed_words[ix] = ot_fifo32_pop(&s->hw_rd_fifo);
+    }
     memcpy(seed->secret, seed_words, FLASH_SEED_BYTES);
     seed->valid = !s->op.failed;
 
