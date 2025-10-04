@@ -457,6 +457,7 @@ typedef struct OtKeyMgrState {
     DeviceState *key_sinks[KEYMGR_KEY_SINK_COUNT];
     char *seed_xstrs[KEYMGR_SEED_COUNT];
     bool use_default_entropy_seed; /* flag to seed PRNG with default seed */
+    bool disable_flash_seed_check; /* disable all-0/1 check for flash seeds */
 } OtKeyMgrState;
 
 struct OtKeyMgrClass {
@@ -1095,6 +1096,18 @@ ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
     ot_keymgr_kdf_push_bytes(s, seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
     bool data_valid =
         ot_keymgr_valid_data_check(seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
+
+    /*
+     * Unprovisioned flash will not contain valid secrets, and will return all
+     * 1s (failing the validity check) if scrambling/ECCs are disabled. Using
+     * the `disable-flash-seed-check` property allows you to optionally bypass
+     * these errors for unprovisioned environments where flash info page
+     * splicing is not available.
+     */
+    if (!data_valid && s->disable_flash_seed_check) {
+        trace_ot_keymgr_bypass_failure(s->ot_id, seed_name);
+        data_valid = true;
+    }
     if (!seed.valid || !data_valid) {
         s->regs[R_DEBUG] |= debug_mask;
         s->op_state.valid_inputs = false;
@@ -2351,6 +2364,8 @@ static Property ot_keymgr_properties[] = {
                        seed_xstrs[KEYMGR_SEED_NONE]),
     DEFINE_PROP_BOOL("use-default-entropy-seed", OtKeyMgrState,
                      use_default_entropy_seed, false),
+    DEFINE_PROP_BOOL("disable-flash-seed-check", OtKeyMgrState,
+                     disable_flash_seed_check, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 

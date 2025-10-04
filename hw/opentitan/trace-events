@@ -280,6 +280,7 @@ ot_ibex_wrapper_update_exec(const char *id, uint32_t bm, bool esc_rx, bool halte
 
 # ot_keymgr.c
 ot_keymgr_advance(const char *id, const char *stage, int nstage, const char *cdi, int ncdi) "%s: [%s:%d], [%s:%d]"
+ot_keymgr_bypass_failure(const char *id, const char *what) "%s: bypass failure for %s due to enabled properties"
 ot_keymgr_change_main_fsm_state(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
 ot_keymgr_change_op_status(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
 ot_keymgr_change_working_state(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
