@@ -83,8 +83,8 @@
 #define FLASH_SEED_BANK           0u
 #define FLASH_SEED_INFO_PARTITION 0u
 #define FLASH_SEED_WIDTH          256u
-#define FLASH_SEED_WORDS          ((FLASH_SEED_WIDTH) / sizeof(uint32_t))
 #define FLASH_SEED_BYTES          ((FLASH_SEED_WIDTH) / 8u)
+#define FLASH_SEED_WORDS          ((FLASH_SEED_BYTES) / sizeof(uint32_t))
 
 static_assert(FLASH_SEED_BYTES == OT_FLASH_KEYMGR_SECRET_BYTES,
               "Flash seed & keymgr secret sizes do not match");
