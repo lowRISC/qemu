@@ -57,12 +57,15 @@ of options and the available features.
 * `ot-format.sh` is a simple shell wrapper to run clang-format (code formatter) on OpenTitan files
 * `ot-tidy.py` is a python wrapper script to run clang-tidy (the LLVM C linter) on OpenTitan files,
   optionally in parallel, and locally or for CI.
-* [spidevice.py](spidevice.md) is a tiny script to upload a binary using the SPI device.
+* [`run-bazel-tests.sh`](regressions.md) is a script for running the OpenTitan test suite against
+  a local build of QEMU.
+* [`spidevflash.py`](spidevflash.md) is a tiny script to upload a binary using the SPI device.
 * `treillis/` directory contains the test application to test the [GPIO](gpio.md) device.
 * [`uartmux.py`](uartmux.md) is a tiny stream wrapper to help dealing with multiple QEMU output
   streams, typically multiple virtual UARTs.
-* [`run-bazel-tests.sh`](regressions.md) is a script for running the OpenTitan test suite against
-  a local build of QEMU.
+* [`verilate.py`](verilate.md) is a Verilator wrapper tool to run unit tests on Verilator simulation
+  environment. It is designed as a companion tool to help writing QEMU OpenTitan devices, running
+  the very same binaries as QEMU and comparing the outcome of each simulation environment.
 
 ## Python modules
 
