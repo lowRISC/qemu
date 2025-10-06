@@ -6,11 +6,13 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-from binascii import hexlify
+from binascii import hexlify, unhexlify
+from configparser import RawConfigParser
 from io import BytesIO
 from logging import getLogger
 from os.path import basename
-from typing import BinaryIO, Optional, Union
+from typing import BinaryIO, Optional, TextIO, Union
+
 try:
     from itertools import batched
 except ImportError:
@@ -125,6 +127,45 @@ class ROMImage:
             if item.startswith(prefix):
                 formats.add(item.removeprefix(prefix).upper())
         return formats
+
+    def load_config(self, config_file: TextIO, rom_idx: Optional[int]) -> None:
+        """Load ROM parameters from QEMU 'readconfig' file.
+
+        :param config_file: the config file text stream
+        :param rom_idx: the ROM index (when several ROMs are defined)
+        """
+        config = RawConfigParser()
+        config.read_file(config_file)
+        for section in config.sections():
+            prefix = 'ot_device '
+            if not section.startswith(prefix):
+                continue
+            devname = section.removeprefix(prefix).strip(' "')
+            devdescs = devname.split('.')
+            devtype = devdescs[0]
+            if devtype != 'ot-rom_ctrl':
+                continue
+            if len(devdescs) > 1:
+                devinst = devdescs[-1]
+                prefix = 'rom'
+                if not devinst.startswith(prefix):
+                    raise ValueError(f'Invalid ROM instance name: {devinst}')
+                devidx_str = devinst.removeprefix(prefix)
+            else:
+                devidx_str = ''
+            if devidx_str:
+                devidx = int(devidx_str)
+                if devidx != rom_idx:
+                    continue
+            elif rom_idx:
+                continue
+            for opt in config.options(section):
+                val = config.get(section, opt).strip('"')
+                setattr(self, opt, unhexlify(val))
+            return
+        if rom_idx is None:
+            rom_idx = 'undefined'
+        raise ValueError(f"Unable to find configuration for ROM '{rom_idx}'")
 
     @property
     def digest(self) -> bytes:
