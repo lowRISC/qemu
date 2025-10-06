@@ -11,12 +11,19 @@ from io import BytesIO
 from logging import getLogger
 from os.path import basename
 from typing import BinaryIO, Optional, Union
-
+try:
+    from itertools import batched
+except ImportError:
+    # workaround for old Python versions (<3.12)
+    def batched(seq, n_count):
+        for pos in range(0, len(seq), n_count):
+            yield seq[pos:pos+n_count]
 import re
 
-from ..util.elf import ElfBlob
-from ..util.file import guess_file_type
-from ..util.prince import PrinceCipher
+from ot.util.elf import ElfBlob
+from ot.util.file import guess_file_type
+from ot.util.misc import classproperty
+from ot.util.prince import PrinceCipher
 
 # ruff: noqa: E402
 _CRYPTO_EXC: Optional[Exception] = None
@@ -56,6 +63,9 @@ class ROMImage:
     ECC_39_32 = [0x2606bd25, 0xdeba8050, 0x413d89aa, 0x31234ed1,
                  0xc2c1323b, 0x2dcc624c, 0x98505586]
     """HSIAO constants for "inverted" 32-bit data with 7-bit SEC-DED."""
+
+    VMEM_LINE_WIDTH = 80
+    """Number of max char per line on generated VMEM files."""
 
     def __init__(self, name: Union[str, int, None] = None):
         logname = 'romimg'
@@ -97,15 +107,24 @@ class ROMImage:
         """Save a ROM file.
 
            :param rfp: output binary stream
-           :param ftype: the output file format. Only 'HEX' scrambled file
-                         format is supported for now
+           :param ftype: the output file format. Either 'hex', 'vmem' or 'svem'
         """
-        saver = getattr(self, f'_save_{ftype}', None)
+        saver = getattr(self, f'_save_{ftype.lower()}', None)
         if not saver:
             raise ValueError(f'Unsupported ROM file type: {ftype}')
         filename = basename(rfp.name) if isinstance(rfp.name, str) else '?'
         self._log.info('storing ROM image %s as %s file', filename, ftype)
         saver(rfp)
+
+    @classproperty
+    def save_formats(self) -> set[str]:
+        """Supported output formats."""
+        formats = set()
+        prefix = '_save_'
+        for item in dir(self):
+            if item.startswith(prefix):
+                formats.add(item.removeprefix(prefix).upper())
+        return formats
 
     @property
     def digest(self) -> bytes:
@@ -306,24 +325,9 @@ class ROMImage:
                 words.append(int(line, 16))
             except ValueError as exc:
                 raise ValueError(f'Invalid HEX data at line {lpos}: {exc}')
+        if size is not None and size != len(words) * 4:
+            raise ValueError('HEX content does not match ROM size')
         self._handle_scrambled_data(words)
-
-    def _save_hex(self, rfp: BinaryIO) -> None:
-        # assume a scrambled output image
-        if self._key is None:
-            raise RuntimeError('Key not defined, cannot scramble HEX file')
-        if self._nonce is None:
-            raise RuntimeError('Nonce not defined, cannot scramble HEX file')
-        if not self._clear_data:
-            return
-        # ensure scrambled data and digest are generated
-        digest = self._make_digest()
-        bndigest = bytes(reversed(digest))
-        self._log.info('computed digest: %s', hexlify(bndigest).decode())
-        scrwords = self._scrambled_words
-        rfp.write('\n'.join(f'{scrwords[self.addr_sp_dec(pa)]:010X}'
-                            for pa in range(len(scrwords))).encode())
-        rfp.write(b'\n')
 
     def _load_svmem(self, rfp: BinaryIO, size: Optional[int]) -> None:
         # load VMEM handle both kinds of VMEM files
@@ -345,8 +349,8 @@ class ROMImage:
             parts = re.split(r'\s+', line[1:])
             address_str = parts[0]
             data_str = parts[1:]
-            scrambled_data = all(len(d) == 10 for d in data_str)
-            plain_data = all(len(d) == 8 for d in data_str)
+            scrambled_data = all(len(d) in (9, 10) for d in data_str)
+            plain_data = all(len(d) in (7, 8) for d in data_str)
             if not scrambled_data ^ plain_data:
                 raise ValueError(f'Unknown VMEM format @ {lpos}')
             if scrambled is None:
@@ -407,6 +411,58 @@ class ROMImage:
         elf.load(rfp)
         bin_io = BytesIO(elf.blob)
         self._load_bin(bin_io, size)
+
+    def _save_hex(self, rfp: BinaryIO) -> None:
+        # assume a scrambled output image
+        self._prepare_scrambled_data()
+        scrwords = self._scrambled_words
+        rfp.write('\n'.join(f'{scrwords[self.addr_sp_dec(pa)]:010X}'
+                            for pa in range(len(scrwords))).encode())
+        rfp.write(b'\n')
+
+    def _save_svmem(self, rfp: BinaryIO) -> None:
+        # create scrambled data if not yet available
+        self._prepare_scrambled_data()
+        scrwords = [self._scrambled_words[self.addr_sp_dec(pa)]
+                    for pa in range(len(self._scrambled_words))]
+        word_char = 10
+        addr_char = 8 + 1
+        word_per_line = (self.VMEM_LINE_WIDTH - addr_char) // (word_char + 1)
+        self._print_vmem(rfp, scrwords, word_per_line, word_char)
+
+    def _save_vmem(self, rfp: BinaryIO) -> None:
+        # scrambled output image
+        clrwords = [int.from_bytes(bs, 'little')
+                    for bs in batched(self._clear_data, 4)]
+        word_char = 8
+        addr_char = 8 + 1
+        word_per_line = (self.VMEM_LINE_WIDTH - addr_char) // (word_char + 1)
+        self._print_vmem(rfp, clrwords, word_per_line, word_char)
+
+    def _print_vmem(self, rfp: BinaryIO, words: list[int],
+                    word_per_line: int, word_char: int) -> None:
+        pos = 0
+        # note: address marker (@address) defines the index in the destination
+        # memory. See _load_vmem for details
+        for words in batched(words, word_per_line):
+            data = ' '.join(f'{w:0{word_char}X}' for w in words)
+            rfp.write(f'@{pos:08X} {data}\n'.encode())
+            pos += len(words)
+
+    def _save_bin(self, rfp: BinaryIO) -> None:
+        rfp.write(self._clear_data)
+
+    def _prepare_scrambled_data(self):
+        if self._key is None:
+            raise RuntimeError('Key not defined, cannot scramble HEX file')
+        if self._nonce is None:
+            raise RuntimeError('Nonce not defined, cannot scramble HEX file')
+        if not self._clear_data:
+            self._log.warning('No data to save')
+            return
+        # ensure scrambled data and digest are generated
+        bndigest = bytes(reversed(self.digest))
+        self._log.info('computed digest: %s', hexlify(bndigest).decode())
 
     def _handle_scrambled_data(self, data: list[int]) -> None:
         word_count = len(data)
