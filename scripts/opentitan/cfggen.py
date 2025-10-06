@@ -214,7 +214,7 @@ class OtConfiguration:
                     if not clk_name.startswith(exp_prefix):
                         raise ValueError(f'Unexpected clock {clk_name} in group'
                                          f' {name}')
-                    src_name = clk_name[len(exp_prefix):]
+                    src_name = clk_name.removeprefix(exp_prefix)
                     clk_srcs.append(src_name)
                     if src_name in self._sub_clocks:
                         raise ValueError(f'Refinition of clock {src_name}')

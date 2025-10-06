@@ -210,9 +210,10 @@ class KeyManagerDpe:
                 if devload in loaded:
                     continue
                 loaded.add(devload)
-                if not devinst.startswith('rom'):
+                prefix = 'rom'
+                if not devinst.startswith(prefix):
                     raise ValueError(f'Invalid ROM instance name: {devinst}')
-                devidx = int(devinst[len('rom'):])
+                devidx = int(devinst.removeprefix(prefix))
                 try:
                     rom_img = self._roms[devidx]
                 except IndexError:

@@ -216,12 +216,10 @@ class AutoTop:
             -> list[tuple[str, str]]:
         int_list: list[tuple[str, str]] = []
         for interrupt in interrupts:
-            name = interrupt['name'].lower()
             dev = self.device_name(interrupt['module_name'], True)
             width = interrupt.get('width', 1)
             prefix = f'{dev.lower()}_'
-            if name.startswith(prefix):
-                name = name[len(prefix):]
+            name = interrupt['name'].lower().removeprefix(prefix)
             if width == 1:
                 int_list.append((dev, name))
             else:
@@ -247,12 +245,9 @@ class AutoTop:
         if cat:
             cat = f'{cat}_'.upper()
         for alert in alerts:
-            name = alert['name']
             dev = self.device_name(alert['module_name'], True)
-            lname = name.lower()
             prefix = f'{dev.lower()}_'
-            if lname.startswith(prefix):
-                lname = lname[len(prefix):]
+            lname = alert['name'].lower().removeprefix(prefix)
             alert_list.append((f'{cat}{dev}', lname))
         return alert_list
 
@@ -451,7 +446,7 @@ class AutoTop:
                 irqname = irq.name.upper()
                 prefix = commonprefix((irqname, dev))
                 if prefix:
-                    irqname = irqname[len(prefix):].lstrip('_')
+                    irqname = irqname.removeprefix(prefix).lstrip('_')
                 irqs[f'{dev}_{irqname}'] = irq.index
         print('pub mod irq_num {', file=tfp)
         max_val = 0

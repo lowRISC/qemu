@@ -217,10 +217,8 @@ class OtpPartition:
             itvalue = buf.read(itsize)
             soff = f'[{f"{base+offset:d}":>5s}]' if base is not None else ''
             offset += itsize
-            if itname.startswith(f'{pname}_'):
-                name = f'{pname}:{itname[len(pname)+1:]}'
-            else:
-                name = f'{pname}:{itname}'
+            prefix = f'{pname}_'
+            name = f'{pname}:{itname.removeprefix(prefix)}'
             if not match(filter_re, itname, IGNORECASE):
                 continue
             if itsize > 8:

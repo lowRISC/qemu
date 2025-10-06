@@ -305,9 +305,10 @@ class KeyManagerDpeEngine:
 
     def _execute_steps(self) -> dict[str, bytes]:
         results: dict[str, bytes] = {}
+        prefix = 'KeyManagerDpeStep'
         for name, step in self._steps.items():
             self._log.info('Executing %s (%s: %s)', name,
-                           step.__class__.__name__[len('KeyManagerDpeStep'):],
+                           step.__class__.__name__.removeprefix(prefix),
                            step.dst)
             if isinstance(step, KeyManagerDpeStepInitialize):
                 res = self._kmd.initialize(step.dst)

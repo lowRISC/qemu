@@ -64,7 +64,7 @@ def check(lfp: TextIO, comp: str, defs: RegisterDefs):
         line = line.strip()
         if not line.startswith(prefix):
             continue
-        parts = line[len(prefix):].split(' ', 1)
+        parts = line.removeprefix(prefix).split(' ', 1)
         items = dict(tuple(x.strip().split('=', 1))
                      for x in parts[1].split(','))
         vals = {k: int(v, 16) for k, v in items.items()}
