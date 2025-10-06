@@ -9,6 +9,7 @@
 from binascii import hexlify
 from io import BytesIO
 from logging import getLogger
+from os.path import basename
 from typing import BinaryIO, Optional, Union
 
 from ..util.elf import ElfBlob
@@ -28,7 +29,11 @@ except ModuleNotFoundError:
 
 
 class ROMImage:
-    """
+    """ROM controller image helper to manipulate ROM images
+
+       Support scrambling, descrambling, file format conversions.
+
+       :param name: an optional name for logging purposes
     """
 
     ADDR_SUBST_PERM_ROUNDS = 2
@@ -42,7 +47,13 @@ class ROMImage:
     DIGEST_WORDS = DIGEST_BYTES // 4
 
     SBOX4 = [12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2]
+    """PRESENT S-box permutation."""
     SBOX4_INV = [5, 14, 15, 8, 12, 1, 2, 13, 11, 4, 6, 3, 0, 7, 9, 10]
+    """PRESENT S-box inverted permutation."""
+
+    ECC_39_32 = [0x2606bd25, 0xdeba8050, 0x413d89aa, 0x31234ed1,
+                 0xc2c1323b, 0x2dcc624c, 0x98505586]
+    """HSIAO constants for "inverted" 32-bit data with 7-bit SEC-DED."""
 
     def __init__(self, name: Union[str, int, None] = None):
         logname = 'romimg'
@@ -50,33 +61,70 @@ class ROMImage:
             logname = f'{logname}.{name}'
         self._log = getLogger(logname)
         self._name = name
-        self._data = b''
-        self._key = 0
-        self._nonce = 0
+        self._clear_data = bytearray()
+        self._scrambled_words: list[int] = []  # in logical address order
+        self._key: Optional[int] = None
+        self._nonce: Optional[int] = None
         self._addr_nonce = 0
         self._data_nonce = 0
         self._addr_width = 0
         self._khi = 0
         self._klo = 0
-        self._digest = bytes(32)
+        self._digest: Optional[bytes] = None
 
     def load(self, rfp: BinaryIO, size: Optional[int] = None):
+        """Load a ROM file. Can either be:
+
+           - a so called 'HEX' file, which is assumed to be scrambled
+           - a pure raw binary file
+           - a RISC-V RV32 ELF file
+
+           :param rfp: input binary stream
+           :param size: optional size, required for binary and ELF file format
+        """
         ftype = guess_file_type(rfp)
         loader = getattr(self, f'_load_{ftype}', None)
         if not loader:
             raise ValueError(f'Unsupported ROM file type: {ftype}')
+        filename = basename(rfp.name) if rfp.name else '?'
+        self._log.info('loading ROM image %s as %s file',
+                       filename, ftype.upper())
         loader(rfp, size)
 
+    def save(self, rfp: BinaryIO, ftype: str) -> None:
+        """Save a ROM file.
+
+           :param rfp: output binary stream
+           :param ftype: the output file format. Only 'HEX' scrambled file
+                         format is supported for now
+        """
+        saver = getattr(self, f'_save_{ftype}', None)
+        if not saver:
+            raise ValueError(f'Unsupported ROM file type: {ftype}')
+        filename = basename(rfp.name) if isinstance(rfp.name, str) else '?'
+        self._log.info('storing ROM image %s as %s file', filename, ftype)
+        saver(rfp)
+
     @property
-    def digest(self):
+    def digest(self) -> bytes:
+        """Return the current digest of the ROM image.
+
+           Digest is computed on-the-fly if not already known.
+
+           :return: the digest
+        """
+        if not self._digest:
+            self._make_digest()
         return self._digest
 
     @property
-    def key(self):
-        return self._key.to_bytes(16, 'big')
+    def key(self) -> Optional[int]:
+        """Key observer."""
+        return None if self._key is None else self._key.to_bytes(16, 'big')
 
     @key.setter
-    def key(self, value: bytes):
+    def key(self, value: bytes) -> None:
+        """Key modifier."""
         if not isinstance(value, bytes):
             raise TypeError('Key must be bytes')
         self._key = int.from_bytes(value, 'big')
@@ -84,74 +132,22 @@ class ROMImage:
         self._klo = self._key & 0xFFFFFFFFFFFFFFFF
 
     @property
-    def nonce(self):
-        return self._nonce.to_bytes(8, 'big')
+    def nonce(self) -> Optional[int]:
+        """Nonce observer."""
+        return None if self._nonce is None else self._nonce.to_bytes(8, 'big')
 
     @nonce.setter
     def nonce(self, value: bytes):
+        """Nonce modifier."""
         if not isinstance(value, bytes):
             raise TypeError('Nonce must be bytes')
         self._nonce = int.from_bytes(value, 'big')
         self._addr_nonce = 0
         self._data_nonce = 0
 
-    def _load_hex(self, rfp: BinaryIO, size: Optional[int] = None) -> None:
-        data: list[int] = []  # 64-bit values
-        for lpos, line in enumerate(rfp.readlines(), start=1):
-            line = line.strip()
-            if len(line) != 10:
-                raise ValueError(f'Unsupported ROM HEX format at line {lpos}')
-            try:
-                data.append(int(line, 16))
-            except ValueError as exc:
-                raise ValueError(f'Invalid HEX data at line {lpos}: {exc}')
-        word_size = lpos
-        addr_bits = self.ctz(word_size)
-        data_nonce_width = 64 - addr_bits
-        self._addr_nonce = self._nonce >> data_nonce_width
-        self._data_nonce = self._nonce & ((1 << data_nonce_width) - 1)
-        self._addr_width = addr_bits
-        self._log.info('data_nonce_width: %d', data_nonce_width)
-        self._log.info('addr_width: %d', self._addr_width)
-        self._log.info('addr_nonce: %06x', self._addr_nonce)
-        self._log.info('data_nonce: %012x', self._data_nonce)
-        self._log.info('key_hi:     %016x', self._khi)
-        self._log.info('key_lo:     %016x', self._klo)
-        digest = self._unscramble(data)
-        bndigest = bytes(reversed(digest))
-        self._log.info('digest:     %s', hexlify(bndigest).decode())
-        self._digest = digest
-
-    def _load_bin(self, rfp: BinaryIO, size: Optional[int] = None) -> None:
-        if not size:
-            raise ValueError('ROM size not specified')
-        if _CRYPTO_EXC:
-            raise ModuleNotFoundError('Crypto module not found')
-        data = bytearray(rfp.read())
-        # digest storage is not included in digest computation
-        data_len = len(data)
-        size -= self.DIGEST_BYTES
-        if data_len > size:
-            raise ValueError('ROM size is too small')
-        if data_len < size:
-           data.extend(bytes(size - data_len))
-        shake = cSHAKE256.new(custom=b'ROM_CTRL')
-        shake.update(data)
-        digest = shake.read(32)
-        self._log.info('size:       %d bytes', size)
-        bndigest = bytes(reversed(digest))
-        self._log.info('digest:     %s', hexlify(bndigest).decode())
-        self._digest = digest
-        self._data = data
-
-    def _load_elf(self, rfp: BinaryIO, size: Optional[int] = None) -> None:
-        elf = ElfBlob()
-        elf.load(rfp)
-        bin_io = BytesIO(elf.blob)
-        self._load_bin(bin_io, size)
-
     @classmethod
-    def ctz(cls, val):
+    def ctz(cls, val: int) -> int:
+        """Count trailing zero bit in an integer."""
         if val == 0:
             raise ValueError('CTZ undefined')
         pos = 0
@@ -161,11 +157,13 @@ class ROMImage:
         return pos
 
     @classmethod
-    def bitswap(cls, in_, mask, shift):
+    def bitswap(cls, in_: int, mask: int, shift: int) -> int:
+        """Bit swapping helper function."""
         return ((in_ & mask) << shift) | ((in_ & ~mask) >> shift)
 
     @classmethod
-    def bitswap64(cls, val):
+    def bitswap64(cls, val: int) -> int:
+        """Swap (reverse) 64-bit integer."""
         val = cls.bitswap(val, 0x5555555555555555, 1)
         val = cls.bitswap(val, 0x3333333333333333, 2)
         val = cls.bitswap(val, 0x0f0f0f0f0f0f0f0f, 4)
@@ -176,7 +174,8 @@ class ROMImage:
         return val
 
     @classmethod
-    def sbox(cls, in_, width, sbox):
+    def sbox(cls, in_: int, width: int, sbox: int) -> int:
+        """PRESENT S-box permutation."""
         assert width < 64
 
         full_mask = (1 << width) - 1
@@ -191,14 +190,16 @@ class ROMImage:
         return out
 
     @classmethod
-    def flip(cls, in_, width):
+    def flip(cls, in_: int, width: int) -> int:
+        """Reverse N bit in an integer."""
         out = cls.bitswap64(in_)
         out >>= 64 - width
 
         return out
 
     @classmethod
-    def perm(cls, in_, width, invert):
+    def perm(cls, in_: int, width: int, invert: bool) -> int:
+        """PRESENT permutation."""
         assert width < 64
 
         full_mask = (1 << width) - 1
@@ -224,7 +225,9 @@ class ROMImage:
         return out
 
     @classmethod
-    def subst_perm_enc(cls, in_, key, width, num_round):
+    def subst_perm_enc(cls, in_: int, key: int, width: int, num_round: int) \
+            -> int:
+        """Substitute-permute rounds."""
         state = in_
         while num_round:
             num_round -= 1
@@ -237,7 +240,9 @@ class ROMImage:
         return state
 
     @classmethod
-    def subst_perm_dec(cls, val, key, width, num_round):
+    def subst_perm_dec(cls, val: int, key: int, width: int, num_round: int) \
+            -> int:
+        """Substitute-permute rounds."""
         state = val
         while num_round:
             num_round -= 1
@@ -249,14 +254,117 @@ class ROMImage:
 
         return state
 
-    def addr_sp_enc(self, addr):
+    def addr_sp_enc(self, addr: int) -> int:
+        """Encode a logical (CPU) address into a physical (ROM storage) address.
+        """
         return self.subst_perm_enc(addr, self._addr_nonce, self._addr_width,
                                    self.ADDR_SUBST_PERM_ROUNDS)
 
+    def addr_sp_dec(self, addr: int) -> int:
+        """Decode a physical (ROM storage) address into a logical (CPU) address.
+        """
+        return self.subst_perm_dec(addr, self._addr_nonce, self._addr_width,
+                                   self.ADDR_SUBST_PERM_ROUNDS)
+
     @classmethod
-    def data_sp_dec(cls, val):
+    def add_ecc_inv_39_32(cls, data: int) -> int:
+        """Compute and add HSIAO SEC-DEC to a 32 bit value.
+
+           :param data: 32-bit value
+           :return: 39-bit value (upper bits contain the ECC)
+        """
+        ecc = 0
+        inv = False
+        for mask in reversed(cls.ECC_39_32):
+            ecc <<= 1
+            parity = (data & mask).bit_count() & 1
+            ecc |= parity ^ int(inv)
+            inv = not inv
+        return (ecc << 32) | data
+
+    @classmethod
+    def data_sp_enc(cls, val: int) -> int:
+        """Encode (scramble) data."""
+        return cls.subst_perm_enc(val, 0, cls.WORD_BITS,
+                                  cls.DATA_SUBST_PERM_ROUNDS)
+
+    @classmethod
+    def data_sp_dec(cls, val: int) -> int:
+        """Decode (unscramble) data."""
         return cls.subst_perm_dec(val, 0, cls.WORD_BITS,
                                   cls.DATA_SUBST_PERM_ROUNDS)
+
+    def _load_hex(self, rfp: BinaryIO, size: Optional[int]) -> None:
+        data: list[int] = []  # 64-bit values
+        for lpos, line in enumerate(rfp.readlines(), start=1):
+            line = line.strip()
+            if len(line) != 10:
+                raise ValueError(f'Unsupported ROM HEX format at line {lpos}')
+            try:
+                data.append(int(line, 16))
+            except ValueError as exc:
+                raise ValueError(f'Invalid HEX data at line {lpos}: {exc}')
+        word_size = lpos
+        addr_bits = self.ctz(word_size)
+        data_nonce_width = 64 - addr_bits
+        if self._key is None:
+            raise RuntimeError('Key not defined, cannot unscramble HEX file')
+        if self._nonce is None:
+            raise RuntimeError('Nonce not defined, cannot unscramble HEX file')
+        self._addr_nonce = self._nonce >> data_nonce_width
+        self._data_nonce = self._nonce & ((1 << data_nonce_width) - 1)
+        self._addr_width = addr_bits
+        self._log.debug('nonce_width: %d', data_nonce_width)
+        self._log.debug('addr_width:  %d', self._addr_width)
+        self._log.debug('addr_nonce:  %06x', self._addr_nonce)
+        self._log.debug('data_nonce:  %012x', self._data_nonce)
+        self._log.debug('key_hi:      %016x', self._khi)
+        self._log.debug('key_lo:      %016x', self._klo)
+        self._unscramble(data)
+        bndigest = bytes(reversed(self._digest))
+        self._log.info('stored digest: %s', hexlify(bndigest).decode())
+        local_digest = self.digest
+        bndigest = bytes(reversed(local_digest))
+        self._log.info('local digest:  %s', hexlify(bndigest).decode())
+        if local_digest != self._digest:
+            self._log.error('Digest mismatch')
+
+    def _save_hex(self, rfp: BinaryIO) -> None:
+        # assume a scrambled output image
+        if self._key is None:
+            raise RuntimeError('Key not defined, cannot scramble HEX file')
+        if self._nonce is None:
+            raise RuntimeError('Nonce not defined, cannot scramble HEX file')
+        if not self._clear_data:
+            return
+        # ensure scrambled data and digest are generated
+        digest = self._make_digest()
+        bndigest = bytes(reversed(digest))
+        self._log.info('computed digest: %s', hexlify(bndigest).decode())
+        scrwords = self._scrambled_words
+        rfp.write('\n'.join(f'{scrwords[self.addr_sp_dec(pa)]:010X}'
+                            for pa in range(len(scrwords))).encode())
+        rfp.write(b'\n')
+
+    def _load_bin(self, rfp: BinaryIO, size: Optional[int]) -> None:
+        if not size:
+            raise ValueError('ROM size not specified')
+        if _CRYPTO_EXC:
+            raise ModuleNotFoundError('Crypto module not found')
+        data = bytearray(rfp.read())
+        data_len = len(data)
+        if data_len > size:
+            raise ValueError(f'Specified ROM size is too small to fit '
+                             f'{rfp.name or '?'}')
+        if data_len < size:
+            data.extend(bytes(size - data_len))
+        self._clear_data = data
+
+    def _load_elf(self, rfp: BinaryIO, size: Optional[int]) -> None:
+        elf = ElfBlob()
+        elf.load(rfp)
+        bin_io = BytesIO(elf.blob)
+        self._load_bin(bin_io, size)
 
     def _get_keystream(self, addr: int):
         scramble = (self._data_nonce << self._addr_width) | addr
@@ -264,39 +372,117 @@ class ROMImage:
                                   self.PRINCE_HALF_ROUNDS)
         return stream & ((1 << self.WORD_BITS) - 1)
 
+    def _scramble_word(self, addr: int, value: int):
+        keystream = self._get_keystream(addr)
+        return self.data_sp_enc(keystream ^ value)
+
     def _unscramble_word(self, addr: int, value: int):
         keystream = self._get_keystream(addr)
         spd = self.data_sp_dec(value)
         return keystream ^ spd
 
+    def _scramble(self, data: Union[bytes, bytearray]) -> None:
+        data_len = len(data)
+        if data_len & (data_len - 1):
+            self._log.warning('Unexpected data length: %d, not a 2^N value',
+                              data_len)
+        word_count = data_len // 4
+        addr_bits = self.ctz(word_count)
+        data_nonce_width = 64 - addr_bits
+        if self._nonce is None:
+            raise RuntimeError('Nonce not defined, cannot scramble data')
+        addr_nonce = self._nonce >> data_nonce_width
+        data_nonce = self._nonce & ((1 << data_nonce_width) - 1)
+        addr_width = addr_bits
+        if not self._addr_nonce:
+            self._addr_nonce = addr_nonce
+        elif self._addr_nonce != addr_nonce:
+            raise RuntimeError('Addr nonce discrepancy')
+        if not self._data_nonce:
+            self._data_nonce = data_nonce
+        elif self._data_nonce != data_nonce:
+            raise RuntimeError('Data nonce discrepancy')
+        if not self._addr_width:
+            self._addr_width = addr_width
+        elif self._addr_width != addr_width:
+            raise RuntimeError('Addr width discrepancy')
+        self._log.debug('nonce_width: %d', data_nonce_width)
+        self._log.debug('addr_width:  %d', self._addr_width)
+        self._log.debug('addr_nonce:  %06x', self._addr_nonce)
+        self._log.debug('data_nonce:  %012x', self._data_nonce)
+        scrambled: list[int] = []
+        word_count = len(data) // 4
+        dig_addr = len(data) - self.DIGEST_BYTES
+        for log_addr in range(word_count):
+            assert 0 <= log_addr < word_count
+            byte_addr = log_addr << 2
+            clrdata = int.from_bytes(data[byte_addr:byte_addr + 4], 'little')
+            if byte_addr < dig_addr:
+                clrdata = self.add_ecc_inv_39_32(clrdata)
+                assert 0 <= clrdata < (1 << self.WORD_BITS), "invalid data"
+                scrdata = self._scramble_word(log_addr, clrdata)
+                scrambled.append(scrdata)
+            else:
+                # digest is not scrambled and contains no ECC
+                scrambled.append(clrdata)
+        self._scrambled_words = scrambled
 
-    def _unscramble(self, src: list[int]) -> bytes:
+    def _unscramble(self, scr: list[int]) -> None:
         # do not attempt to detect or correct errors for now
-        size = len(src)
-        scr_word_size = (size - self.DIGEST_BYTES) // 4
+        word_count = len(scr)  # each slot is a 32-bit data value + ECC
+        if word_count & (word_count - 1):
+            self._log.warning('Unexpected word count: %d, not a 2^N value',
+                              word_count)
+        scr_word_count = word_count - self.DIGEST_BYTES // 4
+        self._log.debug('word_count: %d, scr_word_count %d',
+                        word_count, scr_word_count)
         log_addr = 0
-        dst: list[int] = [0] * size
-        while log_addr < scr_word_size:
+        dst: list[int] = [0] * word_count  # 32-bit values
+        scrambled_words: list[int] = []
+        while log_addr < scr_word_count:
             phy_addr = self.addr_sp_enc(log_addr)
-            assert(phy_addr < size)
-
-            srcdata = src[phy_addr]
-            clrdata = self._unscramble_word(log_addr, srcdata)
+            assert phy_addr < word_count, "unexpected physical address"
+            scrdata = scr[phy_addr]
+            scrambled_words.append(scrdata)
+            clrdata = self._unscramble_word(log_addr, scrdata)
             dst[log_addr] = clrdata & 0xffffffff
             log_addr += 1
+        # digest words are not scrambled
         wix = 0
-        digest_parts: list[int] = []
+        digest_parts: list[int] = []  # 32-bit values
         while wix < self.DIGEST_WORDS:
             phy_addr = self.addr_sp_enc(log_addr)
-            assert(phy_addr < size)
-            digest_parts.append(src[phy_addr] & 0xffffffff)
+            assert phy_addr < word_count, "unexpected physical address"
+            word = scr[phy_addr] & 0xffffffff
+            scrambled_words.append(word)
+            digest_parts.append(word)
             wix += 1
             log_addr += 1
         digest = b''.join((dp.to_bytes(4, 'little') for dp in digest_parts))
-        for addr in range(0x20, 0x30):
-            self._log.debug('@ %06x: %08x', addr, dst[addr])
         data = bytearray()
         for val in dst:
             data.extend(val.to_bytes(4, 'little'))
-        self._data = bytes(data)
-        return digest
+        self._clear_data = data
+        self._scrambled_words = scrambled_words
+        self._digest = digest
+
+    def _compute_digest(self) -> None:
+        scrambled_data = bytearray()
+        word_bytes = len(self._clear_data)
+        scr_word_count = (word_bytes - self.DIGEST_BYTES) // 4
+        for word in self._scrambled_words[:scr_word_count]:
+            scrambled_data.extend(word.to_bytes(self.WORD_BYTES, 'little'))
+        shake = cSHAKE256.new(custom=b'ROM_CTRL')
+        shake.update(scrambled_data)
+        self._digest = shake.read(self.DIGEST_BYTES)
+        if len(self._scrambled_words) > scr_word_count:
+            self._scrambled_words[:] = self._scrambled_words[:scr_word_count]
+        digest_words = [int.from_bytes(self._digest[a:a+4], 'little')
+                        for a in range(0, len(self._digest), 4)]
+        self._scrambled_words.extend(digest_words)
+
+    def _make_digest(self) -> bytes:
+        if not self._scrambled_words:
+            self._scramble(self._clear_data)
+        self._compute_digest()
+        return self._digest

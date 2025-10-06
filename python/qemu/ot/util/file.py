@@ -36,12 +36,21 @@ def guess_file_type(file: Union[str, BufferedReader]) -> str:
         return 'elf'
     if header[:4] == b'OTPT':
         return 'spiflash'
-    vmem_re = rb'(?i)^@[0-9A-F]{4,}\s[0-9A-F]{6,}'
+    vmem_re = rb'(?i)^@[0-9A-F]{4,}\s([0-9A-F]{6,})'
     for line in header.split(b'\n'):
         if line.startswith(b'/*') or line.startswith(b'#'):
             continue
-        if re.match(vmem_re, line):
-            return 'vmem'
+        vmo = re.match(vmem_re, line)
+        if vmo:
+            bcount = len(vmo.group(1)) // 2
+            # heuristic for VMEM files:
+            # - plain VMEM contain 16 or 32 data bit per block
+            # - special VMEM (ECC, scrambled, ...) usually contain an extra byte
+            # we only need to distinguish this kinds of files for now, it is not
+            # intended to be used for any purpose outside QEMU & Verilator
+            # tooling.
+            reg = bcount & 1 == 0
+            return 'vmem' if reg else 'svmem'
     hex_re = rb'(?i)^[0-9A-F]{6,}'
     count = 0
     for line in header.split(b'\n'):
