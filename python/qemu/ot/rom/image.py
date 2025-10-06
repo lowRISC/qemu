@@ -12,6 +12,8 @@ from logging import getLogger
 from os.path import basename
 from typing import BinaryIO, Optional, Union
 
+import re
+
 from ..util.elf import ElfBlob
 from ..util.file import guess_file_type
 from ..util.prince import PrinceCipher
@@ -295,17 +297,120 @@ class ROMImage:
                                   cls.DATA_SUBST_PERM_ROUNDS)
 
     def _load_hex(self, rfp: BinaryIO, size: Optional[int]) -> None:
-        data: list[int] = []  # 64-bit values
+        words: list[int] = []  # 64-bit values
         for lpos, line in enumerate(rfp.readlines(), start=1):
             line = line.strip()
             if len(line) != 10:
                 raise ValueError(f'Unsupported ROM HEX format at line {lpos}')
             try:
-                data.append(int(line, 16))
+                words.append(int(line, 16))
             except ValueError as exc:
                 raise ValueError(f'Invalid HEX data at line {lpos}: {exc}')
-        word_size = lpos
-        addr_bits = self.ctz(word_size)
+        self._handle_scrambled_data(words)
+
+    def _save_hex(self, rfp: BinaryIO) -> None:
+        # assume a scrambled output image
+        if self._key is None:
+            raise RuntimeError('Key not defined, cannot scramble HEX file')
+        if self._nonce is None:
+            raise RuntimeError('Nonce not defined, cannot scramble HEX file')
+        if not self._clear_data:
+            return
+        # ensure scrambled data and digest are generated
+        digest = self._make_digest()
+        bndigest = bytes(reversed(digest))
+        self._log.info('computed digest: %s', hexlify(bndigest).decode())
+        scrwords = self._scrambled_words
+        rfp.write('\n'.join(f'{scrwords[self.addr_sp_dec(pa)]:010X}'
+                            for pa in range(len(scrwords))).encode())
+        rfp.write(b'\n')
+
+    def _load_svmem(self, rfp: BinaryIO, size: Optional[int]) -> None:
+        # load VMEM handle both kinds of VMEM files
+        self._load_vmem(rfp, size)
+
+    def _load_vmem(self, rfp: BinaryIO, size: Optional[int]) -> None:
+        words: list[int] = []  # 64-bit values
+        scrambled: Optional[bool] = None
+        next_addr = 0
+        # note: address marker (@address) defines the index in the destination
+        # memory. For ROM images, each index represents a 32-bit memory address.
+        # Each location contains 32 bits of data, and optionally 7 bits of ECC.
+        # ECC extension is only supported in scrambled files. The ECC is stored
+        # in the MSB of each VMEM word.
+        for lpos, line in enumerate(rfp.readlines(), start=1):
+            line = line.strip()
+            if not line.startswith(b'@'):
+                continue
+            parts = re.split(r'\s+', line[1:])
+            address_str = parts[0]
+            data_str = parts[1:]
+            scrambled_data = all(len(d) == 10 for d in data_str)
+            plain_data = all(len(d) == 8 for d in data_str)
+            if not scrambled_data ^ plain_data:
+                raise ValueError(f'Unknown VMEM format @ {lpos}')
+            if scrambled is None:
+                scrambled = scrambled_data
+                self._log.info('Identified %s as %s VMEM format',
+                               rfp.name or '?',
+                               'scrambled' if scrambled else 'plain')
+            elif scrambled != scrambled_data:
+                raise ValueError(f'Incoherent VMEM format @ {lpos}')
+            try:
+                address = int(address_str, 16)
+                words.extend(int(d, 16) for d in data_str)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f'Invalid data in VMEM format @ '
+                                 f'{lpos}') from exc
+            if address != next_addr:
+                raise ValueError(f'Incoherent next address @ {lpos}')
+            next_addr += len(data_str)
+        if scrambled is None:
+            self._log.error('No valid data found in VMEM file')
+            return
+        if scrambled:
+            if size is not None and size != len(words) * 4:
+                raise ValueError(f'ROM size ({size}) does not match the '
+                                 f'scrambled content size ({len(words) * 4})')
+            self._handle_scrambled_data(words)
+        else:
+            if not size:
+                raise ValueError('ROM size not specified')
+            clrdata = bytearray()
+            for word in words:
+                clrdata.extend(word.to_bytes(4, 'little'))
+            data_len = len(clrdata)
+            if data_len < size:
+                clrdata.extend(bytes(size - data_len))
+            self._clear_data = clrdata
+            bndigest = bytes(reversed(self.digest))
+            self._log.info('computed digest: %s', hexlify(bndigest).decode())
+
+    def _load_bin(self, rfp: BinaryIO, size: Optional[int]) -> None:
+        if not size:
+            raise ValueError('ROM size not specified')
+        if _CRYPTO_EXC:
+            raise ModuleNotFoundError('Crypto module not found')
+        data = bytearray(rfp.read())
+        data_len = len(data)
+        if data_len > size:
+            raise ValueError(f'Specified ROM size is too small to fit '
+                             f'{rfp.name or '?'}')
+        if data_len < size:
+            data.extend(bytes(size - data_len))
+        self._clear_data = data
+        bndigest = bytes(reversed(self.digest))
+        self._log.info('computed digest: %s', hexlify(bndigest).decode())
+
+    def _load_elf(self, rfp: BinaryIO, size: Optional[int]) -> None:
+        elf = ElfBlob()
+        elf.load(rfp)
+        bin_io = BytesIO(elf.blob)
+        self._load_bin(bin_io, size)
+
+    def _handle_scrambled_data(self, data: list[int]) -> None:
+        word_count = len(data)
+        addr_bits = self.ctz(word_count)
         data_nonce_width = 64 - addr_bits
         if self._key is None:
             raise RuntimeError('Key not defined, cannot unscramble HEX file')
@@ -328,43 +433,6 @@ class ROMImage:
         self._log.info('local digest:  %s', hexlify(bndigest).decode())
         if local_digest != self._digest:
             self._log.error('Digest mismatch')
-
-    def _save_hex(self, rfp: BinaryIO) -> None:
-        # assume a scrambled output image
-        if self._key is None:
-            raise RuntimeError('Key not defined, cannot scramble HEX file')
-        if self._nonce is None:
-            raise RuntimeError('Nonce not defined, cannot scramble HEX file')
-        if not self._clear_data:
-            return
-        # ensure scrambled data and digest are generated
-        digest = self._make_digest()
-        bndigest = bytes(reversed(digest))
-        self._log.info('computed digest: %s', hexlify(bndigest).decode())
-        scrwords = self._scrambled_words
-        rfp.write('\n'.join(f'{scrwords[self.addr_sp_dec(pa)]:010X}'
-                            for pa in range(len(scrwords))).encode())
-        rfp.write(b'\n')
-
-    def _load_bin(self, rfp: BinaryIO, size: Optional[int]) -> None:
-        if not size:
-            raise ValueError('ROM size not specified')
-        if _CRYPTO_EXC:
-            raise ModuleNotFoundError('Crypto module not found')
-        data = bytearray(rfp.read())
-        data_len = len(data)
-        if data_len > size:
-            raise ValueError(f'Specified ROM size is too small to fit '
-                             f'{rfp.name or '?'}')
-        if data_len < size:
-            data.extend(bytes(size - data_len))
-        self._clear_data = data
-
-    def _load_elf(self, rfp: BinaryIO, size: Optional[int]) -> None:
-        elf = ElfBlob()
-        elf.load(rfp)
-        bin_io = BytesIO(elf.blob)
-        self._load_bin(bin_io, size)
 
     def _get_keystream(self, addr: int):
         scramble = (self._data_nonce << self._addr_width) | addr
