@@ -79,7 +79,12 @@ class OtpPartitionDesc:
             raise NotImplementedError(f'No support for {kind}')
         attrs = {n: getattr(self, f'_convert_to_{k}') if k else lambda x: x
                  for n, k in self.ATTRS.items() if k is not None}
-        print(f'/* Generated from {hjname} with {scriptname} */', file=cfp)
+        msg = f'Generated from {hjname} with {scriptname}'
+        git_version = self._otpmap.git_version
+        if git_version:
+            print(f'/*\n * {msg}\n * Top version: {git_version}\n */', file=cfp)
+        else:
+            print(f'/* ${msg} */', file=cfp)
         print(file=cfp)
         print('/* clang-format off */', file=cfp)
         print('/* NOLINTBEGIN */', file=cfp)
@@ -205,7 +210,12 @@ class OtpRegisterDef:
 
     def _save_qemu(self, topname: Optional[str], hjname: str, scriptname: str,
                    cfp: TextIO, slots: list[OtpSlotDescriptor]) -> None:
-        print(f'/* Generated from {hjname} with {scriptname} */', file=cfp)
+        msg = f'Generated from {hjname} with {scriptname}'
+        git_version = self._otpmap.git_version
+        if git_version:
+            print(f'/*\n * {msg}\n * Top version: {git_version}\n */', file=cfp)
+        else:
+            print(f'/* ${msg} */', file=cfp)
         print(file=cfp)
         for slot in slots:
             if slot.part:
@@ -308,6 +318,8 @@ class OtpRegisterDef:
                      cfp: TextIO, slots: list[OtpSlotDescriptor]) -> None:
         # pylint: disable=unused-argument
         print(f'// Generated from {hjname} with {scriptname}', file=cfp)
+        if self._otpmap.git_version:
+            print(f'// Top version: {self._otpmap.git_version}', file=cfp)
         print(file=cfp)
         rec_p2 = 1 << (len(slots) - 1).bit_length()
         print(f'#![recursion_limit = "{rec_p2}"]', file=cfp)

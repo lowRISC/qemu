@@ -15,7 +15,7 @@ try:
 except ImportError:
     hjload = None
 
-from ot.util.misc import round_up
+from ot.util.misc import retrieve_git_version, round_up
 
 
 class OtpMap:
@@ -42,6 +42,7 @@ class OtpMap:
         self._map: dict = {}
         self._otp_size = 0
         self._partitions: list[OtpPartition] = []
+        self._git_version: Optional[str] = None
 
     def load(self, hfp: TextIO) -> None:
         """Parse a HJSON configuration file, typically otp_ctrl_mmap.hjson
@@ -49,6 +50,8 @@ class OtpMap:
         if hjload is None:
             raise ImportError('HJSON module is required')
         self._map = hjload(hfp, object_pairs_hook=dict)
+        if hfp.name and isinstance(hfp.name, str):
+            self._git_version = retrieve_git_version(hfp.name)
         otp = self._map['otp']
         self._otp_size = int(otp['width']) * int(otp['depth'])
         self._generate_partitions()
@@ -58,6 +61,11 @@ class OtpMap:
     def partitions(self) -> dict[str, Any]:
         """Return the partitions (in any)"""
         return {p['name']: p for p in self._map.get('partitions', [])}
+
+    @property
+    def git_version(self) -> Optional[str]:
+        """Return Git version if known."""
+        return self._git_version
 
     @classmethod
     def part_offset(cls, part: dict[str, Any]) -> int:

@@ -10,10 +10,10 @@ from binascii import unhexlify
 from io import StringIO
 from logging import getLogger
 from textwrap import fill
-from typing import TextIO
+from typing import Optional, TextIO
 import re
 
-from ot.util.misc import camel_to_snake_case, group
+from ot.util.misc import camel_to_snake_case, group, retrieve_git_version
 
 
 class OtpLifecycle:
@@ -33,6 +33,7 @@ class OtpLifecycle:
         self._sequences: dict[str, dict[str, list[str]]] = {}
         self._tables: dict[str, dict[str, str]] = {}
         self._tokens: dict[str, str] = {}
+        self._git_version: Optional[str] = None
 
     def load(self, svp: TextIO):
         """Decode LifeCycle information.
@@ -46,6 +47,8 @@ class OtpLifecycle:
                   r"\s+\{([^\}]+)\}\s*,?")
         codes: dict[str, int] = {}
         sequences: dict[str, dict[str, list[str]]] = {}
+        if svp.name and isinstance(svp.name, str):
+            self._git_version = retrieve_git_version(svp.name)
         svp = StringIO(svp.read())
         for line in svp:
             cmt = line.find('//')
@@ -104,7 +107,12 @@ class OtpLifecycle:
         """
         if kind.lower() != 'qemu':
             raise NotImplementedError(f'No support for {kind}')
-        print(f'/* Section auto-generated with {__name__} module */', file=cfp)
+        msg = f'Section auto-generated with {__name__} module'
+        if self._git_version:
+            print(f'/*\n * {msg}\n * Top version: {self._git_version}\n */',
+                  file=cfp)
+        else:
+            print(f'/* ${msg} */', file=cfp)
         if data_mode:
             self._save_data(cfp)
         else:
