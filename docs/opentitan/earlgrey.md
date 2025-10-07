@@ -206,6 +206,10 @@ There are two modes to handle address remapping, with different limitations:
   whenever possible. To enable this legacy mode, set the `alias-mode` property to true:
   `-global ot-ibex_wrapper.alias-mode=true`
 
+### Keymgr
+
+See documentation in [`keymgr.md`](./keymgr.md).
+
 ### OTBN
 
 * `-global ot-otbn.logfile=<filename>` output OTBN execution message to the specified logfile. When
