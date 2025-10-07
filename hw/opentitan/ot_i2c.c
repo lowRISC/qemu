@@ -1220,7 +1220,10 @@ static uint8_t ot_i2c_target_recv(I2CSlave *target)
         return 0;
     }
 
+    /* pop FIFO and check threshold. */
     data = fifo8_pop(&s->target_tx_fifo);
+    ot_i2c_irq_set_state(s, TX_THRESHOLD, ot_i2c_tx_threshold_intr(s));
+
     trace_ot_i2c_target_recv(s->ot_id, fifo8_num_used(&s->target_tx_fifo),
                              data);
     return data;
