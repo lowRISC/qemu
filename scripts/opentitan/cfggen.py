@@ -37,7 +37,7 @@ from ot.otp.secret import OtpSecretConstants
 from ot.top import OpenTitanTop
 from ot.util.arg import ArgError
 from ot.util.log import configure_loggers
-from ot.util.misc import alphanum_key, to_bool
+from ot.util.misc import alphanum_key, retrieve_git_version, to_bool
 
 
 OtParamRegex = str
@@ -126,6 +126,7 @@ class OtConfiguration:
         self._clock_groups: dict[str, OtClockGroup] = {}
         self._mod_clocks: dict[str, list[str]] = {}
         self._top_name: Optional[str] = None
+        self._git_version: Optional[str] = None
         self._exclusions: dict[str, set[str]] = {}
 
     @property
@@ -140,6 +141,8 @@ class OtConfiguration:
             cfg = hjload(tfp, object_pairs_hook=dict)
         self._top_name = cfg.get('name')
         topbase = basename(toppath)
+
+        self._git_version = retrieve_git_version(toppath)
 
         for module in cfg.get('module') or []:
             modtype = module.get('type')
@@ -350,6 +353,9 @@ class OtConfiguration:
         self._generate_ast(cfg, variant, socid)
         self._generate_clkmgr(cfg, socid)
         self._generate_pwrmgr(cfg, socid)
+        if self._git_version:
+            print(f'# Generated from OpenTitan commit: {self._git_version}\n',
+                  file=ofp)
         cfg.write(ofp)
 
     def show_clocks(self, ofp: Optional[TextIO]) -> None:
