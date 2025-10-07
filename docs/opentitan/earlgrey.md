@@ -66,8 +66,8 @@ Devices in this group implement subset(s) of the real HW.
   * Initialization and scrambling with dummy key supported
   * Wait for init completion (bus stall) emulated
 * I2C controller
+  * Supports only one target mode address - ADDRESS1 and MASK1 are not implemented
   * Timing features are not implemented
-  * Only 7-bit addressing with all MASK0 bits set is supported
   * Loopback mode is not implemented
 
 ### Sparsely implemented devices

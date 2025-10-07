@@ -43,7 +43,7 @@
  *      bus recover/override
  *      some interrupts will never be generated (except via INTR_TEST)
  *      bus timing registers are ignored
- * - Target mode only supports TARGET_ID.ADDRESS0 with TARGET_ID.MASK0=0x7F.
+ * - Target mode only supports TARGET_ID.ADDRESS0 and TARGET_ID.MASK0
  * - Loopback mode.  Need more details about how it works in HW.
  */
 
@@ -351,6 +351,9 @@ struct OtI2CState {
 
     /* TX: Scheduled responses for target mode. */
     Fifo8 target_tx_fifo;
+
+    /* Target mode first address mask */
+    uint8_t address_mask_0;
 
     uint32_t pclk; /* Current input clock */
     const char *clock_src_name; /* IRQ name once connected */
@@ -982,22 +985,19 @@ static void ot_i2c_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_TARGET_ID:
         if (FIELD_EX32(val32, TARGET_ID, ADDRESS1)) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s: Target address 1 not supported.\n", __func__,
-                          s->ot_id);
-        }
-        address = FIELD_EX32(val32, TARGET_ID, ADDRESS0);
-        if ((val32 & R_TARGET_ID_MASK0_MASK) != R_TARGET_ID_MASK0_MASK) {
             qemu_log_mask(
                 LOG_UNIMP,
-                "%s: %s: Address Mask with any bits unset is not supported.\n",
+                "%s: %s: Target mode second address is not supported.\n",
                 __func__, s->ot_id);
-            break;
         }
-        if (address != 0) {
-            ARRAY_FIELD_DP32(s->regs, TARGET_ID, ADDRESS0, address);
-            mask = FIELD_EX32(val32, TARGET_ID, MASK0);
-            ARRAY_FIELD_DP32(s->regs, TARGET_ID, MASK0, mask);
+        address = FIELD_EX32(val32, TARGET_ID, ADDRESS0);
+        mask = FIELD_EX32(val32, TARGET_ID, MASK0);
+
+        ARRAY_FIELD_DP32(s->regs, TARGET_ID, ADDRESS0, address);
+        ARRAY_FIELD_DP32(s->regs, TARGET_ID, MASK0, mask);
+        /* Update the address mask of this target on the bus. */
+        s->address_mask_0 = (uint8_t)mask;
+        if (address != 0u) {
             /* Update the address of this target on the bus. */
             i2c_slave_set_address(s->target, address);
         }
@@ -1238,6 +1238,26 @@ static void ot_i2c_target_send_async(I2CSlave *target, uint8_t data)
     }
 }
 
+static bool ot_i2c_target_match_and_add(I2CSlave *candidate, uint8_t address,
+                                        bool broadcast,
+                                        I2CNodeList *current_devs)
+{
+    BusState *abus = qdev_get_parent_bus(DEVICE(candidate));
+    OtI2CState *s = OT_I2C(abus->parent);
+
+    /* Check address, subject to address masking. */
+    if (broadcast || (s->address_mask_0 &&
+                      (address & s->address_mask_0) == candidate->address)) {
+        I2CNode *node = g_new0(struct I2CNode, 1u);
+        node->elt = candidate;
+        QLIST_INSERT_HEAD(current_devs, node, next);
+        return true;
+    }
+
+    /* Not found and not broadcast. */
+    return false;
+}
+
 static void ot_i2c_target_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1245,6 +1265,7 @@ static void ot_i2c_target_class_init(ObjectClass *klass, void *data)
     (void)data;
 
     dc->desc = "OpenTitan I2C Target";
+    sc->match_and_add = &ot_i2c_target_match_and_add;
     sc->event = &ot_i2c_target_event;
     sc->send_async = &ot_i2c_target_send_async;
     sc->recv = &ot_i2c_target_recv;
@@ -1308,6 +1329,7 @@ static void ot_i2c_reset_enter(Object *obj, ResetType type)
     }
 
     s->check_timings = true;
+    s->address_mask_0 = 0x0u;
 }
 
 static void ot_i2c_realize(DeviceState *dev, Error **errp)
