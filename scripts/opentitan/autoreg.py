@@ -86,6 +86,9 @@ class AutoReg:
 
     RESETS = ['enter', 'hold', 'exit']
 
+    WINDOW_LIMIT = 64
+    """Default window item count limit."""
+
     def __init__(self, devname: str, ignore_prefix: Optional[str] = None,
                  resets: Optional[list[str]] = None):
         self._log = getLogger('autoreg')
@@ -111,7 +114,7 @@ class AutoReg:
         actions.sort()
         return actions
 
-    def load(self, hfp: TextIO) -> None:
+    def load(self, hfp: TextIO, win_lim: Optional[int] = None) -> None:
         """Load a register map definition from an OT HJSON file."""
         if hfp.name:
             git_version = retrieve_git_version(hfp.name)
@@ -164,6 +167,11 @@ class AutoReg:
                 item = item['window']
                 reg = self._parse_register(address, item)
                 count = safe_eval(item['items'], self._parameters)
+                if count > (win_lim or self.WINDOW_LIMIT):
+                    self._log.warning(
+                        'Ignoring oversized window %s with %u items',
+                        reg.name, count)
+                    continue
                 fields = reg.fields
                 if not reg.fields:
                     validbits = item.get('validbits')
@@ -1117,6 +1125,10 @@ def main():
         params.add_argument('-g', '--generate', action='append',
                             choices=generators, required=True,
                             help='what to generate')
+        params.add_argument('-k', '--out-kind', choices=outkinds,
+                            default=outkinds[0],
+                            help=f'output file format '
+                                 f'(default: {outkinds[0]})')
         params.add_argument('-n', '--name', default='foo',
                             help='device name')
         params.add_argument('-p', '--ignore', metavar='PREFIX',
@@ -1124,10 +1136,10 @@ def main():
         params.add_argument('-r', '--reset', action='append',
                             choices=AutoReg.RESETS,
                             help='generate reset code')
-        params.add_argument('-k', '--out-kind', choices=outkinds,
-                            default=outkinds[0],
-                            help=f'output file format '
-                                 f'(default: {outkinds[0]})')
+        params.add_argument('-w', '--win-limit', type=HexInt.parse,
+                            metavar='ITEMS', default=AutoReg.WINDOW_LIMIT,
+                            help=f'Max window size, discard larger '
+                                 f'(default: {AutoReg.WINDOW_LIMIT} items)')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -1146,7 +1158,7 @@ def main():
         areg = reggen(args.name, args.ignore, args.reset)
         if args.copyright:
             areg.copyright = args.copyright
-        areg.load(args.config)
+        areg.load(args.config, args.win_limit)
         for gen in args.generate or []:
             generate = getattr(areg, f'generate_{gen}', None)
             if not generate:
