@@ -44,6 +44,15 @@
 #define OT_TL_UL_D_WIDTH_BYTES ((OT_TL_UL_D_WIDTH_BITS) / 8u)
 
 /* ------------------------------------------------------------------------ */
+/* Register Span Definitions */
+/* ------------------------------------------------------------------------ */
+
+#define OT_REG_NAME_IDX(_n_, _i_) (R_##_n_##_##_i_)
+#define OT_REG_COUNT(_n_, _l_) \
+    (OT_REG_NAME_IDX(_n_, _l_) - OT_REG_NAME_IDX(_n_, 0) + 1u)
+#define OT_REG_SPAN(_n_, _l_) (OT_REG_COUNT(_n_, _l_) * sizeof(uint32_t))
+
+/* ------------------------------------------------------------------------ */
 /* Multi-bit boolean values */
 /* ------------------------------------------------------------------------ */
 
