@@ -677,12 +677,6 @@ static void ot_spi_device_flash_change_state_line(
     }
 }
 
-static bool ot_spi_device_flash_has_input_payload(uint32_t cmd_info)
-{
-    return (cmd_info & CMD_INFO_PAYLOAD_EN_MASK) != 0 &&
-           !(cmd_info & CMD_INFO_PAYLOAD_DIR_MASK);
-}
-
 static bool ot_spi_device_flash_is_upload(const SpiDeviceFlash *f)
 {
     return (f->cmd_info & CMD_INFO_UPLOAD_MASK) != 0 &&
@@ -1296,9 +1290,13 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
     } else if (f->cmd_info & CMD_INFO_DUMMY_EN_MASK) {
         f->len = 1u;
         FLASH_CHANGE_STATE(s, UP_DUMMY);
-    } else if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
+    } else if (ot_spi_device_flash_is_upload(f)) {
         ot_spi_device_flash_init_payload(s);
     } else {
+        /*
+         * Any payload sent with a non-uploaded SW command is ignored. The
+         * behaviour of this error case is not well specified for the hardware.
+         */
         s->spi_regs[R_UPLOAD_STATUS2] = 0;
     }
 }
@@ -1328,9 +1326,13 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
             if (f->cmd_info & CMD_INFO_DUMMY_EN_MASK) {
                 f->len = 1u;
                 FLASH_CHANGE_STATE(s, UP_DUMMY);
-            } else if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
+            } else if (ot_spi_device_flash_is_upload(f)) {
                 ot_spi_device_flash_init_payload(s);
             } else {
+                /*
+                 * Any payload sent with a non-uploaded SW command is ignored. The
+                 * behaviour of this error case is not well specified for the hardware.
+                 */
                 FLASH_CHANGE_STATE(s, DONE);
             }
         }
@@ -1338,9 +1340,13 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
     case SPI_FLASH_UP_DUMMY:
         f->pos++;
         g_assert(f->pos == f->len);
-        if (ot_spi_device_flash_has_input_payload(f->cmd_info)) {
+        if (ot_spi_device_flash_is_upload(f)) {
             ot_spi_device_flash_init_payload(s);
         } else {
+            /*
+             * Any payload sent with a non-uploaded SW command is ignored. The
+             * behaviour of this error case is not well specified for the hardware.
+             */
             FLASH_CHANGE_STATE(s, DONE);
         }
         break;
