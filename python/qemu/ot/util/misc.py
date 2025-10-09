@@ -9,7 +9,7 @@
 from collections.abc import Callable
 from io import BytesIO
 from os.path import abspath, dirname, exists, isdir, isfile, join as joinpath
-from subprocess import check_output
+from subprocess import SubprocessError, check_output
 from sys import stdout
 from textwrap import dedent, indent
 from typing import Any, Iterable, Optional, TextIO, Union
@@ -265,7 +265,7 @@ def retrieve_git_version(path: str, max_tag_dist: int = 100) \
         if distance <= max_tag_dist:
             return descstr
         return '-'.join(filter(None, (gmo.group('commit'), dirty)))
-    except (OSError, ValueError):
+    except (OSError, SubprocessError, ValueError):
         pass
     try:
         change = check_output(['git', 'status', '--porcelain'],
@@ -275,7 +275,7 @@ def retrieve_git_version(path: str, max_tag_dist: int = 100) \
         if len(change) > 1:
             descstr = f'{descstr}-dirty'
         return descstr
-    except OSError:
+    except (OSError, SubprocessError):
         pass
     return None
 
