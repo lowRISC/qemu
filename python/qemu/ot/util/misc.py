@@ -24,8 +24,9 @@ _FALSE_BOOLEANS = ['off', 'low', 'false', 'disable', 'disabled', 'no', '0']
 
 class classproperty(property):
     """Getter property decorator for a class"""
+
     # pylint: disable=invalid-name
-    def __get__(self, obj: Any, objtype=None) -> Any:
+    def __get__(self, obj: Any, objtype=None):
         return super().__get__(objtype)
 
 
