@@ -17,19 +17,29 @@ from tempfile import mkstemp
 from threading import Thread
 from time import sleep, time as now
 from traceback import format_exc
-from typing import Optional, Union
+from typing import NamedTuple, Optional, Union
 
 import logging
 import re
 
 from ot.util.file import guess_file_type, make_vmem_from_elf
 from ot.util.log import ColorLogFormatter
+from ot.util.misc import HexInt
 
 from . import DEFAULT_TIMEOUT
 from .filemgr import VtorFileManager
 
 
 VeriVcpDescriptor = tuple[str, BufferedRandom, bytearray, logging.Logger]
+
+
+class VtorMemRange(NamedTuple):
+    """Memory range (for an initializable memory device)."""
+
+    address: HexInt
+    """Base address."""
+    size: HexInt
+    """Size (in bytes)."""
 
 
 class VtorExecuter:
@@ -46,6 +56,9 @@ class VtorExecuter:
 
     DEADLOCK = 125
     """Default error code when Verilator is stuck."""
+
+    START_TIMEOUT = 2.0
+    """Initial timeout to load and query Verilator."""
 
     def __init__(self, vfm: VtorFileManager, verilator: str,
                  profile: Optional[str], debug: bool = False):
@@ -67,6 +80,7 @@ class VtorExecuter:
         self._poller = sel_poll()
         self._resume = False
         self._threads: list[Thread] = []
+        self._devices: dict[str, VtorMemRange[int, int]] = {}
 
     @classmethod
     def _simplifly_cli(cls, args: list[str]) -> str:
@@ -81,6 +95,15 @@ class VtorExecuter:
     def save_execution_log_file(self, logpath: str) -> None:
         """Request to store the execution log file."""
         self._dest_log_path = logpath
+
+    def show_init_devices(self):
+        """Show initializable devices"""
+        if not self._devices:
+            self._load_devices()
+        width = max(len(d) for d in self._devices) + 1
+        for name, mrg in self._devices.items():
+            print(f'{name:{width}s} 0x{mrg.address:08x} '
+                  f'{mrg.size // 1024:5d} KiB')
 
     def verilate(self, rom: str, flash: str, otp: Optional[str],
                  gen_wave: bool = False, timeout: float = None,
@@ -262,6 +285,117 @@ class VtorExecuter:
             else:
                 sleep(0.005)
         self._log.debug('End of std%s logger thread', 'err' if err else 'out')
+
+    def _load_devices(self) -> None:
+        args = [self._verilator, '--meminit=list']
+        out = ''
+        with Popen(args, bufsize=1, cwd=self._fm.tmp_dir, encoding='utf-8',
+                   errors='ignore', text=True, stdout=PIPE) as proc:
+            proc.wait(self.START_TIMEOUT)
+            out = proc.stdout.read()
+        for mro in re.finditer(r"'(?P<name>\w+)'.*"
+                               r"\[(?P<start>0x[0-9a-f]+),\s*"
+                               r"(?P<end>0x[0-9a-f]+)\]", out):
+            self._devices[mro.group('name')] = VtorMemRange(
+                start := HexInt(mro.group('start'), 16),
+                HexInt(mro.group('end'), 16) - start + 1)
+        # handle the special DJ case where RAM is call CTN_RAM
+        if 'ctn_ram' in self._devices:
+            # rename any existing ram devices
+            ram_devices = sorted(d for d in self._devices
+                                 if d.startswith('ram'))
+            renamed_devices: dict[str, str] = {}
+            for rpos, ram_dev in enumerate(ram_devices, 1):
+                ram_name = f'ram{rpos}'
+                renamed_devices[ram_name] = self._devices.pop(ram_dev)
+                self._device_aliases[ram_name] = ram_dev
+            # insert CTM_RAM as the first RAM device, since this is likely the
+            # one to be used for loading application
+            self._devices['ram0'] = self._devices.pop('ctn_ram')
+            self._device_aliases['ram0'] = 'ctn_ram'
+            self._devices.update(renamed_devices)
+
+    def _assign_init(self, mem_init: dict[str, str], dev_kind: str,
+                     dev_files: list[str]) -> list[str]:
+        known_devs = getattr(self, f'{dev_kind}_devices', [])
+        if len(dev_files) > len(known_devs):
+            raise ValueError(f'Verilator does not support {len(dev_files)} '
+                             f'{dev_kind.upper()} images')
+        for dpos, (kdev, dev_file) in enumerate(zip(known_devs, dev_files)):
+            if not dev_file:
+                continue
+            file_kind = guess_file_type(dev_file)
+            if dev_kind == 'rom':
+                size = self._devices[kdev].size
+                real_file = self._convert_rom_file(file_kind, dev_file, size,
+                                                   dpos)
+            else:
+                real_file = self._convert_app_file(file_kind, dev_file)
+            mem_init[kdev] = real_file
+
+    def _assign_apps(self, mem_init: dict[str, str], app_files: list[str]):
+        for app_file in app_files:
+            file_kind = guess_file_type(app_file)
+            base_file = basename(app_file)
+            # only ELF file contains meta information to know the load address
+            # if any other type of file is used (bin/vmem/svmem/hex), the
+            # load destination device needs to be specified, assigning the app
+            # to a known device
+            if file_kind != 'elf':
+                raise ValueError(f'No known address to load {base_file}')
+            # load the ELF to retrieve load address and size
+            elf = ElfBlob()
+            with open(app_file, 'rb') as efp:
+                elf.load(efp)
+            app_addr = elf.load_address
+            app_size = elf.size
+            app_end = app_addr + app_size
+            # find the destination device based on the extracted meta info
+            for dev_name, mrg in self._devices.items():
+                dev_end = mrg.address + mrg.size
+                if mrg.address <= app_addr < mrg.size:
+                    real_name = self._device_aliases.get(dev_name, dev_name)
+                    if app_end > dev_end:
+                        raise ValueError(f'{base_file} cannot fit in '
+                                         f'{real_name}')
+                    if dev_name in mem_init:
+                        raise ValueError(f'{base_file} overrides another file '
+                                         f'in {real_name}')
+                    self._log.info('Locating %s in %s', base_file, real_name)
+                    # if the destination device is a ROM device, then the file
+                    # to load need to be scrambled
+                    if dev_name.startswith('rom'):
+                        dev_idx = list(self.rom_devices).index(dev_name)
+                        mem_init[dev_name] = \
+                            self._convert_rom_file(file_kind, app_file,
+                                                   mrg.size, dev_idx)
+                    # otherwise, a regular VMEM should be enough
+                    else:
+                        mem_init[dev_name] = self._convert_app_file(file_kind,
+                                                                    app_file)
+                    break
+            else:
+                raise ValueError(f'No matching device to fit {base_file}')
+
+    def _make_init(self, mem_init: dict[str, str]) -> list[str]:
+        """Build the initialization argument list from the memory device map."""
+        args = []
+        for dev_name, real_file in mem_init.items():
+            real_dev = self._device_aliases.get(dev_name, dev_name)
+            args.append(f'--meminit={real_dev},{real_file}')
+        return args
+
+    def _get_app_name(self, *args) -> Optional[str]:
+        """Try to find which application is tested from the list of initialized
+           devices.
+        """
+        for apps in args:
+            if not isinstance(apps, list):
+                apps = [apps]
+            for app in reversed(apps):
+                if app:
+                    return app
+        return None
 
     def _parse_verilator_info(self, line: str) -> None:
         """Parse initial verilator output which contains communication port

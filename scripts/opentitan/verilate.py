@@ -35,12 +35,12 @@ def main():
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         files = argparser.add_argument_group(title='Files')
-        files.add_argument('flash', nargs=1, type=FileType('rb'),
+        files.add_argument('flash', nargs='?', type=FileType('rb'),
                            metavar='ELF|VMEM', help='flash file')
         files.add_argument('-V', '--verilator',
                            help='Verilator executable')
         files.add_argument('-R', '--rom', type=FileType('rt'),
-                           metavar='VMEM', required=True,
+                           metavar='VMEM',
                            help='ROM file')
         files.add_argument('-O', '--otp', type=FileType('rt'),
                            metavar='VMEM',
@@ -54,6 +54,8 @@ def main():
         veri = argparser.add_argument_group(title='Verilator')
         veri.add_argument('-C', '--cycles', type=int,
                           help='exit after the specified cycles')
+        veri.add_argument('-I', '--show-init', action='store_true',
+                          help='show initializable devices')
         veri.add_argument('-k', '--timeout', metavar='SECONDS', type=float,
                           help=f'exit after the specified seconds '
                                f'(default: {DEFAULT_TIMEOUT} secs)')
@@ -78,15 +80,6 @@ def main():
         log = configure_loggers(args.verbose, 'vtor', -1, 'elf',
                                 name_width=12, ms=args.log_time)[0]
 
-        # let ArgumentParser validate the paths
-        flash = realpath(args.flash[0].name)
-        otp = realpath(args.otp.name) if args.otp else None
-        rom = realpath(args.rom.name)
-        args.flash[0].close()
-        args.rom.close()
-        if args.otp:
-            args.otp.close()
-
         if args.tmp_dir and not isdir(args.tmp_dir):
             argparser.error('Invalid directory for temporary files')
 
@@ -107,6 +100,25 @@ def main():
 
         vfm = VtorFileManager(args.keep_tmp, args.tmp_dir)
         vtor = VtorExecuter(vfm, verilator, args.profile, debug)
+
+        if args.show_init:
+            vtor.show_init_devices()
+            sysexit(0)
+
+        if not args.flash:
+            argparser.error('ELF or VMEM file is required')
+        if not args.rom:
+            argparser.error('ROM is required')
+
+        # let ArgumentParser validate the paths
+        flash = realpath(args.flash[0].name)
+        otp = realpath(args.otp.name) if args.otp else None
+        rom = realpath(args.rom.name)
+        args.flash[0].close()
+        args.rom.close()
+        if args.otp:
+            args.otp.close()
+
         if args.execution_log:
             if not isdir(realpath(dirname(args.execution_log))):
                 argparser.error('Invalid directory for execution log file')
