@@ -1330,8 +1330,9 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
                 ot_spi_device_flash_init_payload(s);
             } else {
                 /*
-                 * Any payload sent with a non-uploaded SW command is ignored. The
-                 * behaviour of this error case is not well specified for the hardware.
+                 * Any payload sent with a non-uploaded SW command is ignored.
+                 * The behaviour of this error case is not well specified for
+                 * the hardware.
                  */
                 FLASH_CHANGE_STATE(s, DONE);
             }
@@ -1345,7 +1346,8 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
         } else {
             /*
              * Any payload sent with a non-uploaded SW command is ignored. The
-             * behaviour of this error case is not well specified for the hardware.
+             * behaviour of this error case is not well specified for the
+             * hardware.
              */
             FLASH_CHANGE_STATE(s, DONE);
         }
