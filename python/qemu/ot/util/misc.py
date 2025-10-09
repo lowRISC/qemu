@@ -241,7 +241,11 @@ def retrieve_git_version(path: str, max_tag_dist: int = 100) \
         gitdir = joinpath(cfgdir, '.git')
         if exists(gitdir):  # either a dir or a file for worktree
             break
-        cfgdir = dirname(cfgdir)
+        pardir = dirname(cfgdir)
+        if pardir == cfgdir:
+            # reach top of tree hierarchy without any detected .git directory
+            return None
+        cfgdir = pardir
     else:
         return None
     assert cfgdir is not None
@@ -258,7 +262,7 @@ def retrieve_git_version(path: str, max_tag_dist: int = 100) \
             return '-'.join(filter(None, (gmo.group('tag'), dirty)))
         if distance <= max_tag_dist:
             return descstr
-        return  '-'.join(filter(None, (gmo.group('commit'), dirty)))
+        return '-'.join(filter(None, (gmo.group('commit'), dirty)))
     except (OSError, ValueError):
         pass
     try:
