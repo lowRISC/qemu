@@ -21,9 +21,9 @@ sys.path.append(QEMU_PYPATH)
 # pylint: disable=wrong-import-order
 # pylint: disable=import-error
 
-from ot.util.arg import ArgumentParser, FileType  # noqa: E402
-from ot.util.log import configure_loggers # noqa: E402
-from ot.verilator import DEFAULT_TIMEOUT # noqa: E402
+from ot.util.arg import ArgumentParser  # noqa: E402
+from ot.util.log import configure_loggers  # noqa: E402
+from ot.verilator import DEFAULT_TIMEOUT  # noqa: E402
 from ot.verilator.filemgr import VtorFileManager  # noqa: E402
 from ot.verilator.executer import VtorExecuter  # noqa: E402
 
@@ -35,15 +35,20 @@ def main():
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         files = argparser.add_argument_group(title='Files')
-        files.add_argument('flash', nargs='?', type=FileType('rb'),
-                           metavar='ELF|VMEM', help='flash file')
+        files.add_argument('app', nargs='*', metavar='ELF',
+                           help='application file, may be repeated')
         files.add_argument('-V', '--verilator',
                            help='Verilator executable')
-        files.add_argument('-R', '--rom', type=FileType('rt'),
-                           metavar='VMEM',
-                           help='ROM file')
-        files.add_argument('-O', '--otp', type=FileType('rt'),
-                           metavar='VMEM',
+        files.add_argument('-R', '--rom', metavar='FILE', action='append',
+                           default=[],
+                           help='ROM file, may be repeated')
+        files.add_argument('-M', '--ram', metavar='FILE', action='append',
+                           default=[],
+                           help='RAM file, may be repeated')
+        files.add_argument('-F', '--flash', metavar='FILE', action='append',
+                           default=[],
+                           help='eFlash file, may be repeated')
+        files.add_argument('-O', '--otp', metavar='VMEM',
                            help='OTP file')
         files.add_argument('-K', '--keep-tmp', action='store_true',
                            help='do not automatically remove temporary files '
@@ -51,6 +56,9 @@ def main():
         files.add_argument('-D', '--tmp-dir',
                            help='store the temporary files in the specified '
                                 'directory')
+        files.add_argument('-c', '--config', metavar='CFG',
+                           help='input QEMU OT config file '
+                                '(required w/ non scrambled ROM images)')
         veri = argparser.add_argument_group(title='Verilator')
         veri.add_argument('-C', '--cycles', type=int,
                           help='exit after the specified cycles')
@@ -77,7 +85,7 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        log = configure_loggers(args.verbose, 'vtor', -1, 'elf',
+        log = configure_loggers(args.verbose, 'vtor', -1, 'elf', -1, 'romimg',
                                 name_width=12, ms=args.log_time)[0]
 
         if args.tmp_dir and not isdir(args.tmp_dir):
@@ -105,19 +113,18 @@ def main():
             vtor.show_init_devices()
             sysexit(0)
 
-        if not args.flash:
-            argparser.error('ELF or VMEM file is required')
-        if not args.rom:
-            argparser.error('ROM is required')
+        if args.config:
+            vtor.secret_file = args.config
 
-        # let ArgumentParser validate the paths
-        flash = realpath(args.flash[0].name)
-        otp = realpath(args.otp.name) if args.otp else None
-        rom = realpath(args.rom.name)
-        args.flash[0].close()
-        args.rom.close()
-        if args.otp:
-            args.otp.close()
+        filenames = list(args.rom)  # need a copy of the list
+        filenames.append(args.otp)
+        filenames.extend(args.ram)
+        filenames.extend(args.flash)
+        if args.app:
+            filenames.extend(args.app)
+        for filename in filenames:
+            if filename and not isfile(filename):
+                argparser.error(f'No such file: {filename}')
 
         if args.execution_log:
             if not isdir(realpath(dirname(args.execution_log))):
@@ -125,8 +132,8 @@ def main():
             vtor.save_execution_log_file(args.execution_log)
         if args.link_log:
             vtor.link_log_file(args.link_log)
-        ret = vtor.verilate(rom, flash, otp, args.wave, timeout=args.timeout,
-                            cycles=args.cycles)
+        ret = vtor.verilate(args.rom, args.ram, args.flash, args.app, args.otp,
+                            args.wave, timeout=args.timeout, cycles=args.cycles)
 
         sysexit(ret)
     # pylint: disable-msg=broad-except

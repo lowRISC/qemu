@@ -6,7 +6,7 @@
 from collections import deque
 from fcntl import fcntl, F_GETFL, F_SETFL
 from io import BufferedRandom, TextIOWrapper
-from os import O_NONBLOCK, getcwd, rename, symlink, unlink
+from os import O_NONBLOCK, close, getcwd, rename, symlink, unlink
 from os.path import (basename, exists, isfile, islink, join as joinpath,
                      normpath, realpath, splitext)
 from select import POLLIN, POLLERR, POLLHUP, poll as sel_poll
@@ -22,9 +22,11 @@ from typing import NamedTuple, Optional, Union
 import logging
 import re
 
+from ot.rom.image import ROMImage
+from ot.util.elf import ElfBlob
 from ot.util.file import guess_file_type, make_vmem_from_elf
 from ot.util.log import ColorLogFormatter
-from ot.util.misc import HexInt
+from ot.util.misc import HexInt, split_map_join
 
 from . import DEFAULT_TIMEOUT
 from .filemgr import VtorFileManager
@@ -81,12 +83,16 @@ class VtorExecuter:
         self._resume = False
         self._threads: list[Thread] = []
         self._devices: dict[str, VtorMemRange[int, int]] = {}
+        self._secret_file: Optional[str] = None
+        self._device_aliases: dict[str, str] = {}
 
     @classmethod
     def _simplifly_cli(cls, args: list[str]) -> str:
         """Shorten the Verilator command line."""
-        arggen = (','.join((basename(path) for path in arg.split(','))) for arg in args)
-        return ' '.join(arggen)
+        return ' '.join(split_map_join(',', arg,
+                                       lambda part: split_map_join('=', part,
+                                                                   basename))
+                        for arg in args)
 
     def link_log_file(self, logpath: str) -> None:
         """Request to create a link to the live log file."""
@@ -105,10 +111,61 @@ class VtorExecuter:
             print(f'{name:{width}s} 0x{mrg.address:08x} '
                   f'{mrg.size // 1024:5d} KiB')
 
-    def verilate(self, rom: str, flash: str, otp: Optional[str],
-                 gen_wave: bool = False, timeout: float = None,
-                 cycles: Optional[int] = None) -> int:
-        """Execute a Verilator simulation."""
+    @property
+    def rom_devices(self) -> list[str]:
+        """Return a list of supported ROM devices."""
+        if not self._devices:
+            self._load_devices()
+        return [d for d in self._devices if d.startswith('rom')]
+
+    @property
+    def flash_devices(self) -> list[str]:
+        """Return a list of supported embedded flash devices."""
+        if not self._devices:
+            self._load_devices()
+        return [d for d in self._devices if d.startswith('flash')]
+
+    @property
+    def ram_devices(self) -> list[str]:
+        """Return a list of supported RAM devices."""
+        if not self._devices:
+            self._load_devices()
+        return [d for d in self._devices if d.startswith('ram')]
+
+    @property
+    def otp_device(self) -> Optional[str]:
+        """Return the name of the OTP device, if any."""
+        if not self._devices:
+            self._load_devices()
+        return 'otp' if 'otp' in self._devices else None
+
+    @property
+    def secret_file(self) -> Optional[str]:
+        """Secret file observer."""
+        return self._secret_file
+
+    @secret_file.setter
+    def secret_file(self, file_path: str) -> None:
+        """Secret file modifier."""
+        if not isinstance(file_path, str) or not isfile(file_path):
+            raise FileNotFoundError(f'No such secret file {file_path}')
+        self._secret_file = file_path
+
+    def verilate(self, rom_files: list[str], ram_files: list[str],
+                 flash_files: list[str], app_files: list[str],
+                 otp: Optional[str], gen_wave: bool = False,
+                 timeout: float = None, cycles: Optional[int] = None) -> int:
+        """Execute a Verilator simulation.
+
+           :param rom_files: optional list of files to load in ROMs
+           :param ram_files: optional list of files to load in RAM
+           :param flash_files: optional list of files to load in eFlash
+           :param app_files: optional list of application ELF files to execute
+           :param otp: optional file to load as OTP image
+           :param gen_wave: whether to generate a wave file
+           :param timeout: optional max execution delay in seconds
+           :paran cycles: optional max execution cycles
+        """
         workdir = self._fm.tmp_dir
         self._log.debug('Work dir: %s', workdir)
         if not timeout:
@@ -118,12 +175,17 @@ class VtorExecuter:
         proc = None
         simulate = False
         log_q: Optional[deque] = None
-        flash_file = self._convert_app_file(flash)
         profile_file = None
+        if not self._devices:
+            self._load_devices()
         try:
             args = [self._verilator]
-            args.append(f'--meminit=rom,{rom}')
-            args.append(f'--meminit=flash0,{flash_file}')
+            mem_init: dict[str, str] = {}
+            self._assign_init(mem_init, 'rom', rom_files)
+            self._assign_init(mem_init, 'flash', flash_files)
+            self._assign_init(mem_init, 'ram', ram_files)
+            self._assign_apps(mem_init, app_files)
+            args.extend(self._make_init(mem_init))
             if self._profile:
                 args.append('--prof-pgo')
                 profile_file = normpath(self._profile)
@@ -131,15 +193,21 @@ class VtorExecuter:
                     self._log.info('Using profile file %s', profile_file)
                     args.append(profile_file)
             if otp:
+                if not self.otp_device:
+                    raise ValueError('Verilator does not support OTP device')
                 args.append(f'--meminit=otp,{otp}')
             if cycles:
                 args.append(f'--term-after-cycles={cycles}')
+            app_name = self._get_app_name(app_files, flash_files, ram_files,
+                                          rom_files)
+            if not app_name:
+                raise RuntimeError('Unable to find an application to run')
             if gen_wave:
-                wave_name = f'{splitext(basename(flash))[0]}.fst'
+                wave_name = f'{splitext(basename(app_name))[0]}.fst'
                 wave_name = realpath(joinpath(getcwd(), wave_name))
                 args.append(f'--trace={wave_name}')
             self._log.debug('Executing Verilator as %s',
-                            self._simplifly_cli(args))
+                self._simplifly_cli(args))
             # pylint: disable=consider-using-with
             proc = Popen(args,
                          bufsize=1, cwd=workdir,
@@ -245,7 +313,9 @@ class VtorExecuter:
                 while log_q:
                     err, qline = log_q.popleft()
                     level = logging.ERROR if err else logging.INFO
-                    self._vlog.log(level, qline)
+                    qline = self._parse_verilator_output(qline, err)
+                    if qline:
+                        self._vlog.log(level, qline)
                 for msg, logger in zip(proc.communicate(timeout=0.1),
                                        (self._vlog.info, self._vlog.error)):
                     # should have been captured by the logger threads
@@ -353,7 +423,7 @@ class VtorExecuter:
             # find the destination device based on the extracted meta info
             for dev_name, mrg in self._devices.items():
                 dev_end = mrg.address + mrg.size
-                if mrg.address <= app_addr < mrg.size:
+                if mrg.address <= app_addr < dev_end:
                     real_name = self._device_aliases.get(dev_name, dev_name)
                     if app_end > dev_end:
                         raise ValueError(f'{base_file} cannot fit in '
@@ -555,19 +625,42 @@ class VtorExecuter:
             return
         copyfile(self._xlog_path, self._dest_log_path)
 
-    def _convert_app_file(self, filepath: str) -> str:
-        kind = guess_file_type(filepath)
-        if kind == 'vmem':
+    def _convert_rom_file(self, file_kind: str, file_path: str, size: int,
+                          rom_idx: int) -> str:
+        if file_kind in ('hex', 'svmem'):
             # no conversion required
-            return filepath
-        if kind == 'elf':
-            prefix = f'{splitext(basename(filepath))[0]}.'
+            return file_path
+        # need to create a scrambled version of the file for the ROM
+        if not self._secret_file:
+            raise RuntimeError('Cannot create a scrambled ROM image w/o '
+                               'ROM secrets')
+        rom = ROMImage()
+        with open(self._secret_file, 'rt') as cfp:
+            rom.load_config(cfp, rom_idx)
+        with open(file_path, 'rb') as rfp:
+            rom.load(rfp, size)
+        prefix = f'{splitext(basename(file_path))[0]}.'
+        hex_no, hex_path = mkstemp(suffix='.39.vmem', prefix=prefix,
+                                   dir=self._fm.tmp_dir, text=True)
+        close(hex_no)
+        with open(hex_path, 'wb') as hfp:
+            rom.save(hfp, 'svmem')
+        self._log.debug('ROM#%d: using temp scrambled as ROM file %s, %d bytes',
+                         rom_idx, basename(hex_path), size)
+        return hex_path
+
+    def _convert_app_file(self, file_kind: str, file_path: str) -> str:
+        if file_kind == 'vmem':
+            # no conversion required
+            return file_path
+        if file_kind == 'elf':
+            prefix = f'{splitext(basename(file_path))[0]}.'
             vmem_no, vmem_path = mkstemp(suffix='.vmem', prefix=prefix,
                                          dir=self._fm.tmp_dir, text=True)
             with open(vmem_no, 'wt') as vfp:
-                make_vmem_from_elf(filepath, vfp, offset=self.VMEM_OFFSET,
+                make_vmem_from_elf(file_path, vfp, offset=self.VMEM_OFFSET,
                                    chunksize=8, offsetsize=8)
             self._log.debug('Using temp application file %s',
                             basename(vmem_path))
             return vmem_path
-        raise RuntimeError(f'Unsupported application file type: {kind}')
+        raise RuntimeError(f'Unsupported application file type: {file_kind}')
