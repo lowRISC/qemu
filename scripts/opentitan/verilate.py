@@ -60,6 +60,9 @@ def main():
                            help='input QEMU OT config file '
                                 '(required w/ non scrambled ROM images)')
         veri = argparser.add_argument_group(title='Verilator')
+        veri.add_argument('-a', '--artifact-name', metavar='PREFIX',
+                          help='set an alternative artifact name '
+                               '(default is derived from the application name)')
         veri.add_argument('-C', '--cycles', type=int,
                           help='exit after the specified cycles')
         veri.add_argument('-I', '--show-init', action='store_true',
@@ -67,13 +70,13 @@ def main():
         veri.add_argument('-k', '--timeout', metavar='SECONDS', type=float,
                           help=f'exit after the specified seconds '
                                f'(default: {DEFAULT_TIMEOUT} secs)')
-        veri.add_argument('-l', '--link-log', metavar='LINK',
-                          help='create a symbolic link to the log file')
+        veri.add_argument('-l', '--link-exec-log', action='store_true',
+                          help='create a symlink to the execution log file')
         veri.add_argument('-P', '--profile', metavar='FILE',
                           help='enable/manage profile file')
-        veri.add_argument('-w', '--wave', action='store_true',
+        veri.add_argument('-w', '--wave-gen', action='store_true',
                           help='generate output wave file')
-        veri.add_argument('-x', '--execution-log', metavar='FILE',
+        veri.add_argument('-x', '--save-exec-log', action='store_true',
                           help='save execution log')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
@@ -126,14 +129,14 @@ def main():
             if filename and not isfile(filename):
                 argparser.error(f'No such file: {filename}')
 
-        if args.execution_log:
-            if not isdir(realpath(dirname(args.execution_log))):
+        if args.artifact_name:
+            if not isdir(realpath(dirname(args.artifact_name))):
                 argparser.error('Invalid directory for execution log file')
-            vtor.save_execution_log_file(args.execution_log)
-        if args.link_log:
-            vtor.link_log_file(args.link_log)
+            vtor.artifact_name = args.artifact_name
+        vtor.enable_exec_log(args.save_exec_log, args.link_exec_log)
+        vtor.generate_wave(args.wave_gen)
         ret = vtor.verilate(args.rom, args.ram, args.flash, args.app, args.otp,
-                            args.wave, timeout=args.timeout, cycles=args.cycles)
+                            timeout=args.timeout, cycles=args.cycles)
 
         sysexit(ret)
     # pylint: disable-msg=broad-except

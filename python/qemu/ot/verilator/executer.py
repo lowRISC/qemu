@@ -80,15 +80,15 @@ class VtorExecuter:
         self._debug = debug
         self._verilator = verilator
         self._fm = vfm
+        self._artifact_name: Optional[str] = None
+        self._save_xlog = False
+        self._link_xlog = False
+        self._gen_wave = False
         # parsed communication ports from Verilator
         self._ports: dict[str, Union[int, str]] = {}
         # where Verilator stores the execution log file
         self._xlog_path: Optional[str] = None
-        # where to copy the execution log file, if requested
-        self._dest_log_path: Optional[str] = None
-        # where to create a symbolic list to the execution log file
-        self._link_log_path: Optional[str] = None
-        self._vcps: dict[int, VeriVcpDescriptor] = {}
+        self._vcps: dict[int, VtorVcpDescriptor] = {}
         self._poller = sel_poll()
         self._resume = False
         self._threads: list[Thread] = []
@@ -104,13 +104,14 @@ class VtorExecuter:
                                                                    basename))
                         for arg in args)
 
-    def link_log_file(self, logpath: str) -> None:
-        """Request to create a link to the live log file."""
-        self._link_log_path = logpath
+    def enable_exec_log(self, save_log: bool, link_log: bool = False) -> None:
+        """Configure management of the execution log file."""
+        self._save_xlog = save_log
+        self._link_xlog = link_log
 
-    def save_execution_log_file(self, logpath: str) -> None:
-        """Request to store the execution log file."""
-        self._dest_log_path = logpath
+    def generate_wave(self, enable: bool) -> None:
+        """Enable generation of an FST wave file."""
+        self._gen_wave = enable
 
     def show_init_devices(self):
         """Show initializable devices"""
@@ -120,6 +121,16 @@ class VtorExecuter:
         for name, mrg in self._devices.items():
             print(f'{name:{width}s} 0x{mrg.address:08x} '
                   f'{mrg.size // 1024:5d} KiB')
+
+    @property
+    def artifact_name(self) -> Optional[str]:
+        """Return the selected name for artifacts, if any."""
+        return self._artifact_name
+
+    @artifact_name.setter
+    def artifact_name(self, basepath: str):
+        """Set the base path for all artifact files."""
+        self._artifact_name = basepath
 
     @property
     def rom_devices(self) -> list[str]:
@@ -163,8 +174,8 @@ class VtorExecuter:
 
     def verilate(self, rom_files: list[str], ram_files: list[str],
                  flash_files: list[str], app_files: list[str],
-                 otp: Optional[str], gen_wave: bool = False,
-                 timeout: float = None, cycles: Optional[int] = None) -> int:
+                 otp: Optional[str], timeout: float = None,
+                 cycles: Optional[int] = None) -> int:
         """Execute a Verilator simulation.
 
            :param rom_files: optional list of files to load in ROMs
@@ -172,7 +183,6 @@ class VtorExecuter:
            :param flash_files: optional list of files to load in eFlash
            :param app_files: optional list of application ELF files to execute
            :param otp: optional file to load as OTP image
-           :param gen_wave: whether to generate a wave file
            :param timeout: optional max execution delay in seconds
            :paran cycles: optional max execution cycles
         """
@@ -196,6 +206,13 @@ class VtorExecuter:
             self._assign_init(mem_init, 'ram', ram_files)
             self._assign_apps(mem_init, app_files)
             args.extend(self._make_init(mem_init))
+            app_name = self._get_app_name(app_files, flash_files, ram_files,
+                                          rom_files)
+            if not app_name:
+                raise RuntimeError('Unable to find an application to run')
+            if not self._artifact_name:
+                basepath = splitext(basename(app_name))[0]
+                self._artifact_name = realpath(joinpath(getcwd(), basepath))
             if self._profile:
                 args.append('--prof-pgo')
                 profile_file = normpath(self._profile)
@@ -208,16 +225,11 @@ class VtorExecuter:
                 args.append(f'--meminit=otp,{otp}')
             if cycles:
                 args.append(f'--term-after-cycles={cycles}')
-            app_name = self._get_app_name(app_files, flash_files, ram_files,
-                                          rom_files)
-            if not app_name:
-                raise RuntimeError('Unable to find an application to run')
-            if gen_wave:
-                wave_name = f'{splitext(basename(app_name))[0]}.fst'
-                wave_name = realpath(joinpath(getcwd(), wave_name))
+            if self._gen_wave:
+                wave_name = f'{self._artifact_name}.fst'
                 args.append(f'--trace={wave_name}')
             self._log.debug('Executing Verilator as %s',
-                self._simplifly_cli(args))
+                            self._simplifly_cli(args))
             # pylint: disable=consider-using-with
             proc = Popen(args,
                          bufsize=1, cwd=workdir,
@@ -512,14 +524,17 @@ class VtorExecuter:
                 self._xlog_path = realpath(joinpath(self._fm.tmp_dir,
                                                     line[pos+len(trace_msg):]))
                 self._log.info('Execution log: %s', self._xlog_path)
-                if self._link_log_path:
-                    tmpslnk = f'{self._link_log_path}.tmp'
+                if self._link_xlog:
+                    assert self._artifact_name is not None
+                    log_path = f'{self._artifact_name}.log'
+                    tmpslnk = f'{log_path}.tmp'
                     if islink(tmpslnk):
                         unlink(tmpslnk)
                     elif exists(tmpslnk):
                         raise FileExistsError(f'File {tmpslnk} already exists')
+                    self._log.debug('Symlinking execution log as %s', log_path)
                     symlink(self._xlog_path, tmpslnk)
-                    rename(tmpslnk, self._link_log_path)
+                    rename(tmpslnk, log_path)
                 return ''
         return line
 
@@ -541,7 +556,7 @@ class VtorExecuter:
             connected = []
             for vcpid, ptyname in connect_map.items():
                 try:
-                    # pylint: disable=pylint: consider-using-with
+                    # pylint: disable=consider-using-with
                     vcp = open(ptyname, 'rb+', buffering=0)
                     flags = fcntl(vcp, F_GETFL)
                     fcntl(vcp, F_SETFL, flags | O_NONBLOCK)
@@ -617,17 +632,20 @@ class VtorExecuter:
             clr_fmt.add_logger_colors(f'{logbase}.{logname}', color)
 
     def _discard_exec_log(self) -> None:
-        if not self._dest_log_path or not isfile(self._dest_log_path):
+        if not self._artifact_name:
+            return
+        log_path = f'{self._artifact_name}.log'
+        if log_path or not isfile(log_path):
             return
         try:
-            unlink(self._dest_log_path)
+            unlink(log_path)
             self._log.debug('Old execution log file discarded')
         except OSError as exc:
             self._log.error('Cannot remove previous execution log file: %s',
                             exc)
 
     def _save_exec_log(self) -> None:
-        if not self._dest_log_path:
+        if not self._save_xlog:
             return
         if not self._xlog_path:
             self._log.error('No execution log file found')
@@ -635,7 +653,13 @@ class VtorExecuter:
         if not isfile(self._xlog_path):
             self._log.error('Missing execution log file')
             return
-        copyfile(self._xlog_path, self._dest_log_path)
+        assert self._artifact_name is not None
+        log_path = f'{self._artifact_name}.log'
+        # discard existing log_path if it has been created as a symlink
+        if self._link_xlog and islink(log_path):
+            unlink(log_path)
+        self._log.debug('Saving execution log as %s', log_path)
+        copyfile(self._xlog_path, log_path)
 
     def _convert_rom_file(self, file_kind: str, file_path: str, size: int,
                           rom_idx: int) -> str:
