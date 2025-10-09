@@ -32,7 +32,17 @@ from . import DEFAULT_TIMEOUT
 from .filemgr import VtorFileManager
 
 
-VeriVcpDescriptor = tuple[str, BufferedRandom, bytearray, logging.Logger]
+class VtorVcpDescriptor(NamedTuple):
+    """ Virtual communication port."""
+
+    vcpid: str
+    """VCP identifier."""
+    pty: BufferedRandom
+    """Attached pseudo terminal."""
+    buffer: bytearray
+    """Data buffer."""
+    logger: logging.Logger
+    """Associated logger."""
 
 
 class VtorMemRange(NamedTuple):
@@ -541,7 +551,9 @@ class VtorExecuter:
                     vcplognames.append(vcpid)
                     vcp_fno = vcp.fileno()
                     assert vcp_fno not in self._vcps
-                    self._vcps[vcp_fno] = (vcpid, vcp, bytearray(), vcp_log)
+                    self._vcps[vcp_fno] = VtorVcpDescriptor(vcpid, vcp,
+                                                            bytearray(),
+                                                            vcp_log)
                     self._log.debug('VCP %s connected to pty %s',
                                     vcpid, ptyname)
                     self._poller.register(vcp, POLLIN | POLLERR | POLLHUP)
