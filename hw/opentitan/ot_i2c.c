@@ -355,6 +355,9 @@ struct OtI2CState {
     /* Target mode first address mask */
     uint8_t address_mask_0;
 
+    /* Address that was matched to us */
+    uint8_t matched_address;
+
     uint32_t pclk; /* Current input clock */
     const char *clock_src_name; /* IRQ name once connected */
 
@@ -371,6 +374,11 @@ struct OtI2CClass {
 struct OtI2CTarget {
     I2CSlave i2c;
 };
+
+static uint8_t ot_i2c_address_abyte(uint8_t address, bool read)
+{
+    return (address << 1u) | (read ? 1u : 0);
+}
 
 static void ot_i2c_update_irqs(OtI2CState *s)
 {
@@ -1166,13 +1174,18 @@ static int ot_i2c_target_event(I2CSlave *target, enum i2c_event event)
 
     switch (event) {
     case I2C_START_SEND_ASYNC:
-        /* Set the first byte to the target address + RW bit as 0. */
-        ot_i2c_target_set_acqdata(s, target->address << 1u, SIGNAL_START);
+        /* Set the first byte to the matched target address + RW bit as 0. */
+        ot_i2c_target_set_acqdata(s,
+                                  ot_i2c_address_abyte(s->matched_address,
+                                                       false),
+                                  SIGNAL_START);
         i2c_ack(s->bus);
         break;
     case I2C_START_RECV:
-        /* Set the first byte to the target address + RW bit as 1. */
-        ot_i2c_target_set_acqdata(s, target->address << 1u | 1u, SIGNAL_START);
+        ot_i2c_target_set_acqdata(s,
+                                  ot_i2c_address_abyte(s->matched_address,
+                                                       true),
+                                  SIGNAL_START);
         if (ot_fifo32_num_used(&s->target_rx_fifo) > 1) {
             /*
              * Potentially an unhandled condition in the ACQ fifo. Datasheet
@@ -1251,6 +1264,12 @@ static bool ot_i2c_target_match_and_add(I2CSlave *candidate, uint8_t address,
     /* Check address, subject to address masking. */
     if (broadcast || (s->address_mask_0 &&
                       (address & s->address_mask_0) == candidate->address)) {
+        /*
+         * Store the address that successfully matched to
+         * use the correct address for start condition
+         */
+        s->matched_address = address;
+
         I2CNode *node = g_new0(struct I2CNode, 1u);
         node->elt = candidate;
         QLIST_INSERT_HEAD(current_devs, node, next);
@@ -1333,6 +1352,7 @@ static void ot_i2c_reset_enter(Object *obj, ResetType type)
 
     s->check_timings = true;
     s->address_mask_0 = 0x0u;
+    s->matched_address = 0x0u;
 }
 
 static void ot_i2c_realize(DeviceState *dev, Error **errp)
