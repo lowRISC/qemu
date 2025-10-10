@@ -7,8 +7,8 @@ from collections import deque
 from fcntl import fcntl, F_GETFL, F_SETFL
 from io import BufferedRandom, TextIOWrapper
 from os import O_NONBLOCK, close, getcwd, rename, symlink, unlink
-from os.path import (basename, exists, isfile, islink, join as joinpath,
-                     normpath, realpath, splitext)
+from os.path import (abspath, basename, exists, isfile, islink,
+                     join as joinpath, realpath, splitext)
 from select import POLLIN, POLLERR, POLLHUP, poll as sel_poll
 from shutil import copyfile
 from subprocess import Popen, PIPE, TimeoutExpired
@@ -99,6 +99,7 @@ class VtorExecuter:
     @classmethod
     def _simplifly_cli(cls, args: list[str]) -> str:
         """Shorten the Verilator command line."""
+        return ' '.join(args)
         return ' '.join(split_map_join(',', arg,
                                        lambda part: split_map_join('=', part,
                                                                    basename))
@@ -130,7 +131,8 @@ class VtorExecuter:
     @artifact_name.setter
     def artifact_name(self, basepath: str):
         """Set the base path for all artifact files."""
-        self._artifact_name = basepath
+        # store the absolute path, as Verilator runs from a temporary directory
+        self._artifact_name = abspath(basepath)
 
     @property
     def rom_devices(self) -> list[str]:
@@ -215,13 +217,16 @@ class VtorExecuter:
                 self._artifact_name = realpath(joinpath(getcwd(), basepath))
             if self._profile:
                 args.append('--prof-pgo')
-                profile_file = normpath(self._profile)
+                profile_file = abspath(self._profile)
                 if isfile(profile_file):
                     self._log.info('Using profile file %s', profile_file)
                     args.append(profile_file)
             if otp:
                 if not self.otp_device:
                     raise ValueError('Verilator does not support OTP device')
+                otp = abspath(otp)
+                if not isfile(otp):
+                    raise ValueError(f'No such OTP file: {otp}')
                 args.append(f'--meminit=otp,{otp}')
             if cycles:
                 args.append(f'--term-after-cycles={cycles}')
@@ -688,7 +693,7 @@ class VtorExecuter:
     def _convert_app_file(self, file_kind: str, file_path: str) -> str:
         if file_kind == 'vmem':
             # no conversion required
-            return file_path
+            return abspath(file_path)
         if file_kind == 'elf':
             prefix = f'{splitext(basename(file_path))[0]}.'
             vmem_no, vmem_path = mkstemp(suffix='.vmem', prefix=prefix,
