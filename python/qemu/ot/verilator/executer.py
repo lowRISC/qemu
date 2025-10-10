@@ -66,6 +66,9 @@ class VtorExecuter:
     DV_CRE = re.compile(r'^(\d+):\s\(../.*?\)\s(.*)$')
     """DV macro messages."""
 
+    VTOR_CRE = re.compile(r'^%(Error|Warning|Info|Debug):(.*)$')
+    """Verilator log messages."""
+
     DEADLOCK = 125
     """Default error code when Verilator is stuck."""
 
@@ -96,10 +99,11 @@ class VtorExecuter:
         self._secret_file: Optional[str] = None
         self._device_aliases: dict[str, str] = {}
 
-    @classmethod
-    def _simplifly_cli(cls, args: list[str]) -> str:
+    def _simplifly_cli(self, args: list[str]) -> str:
         """Shorten the Verilator command line."""
-        return ' '.join(args)
+        if self._debug:
+            # do not simplify the argument line if debug mode is enabled
+            return ' '.join(args)
         return ' '.join(split_map_join(',', arg,
                                        lambda part: split_map_join('=', part,
                                                                    basename))
@@ -266,7 +270,14 @@ class VtorExecuter:
             while now() < abstimeout:
                 while log_q:
                     err, qline = log_q.popleft()
-                    level = logging.ERROR if err else logging.INFO
+                    if err:
+                        level = logging.ERROR
+                    else:
+                        # for some reason, Verilator outputs log messages to
+                        # stdout, not stderr
+                        if self._parse_verilator_log(qline):
+                            continue
+                        level = logging.INFO
                     if not err and not simulate:
                         if qline.startswith('Simulation running, '):
                             simulate = True
@@ -513,6 +524,22 @@ class VtorExecuter:
             parts = line.split('.')[0].split(' ')
             self._ports[parts[-1]] = parts[-3]
             return
+
+    def _parse_verilator_log(self, line: str) -> bool:
+        """Parse verilator log mesage.
+
+           If the log message is emitted from Verilator engine, route the
+           message with the matching level to the logger and return True to
+           indicate the message has been handled. Return False otherwise so that
+           the message is handled with the next log message handler.
+        """
+        lmo = self.VTOR_CRE.search(line)
+        if lmo:
+            vlevel = lmo.group(1).upper()
+            level = getattr(logging, vlevel)
+            self._vlog.log(level, lmo.group(2).strip())
+            return True
+        return False
 
     def _parse_verilator_output(self, line: str, err: bool) -> str:
         if err:
