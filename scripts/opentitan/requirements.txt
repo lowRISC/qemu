@@ -1,5 +1,5 @@
 # Python requirements
-pylint>=3.3.3
+pylint>=3.3.3, <4.0
 pyyaml>=6
 hjson>=3.1
 pyelftools>=0.30
