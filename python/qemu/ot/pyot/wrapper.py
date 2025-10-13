@@ -22,7 +22,7 @@ import re
 import sys
 
 from ot.util.log import ColorLogFormatter
-from ot.util.misc import EasyDict
+from ot.util.misc import EasyDict, split_map_join
 
 from .util import ExecTime, LogMessageClassifier
 
@@ -137,7 +137,8 @@ class Wrapper:
                                           app_exec=host_app_exec)
         try:
             workdir = dirname(tdef.command[0])
-            log.debug('Executing %s as %s', self.NAME, ' '.join(tdef.command))
+            tdef_cli = self._simplify_cli(tdef.command)
+            log.debug('Executing %s as %s', self.NAME, tdef_cli)
             env = dict(environ)
             if tdef.asan:
                 # note cannot use a FileManager temp file here, as the full
@@ -385,6 +386,16 @@ class Wrapper:
             line.find(' DEBUG ') >= 0):  # noqa
             return logging.DEBUG
         return default
+
+    def _simplify_cli(self, args: list[str]) -> str:
+        """Shorten the test execution command line."""
+        if self._debug:
+            # do not simplify the argument line if debug mode is enabled
+            return ' '.join(args)
+        return ' '.join(split_map_join(',', arg,
+                                       lambda part: split_map_join('=', part,
+                                                                   basename))
+                        for arg in args)
 
     def _colorize_vcp_log(self, vcplogname: str, lognames: list[str]) -> None:
         vlog = logging.getLogger(vcplogname)
