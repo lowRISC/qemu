@@ -71,10 +71,10 @@
 
 /* clang-format off */
 REG32(ALERT_TEST, 0x0u)
-    FIELD(ALERT_TEST, FATAL_SW, 0u, 1u)
-    FIELD(ALERT_TEST, RECOV_SW, 1u, 1u)
-    FIELD(ALERT_TEST, FATAL_HW, 2u, 1u)
-    FIELD(ALERT_TEST, RECOV_HW, 3u, 1u)
+    SHARED_FIELD(ALERT_FATAL_SW, 0u, 1u)
+    SHARED_FIELD(ALERT_RECOV_SW, 1u, 1u)
+    SHARED_FIELD(ALERT_FATAL_HW, 2u, 1u)
+    SHARED_FIELD(ALERT_RECOV_HW, 3u, 1u)
 REG32(SW_RECOV_ERR, 0x4u)
     FIELD(SW_RECOV_ERR, VAL, 0u, 4u)
 REG32(SW_FATAL_ERR, 0x8u)
@@ -93,9 +93,9 @@ SHARED_FIELD(DV_SIM_STATUS_CODE, 0u, 16u)
 SHARED_FIELD(DV_SIM_STATUS_INFO, 16u, 16u)
 /* clang-format on */
 
-#define ALERT_TEST_MASK \
-    (R_ALERT_TEST_FATAL_SW_MASK | R_ALERT_TEST_RECOV_SW_MASK | \
-     R_ALERT_TEST_FATAL_HW_MASK | R_ALERT_TEST_RECOV_HW_MASK)
+#define ALERT_MASK \
+    (ALERT_FATAL_SW_MASK | ALERT_RECOV_SW_MASK | ALERT_FATAL_HW_MASK | \
+     ALERT_RECOV_HW_MASK)
 
 #define ERR_STATUS_MASK \
     (ERR_STATUS_REG_INTG_MASK | ERR_STATUS_FATAL_INTG_MASK | \
@@ -289,7 +289,7 @@ static void ot_ibex_wrapper_update_alerts(OtIbexWrapperState *s)
     uint32_t level = s->regs.alert_test;
 
     if (s->regs.sw_fatal_err != OT_MULTIBITBOOL4_FALSE) {
-        level |= R_SW_FATAL_ERR_VAL_MASK;
+        level |= ALERT_FATAL_SW_MASK;
     }
 
     for (unsigned ix = 0; ix < NUM_ALERTS; ix++) {
@@ -1339,7 +1339,7 @@ static void ot_ibex_wrapper_fill_tables(OtIbexWrapperState *s)
     s->access_table[R32_DYN_POS(s, dv_sim_win[DV_SIM_LOG])].write =
         &ot_ibex_wrapper_write_dv_sim_log;
 
-    s->access_table[R32_DYN_POS(s, alert_test)].mask = ALERT_TEST_MASK;
+    s->access_table[R32_DYN_POS(s, alert_test)].mask = ALERT_MASK;
     s->access_table[R32_DYN_POS(s, sw_recov_err)].mask =
         R_SW_RECOV_ERR_VAL_MASK;
     /* this register is extended in QEMU, HW mask is applied in HW handler */
