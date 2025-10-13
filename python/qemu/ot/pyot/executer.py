@@ -215,7 +215,7 @@ class Executer:
                         err = exec_info.context.first_error
                     if not tret:
                         context = 'post'
-                    exec_info.context.execute(context, 'post')
+                    exec_info.context.execute(context, tret)
                 # pylint: disable=broad-except
                 except Exception as exc:
                     self._log.critical('%s', str(exc))
@@ -470,7 +470,7 @@ class Executer:
         kwargs = dict(self._args.__dict__)
         test_cfg = tests_cfg.get(test_name, {})
         if test_cfg is None:
-            # does not default to an empty dict to differenciate empty from
+            # does not default to an empty dict to differentiate empty from
             # inexistent test configuration
             self._log.debug('No configuration for test %s', test_name)
             opts = None
