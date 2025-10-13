@@ -389,4 +389,9 @@ typedef struct RomGap {
  */
 RomGap rom_find_largest_gap_between(hwaddr base, size_t size);
 
+/**
+ * rom_load: Load all registered ROMs
+ */
+void rom_load(void);
+
 #endif

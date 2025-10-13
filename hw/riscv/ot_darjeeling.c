@@ -29,6 +29,7 @@
 #include "hw/intc/sifive_plic.h"
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
+#include "hw/loader.h"
 #include "hw/misc/pulp_rv_dm.h"
 #include "hw/misc/unimp.h"
 #include "hw/opentitan/ot_address_space.h"
@@ -1694,6 +1695,8 @@ static void ot_dj_soc_reset_exit(Object *obj, ResetType type)
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj, type);
     }
+
+    rom_load();
 
     /* Kick off ROM checks and boot */
     object_property_set_bool(OBJECT(s->devices[OT_DJ_SOC_DEV_ROM_CTRL0]),
