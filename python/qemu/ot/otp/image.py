@@ -54,9 +54,6 @@ class OtpImage:
          0x2d, 0x2e, 0x2f, 0x31, 0x32, 0x33, 0x34, 0x35)
     )
 
-    DEFAULT_OTP_DEVICE = 'ot-otp-dj'
-    """Default OTP device name in configuration file."""
-
     def __init__(self, ecc_bits: Optional[int] = None):
         self._log = getLogger('otp.img')
         self._header: dict[str, Any] = {}
@@ -237,24 +234,34 @@ class OtpImage:
         """Load Present constant from a QEMU configuration file.
 
            :param cfp: the configuration stream
-           :param section: the section name where to find the constants,
-                           default to DEFAULT_OTP_DEVICE.
+           :param section: the section name where to find the constants.
+                           if not set, try to discover the OTP section name
         """
         cfg = ConfigParser()
         cfg.read_file(cfp)
+        prefix = 'ot_device '
+        ot_sections = [s for s in cfg.sections() if s.startswith(prefix)]
+        devnames = [s.removeprefix(prefix).strip('"') for s in ot_sections]
         if not section:
-            section = self.DEFAULT_OTP_DEVICE
+            otpnames = {d.split('.')[0] for d in devnames
+                        if d.startswith('ot-otp')}
+            if len(otpnames) != 1:
+                # section should be explicitly defined in this case
+                # this internal error may be raised if either:
+                # - the configuration file does not contain an OTP section
+                # - the OTP section name does not match the expected format
+                # - several OTP-like sections could match, but there is no way
+                #   to discriminate which one is valid/usable
+                raise ValueError('Unable to discover the name of OTP device')
+            section = otpnames.pop()
+            self._log.debug('Detected OTP section prefix: %s', section)
+        elif not cfg.has_section(section):
+            raise ValueError(f"No OTP device '{section}'")
         sectnames = set()
-        for sectname in cfg.sections():
-            if not sectname.startswith('ot_device '):
-                continue
-            try:
-                devname = sectname.strip().split('"')[1]
-            except IndexError:
-                continue
+        for devname in devnames:
             if devname != section and not devname.startswith(f'{section}.'):
                 continue
-            sectnames.add(sectname)
+            sectnames.add(f'{prefix}"{devname}"')
             self._log.info('Found OTP candidate section %s', devname)
         if not sectnames:
             raise ValueError(f"Cannot find OTP device section '{section}'")
