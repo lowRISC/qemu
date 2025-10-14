@@ -192,10 +192,10 @@ class Executer:
                         'UTFILE': basename(test),
                     })
                     self._log.info('[TEST %s] (%d/%d)', test_name, tpos, tcount)
+                    context = 'pre'
                     exec_info = self._build_test_command(test)
                     exec_info.test_name = test_name
                     vcplogfile = self._log_vcp_streams(exec_info)
-                    context = 'pre'
                     exec_info.context.execute(context)
                     context = 'with'
                     tret, xtime, err = qot.run(exec_info)
