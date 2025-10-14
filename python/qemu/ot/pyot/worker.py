@@ -63,11 +63,11 @@ class ContextWorker:
         return normpath(self._cmd.split(' ', 1)[0])
 
     @property
-    def first_error(self):
+    def first_error(self) -> str:
         """Return the message of the first error, if any."""
         return self._first_error
 
-    def _run(self):
+    def _run(self) -> None:
         self._resume = True
         if self._sync and not self._sync.is_set():
             self._log.info('Waiting for sync')

@@ -257,7 +257,7 @@ class Executer:
             self._log.info('%s count: %d',
                            self.RESULT_MAP.get(kind, kind),
                            results[kind])
-        # sort by the largest occurence, discarding success
+        # sort by the largest occurrence, discarding success
         errors = sorted((x for x in results.items() if x[0] > 0),
                         key=lambda x: -x[1])
         # overall return code is the most common error, or success otherwise
@@ -307,7 +307,7 @@ class Executer:
 
     def _build_command(self, args: Namespace,
                        opts: Optional[list[str]] = None) -> EasyDict[str, Any]:
-        raise NotImplementedError('Abstact command')
+        raise NotImplementedError('Abstract command')
 
     def _build_test_command(self, filename: str) -> EasyDict[str, Any]:
         test_name = self.get_test_radix(filename)

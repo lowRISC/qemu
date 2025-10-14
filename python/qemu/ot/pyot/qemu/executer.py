@@ -103,7 +103,7 @@ class QEMUExecuter(Executer):
             else:
                 if xtype != 'elf':
                     raise ValueError(f'No support for test type: '
-                                     f'{xtype.upper()}')
+                                     f'{xtype.upper()} for {exec_path}')
                 if rom_exec:
                     # generate ROM option(s) for the application itself
                     for chip in range(chiplet_count):
