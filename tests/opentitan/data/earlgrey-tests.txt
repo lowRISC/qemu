@@ -86,8 +86,8 @@ pass: //sw/device/tests:alert_handler_lpg_reset_toggle_test_sim_qemu_rom_with_fa
 pass: //sw/device/tests:alert_handler_lpg_reset_toggle_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:alert_handler_ping_ok_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:alert_handler_ping_ok_test_sim_qemu_sival_rom_ext
-pass: //sw/device/tests:aon_timer_irq_test_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests:aon_timer_irq_test_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests:aon_timer_irq_test_sim_qemu_rom_with_fake_keys # Test checks IRQ timing which may be slightly inaccurate on QEMU, and so rarely fails
+flaky: //sw/device/tests:aon_timer_irq_test_sim_qemu_sival_rom_ext # Test checks IRQ timing which may be slightly inaccurate on QEMU, and so rarely fails
 flaky: //sw/device/tests/autogen:alert_test_sim_qemu_rom_with_fake_keys  # Fails rarely when running in parallel on CI runners, likely due to timing issues.
 flaky: //sw/device/tests/autogen:alert_test_sim_qemu_sival_rom_ext  # Fails rarely when running in parallel on CI runners, likely due to timing issues.
 pass: //sw/device/tests:clkmgr_jitter_frequency_test_sim_qemu_rom_with_fake_keys
@@ -106,10 +106,10 @@ pass: //sw/device/tests:clkmgr_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:clkmgr_smoketest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:crt_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:crt_test_sim_qemu_sival_rom_ext
-pass: //sw/device/tests/crypto:aes_functest_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests/crypto:aes_functest_sim_qemu_sival_rom_ext
-pass: //sw/device/tests/crypto:aes_gcm_functest_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests/crypto:aes_gcm_functest_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests/crypto:aes_functest_sim_qemu_rom_with_fake_keys  # Test fails sometimes due to incorrect encrypted data when it didn't before, need to root cause
+flaky: //sw/device/tests/crypto:aes_functest_sim_qemu_sival_rom_ext  # Test fails sometimes due to incorrect encrypted data when it didn't before, need to root cause
+flaky: //sw/device/tests/crypto:aes_gcm_functest_sim_qemu_rom_with_fake_keys  # Test fails ~1% of the time due to an illegal instruction exception, need to root cause
+flaky: //sw/device/tests/crypto:aes_gcm_functest_sim_qemu_sival_rom_ext  # Test fails ~1% of the time due to an illegal instruction exception, need to root cause
 flaky: //sw/device/tests/crypto:aes_gcm_timing_test_sim_qemu_rom_with_fake_keys  # Passes < 5% of the time. This test checks for constant time crypto operations.
 flaky: //sw/device/tests/crypto:aes_gcm_timing_test_sim_qemu_sival_rom_ext  # Passes < 5% of the time. This test checks for constant time crypto operations.
 pass: //sw/device/tests/crypto:aes_kwp_functest_sim_qemu_rom_with_fake_keys
@@ -120,8 +120,8 @@ pass: //sw/device/tests/crypto:aes_kwp_sideload_functest_sim_qemu_rom_with_fake_
 pass: //sw/device/tests/crypto:aes_kwp_sideload_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:aes_sideload_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:aes_sideload_functest_sim_qemu_sival_rom_ext
-pass: //sw/device/tests/crypto:drbg_functest_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests/crypto:drbg_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:drbg_functest_sim_qemu_rom_with_fake_keys  # Rarely fails entropy randomness check due to lack of key masking
+pass: //sw/device/tests/crypto:drbg_functest_sim_qemu_sival_rom_ext  # Rarely fails entropy randomness check due to lack of key masking
 pass: //sw/device/tests/crypto:ecdh_p256_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdh_p256_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdh_p256_sideload_functest_sim_qemu_rom_with_fake_keys
@@ -182,8 +182,8 @@ pass: //sw/device/tests/crypto:sha384_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:sha384_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:sha512_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:sha512_functest_sim_qemu_sival_rom_ext
-pass: //sw/device/tests/crypto:symmetric_keygen_functest_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests/crypto:symmetric_keygen_functest_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests/crypto:symmetric_keygen_functest_sim_qemu_rom_with_fake_keys  # Rarely fails entropy randomness check due to lack of key masking
+flaky: //sw/device/tests/crypto:symmetric_keygen_functest_sim_qemu_sival_rom_ext  # Rarely fails entropy randomness check due to lack of key masking
 pass: //sw/device/tests:csrng_kat_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:csrng_kat_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:csrng_smoketest_sim_qemu_rom_with_fake_keys
