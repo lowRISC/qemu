@@ -3125,7 +3125,7 @@ static uint64_t ot_flash_mem_read(void *opaque, hwaddr addr, unsigned size)
                 RV_GPR_PC | RV_GPR_T0 | RV_GPR_T1 | RV_GPR_T2 | RV_GPR_A0 |
                 RV_GPR_A1 | RV_GPR_A2);
 #endif /* LOG_GPR_ON_FLASH_DATA_ACCESS */
-        trace_ot_flash_mem_read_out((uint32_t)addr, size, val32, pc);
+        trace_ot_flash_mem_read_out(s->ot_id, (uint32_t)addr, size, val32, pc);
     } else {
         uint32_t pc = ibex_get_current_pc();
         qemu_log_mask(LOG_GUEST_ERROR,
