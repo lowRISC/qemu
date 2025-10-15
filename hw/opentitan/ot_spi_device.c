@@ -228,8 +228,6 @@ REG32(TPM_CMD_ADDR, 0x30u)
     FIELD(TPM_CMD_ADDR, ADDR, 0u, 24u)
     FIELD(TPM_CMD_ADDR, CMD, 24u, 8u)
 REG32(TPM_READ_FIFO, 0x34u)
-REG32(TPM_WRITE_FIFO, 0x38u)
-    FIELD(TPM_WRITE_FIFO, VALUE, 0u, 8u)
 /* clang-format on */
 
 #define SPI_BUS_PROTO_VER   0
@@ -252,7 +250,8 @@ REG32(TPM_WRITE_FIFO, 0x38u)
  */
 #define SPI_BUS_FLASH_READ_DELAY_NS 100000000u
 
-/* Memory layout extracted from the documentation:
+/*
+ * Memory layout extracted from the documentation:
  * opentitan.org/book/hw/ip/spi_device/doc/programmers_guide.html#dual-port-sram-layout
  *
  *          New scheme (Egress + Ingress)      Old Scheme (DPSRAM)
@@ -343,6 +342,11 @@ typedef enum {
 #define SPI_DEVICE_CMD_SW_LAST  (SPI_DEVICE_CMD_HW_CFG_FIRST - 1u)
 #define SPI_DEVICE_CMD_SW_COUNT \
     (SPI_DEVICE_CMD_SW_LAST - SPI_DEVICE_CMD_SW_FIRST + 1u)
+#define TPM_OPCODE_READ_BIT  7u
+#define TPM_OPCODE_SIZE_MASK 0x3Fu
+#define TPM_ADDR_HEADER      0xD4u
+#define TPM_READY            0x01u
+
 
 static_assert((SPI_DEVICE_CMD_HW_STA_COUNT + SPI_DEVICE_CMD_SW_COUNT +
                SPI_DEVICE_CMD_HW_CFG_COUNT) == 28u,
@@ -372,6 +376,7 @@ typedef enum {
 typedef enum {
     SPI_BUS_IDLE,
     SPI_BUS_FLASH,
+    SPI_BUS_TPM,
     SPI_BUS_DISCARD,
     SPI_BUS_ERROR,
 } OtSpiBusState;
@@ -395,6 +400,17 @@ typedef enum {
     SPI_FLASH_ERROR, /* On error */
 } OtSpiFlashState;
 
+typedef enum {
+    SPI_TPM_IDLE, /* Wait for the fist byte of the header.*/
+    SPI_TPM_ADDR, /* Wait for the following 3 bytes of the header.*/
+    SPI_TPM_WAIT, /* Not ready for the host to read.*/
+    SPI_TPM_START_BYTE, /* Now ready for the host to read.*/
+    SPI_TPM_READ, /* The host requested a read handled by Software.*/
+    SPI_TPM_READ_HW_REG, /* Host requested a read handled by Hardware.*/
+    SPI_TPM_WRITE, /* Host is writing.*/
+    SPI_TPM_END, /* Finished the spi transaction.*/
+} OtSpiTpmState;
+
 typedef struct {
     OtSpiFlashState state;
     OtSpiFlashCommand type;
@@ -414,6 +430,21 @@ typedef struct {
     bool watermark; /* Read watermark hit, used as flip-flop */
     bool new_cmd; /* New command has been pushed in current SPI transaction */
 } SpiDeviceFlash;
+
+typedef struct {
+    OtSpiTpmState state;
+    uint8_t *write_buffer;
+    uint32_t opcode;
+    unsigned write_pos;
+    unsigned len;
+    Fifo8 rdfifo;
+    unsigned can_receive;
+    unsigned transfer_size;
+    unsigned reg;
+    unsigned locality;
+    bool read;
+    bool should_sw_handle;
+} SpiDeviceTpm;
 
 typedef struct {
     uint32_t *buf;
@@ -445,6 +476,7 @@ struct OtSPIDeviceState {
 
     SpiDeviceBus bus;
     SpiDeviceFlash flash;
+    SpiDeviceTpm tpm;
 
     uint32_t *spi_regs; /* Registers */
     uint32_t *tpm_regs; /* Registers */
@@ -471,7 +503,7 @@ struct OtSPIDeviceClass {
          SPI_REG_NAMES[_reg_] : \
          "?")
 
-#define R_TPM_LAST_REG (R_TPM_WRITE_FIFO)
+#define R_TPM_LAST_REG (R_TPM_READ_FIFO)
 #define TPM_REGS_COUNT (R_TPM_LAST_REG + 1u)
 #define TPM_REGS_SIZE  (TPM_REGS_COUNT * sizeof(uint32_t))
 #define TPM_REG_NAME(_reg_) \
@@ -558,7 +590,6 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
     REG_NAME_ENTRY(TPM_RID),
     REG_NAME_ENTRY(TPM_CMD_ADDR),
     REG_NAME_ENTRY(TPM_READ_FIFO),
-    REG_NAME_ENTRY(TPM_WRITE_FIFO),
 };
 /* clang-format on */
 #undef REG_NAME_ENTRY
@@ -607,6 +638,7 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
 static const char *BUS_STATE_NAMES[] = {
     STATE_NAME_ENTRY(SPI_BUS_IDLE),
     STATE_NAME_ENTRY(SPI_BUS_FLASH),
+    STATE_NAME_ENTRY(SPI_BUS_TPM),
     STATE_NAME_ENTRY(SPI_BUS_DISCARD),
     STATE_NAME_ENTRY(SPI_BUS_ERROR),
 };
@@ -720,6 +752,17 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     f->payload = &((uint8_t *)s->sram)[SPI_SRAM_PAYLOAD_OFFSET];
     memset(f->buffer, 0u, SPI_FLASH_BUFFER_SIZE);
 
+    SpiDeviceTpm *tpm = &s->tpm;
+    tpm->state = SPI_TPM_IDLE;
+    tpm->can_receive = 1u;
+    tpm->transfer_size = 0u;
+    tpm->read = false;
+    tpm->reg = 0u;
+    tpm->opcode = 0u;
+    tpm->locality = 0u;
+    tpm->write_buffer = &((uint8_t *)s->sram)[SPI_SRAM_TPM_WRITE_OFFSET];
+    fifo8_reset(&tpm->rdfifo);
+
     memset(s->sram, 0u, SRAM_SIZE);
 }
 
@@ -753,6 +796,31 @@ static void ot_spi_device_update_alerts(OtSPIDeviceState *s)
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
+}
+
+static bool ot_spi_device_is_tpm_enabled(const OtSPIDeviceState *s)
+{
+    return (bool)FIELD_EX32(s->spi_regs[R_TPM_CFG], TPM_CFG, EN);
+}
+
+/*
+ * if the SW set this field to 1, the HW logic always pushes the command/addr
+ * and write data to buffers. The logic does not compare the incoming address to
+ * the list of managed-by-HW register addresses.
+ */
+static bool ot_spi_device_is_tpm_mode_crb(const OtSPIDeviceState *s)
+{
+    return (bool)FIELD_EX32(s->spi_regs[R_TPM_CFG], TPM_CFG, TPM_MODE);
+}
+
+/*
+ * If 0, TPM submodule directly returns the return-by-HW registers for the read
+ * requests. If 1, TPM submodule uploads the TPM command regardless of the
+ * address, and the SW may return the value through the read FIFO.
+ */
+static bool ot_spi_device_tpm_disable_hw_regs(const OtSPIDeviceState *s)
+{
+    return (bool)FIELD_EX32(s->spi_regs[R_TPM_CFG], TPM_CFG, HW_REG_DIS);
 }
 
 static OtSpiDeviceMode ot_spi_device_get_mode(const OtSPIDeviceState *s)
@@ -807,7 +875,7 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
     trace_ot_spi_device_release(s->ot_id);
 
     BUS_CHANGE_STATE(s, IDLE);
-    bus->byte_count = 0;
+    bus->byte_count = 0u;
 
     bool update_irq = false;
     switch (ot_spi_device_get_mode(s)) {
@@ -1594,8 +1662,12 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         val32 &= INTR_MASK & ~(INTR_TPM_HEADER_NOT_EMPTY_MASK);
         s->spi_regs[reg] &= ~val32; /* RW1C */
         ot_spi_device_update_irqs(s);
-        if (!ot_spi_device_flash_is_readbuf_irq(s)) {
-            /* no need to trigger the timer if readbuf IRQs have been cleared */
+        if (!ot_spi_device_is_tpm_enabled(s) &&
+            !ot_spi_device_flash_is_readbuf_irq(s)) {
+            /*
+             * no need to trigger the timer if in tpm mode or readbuf IRQs have
+             * been cleared.
+             */
             trace_ot_spi_device_flash_pace(s->ot_id, "clear",
                                            timer_pending(s->flash.irq_timer));
             timer_del(s->flash.irq_timer);
@@ -1739,9 +1811,16 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
     hwaddr reg = R32_OFF(addr);
 
     switch (reg) {
-    case R_TPM_CAP:
-    case R_TPM_CFG:
+    case R_TPM_CMD_ADDR:
+        s->tpm_regs[R_TPM_STATUS] &= ~R_TPM_STATUS_CMDADDR_NOTEMPTY_MASK;
+        s->spi_regs[R_INTR_STATE] &= ~INTR_TPM_HEADER_NOT_EMPTY_MASK;
+        ot_spi_device_update_irqs(s);
+        /* fall through*/
     case R_TPM_STATUS:
+    case R_TPM_CFG:
+        val32 = s->tpm_regs[reg];
+        break;
+    case R_TPM_CAP:
     case R_TPM_ACCESS_0:
     case R_TPM_ACCESS_1:
     case R_TPM_STS:
@@ -1751,8 +1830,6 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_TPM_INT_STATUS:
     case R_TPM_DID_VID:
     case R_TPM_RID:
-    case R_TPM_CMD_ADDR:
-    case R_TPM_WRITE_FIFO:
         qemu_log_mask(LOG_UNIMP, "%s: %s: not supported\n", __func__,
                       TPM_REG_NAME(reg));
         val32 = s->tpm_regs[reg];
@@ -1761,14 +1838,15 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, SPI_REG_NAME(reg));
-        val32 = 0;
+        val32 = 0u;
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
                       __func__, addr);
-        val32 = 0;
+        val32 = 0u;
         break;
     }
+
 
     uint32_t pc = ibex_get_current_pc();
     trace_ot_spi_device_io_tpm_read_out(s->ot_id, (uint32_t)addr,
@@ -1801,15 +1879,21 @@ static void ot_spi_device_tpm_regs_write(void *opaque, hwaddr addr,
     case R_TPM_INT_STATUS:
     case R_TPM_DID_VID:
     case R_TPM_RID:
-    case R_TPM_READ_FIFO:
-        qemu_log_mask(LOG_UNIMP, "%s: %s: not supported\n", __func__,
-                      TPM_REG_NAME(reg));
         s->tpm_regs[reg] = val32;
         break;
-    case R_TPM_CAP:
     case R_TPM_STATUS:
+        val32 &= R_TPM_STATUS_WRFIFO_PENDING_MASK;
+        s->tpm_regs[reg] &=
+            val32 | ~R_TPM_STATUS_WRFIFO_PENDING_MASK; /* RW0C */
+        break;
+    case R_TPM_READ_FIFO:
+        fifo8_push(&s->tpm.rdfifo, (uint8_t)(val32 >> 0) & 0xffu);
+        fifo8_push(&s->tpm.rdfifo, (uint8_t)(val32 >> 8u) & 0xffu);
+        fifo8_push(&s->tpm.rdfifo, (uint8_t)(val32 >> 16u) & 0xffu);
+        fifo8_push(&s->tpm.rdfifo, (uint8_t)(val32 >> 24u) & 0xffu);
+        break;
+    case R_TPM_CAP:
     case R_TPM_CMD_ADDR:
-    case R_TPM_WRITE_FIFO:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
                       addr, TPM_REG_NAME(reg));
@@ -1828,7 +1912,7 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
     (void)attrs;
     uint32_t val32;
 
-    hwaddr last = (hwaddr)((uint32_t)addr + size - 1u);
+    hwaddr last = addr + (hwaddr)(size - 1u);
 
     if (addr < SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -1883,7 +1967,7 @@ static MemTxResult ot_spi_device_buf_write_with_attrs(
     uint32_t pc = ibex_get_current_pc();
     trace_ot_spi_device_buf_write_in(s->ot_id, (uint32_t)addr, size, val32, pc);
 
-    hwaddr last = (hwaddr)((uint32_t)addr + size - 1u);
+    hwaddr last = addr + (hwaddr)(size - 1u);
 
     if (last >= SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -1896,11 +1980,17 @@ static MemTxResult ot_spi_device_buf_write_with_attrs(
     return MEMTX_OK;
 }
 
+static void ot_spi_device_tpm_init_buffers(OtSPIDeviceState *s)
+{
+    s->tpm.write_pos = 0u;
+    s->tpm.len = SPI_SRAM_TPM_WRITE_SIZE;
+}
+
 static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 {
     SpiDeviceBus *bus = &s->bus;
 
-    uint32_t size = 0;
+    uint32_t size = 0u;
     const uint8_t *hdr =
         fifo8_pop_bufptr(&bus->chr_fifo, SPI_BUS_HEADER_SIZE, &size);
 
@@ -1935,6 +2025,13 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
     if (!bus->byte_count) {
         /* no payload, stay in IDLE (handle_header is only called from IDLE) */
+        return;
+    }
+
+    /* @todo: Check that the tpm chip-select was assigned.*/
+    if (ot_spi_device_is_tpm_enabled(s)) {
+        ot_spi_device_tpm_init_buffers(s);
+        BUS_CHANGE_STATE(s, TPM);
         return;
     }
 
@@ -1990,11 +2087,158 @@ static void ot_spi_device_chr_recv_flash(OtSPIDeviceState *s,
     }
 }
 
+static bool ot_spi_device_tpm_is_hw_register(uint32_t addr)
+{
+    static const uint32_t TPM_HW_ADDR[] = {
+        0x000u, /* 000     Access_x*/
+        0x008u, /* 00B:008 Interrupt Enable*/
+        0x00Cu, /* 00C     Interrupt Vector*/
+        0x010u, /* 013:010 Interrupt Status*/
+        0x014u, /* 017:014 Interface Capability*/
+        0x018u, /* 01B:018 Status_x*/
+        0x028u, /* 028     Hash Start*/
+        0xF00u, /* F03:F00 DID_VID*/
+        0xF04u /* F04:F04 RID*/
+    };
+    for (uint32_t idx = 0u; idx < ARRAY_SIZE(TPM_HW_ADDR); idx++) {
+        if (TPM_HW_ADDR[idx] == (addr & ~0x3)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void ot_spi_device_tpm_idle_state(OtSPIDeviceState *s,
+                                         const uint8_t *buf, unsigned size)
+{
+    g_assert(size == 1u);
+    SpiDeviceTpm *tpm = &s->tpm;
+    fifo8_reset(&tpm->rdfifo);
+    tpm->opcode = buf[0u];
+    tpm->read = tpm->opcode >> TPM_OPCODE_READ_BIT;
+    tpm->transfer_size = (tpm->opcode & TPM_OPCODE_SIZE_MASK) + 1u;
+    tpm->state = SPI_TPM_ADDR;
+    tpm->can_receive = 3u;
+}
+
+static void ot_spi_device_tpm_addr_state(OtSPIDeviceState *s,
+                                         const uint8_t *buf, unsigned size)
+{
+    g_assert(size == 3u);
+    SpiDeviceTpm *tpm = &s->tpm;
+    tpm->reg = buf[1u] << 8u | buf[2u];
+    tpm->locality = tpm->reg >> 12u;
+    s->tpm_regs[R_TPM_CMD_ADDR] =
+        (tpm->opcode << R_TPM_CMD_ADDR_CMD_SHIFT) | tpm->reg;
+
+    /* When read, we immediately signal the software to fill the FIFO */
+    if (tpm->read) {
+        s->tpm_regs[R_TPM_STATUS] |= R_TPM_STATUS_CMDADDR_NOTEMPTY_MASK;
+        s->spi_regs[R_INTR_STATE] |= INTR_TPM_HEADER_NOT_EMPTY_MASK;
+        ot_spi_device_update_irqs(s);
+    }
+
+    tpm->can_receive = 1u;
+    tpm->should_sw_handle =
+        ot_spi_device_is_tpm_mode_crb(s) ||
+        ot_spi_device_tpm_disable_hw_regs(s) || buf[0u] != TPM_ADDR_HEADER ||
+        !ot_spi_device_tpm_is_hw_register(tpm->reg);
+
+    tpm->state = tpm->should_sw_handle ? SPI_TPM_WAIT : SPI_TPM_START_BYTE;
+}
+
+static void ot_spi_device_tpm_write_state(OtSPIDeviceState *s,
+                                          const uint8_t *buf, unsigned size)
+{
+    SpiDeviceTpm *tpm = &s->tpm;
+    memcpy(&tpm->write_buffer[tpm->write_pos], buf, size);
+    tpm->write_pos += size;
+    tpm->state =
+        tpm->write_pos >= tpm->transfer_size ? SPI_TPM_IDLE : tpm->state;
+
+    s->tpm_regs[R_TPM_STATUS] |= R_TPM_STATUS_CMDADDR_NOTEMPTY_MASK;
+    s->spi_regs[R_INTR_STATE] |= INTR_TPM_HEADER_NOT_EMPTY_MASK;
+    ot_spi_device_update_irqs(s);
+}
+
+static void ot_spi_device_tpm_read_state(OtSPIDeviceState *s, unsigned size,
+                                         uint8_t *tx_buf)
+{
+    SpiDeviceTpm *tpm = &s->tpm;
+    g_assert(fifo8_pop_buf(&tpm->rdfifo, tx_buf, size) == size);
+    tpm->state = SPI_TPM_IDLE;
+}
+
+static void ot_spi_device_tpm_wait_state(OtSPIDeviceState *s)
+{
+    SpiDeviceTpm *tpm = &s->tpm;
+    if (!tpm->read || (fifo8_num_used(&tpm->rdfifo) >= tpm->transfer_size)) {
+        tpm->state = SPI_TPM_START_BYTE;
+    }
+}
+
+static void ot_spi_device_tpm_start_byte_state(OtSPIDeviceState *s,
+                                               unsigned size, uint8_t *tx_buf)
+{
+    SpiDeviceTpm *tpm = &s->tpm;
+    tpm->state = SPI_TPM_WRITE;
+    if (tpm->read) {
+        tpm->state = tpm->should_sw_handle ? SPI_TPM_READ : SPI_TPM_READ_HW_REG;
+    }
+    tx_buf[size - 1u] = TPM_READY;
+    tpm->can_receive = tpm->transfer_size;
+}
+
+static void ot_spi_device_tpm_state_machine(OtSPIDeviceState *s,
+                                            const uint8_t *buf, unsigned size)
+{
+    g_assert(size <= SPI_TPM_READ_FIFO_SIZE_BYTES);
+    uint8_t tx_buf[SPI_TPM_READ_FIFO_SIZE_BYTES] = { 0u };
+
+    SpiDeviceTpm *tpm = &s->tpm;
+    switch (tpm->state) {
+    case SPI_TPM_IDLE:
+        ot_spi_device_tpm_idle_state(s, buf, size);
+        break;
+    case SPI_TPM_ADDR:
+        ot_spi_device_tpm_addr_state(s, buf, size);
+        break;
+    case SPI_TPM_WRITE:
+        ot_spi_device_tpm_write_state(s, buf, size);
+        break;
+    case SPI_TPM_READ:
+        ot_spi_device_tpm_read_state(s, size, tx_buf);
+        break;
+    case SPI_TPM_READ_HW_REG:
+        /* @todo: implement hw register.*/
+        tpm->state = SPI_TPM_IDLE;
+        break;
+    case SPI_TPM_WAIT:
+        ot_spi_device_tpm_wait_state(s);
+        break;
+    case SPI_TPM_START_BYTE:
+        ot_spi_device_tpm_start_byte_state(s, size, tx_buf);
+        break;
+    case SPI_TPM_END:
+        /* Wait for the cs de-assertion.*/
+        s->bus.byte_count = 0u;
+        tpm->state = SPI_TPM_IDLE;
+        return;
+    default:
+        break;
+    };
+    if (qemu_chr_fe_backend_connected(&s->chr)) {
+        qemu_chr_fe_write(&s->chr, tx_buf, (int)size);
+    }
+    s->bus.byte_count -= size;
+    tpm->can_receive = tpm->state == SPI_TPM_IDLE ? 1u : tpm->can_receive;
+}
+
 static int ot_spi_device_chr_can_receive(void *opaque)
 {
     OtSPIDeviceState *s = opaque;
     SpiDeviceBus *bus = &s->bus;
-    unsigned length;
+    unsigned length = 0u;
 
     switch (bus->state) {
     case SPI_BUS_IDLE:
@@ -2002,6 +2246,9 @@ static int ot_spi_device_chr_can_receive(void *opaque)
         break;
     case SPI_BUS_FLASH:
         length = timer_pending(s->flash.irq_timer) ? 0 : 1u;
+        break;
+    case SPI_BUS_TPM:
+        length = s->tpm.can_receive;
         break;
     case SPI_BUS_DISCARD:
         length = 1u;
@@ -2037,6 +2284,9 @@ static void ot_spi_device_chr_receive(void *opaque, const uint8_t *buf,
         break;
     case SPI_BUS_FLASH:
         ot_spi_device_chr_recv_flash(s, buf, (unsigned)size);
+        break;
+    case SPI_BUS_TPM:
+        ot_spi_device_tpm_state_machine(s, buf, (unsigned)size);
         break;
     case SPI_BUS_DISCARD:
     case SPI_BUS_ERROR:
@@ -2224,6 +2474,7 @@ static void ot_spi_device_init(Object *obj)
 
     fifo8_create(&bus->chr_fifo, SPI_BUS_HEADER_SIZE);
     fifo8_create(&f->cmd_fifo, SPI_SRAM_CMD_SIZE / sizeof(uint32_t));
+    fifo8_create(&s->tpm.rdfifo, SPI_TPM_READ_FIFO_SIZE_BYTES);
     ot_fifo32_create(&f->address_fifo, SPI_SRAM_ADDR_SIZE / sizeof(uint32_t));
     f->buffer =
         (uint8_t *)g_new0(uint32_t, SPI_FLASH_BUFFER_SIZE / sizeof(uint32_t));

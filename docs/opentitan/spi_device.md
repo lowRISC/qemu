@@ -17,7 +17,9 @@ This mode is not yet supported.
 
 ### TPM
 
-This mode is not supported.
+This mode is partially supported, TPM commands handled by hw are not supported yet. The CharDev 
+protocol doesn't support a distinct chip select for TPM, therefore it is sharing the same CS with
+the other modes. If CS is asserted and TPM is enabled, then it will have priority.
 
 ## Connection with a SPI Host
 
