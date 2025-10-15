@@ -1635,6 +1635,10 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         val32 &= INTERCEPT_EN_MASK;
         s->spi_regs[reg] = val32;
         break;
+    case R_ADDR_MODE:
+        s->spi_regs[reg] &= ~R_ADDR_MODE_ADDR_4B_EN_MASK;
+        s->spi_regs[reg] |= val32 & R_ADDR_MODE_ADDR_4B_EN_MASK; /* RW */
+        break;
     case R_FLASH_STATUS:
         s->spi_regs[reg] &= val32 & FLASH_STATUS_RW0C_MASK; /* RW0C */
         s->spi_regs[reg] &= ~FLASH_STATUS_RW_MASK;
