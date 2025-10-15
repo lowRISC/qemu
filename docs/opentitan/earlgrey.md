@@ -161,6 +161,11 @@ See [`tools.md`](tools.md)
     - `R`: readable
     - `W`: writable
     - `X`: executable
+    - `F`: facade
+
+    The "facade" is a special flag which causes CSR reads and writes for this region not to have any
+    effect on PMP logic, but still appear to have been successfully written to the CSRs. This can be
+    used to change the ePMP regions for debugging or performance regions without Ibex knowing.
 
 * `ignore_elf_entry=true` can be appended to the machine option switch, _i.e._
   `-M ot-earlgrey,ignore_elf_entry=true` to prevent the ELF entry point of a loaded application to

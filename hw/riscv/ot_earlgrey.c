@@ -1495,6 +1495,8 @@ struct OtEGMachineState {
     bool verilator;
     /* ePMP region specification string */
     char *epmp_regions;
+    /* Whether to redirect an PMP region's CSR reads and writes to the facade */
+    bool pmp_region_masked[MAX_RISCV_PMPS];
 };
 
 struct OtEGMachineClass {
@@ -1556,6 +1558,134 @@ static void ot_eg_soc_flash_ctrl_configure(
     }
 }
 
+/* whether to apply a PMP CSR read/write hook */
+static RISCVException pmp_predicate(CPURISCVState *env, int csrno)
+{
+    if (riscv_cpu_cfg(env)->pmp) {
+        if (csrno <= CSR_PMPCFG3) {
+            uint32_t reg_index = csrno - CSR_PMPCFG0;
+
+            /* TODO: RV128 restriction check */
+            if ((reg_index & 1) && (riscv_cpu_mxl(env) == MXL_RV64)) {
+                return RISCV_EXCP_ILLEGAL_INST;
+            }
+        }
+
+        return RISCV_EXCP_NONE;
+    }
+
+    return RISCV_EXCP_ILLEGAL_INST;
+}
+
+/*
+ * Facades for PMP CSRs - reads and writes to masked regions end up here instead
+ * of the effective PMP configuration.
+ */
+static target_ulong reg_pmpcfg_facade[MAX_RISCV_PMPS / 4] = { 0 };
+static target_ulong reg_pmpaddr_facade[MAX_RISCV_PMPS] = { 0 };
+
+static RISCVException
+read_pmpcfg_masked(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    OtEGMachineState *ms = RISCV_OT_EG_MACHINE(qdev_get_machine());
+
+    uint32_t reg_index = csrno - CSR_PMPCFG0;
+
+    /* each PMPCFG CSR covers four PMP regions; mask the affected parts */
+    target_ulong mask = 0;
+    for (unsigned i = 0; i < 4; i++) {
+        if (ms->pmp_region_masked[reg_index * 4 + i]) {
+            mask |= (0xff << (8 * i));
+        }
+    }
+
+    /* only read from the PMP if there are unmasked regions in this CSR */
+    if (mask != -1) {
+        *val = pmpcfg_csr_read(env, reg_index) & ~mask;
+    }
+
+    /* overlay the facade for masked regions */
+    *val |= (reg_pmpcfg_facade[reg_index] & mask);
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException
+write_pmpcfg_masked(CPURISCVState *env, int csrno, target_ulong val)
+{
+    OtEGMachineState *ms = RISCV_OT_EG_MACHINE(qdev_get_machine());
+
+    uint32_t reg_index = csrno - CSR_PMPCFG0;
+
+    /* each PMPCFG CSR covers four PMP regions; mask the affected parts */
+    target_ulong mask = 0;
+    for (unsigned i = 0; i < 4; i++) {
+        if (ms->pmp_region_masked[reg_index * 4 + i]) {
+            mask |= (0xff << (8 * i));
+        }
+    }
+
+    /* only write to the PMP config if there are unmasked regions in this CSR */
+    if (mask != -1) {
+        /* combine the current CSR value from the PMP with the facade */
+        target_ulong csr_val = pmpcfg_csr_read(env, reg_index) & mask;
+        csr_val |= val & ~mask;
+        pmpcfg_csr_write(env, reg_index, csr_val);
+    }
+
+    reg_pmpcfg_facade[reg_index] = val;
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException
+read_pmpaddr_masked(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    OtEGMachineState *ms = RISCV_OT_EG_MACHINE(qdev_get_machine());
+
+    uint32_t reg_index = csrno - CSR_PMPADDR0;
+
+    /* if this region is masked, read from the facade instead of the PMP */
+    if (ms->pmp_region_masked[reg_index]) {
+        *val = reg_pmpaddr_facade[reg_index];
+    } else {
+        *val = pmpaddr_csr_read(env, reg_index);
+    }
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException
+write_pmpaddr_masked(CPURISCVState *env, int csrno, target_ulong val)
+{
+    OtEGMachineState *ms = RISCV_OT_EG_MACHINE(qdev_get_machine());
+
+    uint32_t reg_index = csrno - CSR_PMPADDR0;
+
+    /* if this region is masked, write to the facade instead of the PMP */
+    if (ms->pmp_region_masked[reg_index]) {
+        reg_pmpaddr_facade[reg_index] = val;
+    } else {
+        pmpaddr_csr_write(env, reg_index, val);
+    }
+
+    return RISCV_EXCP_NONE;
+}
+
+static riscv_csr_operations pmpcfg_masked = {
+    .name = "pmpcfg",
+    .predicate = pmp_predicate,
+    .read = read_pmpcfg_masked,
+    .write = write_pmpcfg_masked,
+};
+
+static riscv_csr_operations pmpaddr_masked = {
+    .name = "pmpaddr",
+    .predicate = pmp_predicate,
+    .read = read_pmpaddr_masked,
+    .write = write_pmpaddr_masked,
+};
+
 /*
  * Parse and apply the PMP configuration specification provided as a property.
  *
@@ -1575,10 +1705,22 @@ static void ot_eg_soc_flash_ctrl_configure(
  * - `R`: readable
  * - `W`: writable
  * - `X`: executable
+ * - `F`: facade
+ *
+ * The "facade" flag causes writes to a region's CSRs to have no effect on PMP
+ * logic, but can still be read back as if they were successfully set.
  */
 static void ot_eg_soc_configure_pmp(OtEGMachineState *ms, Error **errp)
 {
     const char *config = ms->epmp_regions;
+
+    /* configure the CSR hooks for all `PMPCFG` and `PMPADDR` CSRs */
+    for (int csr = CSR_PMPCFG0; csr <= CSR_PMPCFG3; csr++) {
+        riscv_set_csr_ops(csr, &pmpcfg_masked);
+    }
+    for (int csr = CSR_PMPADDR0; csr <= CSR_PMPADDR15; csr++) {
+        riscv_set_csr_ops(csr, &pmpaddr_masked);
+    }
 
     /* escape early if config is empty */
     if (config == NULL || *config == '\0') {
@@ -1589,11 +1731,11 @@ static void ot_eg_soc_configure_pmp(OtEGMachineState *ms, Error **errp)
         char idx_str[3] = { 0 };
         char addr_str[9] = { 0 };
         char mode_str[6] = { 0 };
-        char flags[5] = { 0 };
+        char flags[6] = { 0 };
         unsigned len;
 
         /* extract one region configuration from the string */
-        int parsed = sscanf(config, "%2[0-9]:%8[0-9a-f]:%5[^:]:%4[LRWX]%n",
+        int parsed = sscanf(config, "%2[0-9]:%8[0-9a-f]:%5[^:]:%5[LRWXF]%n",
                             idx_str, addr_str, mode_str, flags, &len);
 
         /* only accept when all parts of the configuration were present */
@@ -1627,7 +1769,7 @@ static void ot_eg_soc_configure_pmp(OtEGMachineState *ms, Error **errp)
         }
 
         /* parse the flags */
-        bool l = false, r = false, w = false, x = false;
+        bool l = false, r = false, w = false, x = false, f = false;
         for (unsigned i = 0; flags[i]; i++) {
             switch (flags[i]) {
             case 'L':
@@ -1642,8 +1784,12 @@ static void ot_eg_soc_configure_pmp(OtEGMachineState *ms, Error **errp)
             case 'X':
                 x = true;
                 break;
+            case 'F':
+                f = true;
+                break;
             default:
-                error_setg(errp, "bad flag %c, expected `L`, `R`, `W`, or `X`",
+                error_setg(errp,
+                           "bad flag %c, expected `L`, `R`, `W`, `X`, or `F`",
                            flags[i]);
                 return;
             }
@@ -1658,6 +1804,11 @@ static void ot_eg_soc_configure_pmp(OtEGMachineState *ms, Error **errp)
         (void)pmpaddr;
         ot_eg_pmp_cfgs[pmp_idx] = pmpcfg;
         ot_eg_pmp_addrs[pmp_idx] = pmpaddr;
+
+        /* remember if region is masked against the facade */
+        if (f) {
+            ms->pmp_region_masked[pmp_idx] = true;
+        }
 
         /* determine whether there are more configurations to parse */
         if (config[len] == '#') {
