@@ -25,6 +25,7 @@
  */
 
 #include "qemu/osdep.h"
+#include <string.h>
 #include "qemu/error-report.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
@@ -197,7 +198,7 @@ enum OtEGBoardDevice {
 
 #define OT_EG_IBEX_WRAPPER_NUM_REGIONS 2u
 
-static const uint8_t ot_eg_pmp_cfgs[] = {
+static uint8_t ot_eg_pmp_cfgs[] = {
     /* clang-format off */
     IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
     IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
@@ -218,7 +219,7 @@ static const uint8_t ot_eg_pmp_cfgs[] = {
     /* clang-format on */
 };
 
-static const uint32_t ot_eg_pmp_addrs[] = {
+static uint32_t ot_eg_pmp_addrs[] = {
     /* clang-format off */
     IBEX_PMP_ADDR(0x00000000),
     IBEX_PMP_ADDR(0x00000000),
@@ -1492,6 +1493,8 @@ struct OtEGMachineState {
     bool no_epmp_cfg;
     bool ignore_elf_entry;
     bool verilator;
+    /* ePMP region specification string */
+    char *epmp_regions;
 };
 
 struct OtEGMachineClass {
@@ -1553,6 +1556,126 @@ static void ot_eg_soc_flash_ctrl_configure(
     }
 }
 
+/*
+ * Parse and apply the PMP configuration specification provided as a property.
+ *
+ * The specification string contains one or more region configurations separated
+ * by `#` characters. Each configuration has the following syntax:
+ *
+ * <region index>:<address>:<mode>:<flags>`
+ *
+ * - `<region index>` is the zero-based index of the region to configure.
+ * - `<address>` is the hexadecimal address field for the region.
+ * - `<mode>` is an ePMP region mode: `OFF`, `TOR`, `NA4`, or `NAPOT`.
+ * - `<flags>` is a set of uppercase characters denoting thee region's flags.
+ *
+ * The supported flags are:
+ *
+ * - `L`: locked
+ * - `R`: readable
+ * - `W`: writable
+ * - `X`: executable
+ */
+static void ot_eg_soc_configure_pmp(OtEGMachineState *ms, Error **errp)
+{
+    const char *config = ms->epmp_regions;
+
+    /* escape early if config is empty */
+    if (config == NULL || *config == '\0') {
+        return;
+    }
+
+    while (true) {
+        char idx_str[3] = { 0 };
+        char addr_str[9] = { 0 };
+        char mode_str[6] = { 0 };
+        char flags[5] = { 0 };
+        unsigned len;
+
+        /* extract one region configuration from the string */
+        int parsed = sscanf(config, "%2[0-9]:%8[0-9a-f]:%5[^:]:%4[LRWX]%n",
+                            idx_str, addr_str, mode_str, flags, &len);
+
+        /* only accept when all parts of the configuration were present */
+        if (parsed != 4) {
+            error_setg(errp, "bad epmp format: expected 4 parts, got %d",
+                       parsed);
+            return;
+        }
+
+        /* parse the index */
+        unsigned pmp_idx = strtol(idx_str, NULL, 10);
+
+        /* parse the address as hex */
+        target_ulong addr = strtol(addr_str, NULL, 16);
+
+        /* parse the mode */
+        unsigned mode;
+        if (strncmp(mode_str, "OFF", 3) == 0) {
+            mode = IBEX_PMP_MODE_OFF;
+        } else if (strncmp(mode_str, "TOR", 3) == 0) {
+            mode = IBEX_PMP_MODE_TOR;
+        } else if (strncmp(mode_str, "NA4", 3) == 0) {
+            mode = IBEX_PMP_MODE_NA4;
+        } else if (strncmp(mode_str, "NAPOT", 5) == 0) {
+            mode = IBEX_PMP_MODE_NAPOT;
+        } else {
+            error_setg(errp,
+                       "bad mode %s, expected `OFF`, `TOR`, `NA4`, or `NAPOT`",
+                       mode_str);
+            return;
+        }
+
+        /* parse the flags */
+        bool l = false, r = false, w = false, x = false;
+        for (unsigned i = 0; flags[i]; i++) {
+            switch (flags[i]) {
+            case 'L':
+                l = true;
+                break;
+            case 'R':
+                r = true;
+                break;
+            case 'W':
+                w = true;
+                break;
+            case 'X':
+                x = true;
+                break;
+            default:
+                error_setg(errp, "bad flag %c, expected `L`, `R`, `W`, or `X`",
+                           flags[i]);
+                return;
+            }
+        }
+
+        /* prepare the `PMPCFG` and `PMPADDR` codes */
+        uint8_t pmpcfg = IBEX_PMP_CFG(l, mode, x, w, r);
+        target_ulong pmpaddr = IBEX_PMP_ADDR(addr);
+
+        (void)pmp_idx;
+        (void)pmpcfg;
+        (void)pmpaddr;
+        ot_eg_pmp_cfgs[pmp_idx] = pmpcfg;
+        ot_eg_pmp_addrs[pmp_idx] = pmpaddr;
+
+        /* determine whether there are more configurations to parse */
+        if (config[len] == '#') {
+            config = config + len + 1;
+            continue;
+        }
+
+        if (config[len] == '\0') {
+            break;
+        }
+
+        error_setg(errp,
+                   "bad region format, expected `,` or end of string, got %c",
+                   config[len]);
+        return;
+    }
+}
+
 static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
                                      DeviceState *parent)
 {
@@ -1565,6 +1688,8 @@ static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
         /* skip default PMP config */
         return;
     }
+
+    ot_eg_soc_configure_pmp(ms, &error_fatal);
 
     pmp_cfg = qlist_new();
     for (unsigned ix = 0; ix < ARRAY_SIZE(ot_eg_pmp_cfgs); ix++) {
@@ -2006,6 +2131,29 @@ static void ot_eg_machine_set_verilator(Object *obj, bool value, Error **errp)
     s->verilator = value;
 }
 
+static char *ot_eg_machine_get_epmp_regions(Object *obj, Error **errp)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
+    (void)errp;
+
+    return s->epmp_regions;
+}
+
+static void
+ot_eg_machine_set_epmp_regions(Object *obj, const char *value, Error **errp)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
+    (void)errp;
+
+    if (s->epmp_regions) {
+        free(s->epmp_regions);
+    }
+
+    size_t len = strlen(value) + 1;
+    s->epmp_regions = g_malloc(len);
+    strlcpy(s->epmp_regions, value, len);
+}
+
 static ResettableState *ot_eg_machine_get_reset_state(Object *obj)
 {
     OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
@@ -2047,6 +2195,11 @@ static void ot_eg_machine_instance_init(Object *obj)
     object_property_add_bool(obj, "verilator", &ot_eg_machine_get_verilator,
                              &ot_eg_machine_set_verilator);
     object_property_set_description(obj, "verilator", "Use Verilator clocks");
+    object_property_add_str(obj, "epmp-regions",
+                            &ot_eg_machine_get_epmp_regions,
+                            &ot_eg_machine_set_epmp_regions);
+    object_property_set_description(
+        obj, "epmp-regions", "Set default ePMP memory region configuration");
 }
 
 static void ot_eg_machine_init(MachineState *state)

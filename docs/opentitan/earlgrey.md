@@ -146,6 +146,22 @@ See [`tools.md`](tools.md)
   `-M ot-earlgrey,no_epmp_cfg=true` to disable the initial ePMP configuration, which can be very
   useful to execute arbitrary code on the Ibex core without requiring an OT ROM image to boot up.
 
+* `epmp_regions=<specification>` can be appended to the machine switch, _i.e._
+  `-M ot-earlgrey,epmp_regions=1:00000000:OFF:FL#2:0000bffc:NAPOT:FLRX` to configure the default
+  ePMP regions at startup. The specification string describes one or more regions separated with
+  a '#' character. Each region specification has the following syntax:
+  `<region index>:<address>:<mode>:<flags>` where:
+
+  - `<region index>` is the zero-based index of the region to configure.
+  - `<address>` is the hexadecimal address field for the region.
+  - `<mode>` is one of the following ePMP region modes: `OFF`, `TOR`, `NA4`, or `NAPOT`.
+  - `<flags>` is a set of the following uppercase characters denoting region flags:
+
+    - `L`: locked
+    - `R`: readable
+    - `W`: writable
+    - `X`: executable
+
 * `ignore_elf_entry=true` can be appended to the machine option switch, _i.e._
   `-M ot-earlgrey,ignore_elf_entry=true` to prevent the ELF entry point of a loaded application to
   update the vCPU reset vector at startup. When this option is used, with `-kernel` option for
