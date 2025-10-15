@@ -68,7 +68,17 @@
 #include "sysemu/block-backend.h"
 #include "trace.h"
 
-/* set to use I/O to access the flash partition */
+/*
+ * Set to use I/O to access the flash partition. This will define the flash
+ * memory data partition as a device-mapped MMIO region in the guest's
+ * physical address space. This means that QEMU's TCG will not cache fetches
+ * from XIP flash memory in its TBs, allowing correct execution of (self-)
+ * mutable code in flash.
+ *
+ * Setting this to 0 will instead use a read-only RAM backend emulating a ROM,
+ * which will speed up flash host reads via TB caching but also mean that data
+ * mutation after an initial instruction fetch could lead to invalid execution.
+ */
 #define DATA_PART_USE_IO_OPS 0
 
 /* set to log hart GPR on flash data access */
@@ -3106,12 +3116,21 @@ static uint64_t ot_flash_mem_read(void *opaque, hwaddr addr, unsigned size)
     OtFlashState *s = opaque;
     uint32_t val32;
 
+    /*
+     * for correct XIP flash, execution disablement is abstracted & handled via
+     * the `ot_vmapper` in `ot_flash_update_exec` instead.
+     */
     if (ot_flash_is_disabled(s)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: flash has been disabled\n",
                       __func__, s->ot_id);
         return 0u;
     }
 
+    /*
+     * System hosts can only directly read from the data partition, and do not
+     * have access to any information partitions. They are also not subject
+     * to memory protection, which only applies to the protocol controller.
+     */
     if (addr < s->flash.bank_count * s->flash.data_size) {
         val32 = s->flash.data[addr >> 2u];
         unsigned offset = (unsigned)(addr & 0x3u);
@@ -3125,7 +3144,8 @@ static uint64_t ot_flash_mem_read(void *opaque, hwaddr addr, unsigned size)
                 RV_GPR_PC | RV_GPR_T0 | RV_GPR_T1 | RV_GPR_T2 | RV_GPR_A0 |
                 RV_GPR_A1 | RV_GPR_A2);
 #endif /* LOG_GPR_ON_FLASH_DATA_ACCESS */
-        trace_ot_flash_mem_read_out(s->ot_id, (uint32_t)addr, size, val32, pc);
+        trace_ot_flash_mem_host_read_out(s->ot_id, (uint32_t)addr, size, val32,
+                                         pc);
     } else {
         uint32_t pc = ibex_get_current_pc();
         qemu_log_mask(LOG_GUEST_ERROR,
