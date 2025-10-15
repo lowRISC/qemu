@@ -815,13 +815,6 @@ typedef struct {
 } OtFlashBackendHeader;
 
 typedef struct {
-    uint32_t *data;
-    uint32_t capacity;
-    uint32_t head;
-    uint32_t num;
-} OtFlashFifo;
-
-typedef struct {
     QEMUTimer *timer;
     uint16_t incoming_signal_bm; /* each bit tells if signal needs handling */
     uint16_t incoming_level_bm; /* level (0/1) of the incoming signals */
