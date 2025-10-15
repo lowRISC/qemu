@@ -79,7 +79,7 @@
  * which will speed up flash host reads via TB caching but also mean that data
  * mutation after an initial instruction fetch could lead to invalid execution.
  */
-#define DATA_PART_USE_IO_OPS 0
+#define DATA_PART_USE_IO_OPS 1
 
 /* set to log hart GPR on flash data access */
 #define LOG_GPR_ON_FLASH_DATA_ACCESS 0
