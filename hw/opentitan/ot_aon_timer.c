@@ -172,10 +172,10 @@ static uint64_t ot_aon_timer_get_wkup_count(OtAonTimerState *s, uint64_t now)
 
 static uint32_t ot_aon_timer_get_wdog_count(OtAonTimerState *s, uint64_t now)
 {
-    return s->regs[R_WDOG_COUNT] +
-           (uint32_t)
-               ot_aon_timer_ns_to_ticks(s, 0u,
-                                        (int64_t)(now - s->wdog_origin_ns));
+    int64_t delta = (int64_t)(now - s->wdog_origin_ns);
+    uint64_t ticks = ot_aon_timer_ns_to_ticks(s, 0u, delta);
+
+    return s->regs[R_WDOG_COUNT] + (uint32_t)ticks;
 }
 
 static int64_t ot_aon_timer_compute_next_timeout(OtAonTimerState *s,
@@ -576,6 +576,8 @@ static void ot_aon_timer_reset_enter(Object *obj, ResetType type)
 {
     OtAonTimerClass *c = OT_AON_TIMER_GET_CLASS(obj);
     OtAonTimerState *s = OT_AON_TIMER(obj);
+
+    trace_ot_aon_timer_reset(s->ot_id, "enter");
 
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
