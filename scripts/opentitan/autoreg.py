@@ -156,10 +156,30 @@ class AutoReg:
                 continue
             if 'multireg' in item:
                 item = item['multireg']
+                compact = item.get('compact', True)
                 reg = self._parse_register(address, item)
                 count = safe_eval(item['count'], self._parameters)
-                reg = reg._replace(count=count)
-                regnames.add((f'{reg.name}_{ix}' for ix in range(count)))
+                if compact:
+                    # single register with multiple fields with the same prefix
+                    if len(reg.fields) > 1:
+                        # not sure if the following case may exists, anyway for
+                        # now it is not supported
+                        raise NotImplementedError(f'Too many compact fields for'
+                                                  f' {reg.name}')
+                    field = reg.fields[0]
+                    if count <= self._regwidth:
+                        bitcount = min(count, self._regwidth)
+                        reg = reg._replace(fields=[
+                            field._replace(name=f'{field.name}_{pos}', offset=pos)
+                            for pos in range(bitcount)
+                        ])
+                    else:
+                        reg = reg._replace(fields=[])
+                    count = (count + self._regwidth - 1) // self._regwidth
+                if count > 1:
+                    # multiple registers with the same name prefix
+                    reg = reg._replace(count=count)
+                    regnames.add((f'{reg.name}_{ix}' for ix in range(count)))
                 registers.append(reg)
                 address += addr_inc * count
                 continue
