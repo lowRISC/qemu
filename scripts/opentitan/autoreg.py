@@ -1070,10 +1070,16 @@ class BmTestAutoReg(AutoReg):
                 if flds and (len(flds) > 1 or flds[0].width != self._regwidth):
                     bitfields[reg.name] = reg.fields
         reg = None
+        address = 0
+        rsvcnt = 0
         for reg in self._registers:
+            if reg.address > address:
+                rsvcnt += 1
+                self._generate_reserved_register(address, f'_reserved{rsvcnt}',
+                                                 nibcount, tfp)
             self._generate_register(reg, shared_fields, nibcount, reg.count,
                                     tfp)
-        address = reg.address + (reg.count * self._regwidth) // 8 if reg else 0
+            address = reg.address + (reg.count * self._regwidth) // 8
         print(f'        (0x{address:0{nibcount}x} => @END),', file=tfp)
         print('    }\n}\n', file=tfp)
         print(f'register_bitfields! [u{self._regwidth},', file=tfp)
@@ -1111,7 +1117,10 @@ class BmTestAutoReg(AutoReg):
             print(f'        (0x{reg.address:0{nibcount}x} => '
                   f'{reg.name.lower()}: '
                   f'{regtype}<u{self._regwidth}{regdesc}>),', file=tfp)
-        self._log.warning('Reg: %s', reg)
+
+    def _generate_reserved_register(self, address: int, name: str,
+                                    nibcount: int, tfp: TextIO):
+        print(f'        (0x{address:0{nibcount}x} => {name},', file=tfp)
 
 
 def main():
