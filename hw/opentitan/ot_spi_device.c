@@ -44,14 +44,12 @@
 #include "trace.h"
 
 #define PARAM_SRAM_DEPTH         1024u
-#define PARAM_SRAM_OFFSET        4096u
-#define PARAM_SRAM_EGRESS_DEPTH  832u
-#define PARAM_SRAM_INGRESS_DEPTH 104u
+#define PARAM_SRAM_EGRESS_DEPTH  848u
+#define PARAM_SRAM_INGRESS_DEPTH 112u
 #define PARAM_NUM_CMD_INFO       24u
 #define PARAM_NUM_LOCALITY       5u
-#define PARAM_TPM_WR_FIFO_PTR_W  7u
-#define PARAM_TPM_RD_FIFO_PTR_W  5u
-#define PARAM_TPM_RD_FIFO_WIDTH  32u
+#define PARAM_TPM_RD_FIFO_DEPTH  16u
+#define PARAM_TPM_WR_FIFO_DEPTH  16u
 #define PARAM_NUM_IRQS           8u
 #define PARAM_NUM_ALERTS         1u
 #define PARAM_REG_WIDTH          32u
@@ -236,6 +234,8 @@ REG32(TPM_WRITE_FIFO, 0x38u)
 
 #define SPI_BUS_PROTO_VER   0
 #define SPI_BUS_HEADER_SIZE (2u * sizeof(uint32_t))
+#define SPI_TPM_READ_FIFO_SIZE_BYTES \
+    (PARAM_TPM_RD_FIFO_DEPTH * sizeof(uint32_t))
 /**
  * Delay for handling non-aligned generic data transfer and flush the FIFO.
  * Generic mode is deprecated anyway. Arbitrarily set to 1 ms.
@@ -252,64 +252,67 @@ REG32(TPM_WRITE_FIFO, 0x38u)
  */
 #define SPI_BUS_FLASH_READ_DELAY_NS 100000000u
 
-/*
- *          New scheme (Egress + Ingress)      Old Scheme (DPSRAM)
- *         +-----------------------------+    +-----------------------+
- *         | Flash / Passthru modes      |    | Flash / Passthru modes|
- *  0x000 -+----------------+------+-----+   -+----------------+------+
- *         | Read Command 0 | 1KiB | Out |    | Read Command 0 | 1KiB |
- *  0x400 -+----------------+------+-----+   -+----------------+------+
- *         | Read Command 1 | 1KiB | Out |    | Read Command 1 | 1KiB |
- *  0x800 -+----------------+------+-----+   -+----------------+------+
- *         | Mailbox        | 1KiB | Out |    | Mailbox        | 1KiB |
- *  0xc00 -+----------------+------+-----+   -+----------------+------+
- *         | SFDP           | 256B | Out |    | SFDP           | 256B |
- *  0xd00 -+----------------+------+-----+   -+----------------+------+
- *         |                             |    | Payload FIFO   | 256B |
- *  0xe00 -+----------------+------+-----+   -+----------------+------+
- *         | Payload FIFO   | 256B | In  |    | Command FIFO   |  64B |
- *  0xe40 -+----------------+------+-----+   -+----------------+------+
- *         | Command FIFO   |  64B | In  |    | Address FIFO   |  64B |
- *  0xe80 -+----------------+------+-----+   -+----------------+------+
- *         | Address FIFO   |  64B | In  |
- *  0xe80 -+----------------+------+-----+
+/* Memory layout extracted from the documentation:
+ * opentitan.org/book/hw/ip/spi_device/doc/programmers_guide.html#dual-port-sram-layout
  *
+ *          New scheme (Egress + Ingress)      Old Scheme (DPSRAM)
+ *         +--------------------------------+    +-----------------------+
+ *         | Flash / Passthru modes         |    | Flash / Passthru modes|
+ *  0x000 -+-------------------+------+-----+   -+----------------+------+
+ *         | Read Command 0    | 1KiB | Out |    | Read Command 0 | 1KiB |
+ *  0x400 -+-------------------+------+-----+   -+----------------+------+
+ *         | Read Command 1    | 1KiB | Out |    | Read Command 1 | 1KiB |
+ *  0x800 -+-------------------+------+-----+   -+----------------+------+
+ *         | Mailbox           | 1KiB | Out |    | Mailbox        | 1KiB |
+ *  0xc00 -+-------------------+------+-----+   -+----------------+------+
+ *         | SFDP              | 256B | Out |    | SFDP           | 256B |
+ *  0xd00 -+-------------------+------+-----+   -+----------------+------+
+ *         | TPM Read Buffer   |  64B | Out |    | Payload FIFO   | 256B |
+ *  0xd40 -+-------------------+------+-----+   -+----------------+------+
+ *         |                   |      |     |    | Command FIFO   |  64B |
+ *  0xe00 -+-------------------+------+-----+   -+----------------+------+
+ *         | Payload FIFO      | 256B | In  |    | Address FIFO   |  64B |
+ *  0xf00 -+-------------------+------+-----+   -+----------------+------+
+ *         | Command FIFO      |  64B | In  |
+ *  0xf40 -+-------------------+------+-----+
+ *         | Address FIFO      |  64B | In  |
+ *  0xf80 -+-------------------+------+-----+
+ *         | TPM Write Buffer  |  64B | In  |
+ *  0xfc0 -+-------------------+------+-----+
  *
  */
-#define SPI_SRAM_READ0_OFFSET 0x0
-#define SPI_SRAM_READ_SIZE    0x400u
-#define SPI_SRAM_READ1_OFFSET (SPI_SRAM_READ0_OFFSET + SPI_SRAM_READ_SIZE)
-#define SPI_SRAM_READ1_SIZE   0x400u
-#define SPI_SRAM_MBX_OFFSET   (SPI_SRAM_READ1_OFFSET + SPI_SRAM_READ_SIZE)
-#define SPI_SRAM_MBX_SIZE     0x400u
-#define SPI_SRAM_SFDP_OFFSET  (SPI_SRAM_MBX_OFFSET + SPI_SRAM_MBX_SIZE)
-#define SPI_SRAM_SFDP_SIZE    0x100u
-/* with new scheme (no dual part SRAM, the following offsets are shifted...) */
-#define SPI_SRAM_INGRESS_OFFSET 0x100u
-#define SPI_SRAM_PAYLOAD_OFFSET (SPI_SRAM_SFDP_OFFSET + SPI_SRAM_SFDP_SIZE)
-#define SPI_SRAM_PAYLOAD_SIZE   0x100u
-#define SPI_SRAM_CMD_OFFSET     (SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_PAYLOAD_SIZE)
-#define SPI_SRAM_CMD_SIZE       0x40u
-#define SPI_SRAM_ADDR_OFFSET    (SPI_SRAM_CMD_OFFSET + SPI_SRAM_CMD_SIZE)
-#define SPI_SRAM_ADDR_SIZE      0x40u
-#define SPI_SRAM_ADDR_END       (SPI_SRAM_ADDR_OFFSET + SPI_SRAM_ADDR_SIZE)
-#define SPI_SRAM_END_OFFSET     (SPI_SRAM_ADDR_END)
-static_assert(SPI_SRAM_END_OFFSET == 0xe80u, "Invalid SRAM definition");
-
+#define SPI_SRAM_READ0_OFFSET      0x0
+#define SPI_SRAM_READ_SIZE         0x400u
+#define SPI_SRAM_READ1_OFFSET      (SPI_SRAM_READ0_OFFSET + SPI_SRAM_READ_SIZE)
+#define SPI_SRAM_READ1_SIZE        0x400u
+#define SPI_SRAM_MBX_OFFSET        (SPI_SRAM_READ1_OFFSET + SPI_SRAM_READ_SIZE)
+#define SPI_SRAM_MBX_SIZE          0x400u
+#define SPI_SRAM_SFDP_OFFSET       (SPI_SRAM_MBX_OFFSET + SPI_SRAM_MBX_SIZE)
+#define SPI_SRAM_SFDP_SIZE         0x100u
+#define SPI_SRAM_TPM_READ_OFFSET   (SPI_SRAM_SFDP_OFFSET + SPI_SRAM_SFDP_SIZE)
+#define SPI_SRAM_TPM_READ_SIZE     0x40u
+#define SPI_SRAM_INGRESS_OFFSET    0xE00u
+#define SPI_SRAM_PAYLOAD_OFFSET    SPI_SRAM_INGRESS_OFFSET
+#define SPI_SRAM_PAYLOAD_SIZE      0x100u
+#define SPI_SRAM_CMD_OFFSET        (SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_PAYLOAD_SIZE)
+#define SPI_SRAM_CMD_SIZE          0x40u
+#define SPI_SRAM_ADDR_OFFSET       (SPI_SRAM_CMD_OFFSET + SPI_SRAM_CMD_SIZE)
+#define SPI_SRAM_ADDR_SIZE         0x40u
+#define SPI_SRAM_TPM_WRITE_OFFSET  (SPI_SRAM_ADDR_OFFSET + SPI_SRAM_ADDR_SIZE)
+#define SPI_SRAM_TPM_WRITE_SIZE    0x40u
+#define SPI_SRAM_ADDR_END          (SPI_SRAM_TPM_WRITE_OFFSET + SPI_SRAM_TPM_WRITE_SIZE)
+#define SPI_SRAM_END_OFFSET        (SPI_SRAM_ADDR_END)
 #define SPI_DEVICE_SIZE            0x2000u
 #define SPI_DEVICE_SPI_REGS_OFFSET 0u
 #define SPI_DEVICE_TPM_REGS_OFFSET 0x800u
 #define SPI_DEVICE_SRAM_OFFSET     0x1000u
 
-#define SRAM_SIZE PARAM_SRAM_OFFSET
-#define EGRESS_BUFFER_SIZE_BYTES \
-    (SPI_SRAM_PAYLOAD_OFFSET - SPI_SRAM_READ0_OFFSET)
-#define EGRESS_BUFFER_SIZE_WORDS (EGRESS_BUFFER_SIZE_BYTES / sizeof(uint32_t))
-#define INGRESS_BUFFER_SIZE_BYTES \
-    (SPI_SRAM_END_OFFSET - SPI_SRAM_PAYLOAD_OFFSET)
-#define INGRESS_BUFFER_SIZE_WORDS (INGRESS_BUFFER_SIZE_BYTES / sizeof(uint32_t))
-
-#define FLASH_READ_BUFFER_SIZE (2u * SPI_SRAM_READ_SIZE)
+#define SRAM_SIZE                 (PARAM_SRAM_DEPTH * sizeof(uint32_t))
+#define EGRESS_BUFFER_SIZE_BYTES  (PARAM_SRAM_EGRESS_DEPTH * sizeof(uint32_t))
+#define EGRESS_BUFFER_SIZE_WORDS  PARAM_SRAM_EGRESS_DEPTH
+#define INGRESS_BUFFER_SIZE_BYTES (PARAM_SRAM_INGRESS_DEPTH * sizeof(uint32_t))
+#define INGRESS_BUFFER_SIZE_WORDS PARAM_SRAM_INGRESS_DEPTH
+#define FLASH_READ_BUFFER_SIZE    (2u * SPI_SRAM_READ_SIZE)
 
 #define SPI_DEFAULT_TX_VALUE  ((uint8_t)0xffu)
 #define SPI_FLASH_BUFFER_SIZE 256u
@@ -347,6 +350,10 @@ static_assert((SPI_DEVICE_CMD_HW_STA_COUNT + SPI_DEVICE_CMD_SW_COUNT +
 static_assert(PARAM_NUM_CMD_INFO ==
                   SPI_DEVICE_CMD_HW_CFG_FIRST - SPI_DEVICE_CMD_HW_STA_FIRST,
               "Invalid command info definitions");
+static_assert(SPI_SRAM_INGRESS_OFFSET >=
+                  (SPI_SRAM_TPM_READ_OFFSET + SPI_SRAM_TPM_READ_SIZE),
+              "SPI SRAM Egress buffers overflow into Ingress buffers");
+static_assert(SPI_SRAM_END_OFFSET == 0xfc0u, "Invalid SRAM definition");
 
 typedef enum {
     CTRL_MODE_DISABLED,
@@ -711,7 +718,6 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     f->type = SPI_FLASH_CMD_NONE;
     g_assert(s->sram);
     f->payload = &((uint8_t *)s->sram)[SPI_SRAM_PAYLOAD_OFFSET];
-    f->payload += SPI_SRAM_INGRESS_OFFSET;
     memset(f->buffer, 0u, SPI_FLASH_BUFFER_SIZE);
 
     memset(s->sram, 0u, SRAM_SIZE);
@@ -1822,27 +1828,34 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
     (void)attrs;
     uint32_t val32;
 
-    hwaddr last = addr + size - 1u;
+    hwaddr last = (hwaddr)((uint32_t)addr + size - 1u);
 
-    if (last < SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
+    if (addr < SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: cannot read egress buffer 0x%" HWADDR_PRIx "\n",
                       __func__, addr);
         return MEMTX_DECODE_ERROR;
     }
-    if (last < SPI_SRAM_CMD_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
-        /* payload buffer */
+
+    if ((addr >= SPI_SRAM_PAYLOAD_OFFSET &&
+         last < (SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_PAYLOAD_SIZE)) ||
+        (addr >= SPI_SRAM_TPM_WRITE_OFFSET &&
+         last < (SPI_SRAM_TPM_WRITE_OFFSET + SPI_SRAM_TPM_WRITE_SIZE))) {
+        /* flash payload and tpm write buffers */
         val32 = s->sram[addr >> 2u];
-    } else if (last < SPI_SRAM_ADDR_OFFSET + SPI_SRAM_INGRESS_OFFSET) {
-        /* command FIFO */
+    } else if (addr >= SPI_SRAM_CMD_OFFSET &&
+               last < (SPI_SRAM_CMD_OFFSET + SPI_SRAM_CMD_SIZE)) {
+        /* flash command FIFO */
         val32 = ((const uint32_t *)s->flash.cmd_fifo.data)[addr >> 2u];
-    } else if (last < SPI_SRAM_ADDR_END + SPI_SRAM_INGRESS_OFFSET) {
-        /* address FIFO */
+    } else if (addr >= SPI_SRAM_ADDR_OFFSET &&
+               last < (SPI_SRAM_ADDR_OFFSET + SPI_SRAM_ADDR_SIZE)) {
+        /* flash address FIFO */
         val32 = s->flash.address_fifo.data[addr >> 2u];
     } else {
-        /* TPM or not used area */
-        qemu_log_mask(LOG_UNIMP, "%s: TPM not supported 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Invalid ingress buffer access to 0x%" HWADDR_PRIx
+                      "-0x%" HWADDR_PRIx "\n",
+                      __func__, addr, last);
         val32 = 0;
     }
 
@@ -1870,9 +1883,9 @@ static MemTxResult ot_spi_device_buf_write_with_attrs(
     uint32_t pc = ibex_get_current_pc();
     trace_ot_spi_device_buf_write_in(s->ot_id, (uint32_t)addr, size, val32, pc);
 
-    hwaddr last = addr + size - 1u;
+    hwaddr last = (hwaddr)((uint32_t)addr + size - 1u);
 
-    if (last >= SPI_SRAM_PAYLOAD_OFFSET) {
+    if (last >= SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: cannot write ingress buffer 0x%" HWADDR_PRIx "\n",
                       __func__, addr);
