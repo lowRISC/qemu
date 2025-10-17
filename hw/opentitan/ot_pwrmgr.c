@@ -45,13 +45,13 @@
 #include "sysemu/runstate.h"
 #include "trace.h"
 
-#define PARAM_NUM_RST_REQS       2u
-#define PARAM_NUM_INT_RST_REQS   2u
-#define PARAM_NUM_DEBUG_RST_REQS 1u
-#define PARAM_RESET_MAIN_PWR_IDX 2u
-#define PARAM_RESET_ESC_IDX      3u
-#define PARAM_RESET_NDM_IDX      4u
-#define PARAM_NUM_ALERTS         1u
+#define NUM_INT_RST_REQS   2u
+#define NUM_DEBUG_RST_REQS 1u
+#define NUM_SW_RST_REQ     1u
+#define NUM_ALERTS         1u
+#define RESET_MAIN_PWR_IDX 2u
+#define RESET_ESC_IDX      3u
+#define RESET_NDM_IDX      4u
 
 /* clang-format off */
 REG32(INTR_STATE, 0x0u)
@@ -74,12 +74,7 @@ REG32(CFG_CDC_SYNC, 0x18u)
 REG32(WAKEUP_EN_REGWEN, 0x1cu)
     FIELD(WAKEUP_EN_REGWEN, EN, 0u, 1u)
 REG32(WAKEUP_EN, 0x20u)
-    SHARED_FIELD(WAKEUP_CHANNEL_0, 0u, 1u)
-    SHARED_FIELD(WAKEUP_CHANNEL_1, 1u, 1u)
-    SHARED_FIELD(WAKEUP_CHANNEL_2, 2u, 1u)
-    SHARED_FIELD(WAKEUP_CHANNEL_3, 3u, 1u)
-    SHARED_FIELD(WAKEUP_CHANNEL_4, 4u, 1u)
-    SHARED_FIELD(WAKEUP_CHANNEL_5, 5u, 1u)
+    /* note: wake up channel count depends on top */
 REG32(WAKE_STATUS, 0x24u)
 REG32(RESET_EN_REGWEN, 0x28u)
     FIELD(RESET_EN_REGWEN, EN, 0u, 1u)
@@ -90,38 +85,20 @@ REG32(ESCALATE_RESET_STATUS, 0x34u)
 REG32(WAKE_INFO_CAPTURE_DIS, 0x38u)
     FIELD(WAKE_INFO_CAPTURE_DIS, VAL, 0u, 1u)
 REG32(WAKE_INFO, 0x3cu)
-    FIELD(WAKE_INFO, REASONS, 0u, 6u)
-    FIELD(WAKE_INFO, FALL_THROUGH, 6u, 1u)
-    FIELD(WAKE_INFO, ABORT, 7u, 1u)
+    /* note: wake info fields depend on top */
 REG32(FAULT_STATUS, 0x40u)
     FIELD(FAULT_STATUS, REG_INTG_ERR, 0u, 1u)
     FIELD(FAULT_STATUS, ESC_TIMEOUT, 1u, 1u)
     FIELD(FAULT_STATUS, MAIN_PD_GLITCH, 2u, 1u)
 /* clang-format on */
 
-#define CONTROL_MASK \
-    (R_CONTROL_LOW_POWER_HINT_MASK | R_CONTROL_CORE_CLK_EN_MASK | \
-     R_CONTROL_IO_CLK_EN_MASK | R_CONTROL_USB_CLK_EN_LP_MASK | \
-     R_CONTROL_USB_CLK_EN_ACTIVE_MASK | R_CONTROL_MAIN_PD_N_MASK)
-#define WAKEUP_MASK \
-    (WAKEUP_CHANNEL_0_MASK | WAKEUP_CHANNEL_1_MASK | WAKEUP_CHANNEL_2_MASK | \
-     WAKEUP_CHANNEL_3_MASK | WAKEUP_CHANNEL_4_MASK | WAKEUP_CHANNEL_5_MASK)
-#define WAKE_INFO_MASK \
-    (R_WAKE_INFO_REASONS_MASK | R_WAKE_INFO_FALL_THROUGH_MASK | \
-     R_WAKE_INFO_ABORT_MASK)
 
 #define CDC_SYNC_PULSE_DURATION_NS 100000u /* 100us */
-
-#define PWRMGR_WAKEUP_MAX 6u
+#define PWRMGR_WAKEUP_MAX  ((unsigned)OT_PWRMGR_WAKEUP_COUNT)
+#define PWRMGR_RST_REQ_MAX 2u
 
 /* special exit error code to report escalation panic */
 #define EXIT_ESCALATION_PANIC 39
-
-/* Verbatim definitions from RTL */
-#define NUM_SW_RST_REQ 1u
-#define HW_RESET_WIDTH \
-    (PARAM_NUM_RST_REQS + PARAM_NUM_INT_RST_REQS + PARAM_NUM_DEBUG_RST_REQS)
-#define RESET_SW_REQ_IDX (HW_RESET_WIDTH)
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
@@ -328,6 +305,8 @@ typedef struct {
     unsigned wakeup_count;
     unsigned reset_count;
     uint32_t reset_mask;
+    uint32_t control_mask;
+    uint32_t control_res_val; /* reset value for CONTROL regsisters */
 } OtPwrMgrConfig;
 
 typedef struct {
@@ -340,16 +319,36 @@ static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWRMGR_VERSION_COUNT] = {
     [OT_PWRMGR_VERSION_EG_1_0_0] = {
         .wakeup_count = 6u,
         .reset_count = 2u,
-        .reset_mask = 0x3u
+        .reset_mask = 0x3u,
+        .control_mask = 0x1f1u,
+        .control_res_val = 0x180u, /* MAIN_PD_N | USB_CLK_EN_ACTIVE */
     },
     [OT_PWRMGR_VERSION_DJ_PRE] = {
-        .wakeup_count = 6u,
+        .wakeup_count = 4u,
         .reset_count = 2u,
-        .reset_mask = 0x3u
+        .reset_mask = 0x3u,
+        .control_mask = 0x71u,
+        .control_res_val = 0x40u, /* MAIN_PD_N */
     },
 };
 
-static int PWRMGR_RESET_DISPATCH[OT_PWRMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
+#define WAKE_INFO_REASONS_MASK(_s_) \
+    ((1u << (PWRMGR_CONFIG[(_s_)->version].wakeup_count)) - 1u)
+#define WAKE_INFO_FALL_THROUGH_MASK(_s_) \
+    (1u << (PWRMGR_CONFIG[(_s_)->version].wakeup_count))
+#define WAKE_INFO_ABORT_MASK_MASK(_s_) \
+    (1u << (PWRMGR_CONFIG[(_s_)->version].wakeup_count + 1u))
+#define WAKE_INFO_MASK(_s_) \
+    ((1u << (PWRMGR_CONFIG[(_s_)->version].wakeup_count + 2u)) - 1u)
+#define WAKEUP_MASK(_s_) WAKE_INFO_REASONS_MASK(_s_)
+#define CONTROL_MASK(_s_) (PWRMGR_CONFIG[(_s_)->version].control_mask)
+#define HW_RESET_WIDTH(_s_) \
+    ((PWRMGR_CONFIG[(_s_)->version].wakeup_count) + \
+     NUM_INT_RST_REQS + NUM_DEBUG_RST_REQS)
+#define RESET_SW_REQ_IDX(_s_) HW_RESET_WIDTH(_s_)
+
+static int
+PWRMGR_RESET_DISPATCH[OT_PWRMGR_VERSION_COUNT][PWRMGR_RST_REQ_MAX] = {
     [OT_PWRMGR_VERSION_EG_1_0_0] = {
         [0] = OT_RSTMGR_RESET_SYSCTRL,
         [1] = OT_RSTMGR_RESET_AON_TIMER,
@@ -380,7 +379,8 @@ PWRMGR_WAKEUP_NAMES[OT_PWRMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
     },
 };
 
-static const char *PWRMGR_RST_NAMES[OT_PWRMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
+static const char *
+PWRMGR_RST_NAMES[OT_PWRMGR_VERSION_COUNT][PWRMGR_RST_REQ_MAX] = {
     [OT_PWRMGR_VERSION_EG_1_0_0] = {
         [0] = "SYSRST",
         [1] = "AON_TIMER",
@@ -563,7 +563,7 @@ static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
     unsigned src = (unsigned)irq;
     g_assert(src < NUM_SW_RST_REQ);
 
-    uint32_t rstbit = 1u << (RESET_SW_REQ_IDX + src);
+    uint32_t rstbit = 1u << (RESET_SW_REQ_IDX(s) + src);
 
     if (level) {
         trace_ot_pwrmgr_rst_req(s->ot_id, "SW", src);
@@ -869,17 +869,17 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                              pc);
     switch (reg) {
     case R_INTR_STATE:
-        val32 &= WAKEUP_MASK;
+        val32 &= WAKEUP_MASK(s);
         s->regs[R_INTR_STATE] &= ~val32; /* RW1C */
         ot_pwrmgr_update_irq(s);
         break;
     case R_INTR_ENABLE:
-        val32 &= WAKEUP_MASK;
+        val32 &= WAKEUP_MASK(s);
         s->regs[R_INTR_ENABLE] = val32;
         ot_pwrmgr_update_irq(s);
         break;
     case R_INTR_TEST:
-        val32 &= WAKEUP_MASK;
+        val32 &= WAKEUP_MASK(s);
         s->regs[R_INTR_STATE] |= val32;
         ot_pwrmgr_update_irq(s);
         break;
@@ -890,7 +890,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_CONTROL:
         /* TODO: clear LOW_POWER_HINT on next WFI? */
-        val32 &= CONTROL_MASK;
+        val32 &= CONTROL_MASK(s);
         s->regs[reg] = val32;
         break;
     case R_CFG_CDC_SYNC:
@@ -907,7 +907,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_WAKEUP_EN:
         if (s->regs[R_WAKEUP_EN_REGWEN] & R_WAKEUP_EN_REGWEN_EN_MASK) {
-            val32 &= WAKEUP_MASK;
+            val32 &= WAKEUP_MASK(s);
             s->regs[reg] = val32;
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
@@ -932,7 +932,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_WAKE_INFO:
-        val32 &= WAKE_INFO_MASK;
+        val32 &= WAKE_INFO_MASK(s);
         s->regs[reg] &= ~val32; /* RW1C */
         break;
     case R_CTRL_CFG_REGWEN:
@@ -978,7 +978,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     OtPwrMgrState *s = OT_PWRMGR(obj);
 
     /* sanity checks for platform reset count and mask */
-    g_assert(PWRMGR_CONFIG[s->version].reset_count <= PARAM_NUM_RST_REQS);
+    g_assert(PWRMGR_CONFIG[s->version].reset_count <= PWRMGR_RST_REQ_MAX);
     g_assert(ctpop32(PWRMGR_CONFIG[s->version].reset_mask + 1u) == 1);
     g_assert(PWRMGR_CONFIG[s->version].reset_mask <
              (1u << PWRMGR_CONFIG[s->version].reset_count));
@@ -993,7 +993,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     memset(s->regs, 0, REGS_SIZE);
 
     s->regs[R_CTRL_CFG_REGWEN] = 0x1u;
-    s->regs[R_CONTROL] = 0x180u;
+    s->regs[R_CONTROL] = PWRMGR_CONFIG[s->version].control_res_val;
     s->regs[R_WAKEUP_EN_REGWEN] = 0x1u;
     s->regs[R_RESET_EN_REGWEN] = 0x1u;
     s->fsm_events.bitmap = 0;
@@ -1039,6 +1039,9 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
     g_assert(s->clock_ctrl);
     OBJECT_CHECK(OtClockCtrlIf, s->clock_ctrl, TYPE_OT_CLOCK_CTRL_IF);
 
+    qdev_init_gpio_in_named(dev, &ot_pwrmgr_rst_req, OT_PWRMGR_RST,
+                            (int)PWRMGR_CONFIG[s->version].reset_count);
+
     if (s->num_rom) {
         if (s->num_rom > 8u * sizeof(uint8_t)) {
             error_setg(&error_fatal, "too many ROMs\n");
@@ -1080,8 +1083,6 @@ static void ot_pwrmgr_init(Object *obj)
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_wkup, OT_PWRMGR_WKUP,
                             PWRMGR_WAKEUP_MAX);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_rst_req, OT_PWRMGR_RST,
-                            PARAM_NUM_RST_REQS);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_sw_rst_req,
                             OT_PWRMGR_SW_RST, NUM_SW_RST_REQ);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_pwrmgr_pwr_lc_rsp,

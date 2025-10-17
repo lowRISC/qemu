@@ -41,7 +41,7 @@ typedef enum {
     OT_PWRMGR_VERSION_COUNT,
 } OtPwrMgrVersion;
 
-/* Match PWRMGR_PARAM_*_WKUP_REQ_IDX definitions */
+/* Union of PWRMGR_PARAM_*_WKUP_REQ_IDX definitions for all supported tops */
 typedef enum {
     OT_PWRMGR_WAKEUP_SYSRST,
     OT_PWRMGR_WAKEUP_ADC_CTRL,
