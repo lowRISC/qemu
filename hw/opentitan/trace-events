@@ -463,6 +463,7 @@ ot_plic_ext_io_alert_write(const char *id, uint32_t addr, const char *regname, u
 
 # ot_pwrmgr.c
 
+ot_pwrmgr_cdc_sync(const char *id) "%s"
 ot_pwrmgr_change_state(const char *id, int line, const char *type, const char *old, int nold, const char *new, int nnew) "%s @ %d %s: [%s:%d] -> [%s:%d]"
 ot_pwrmgr_clock_enable(const char *d, const char *clkname, bool enable) "%s: %s en:%u"
 ot_pwrmgr_escalate_rx(const char *id, bool level) "%s: level %u"

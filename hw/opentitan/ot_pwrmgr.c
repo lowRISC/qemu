@@ -92,8 +92,8 @@ REG32(FAULT_STATUS, 0x40u)
     FIELD(FAULT_STATUS, MAIN_PD_GLITCH, 2u, 1u)
 /* clang-format on */
 
+#define CDC_SYNC_PULSE_DURATION_NS 1000u /* 1us */
 
-#define CDC_SYNC_PULSE_DURATION_NS 100000u /* 100us */
 #define PWRMGR_WAKEUP_MAX  ((unsigned)OT_PWRMGR_WAKEUP_COUNT)
 #define PWRMGR_RST_REQ_MAX 2u
 
@@ -193,6 +193,15 @@ typedef struct {
     int req;
 } OtPwrMgrResetReq;
 
+/*
+ * Registers in the slow clock domain which get synchronized on CDC sync
+ */
+typedef struct {
+    uint32_t reset_en;
+    uint32_t wakeup_en;
+    uint32_t control; /* for clock enablement */
+} OtPwrMgrSlowRegs;
+
 typedef union {
     uint32_t bitmap;
     struct {
@@ -228,6 +237,7 @@ struct OtPwrMgrState {
     OtPwrMgrFastState f_state;
     OtPwrMgrSlowState s_state;
     OtPwrMgrEvents fsm_events;
+    OtPwrMgrSlowRegs slow_regs;
 
     uint32_t *regs;
     OtPwrMgrResetReq reset_request;
@@ -444,9 +454,20 @@ static void ot_pwrmgr_xschedule_fsm(OtPwrMgrState *s, const char *func,
     qemu_bh_schedule(s->fsm_tick_bh);
 }
 
+static void ot_pwrmgr_sync_slow_regs(OtPwrMgrState *s)
+{
+    s->slow_regs.reset_en = s->regs[R_RESET_EN];
+    s->slow_regs.wakeup_en = s->regs[R_WAKEUP_EN];
+    s->slow_regs.control = s->regs[R_CONTROL];
+}
+
 static void ot_pwrmgr_cdc_sync(void *opaque)
 {
     OtPwrMgrState *s = opaque;
+
+    trace_ot_pwrmgr_cdc_sync(s->ot_id);
+
+    ot_pwrmgr_sync_slow_regs(s);
 
     s->regs[R_CFG_CDC_SYNC] &= ~R_CFG_CDC_SYNC_SYNC_MASK;
 }
@@ -523,10 +544,12 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
         uint32_t rstmask = PWRMGR_CONFIG[s->version].reset_mask;
 
         /* if HW reset is maskable and not HW reset is not enabled */
-        if ((rstbit & rstmask) && !(s->regs[R_RESET_EN] & rstbit)) {
+        if ((rstbit & rstmask) && !(s->slow_regs.reset_en & rstbit)) {
+            bool cdc_sync = s->slow_regs.reset_en == s->regs[R_RESET_EN];
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: HW reset #%u not enabled 0x%08x 0x%08x\n",
-                          __func__, src, s->regs[R_RESET_EN], rstbit);
+                          "%s: %s: HW reset #%u not enabled 0x%x 0x%x%s\n",
+                          __func__, s->ot_id, src, s->regs[R_RESET_EN], rstbit,
+                          cdc_sync ? "" : ": check CFG_CDC_SYNC");
             return;
         }
 
@@ -897,6 +920,10 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_CFG_CDC_SYNC_SYNC_MASK;
         s->regs[reg] |= val32; /* not described as RW1S, but looks like it */
         if (val32) {
+            /*
+             * schedule CDC synchronization;
+             * SW guest should poll this register till it is released.
+             */
             timer_mod(s->cdc_sync, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
                                        CDC_SYNC_PULSE_DURATION_NS);
         }
@@ -999,6 +1026,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     s->fsm_events.bitmap = 0;
     s->fsm_events.holdon_fetch = s->fetch_ctrl;
     s->boot_status.i32 = 0;
+    ot_pwrmgr_sync_slow_regs(s);
 
     PWR_CHANGE_FAST_STATE(s, LOW_POWER);
     PWR_CHANGE_SLOW_STATE(s, RESET);
