@@ -556,7 +556,7 @@ static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
         if (s->regs[R_RESET_STATUS]) {
             /* do nothing if a reset is already in progress */
             /* TODO: is it true for HW vs. SW request ?*/
-            trace_ot_pwrmgr_ignore_req("reset on-going");
+            trace_ot_pwrmgr_ignore_req(s->ot_id, "reset on-going");
             return;
         }
         s->regs[R_RESET_STATUS] |= rstbit;
@@ -593,7 +593,7 @@ static void ot_pwrmgr_sw_rst_req(void *opaque, int irq, int level)
 
         if (s->regs[R_RESET_STATUS]) {
             /* do nothing if a reset is already in progress */
-            trace_ot_pwrmgr_ignore_req("reset on-going");
+            trace_ot_pwrmgr_ignore_req(s->ot_id, "reset on-going");
             return;
         }
 
@@ -723,8 +723,9 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
     case OT_PWR_FAST_ST_NVM_IDLE_CHK:
     case OT_PWR_FAST_ST_LOW_POWER_PREP:
     case OT_PWR_FAST_ST_NVM_SHUT_DOWN:
-        qemu_log_mask(LOG_UNIMP, "%s: low power modes are not implemented\n",
-                      __func__);
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: %s: low power modes are not implemented\n", __func__,
+                      s->ot_id);
         /* fallthrough */
     case OT_PWR_FAST_ST_RESET_PREP:
         PWR_CHANGE_FAST_STATE(s, RESET_WAIT);
@@ -816,7 +817,8 @@ static void ot_pwrmgr_holdon_fetch(void *opaque, int n, int level)
 static void ot_pwrmgr_parse_clocks(OtPwrMgrState *s, Error **errp)
 {
     if (!s->cfg_clocks) {
-        error_setg(errp, "%s: clocks config not defined", __func__);
+        error_setg(errp, "%s: %s: clocks config not defined", __func__,
+                   s->ot_id);
         return;
     }
 
@@ -1072,7 +1074,8 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
 
     if (s->num_rom) {
         if (s->num_rom > 8u * sizeof(uint8_t)) {
-            error_setg(&error_fatal, "too many ROMs\n");
+            error_setg(&error_fatal, "%s: %s: too many ROMs\n", __func__,
+                       s->ot_id);
             g_assert_not_reached();
         }
         qdev_init_gpio_in_named(dev, &ot_pwrmgr_rom_good, OT_PWRMGR_ROM_GOOD,
