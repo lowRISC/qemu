@@ -385,10 +385,12 @@ static void sifive_plic_irq_request(void *opaque, int irq, int level)
         if (level && !sifive_plic_get_level(s, irq)) {
             sifive_plic_set_pending(s, irq, true);
         }
+        sifive_plic_set_level(s, irq, !!level);
     } else {
-        sifive_plic_set_pending(s, irq, level > 0);
+        if (level > 0) {
+            sifive_plic_set_pending(s, irq, true);
+        }
     }
-    sifive_plic_set_level(s, irq, !!level);
     sifive_plic_update(s);
 }
 
