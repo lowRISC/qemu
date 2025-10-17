@@ -1668,11 +1668,12 @@ static void ot_flash_op_prog(OtFlashState *s)
         bool fifo_empty = ot_fifo32_is_empty(&s->prog_fifo);
 
         /* Must calculate next addr before decrementing the remaining count. */
+        unsigned word_address = 0u;
         unsigned address = 0u;
         if (!s->op.failed) {
             address = s->op.info_part ? ot_flash_next_info_address(s) :
                                         ot_flash_next_data_address(s);
-            address /= sizeof(uint32_t); /* convert to word address */
+            word_address = address / sizeof(uint32_t);
         }
         s->op.remaining--;
 
@@ -1694,22 +1695,30 @@ static void ot_flash_op_prog(OtFlashState *s)
          * Bits cannot be programmed back to 1 once programmed to 0; they must
          * be erased instead.
          */
-        g_assert(address <
+        g_assert(word_address <
                  ((s->op.info_part ? storage->info_size : storage->data_size) *
                   storage->bank_count));
-        dest[address] &= word;
-        trace_ot_flash_prog_word(s->ot_id, s->op.info_part, address, word);
+        dest[word_address] &= word;
+        if (!s->op.info_part) {
+            /*
+             * for data, we must flush relevant TLB pages to ensure host reads
+             * for XIP execution of mutated code in flash are correct.
+             */
+            memory_region_set_dirty(&s->mmio.mem, (hwaddr)address,
+                                    sizeof(uint32_t));
+        }
+        trace_ot_flash_prog_word(s->ot_id, s->op.info_part, word_address, word);
         if (ot_flash_is_backend_writable(s)) {
             uintptr_t dest_offset = (uintptr_t)dest - (uintptr_t)storage->data;
-            if (ot_flash_write_backend(s, &dest[address],
-                                       (unsigned)(dest_offset + address),
+            if (ot_flash_write_backend(s, &dest[word_address],
+                                       (unsigned)(dest_offset + word_address),
                                        sizeof(uint32_t))) {
                 qemu_log_mask(LOG_GUEST_ERROR,
                               "%s: %s: cannot update flash backend\n", __func__,
                               s->ot_id);
                 uint32_t ebit = s->op.hw ? R_FAULT_STATUS_PROG_ERR_MASK :
                                            R_ERR_CODE_PROG_ERR_MASK;
-                ot_flash_set_error(s, ebit, address * sizeof(uint32_t));
+                ot_flash_set_error(s, ebit, address);
             }
         }
 
@@ -1733,24 +1742,31 @@ static void ot_flash_op_erase_page(OtFlashState *s, unsigned address)
     uint32_t *dest = s->op.info_part ? storage->info : storage->data;
     unsigned page_size = BYTES_PER_PAGE;
     unsigned page_address = address - (address % page_size);
-    page_address /= sizeof(uint32_t); /* convert to word address */
+    unsigned word_address = page_address / sizeof(uint32_t);
 
-    g_assert((page_address + page_size) <
+    g_assert((word_address + page_size) <
              ((s->op.info_part ? storage->info_size : storage->data_size) *
               storage->bank_count));
-    memset(&dest[page_address], 0xFFu, page_size);
-    trace_ot_flash_erase(s->ot_id, s->op.info_part, page_address, page_size);
+    memset(&dest[word_address], 0xFF, page_size);
+    if (!s->op.info_part) {
+        /*
+         * for data, we must flush relevant TLB pages to ensure host reads
+         * for XIP execution of mutated code in flash are correct.
+         */
+        memory_region_set_dirty(&s->mmio.mem, (hwaddr)page_address, page_size);
+    }
+    trace_ot_flash_erase(s->ot_id, s->op.info_part, word_address, page_size);
     if (ot_flash_is_backend_writable(s)) {
         uintptr_t dest_offset = (uintptr_t)dest - (uintptr_t)storage->data;
-        if (ot_flash_write_backend(s, &dest[page_address],
-                                   (unsigned)(dest_offset + page_address),
+        if (ot_flash_write_backend(s, &dest[word_address],
+                                   (unsigned)(dest_offset + word_address),
                                    page_size)) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: cannot update flash backend\n", __func__,
                           s->ot_id);
             uint32_t ebit = s->op.hw ? R_FAULT_STATUS_PROG_ERR_MASK :
                                        R_ERR_CODE_PROG_ERR_MASK;
-            ot_flash_set_error(s, ebit, address * sizeof(uint32_t));
+            ot_flash_set_error(s, ebit, page_address);
             ot_flash_op_complete(s);
             return;
         }
@@ -1790,23 +1806,29 @@ static void ot_flash_op_erase_bank(OtFlashState *s, unsigned address)
         data_address = bank_address;
         g_assert((data_address + bank_size) <=
                  (storage->data_size * storage->bank_count));
-        memset(&storage->data[data_address], 0xFFu, bank_size);
+        memset(&storage->data[data_address], 0xFF, bank_size);
         trace_ot_flash_erase(s->ot_id, s->op.info_part, data_address,
                              bank_size);
     } else {
         info_address = bank_address;
         g_assert((info_address + bank_size) <=
                  (storage->info_size * storage->bank_count));
-        memset(&storage->info[info_address], 0xFFu, bank_size);
+        memset(&storage->info[info_address], 0xFF, bank_size);
         trace_ot_flash_erase(s->ot_id, true, info_address, bank_size);
 
         bank_size = storage->data_size;
         data_address = bank_size * bank / sizeof(uint32_t);
         g_assert((data_address + bank_size) <=
                  (storage->data_size * storage->bank_count));
-        memset(&storage->data[data_address], 0xFFu, bank_size);
+        memset(&storage->data[data_address], 0xFF, bank_size);
         trace_ot_flash_erase(s->ot_id, false, data_address, bank_size);
     }
+    /*
+     * for data, we must flush relevant TLB pages to ensure host reads
+     * for XIP execution of mutated code in flash are correct.
+     */
+    hwaddr data_byte_address = (hwaddr)data_address * sizeof(uint32_t);
+    memory_region_set_dirty(&s->mmio.mem, data_byte_address, bank_size);
 
     if (ot_flash_is_backend_writable(s)) {
         int data_write_err =
@@ -2936,7 +2958,7 @@ static void ot_flash_get_keymgr_secret(const OtFlashState *s,
         error_report("%s: %s: invalid flash keymgr secret type: %d", __func__,
                      s->ot_id, type);
         secret->valid = false;
-        memset(secret->secret, 0u, OT_FLASH_KEYMGR_SECRET_BYTES);
+        memset(secret->secret, 0, OT_FLASH_KEYMGR_SECRET_BYTES);
         return;
     }
 }
@@ -3297,7 +3319,7 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
 
     /* wipe internal secrets latched on initialisation */
     for (unsigned ix = 0; ix < FLASH_KEYMGR_SECRET_COUNT; ix++) {
-        memset(s->keymgr_seeds[ix].secret, 0u, OT_FLASH_KEYMGR_SECRET_BYTES);
+        memset(s->keymgr_seeds[ix].secret, 0, OT_FLASH_KEYMGR_SECRET_BYTES);
         s->keymgr_seeds[ix].valid = false;
     }
 
