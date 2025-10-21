@@ -83,7 +83,7 @@ def main():
                            help='increase verbosity')
         extra.add_argument('-d', '--debug', action='store_true',
                            help='enable debug mode')
-        extra.add_argument('--log-time', action='store_true',
+        extra.add_argument('-G', '--log-time', action='store_true',
                            help='show local time in log messages')
         args = argparser.parse_args()
         debug = args.debug

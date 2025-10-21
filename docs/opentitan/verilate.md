@@ -9,8 +9,7 @@ binaries as QEMU and comparing the outcome of each simulation environment.
 ````text
 usage: verilate.py [-h] [-V VERILATOR] [-R FILE] [-M FILE] [-F FILE] [-O VMEM]
                    [-K] [-D TMP_DIR] [-c CFG] [-a PREFIX] [-C CYCLES] [-I]
-                   [-k SECONDS] [-l] [-P FILE] [-w] [-x] [-v] [-d]
-                   [--log-time]
+                   [-k SECONDS] [-l] [-P FILE] [-w] [-x] [-v] [-d] [-G]
                    [ELF ...]
 
 Verilator wrapper.
@@ -49,7 +48,7 @@ Verilator:
 Extras:
   -v, --verbose         increase verbosity
   -d, --debug           enable debug mode
-  --log-time            show local time in log messages
+  -G, --log-time        show local time in log messages
 ````
 
 ### Arguments
@@ -78,6 +77,8 @@ Extras:
 * `-F` specify a file to load into the embedded flash device. This option can be repeated if the
   simulated platform supports multiple embedded flash partitions, in which case the specified files
   are loaded in partition order. See option `-I` for a list of supported devices.
+
+* `-G` / `--log-time` show local time before each logged message
 
 * `-K` / `--keep-tmp` do not automatically remove temporary files and directories on exit. The user
   is in charge of discarding any generated files and directories after execution. The paths to the
