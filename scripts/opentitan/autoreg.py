@@ -12,7 +12,7 @@ from argparse import ArgumentParser, FileType
 from enum import StrEnum, auto
 from io import StringIO
 from logging import getLogger
-from os.path import basename, dirname, join as joinpath, normpath
+from os.path import basename, dirname, join as joinpath, normpath, splitext
 from time import localtime
 from traceback import format_exception
 from typing import Any, NamedTuple, Optional, TextIO, Union
@@ -27,7 +27,8 @@ sys.path.append(QEMU_PYPATH)
 from ot.util.eval import safe_eval
 from ot.util.log import configure_loggers
 from ot.util.misc import (HexInt, camel_to_snake_case, camel_to_snake_uppercase,
-                          classproperty, flatten, redent, retrieve_git_version)
+                          classproperty, flatten, redent, retrieve_git_version,
+                          to_bool)
 
 try:
     _HJSON_ERROR = None
@@ -59,6 +60,11 @@ class AutoField(NamedTuple):
     width: int
     access: AutoAccess
     reset: int = 0
+
+    def __str__(self) -> str:
+        """Return a compact representation of a field."""
+        return (f'{self.__class__.__name__}({self.offset}:{self.name}:'
+                f'{self.width} {self.access})')
 
 
 class AutoRegister(NamedTuple):
@@ -156,26 +162,33 @@ class AutoReg:
                 continue
             if 'multireg' in item:
                 item = item['multireg']
-                compact = item.get('compact', True)
+                # compact field can either be a string, a boolean, an integer
+                # and may be present or not
+                force_compact = item.get('compact')
                 reg = self._parse_register(address, item)
                 count = safe_eval(item['count'], self._parameters)
+                if force_compact is not None:
+                    compact = to_bool(force_compact)
+                else:
+                    compact = len(reg.fields) == 1
                 if compact:
                     # single register with multiple fields with the same prefix
                     if len(reg.fields) > 1:
-                        # not sure if the following case may exists, anyway for
-                        # now it is not supported
+                        # this case is not yet supported
                         raise NotImplementedError(f'Too many compact fields for'
                                                   f' {reg.name}')
                     field = reg.fields[0]
-                    if count <= self._regwidth:
-                        bitcount = min(count, self._regwidth)
+                    fwidth = field.offset + field.width
+                    fcount = min(count, self._regwidth // fwidth)
+                    if fcount > 1:
                         reg = reg._replace(fields=[
-                            field._replace(name=f'{field.name}_{pos}', offset=pos)
-                            for pos in range(bitcount)
+                            field._replace(name=f'{field.name}_{pos}',
+                                           offset=pos)
+                            for pos in range(fcount)
                         ])
                     else:
                         reg = reg._replace(fields=[])
-                    count = (count + self._regwidth - 1) // self._regwidth
+                    count = count // fcount
                 if count > 1:
                     # multiple registers with the same name prefix
                     reg = reg._replace(count=count)
@@ -206,6 +219,7 @@ class AutoReg:
                 address += addr_inc * count
                 continue
             reg = self._parse_register(address, item)
+
             if reg:
                 if reg.name in regnames:
                     prefix = reg.name.split('_')[0]
@@ -1152,14 +1166,13 @@ def main():
         files.add_argument('-C', '--copyright',
                            help='define copyright string')
         params.add_argument('-g', '--generate', action='append',
-                            choices=generators, required=True,
+                            choices=generators,
                             help='what to generate')
         params.add_argument('-k', '--out-kind', choices=outkinds,
                             default=outkinds[0],
                             help=f'output file format '
                                  f'(default: {outkinds[0]})')
-        params.add_argument('-n', '--name', default='foo',
-                            help='device name')
+        params.add_argument('-n', '--name', help='device name')
         params.add_argument('-p', '--ignore', metavar='PREFIX',
                             help='ignore register/fields starting with prefix')
         params.add_argument('-r', '--reset', action='append',
@@ -1181,18 +1194,22 @@ def main():
         if _HJSON_ERROR:
             argparser.error(f'Missing HJSON module: {_HJSON_ERROR}')
 
-        configure_loggers(args.verbose, 'autoreg')
+        log = configure_loggers(args.verbose, 'autoreg')[0]
 
         reggen = autoregs[args.out_kind]
-        areg = reggen(args.name, args.ignore, args.reset)
+        name = args.name or splitext(basename(args.config.name))[0]
+        areg = reggen(name, args.ignore, args.reset)
         if args.copyright:
             areg.copyright = args.copyright
         areg.load(args.config, args.win_limit)
-        for gen in args.generate or []:
-            generate = getattr(areg, f'generate_{gen}', None)
-            if not generate:
-                argparser.error(f'{gen} is not supported for {args.out_kind}')
-            generate(args.output or sys.stdout)
+        if args.generate:
+            for gen in args.generate:
+                generate = getattr(areg, f'generate_{gen}', None)
+                if not generate:
+                    argparser.error(f'{gen} is not supported for {args.out_kind}')
+                generate(args.output or sys.stdout)
+        else:
+            log.warning('No generation requested')
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)
