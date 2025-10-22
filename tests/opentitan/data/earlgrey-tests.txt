@@ -270,6 +270,8 @@ pass: //sw/device/tests:pwrmgr_sleep_disabled_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:pwrmgr_sleep_disabled_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:pwrmgr_wdog_reset_reqs_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:pwrmgr_wdog_reset_reqs_test_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests/qemu:i2c_qemu_target_device_test_sim_qemu_rom_with_fake_keys  # Fails occassionally when running in parallel on a slow host, may be a timing issue.
+flaky: //sw/device/tests/qemu:i2c_qemu_target_device_test_sim_qemu_sival_rom_ext  # Fails occassionally when running in parallel on a slow host, may be a timing issue.
 flaky: //sw/device/tests/qemu:i2c_qemu_test_sim_qemu_rom_with_fake_keys  # Fails ~10% of the time when running in parallel. Root cause unknown.
 pass: //sw/device/tests:rom_exit_immediately_sim_qemu_base
 pass: //sw/device/tests:rstmgr_smoketest_sim_qemu_rom_with_fake_keys
@@ -278,6 +280,8 @@ pass: //sw/device/tests:rstmgr_sw_req_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rstmgr_sw_req_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:rv_core_ibex_mem_test_prod_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rv_core_ibex_mem_test_prod_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests:rv_core_ibex_rnd_test_sim_qemu_rom_with_fake_keys  # Passes and fails randomly, likely due to the test using randomness.
+flaky: //sw/device/tests:rv_core_ibex_rnd_test_sim_qemu_sival_rom_ext  # Passes and fails randomly, likely due to the test using randomness.
 pass: //sw/device/tests:rv_timer_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rv_timer_smoketest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:spi_device_flash_smoketest_sim_qemu_rom_with_fake_keys
