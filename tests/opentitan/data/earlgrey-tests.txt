@@ -170,8 +170,6 @@ pass: //sw/device/tests/crypto:rsa_3072_encryption_functest_sim_qemu_rom_with_fa
 pass: //sw/device/tests/crypto:rsa_3072_encryption_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:rsa_3072_signature_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:rsa_3072_signature_functest_sim_qemu_sival_rom_ext
-pass: //sw/device/tests/crypto:rsa_3072_verify_functest_hardcoded_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests/crypto:rsa_3072_verify_functest_hardcoded_sim_qemu_sival_rom_ext
 flaky: //sw/device/tests/crypto:rsa_4096_encryption_functest_sim_qemu_rom_with_fake_keys  # Fails timing (max cycle count) check ~25% of the time
 flaky: //sw/device/tests/crypto:rsa_4096_encryption_functest_sim_qemu_sival_rom_ext  # Fails timing (max cycle count) check ~25% of the time
 flaky: //sw/device/tests/crypto:rsa_4096_signature_functest_sim_qemu_rom_with_fake_keys  # Fails timing (max cycle count) check ~25% of the time
