@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Darjeeling Entropy Source device
+ * QEMU OpenTitan Entropy Source device
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
@@ -26,12 +26,12 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_ENTROPY_SRC_DJ_H
-#define HW_OPENTITAN_OT_ENTROPY_SRC_DJ_H
+#ifndef HW_OPENTITAN_OT_ENTROPY_SRC_H
+#define HW_OPENTITAN_OT_ENTROPY_SRC_H
 
 #include "qom/object.h"
 
-#define TYPE_OT_ENTROPY_SRC_DJ "ot-entropy_src-dj"
-OBJECT_DECLARE_TYPE(OtEntropySrcDjState, OtEntropySrcDjClass, OT_ENTROPY_SRC_DJ)
+#define TYPE_OT_ENTROPY_SRC "ot-entropy_src"
+OBJECT_DECLARE_TYPE(OtEntropySrcState, OtEntropySrcClass, OT_ENTROPY_SRC)
 
-#endif /* HW_OPENTITAN_OT_ENTROPY_SRC_DJ_H */
+#endif /* HW_OPENTITAN_OT_ENTROPY_SRC_H */

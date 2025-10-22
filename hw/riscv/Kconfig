@@ -33,7 +33,7 @@ config OT_DARJEELING
     select OT_DEV_PROXY
     select OT_DM_TL
     select OT_DMA
-    select OT_ENTROPY_SRC_DJ
+    select OT_ENTROPY_SRC
     select OT_EDN
     select OT_GPIO_DJ
     select OT_HMAC
@@ -78,7 +78,7 @@ config OT_EARLGREY
     select OT_CLKMGR
     select OT_CSRNG
     select OT_EDN
-    select OT_ENTROPY_SRC_EG
+    select OT_ENTROPY_SRC
     select OT_FLASH
     select OT_GPIO_EG
     select OT_HMAC

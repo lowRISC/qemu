@@ -44,7 +44,7 @@
 #include "hw/opentitan/ot_dm_tl.h"
 #include "hw/opentitan/ot_dma.h"
 #include "hw/opentitan/ot_edn.h"
-#include "hw/opentitan/ot_entropy_src_dj.h"
+#include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_gpio_dj.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_i2c.h"
@@ -745,45 +745,23 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_ENTROPY_SRC] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_ENTROPY_SRC,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x21160000u }
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "entropy_src"),
-            IBEX_DEV_UINT_PROP("size", 0x100u),
-            IBEX_DEV_UINT_PROP("alert-count", 2u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+         { .base = 0x21160000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DJ_SOC_GPIO_ALERT(0, 35),
-            OT_DJ_SOC_GPIO_ALERT(1, 36)
+         OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 89),
+         OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 90),
+         OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 91),
+         OT_DJ_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 92),
+         OT_DJ_SOC_GPIO_ALERT(0, 35),
+         OT_DJ_SOC_GPIO_ALERT(1, 36)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+         OT_DJ_SOC_DEVLINK("ast", AST),
+         OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
     },
-    /*
-     * @todo enable DJ entropy source once implemented, replacing the above
-     *       unimplemented fake device
-     *
-     * [OT_DJ_SOC_DEV_ENTROPY_SRC] = {
-     *     .type = TYPE_OT_ENTROPY_SRC,
-     *     .memmap = MEMMAPENTRIES(
-     *      { .base = 0x21160000u }
-     *     ),
-     *     .gpio = IBEXGPIOCONNDEFS(
-     *      OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 89),
-     *      OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 90),
-     *      OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 91),
-     *      OT_DJ_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 92),
-     *      OT_DJ_SOC_GPIO_ALERT(0, 35),
-     *      OT_DJ_SOC_GPIO_ALERT(1, 36)
-     *     ),
-     *     .link = IBEXDEVICELINKDEFS(
-     *      OT_DJ_SOC_DEVLINK("ast", AST),
-     *      OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
-     *     ),
-     * },
-     */
     [OT_DJ_SOC_DEV_EDN0] = {
         .type = TYPE_OT_EDN,
         .memmap = MEMMAPENTRIES(
