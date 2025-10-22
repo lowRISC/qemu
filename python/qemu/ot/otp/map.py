@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """OTP map.
@@ -15,6 +15,7 @@ try:
 except ImportError:
     hjload = None
 
+from ot.util.mbb import MB8_FALSE, MB8_TRUE
 from ot.util.misc import retrieve_git_version, round_up
 
 
@@ -32,8 +33,8 @@ class OtpMap:
     }
 
     MUBI8_BOOLEANS = {
-        0x96: False,
-        0x69: True,
+        MB8_FALSE: False,
+        MB8_TRUE: True,
         0x00: None
     }
 
