@@ -6,22 +6,21 @@ set -e
 # This script will run all QEMU tests in the provided OpenTitan repository,
 # comparing the results with a list of expected passes.
 #
-# USAGE: run-bazel-tests.sh path/to/opentitan/repo path/to/qemu/repo
+# USAGE: run-bazel-tests.sh path/to/opentitan/repo path/to/qemu/repo \
+#            [execution environment]
 #
-# There are two companion files in this directory read by this script:
-#
-# * `tests-passing.txt`
-# * `tests-flaky.txt`
+# There is a companion file `tests/opentitan/data/earlgrey-tests.txt` that
+# is read by this script.
 # 
 # The idea is to keep the list of passing tests up to date as QEMU changes.
 #
-# * If a test starts passing, add it to `tests-passing.txt` to catch
-#   regressions.
+# * If a test starts passing, add it with a `pass` status to the test
+#   list to catch regressions.
 # * When a test starts failing, investigate why and fix it, or remove it
-#   from the `tests-passing.txt` list if necessary.
+#   from the test list if necessary.
 #
-# Tests which are "flaky" and may pass/fail randomly will still be run,
-# but can be recorded below to prevent them from being checked.
+# Tests which are marked `flaky` and may pass/fail randomly will still be run,
+# but can be marked as such to prevent them from causing warnings or failures.
 
 # CI-only job summary feature - write to `/dev/null` when run locally.
 GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
