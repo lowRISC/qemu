@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """Device proxy for OpenTitan devices and peripherals
@@ -19,6 +19,8 @@ from time import sleep, time as now
 from typing import Any, Callable, Iterator, NamedTuple, Optional, Union
 
 from .mailbox.doe import DOEHeader
+from .util.mbb import MB4_FALSE, MB4_TRUE
+
 
 try:
     from serial import Serial, serial_for_url
@@ -147,12 +149,6 @@ class DeviceProxy:
                     device (usually 0)
        :paran regcount: count of 32-bit registers in the remote device
     """
-
-    MB4_TRUE = 0x6
-    """Multibit bool true value."""
-
-    MB4_FALSE = 0x9
-    """Multibit bool false value."""
 
     NO_ROLE = 0xf
     """Disabled role."""
@@ -643,13 +639,13 @@ class MbxHostProxy(DeviceProxy):
         """
         self._log.debug('')
         self.write_word(self._role, self.REGS['ADDRESS_RANGE_REGWEN'],
-                        self.MB4_FALSE)
+                        MB4_FALSE)
 
     def is_locked_address_range(self) -> bool:
         """Lock address range (base and limit registers).
         """
         res = self.read_word(self._role, self.REGS['ADDRESS_RANGE_REGWEN']) \
-            != self.MB4_TRUE
+            != MB4_TRUE
         self._log.debug('%d', res)
         return res
 
