@@ -8,7 +8,7 @@ With a checkout of OpenTitan, the script can be run like this:
 
 ```sh
 ./scripts/opentitan/run-bazel-tests.sh path/to/opentitan path/to/qemu \
-    [execution_environment]
+    [execution_environment] [timeout]
 ```
 
 The script will execute all QEMU-compatible tests using QEMU as it was built
@@ -33,4 +33,6 @@ Specifying an execution environment when running the script will restrict to
 only running and comparing against tests for that execution environment.
 This can be used for more granular testing to break down large test workloads.
 If you do not specify an execution environment, _all_ available QEMU tests
-will be executed.
+will be executed. When specifying an execution environment, a maximum test
+timeout (in seconds) to use for that environment can also be provided as
+a subsequent argument to the script.

@@ -7,7 +7,7 @@ set -e
 # comparing the results with a list of expected passes.
 #
 # USAGE: run-bazel-tests.sh path/to/opentitan/repo path/to/qemu/repo \
-#            [execution environment]
+#            [execution environment] [test_timeout]
 #
 # There is a companion file `tests/opentitan/data/earlgrey-tests.txt` that
 # is read by this script.
@@ -29,13 +29,14 @@ GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 opentitan_path="$1"
 qemu_path="$2"
 qemu_exec_env="$3"
+test_timeout="$4"
 if [ ! -d "$opentitan_path" ] || [ ! -d "$qemu_path" ]; then
-  echo "USAGE: ${0} <OPENTITAN REPO> <QEMU REPO> [<EXEC ENV>]"
+  echo "USAGE: ${0} <OPENTITAN REPO> <QEMU REPO> [<EXEC ENV>] [<TIMEOUT>]"
   exit 1
 fi
 opentitan_path="$(realpath "$opentitan_path")"
 qemu_path="$(realpath "$qemu_path")"
-if [ ! "$qemu_exec_env" ]; then
+if [ -z "$qemu_exec_env" ]; then
   # catch-all tag for all QEMU exec envs
   qemu_exec_env="qemu"
   echo "Using default 'qemu' tag to test all exec envs"
@@ -86,12 +87,18 @@ trap "cleanup" EXIT
 ## RUN BAZEL TESTS
 cd "$opentitan_path" >/dev/null
 
+test_args=""
+if [ -n "$test_timeout" ]; then
+  test_args="--test_timeout=$test_timeout"
+fi
+
 ./bazelisk.sh test //...                                    \
   --test_tag_filters="$qemu_exec_env"                       \
   --test_summary="short"                                    \
   --test_output=all                                         \
   --override_repository="+qemu+qemu_opentitan=${qemu_path}" \
   --build_tests_only                                        \
+  $test_args                                                \
   | tee "$results"
 
 ## COMPARE RESULTS

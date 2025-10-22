@@ -14,6 +14,10 @@ on:
         required: true
         default: qemu  # Default tag, captures all QEMU exec envs in OpenTitan
         type: string
+      test_timeout:
+        description: The maximum timeout in seconds to use per executed test
+        required: false
+        type: string
       opentitan_repo:
         description: OpenTitan repository to be checked out
         required: true
@@ -62,6 +66,7 @@ jobs:
           set -o pipefail
           ./qemu/scripts/opentitan/run-bazel-tests.sh ./ qemu \
             ${{ inputs.exec_env }} \
+            ${{ inputs.test_timeout }} \
             | tee ${{ inputs.exec_env }}_test_results.txt
 
       - name: Upload Bazel test results
