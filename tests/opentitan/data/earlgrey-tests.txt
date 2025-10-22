@@ -33,8 +33,8 @@ pass: //sw/device/silicon_creator/lib/sigverify:rsa_verify_functest_sim_qemu_rom
 pass: //sw/device/silicon_creator/lib/sigverify:rsa_verify_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/silicon_creator/lib/sigverify:sigverify_dynamic_functest_hardcoded_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/lib/sigverify:sigverify_dynamic_functest_hardcoded_sim_qemu_sival_rom_ext
-pass: //sw/device/silicon_creator/lib/sigverify:sigverify_dynamic_functest_wycheproof_sim_qemu_rom_with_fake_keys
-pass: //sw/device/silicon_creator/lib/sigverify:sigverify_dynamic_functest_wycheproof_sim_qemu_sival_rom_ext
+flaky: //sw/device/silicon_creator/lib/sigverify:sigverify_dynamic_functest_wycheproof_sim_qemu_rom_with_fake_keys  # We expect this to pass, but it takes takes >> 60 seconds to run
+flaky: //sw/device/silicon_creator/lib/sigverify:sigverify_dynamic_functest_wycheproof_sim_qemu_sival_rom_ext  # We expect this to pass, but it takes takes >> 60 seconds to run
 pass: //sw/device/silicon_creator/lib/sigverify/sphincsplus/test:fors_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/lib/sigverify/sphincsplus/test:fors_test_sim_qemu_sival_rom_ext
 pass: //sw/device/silicon_creator/lib/sigverify/sphincsplus/test:mgf1_test_sim_qemu_rom_with_fake_keys
