@@ -31,6 +31,16 @@ jobs:
       opentitan_repo: ${{ inputs.opentitan_repo || 'lowRISC/opentitan' }}
       opentitan_ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
 
+  earlgrey_rom_ext:
+    name: ROM_EXT
+    uses: ./.github/workflows/eg_regression.yml
+    secrets: inherit
+    with:
+      exec_env: sim_qemu_rom_ext
+      test_timeout: 150
+      opentitan_repo: ${{ inputs.opentitan_repo || 'lowRISC/opentitan' }}
+      opentitan_ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
+
   earlgrey_sival_rom_ext:
     name: SiVal ROM_EXT
     uses: ./.github/workflows/eg_regression.yml
