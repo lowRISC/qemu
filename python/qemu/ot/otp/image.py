@@ -15,9 +15,10 @@ from struct import (calcsize as scalc, iter_unpack as iunpack, pack as spack,
 from typing import Any, BinaryIO, Optional, Sequence, TextIO, Union
 import re
 
+from ot.util.misc import HexInt, classproperty, split_map_join
+
 from .map import OtpMap
 from .partition import OtpPartition, OtpLifecycleExtension
-from ..util.misc import HexInt, classproperty
 
 
 class OtpImage:
@@ -216,13 +217,25 @@ class OtpImage:
         self._magic = f'v{vkind[:3].upper()}'.encode()
         self._changed = False
 
-    def save_vmem(self, vfp: TextIO) -> None:
+    def save_vmem(self, vfp: TextIO, verbose: bool = False) -> None:
         """Save a VMEM '24' text stream."""
+        if verbose and not (self._partitions and self._part_offsets):
+            self._log.warning('Verbose mode disabled as no OTP map is known')
+            verbose = False
         dsrc = iunpack('<H', self._data)
         if self._header_comments:
+            if verbose:
+                # for some reason original format starts with an empty comment
+                print('//', file=vfp)
             print('\n'.join(self._header_comments), file=vfp)
-        for addr, (dword, ecc) in enumerate(zip(dsrc, self._ecc)):
-            print(f'@{addr:06x} {ecc:02x}{dword[0]:04x}', file=vfp)
+        if verbose:
+            fields = self.document_partitions()
+            for addr, (dword, ecc, doc) in enumerate(
+                    zip(dsrc, self._ecc, fields)):
+                print(f'@{addr:06x} {ecc:02x}{dword[0]:04x} // {doc}', file=vfp)
+        else:
+            for addr, (dword, ecc) in enumerate(zip(dsrc, self._ecc)):
+                print(f'@{addr:06x} {ecc:02x}{dword[0]:04x}', file=vfp)
 
     def load_lifecycle(self, lcext: OtpLifecycleExtension) -> None:
         """Load lifecyle values."""
@@ -669,6 +682,27 @@ class OtpImage:
                     if (syndrome == s) ^ ((idata >> b) & 1))
 
         return err, odata
+
+    def document_partitions(self) -> list[str]:
+        """Return the documentation for each 16-bit word.
+
+           Try to match the exact comment syntax from OpenTitan tool.
+
+           :return: the meaning of each half-words
+        """
+        fields: list[str] = []
+        for part in self._partitions:
+            for field in part.document_fields():
+                if not field:
+                    fields.append('unallocated')
+                    continue
+                if ',' in field:
+                    # pylint: disable=cell-var-from-loop
+                    fields.append(split_map_join(', ', field,
+                                  lambda fld: f'{part.name}: {fld}'))
+                    continue
+                fields.append(f'{part.name}: {field}')
+        return fields
 
     def _load_header(self, bfp: BinaryIO) -> dict[str, Any]:
         hfmt = self.HEADER_FORMAT

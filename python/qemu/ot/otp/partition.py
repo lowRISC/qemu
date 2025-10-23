@@ -422,7 +422,7 @@ class OtpPartition:
                                    for a, b in zip(self._digest_bytes, bdigest))
 
     def has_field(self, field: str) -> bool:
-        """Tell whehther the partition has a field by its name.
+        """Tell whether the partition has a field by its name.
 
            :param field: the name of the field to locate
            :return: true if the field is defined, false otherwise
@@ -432,6 +432,36 @@ class OtpPartition:
             return True
         except ValueError:
             return False
+
+    def document_fields(self) -> list[str]:
+        """Return the documentation of each 16-bit word.
+
+           :return: the meaning of each half-words
+        """
+        fields: list[str] = []
+        offset = 0
+        for itname, itdef in self.items.items():
+            itsize = itdef['size']
+            if itsize < 2:
+                if offset & 1:
+                    fields[-1] = f'{fields[-1]}, {itname}'
+                else:
+                    fields.append(itname)
+            else:
+                assert itsize & 1 == 0
+            span = itsize // 2
+            fields.extend([itname] * span)
+            offset += itdef['size']
+        hsize = len(self._data)
+        if offset < hsize:
+            if offset & 1:
+                offset += 1
+            fields.extend([''] * ((hsize - offset) // 2))
+        if self.has_digest:
+            fields.extend([f'{self.name}_DIGEST'] * (self.DIGEST_SIZE // 2))
+            if self.is_zeroizable:
+                fields.extend([f'{self.name}_ZER'] * (self.ZER_SIZE // 2))
+        return fields
 
     def _retrieve_properties(self, field: str) -> tuple[int, int]:
         is_digest = self.has_digest and field.upper() == 'DIGEST'

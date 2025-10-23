@@ -7,10 +7,11 @@ controller virtual device.
 
 ````text
 usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
-                  [-x EXPORT] [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG]
-                  [-c INT] [-i INT] [-w] [-n] [-f PART:FIELD] [--no-version]
-                  [-s] [-E] [-D] [-U] [-g {LCVAL,LCTPL,PARTS,REGS}] [-F]
-                  [-G PART] [--change PART:FIELD=VALUE] [--empty PARTITION]
+                  [-x VMEM] [-X VMEM] [-k {auto,otp,fuz}] [-e BITS]
+                  [-C CONFIG] [-c INT] [-i INT] [-w] [-n] [-f PART:FIELD]
+                  [--no-version] [-s] [-E] [-D] [-U]
+                  [-g {LCVAL,LCTPL,PARTS,REGS}] [-F] [-G PART]
+                  [--change PART:FIELD=VALUE] [--empty PARTITION]
                   [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
                   [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT]
                   [--write ADDR/HEXBYTES] [--patch-token NAME=VALUE]
@@ -27,7 +28,9 @@ Files:
   -l, --lifecycle SV    input lifecycle system verilog file
   -o, --output FILE     output filename (default to stdout)
   -r, --raw RAW         QEMU OTP raw image file
-  -x, --export EXPORT   Export data to a VMEM file
+  -x, --export VMEM     Export data to a VMEM file
+  -X, --export-verbose VMEM
+                        Export data to a VMEM file with field info
 
 Parameters:
   -k, --kind {auto,otp,fuz}
@@ -83,7 +86,7 @@ This script can be used for several purposes:
 2. Showing and decoding the content of OTP image files, whether it is a pristine generated file
    or a file that has been modified by the QEMU machine,
 3. Verifying the Digest of the OTP partitions that support HW digest (using Present scrambling),
-4. Create QEMU C source files containining definition values that replicate the ones generated when
+4. Create QEMU C source files containing definition values that replicate the ones generated when
    the OT HW is built.
 
 Please note that only the first feature is supported for Fuse (non-OpenTitan) images.
@@ -179,6 +182,9 @@ Fuse RAW images only use the v1 type.
 * `-w` tell the script not to truncate the values of the large fields, _i.e._ the fields than
   contain long sequence of bytes. If repeated, the empty long fields are also printed in full, as
   a sequence of empty bytes.
+
+* `-X` similar to `-x` option, with extra comment in generated file to document each generated VMEM
+  line with the partition and field description.
 
 * `-x` export the current data and ECC content into a text file using the VMEM 24 encoding format,
   _i.e._ 24-bit hex chunks where the first byte depicts the 6-bit ECC and the remaining two bytes

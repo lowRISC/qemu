@@ -100,8 +100,10 @@ def main():
                            help='output filename (default to stdout)')
         files.add_argument('-r', '--raw',
                            help='QEMU OTP raw image file')
-        files.add_argument('-x', '--export',
+        files.add_argument('-x', '--export', metavar='VMEM',
                            help='Export data to a VMEM file')
+        files.add_argument('-X', '--export-verbose', metavar='VMEM',
+                           help='Export data to a VMEM file with field info')
         params = argparser.add_argument_group(title='Parameters')
         # pylint: disable=unsubscriptable-object
         params.add_argument('-k', '--kind',
@@ -233,7 +235,7 @@ def main():
             if args.generate in ('PARTS', 'REGS'):
                 argparser.error('Generator requires an OTP map')
             for feat in ('show', 'digest', 'empty', 'change', 'erase',
-                         'fix_digest', 'patch_token'):
+                         'fix_digest', 'patch_token', 'export_verbose'):
                 if not getattr(args, feat):
                     continue
                 argparser.error('Specified option requires an OTP map')
@@ -448,9 +450,13 @@ def main():
                 if not args.update and check_update:
                     log.warning('OTP content modified, image file not updated')
 
-            if args.export:
-                with open(args.export, 'wt') as xfp:
-                    otp.save_vmem(xfp)
+            xp_name = args.export or args.export_verbose
+            if xp_name:
+                if args.export and args.export_verbose:
+                    argparser.error('export options are mutually exclusive')
+                with open(xp_name, 'wt') if xp_name != '-' else \
+                        sys.stdout as xfp:
+                    otp.save_vmem(xfp, bool(args.export_verbose))
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)

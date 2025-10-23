@@ -52,7 +52,11 @@ class OtpMap:
         self._map = hjload(hfp, object_pairs_hook=dict)
         if hfp.name and isinstance(hfp.name, str):
             self._git_version = retrieve_git_version(hfp.name)
-        otp = self._map['otp']
+        try:
+            otp = self._map['otp']
+        except KeyError as exc:
+            raise ValueError('Unable to find OTP description; '
+                             'wrong input file kind?') from exc
         self._otp_size = int(otp['width']) * int(otp['depth'])
         self._generate_partitions()
         self._compute_locations()
