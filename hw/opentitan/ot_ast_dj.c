@@ -37,7 +37,6 @@
 #include "hw/opentitan/ot_ast_dj.h"
 #include "hw/opentitan/ot_clock_ctrl.h"
 #include "hw/opentitan/ot_common.h"
-#include "hw/opentitan/ot_random_src.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_clock_src.h"
@@ -135,12 +134,6 @@ static const char REGB_NAMES[REGSB_COUNT][6U] = {
 #undef REG_NAME_ENTRY
 
 typedef struct {
-    QEMUTimer *timer;
-    uint64_t *buffer;
-    bool avail;
-} OtASTDjRandom;
-
-typedef struct {
     char *name;
     unsigned frequency;
     IbexIRQ out;
@@ -154,7 +147,6 @@ struct OtASTDjState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
-    OtASTDjRandom random;
 
     GList *clocks; /* OtASTDjClock */
 
@@ -170,55 +162,9 @@ struct OtASTDjClass {
     ResettablePhases parent_phases;
 };
 
-#define OT_AST_DJ_RANDOM_FILL_RATE_NS 1000000ull /* arbitrary: 1 ms */
-
 /* -------------------------------------------------------------------------- */
 /* Private implementation */
 /* -------------------------------------------------------------------------- */
-
-static int ot_ast_dj_get_random(
-    OtRandomSrcIf *dev, uint64_t random[OT_RANDOM_SRC_DWORD_COUNT], bool *fips)
-{
-    OtASTDjState *s = OT_AST_DJ(dev);
-    OtASTDjRandom *rnd = &s->random;
-
-    if (!rnd->avail) {
-        /* not ready */
-        trace_ot_ast_no_entropy(0);
-        int wait_ns;
-        if (timer_pending(s->random.timer)) {
-            wait_ns = 1;
-        } else {
-            /* computed delay fits into a 31-bit value */
-            wait_ns = (int)(timer_expire_time_ns(s->random.timer) -
-                            qemu_clock_get_ns(OT_VIRTUAL_CLOCK));
-        }
-        return wait_ns;
-    }
-
-    memcpy(random, rnd->buffer, OT_RANDOM_SRC_DWORD_COUNT * sizeof(uint64_t));
-    rnd->avail = false;
-
-    /* note: fips compliancy is only simulated here for now */
-    *fips = true;
-
-    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-    timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
-
-    return 0;
-}
-
-static void ot_ast_dj_random_scheduler(void *opaque)
-{
-    OtASTDjState *s = opaque;
-    OtASTDjRandom *rnd = &s->random;
-
-    qemu_guest_getrandom_nofail(rnd->buffer,
-                                OT_RANDOM_SRC_DWORD_COUNT * sizeof(uint64_t));
-
-    rnd->avail = true;
-}
-
 
 static const char *CFGSEP = ",";
 
@@ -525,15 +471,10 @@ static void ot_ast_dj_reset_enter(Object *obj, ResetType type)
 {
     OtASTDjClass *c = OT_AST_DJ_GET_CLASS(obj);
     OtASTDjState *s = OT_AST_DJ(obj);
-    OtASTDjRandom *rnd = &s->random;
 
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
-
-    timer_del(rnd->timer);
-    memset(rnd->buffer, 0, OT_RANDOM_SRC_DWORD_COUNT * sizeof(uint64_t));
-    rnd->avail = false;
 
     memset(s->regsa, 0, REGSA_SIZE);
     memset(s->regsb, 0, REGSB_SIZE);
@@ -584,14 +525,10 @@ static void ot_ast_dj_reset_exit(Object *obj, ResetType type)
 {
     OtASTDjClass *c = OT_AST_DJ_GET_CLASS(obj);
     OtASTDjState *s = OT_AST_DJ(obj);
-    OtASTDjRandom *rnd = &s->random;
 
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj, type);
     }
-
-    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-    timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
 
     g_list_foreach(s->clocks, ot_ast_dj_update_clock, s);
 }
@@ -614,11 +551,6 @@ static void ot_ast_dj_init(Object *obj)
 
     s->regsa = g_new0(uint32_t, REGSA_COUNT);
     s->regsb = g_new0(uint32_t, REGSB_COUNT);
-
-    OtASTDjRandom *rnd = &s->random;
-
-    rnd->timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_ast_dj_random_scheduler, s);
-    rnd->buffer = g_new0(uint64_t, OT_RANDOM_SRC_DWORD_COUNT);
 }
 
 static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
@@ -635,9 +567,6 @@ static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
     resettable_class_set_parent_phases(rc, &ot_ast_dj_reset_enter, NULL,
                                        &ot_ast_dj_reset_exit,
                                        &ac->parent_phases);
-
-    OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
-    rdc->get_random_values = &ot_ast_dj_get_random;
 
     IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_CLASS(klass);
     ic->get_clock_source = &ot_ast_dj_get_clock_source;
@@ -656,7 +585,6 @@ static const TypeInfo ot_ast_dj_info = {
     .class_init = &ot_ast_dj_class_init,
     .interfaces =
         (InterfaceInfo[]){
-            { TYPE_OT_RANDOM_SRC_IF },
             { TYPE_IBEX_CLOCK_SRC_IF },
             { TYPE_OT_CLOCK_CTRL_IF },
             {},

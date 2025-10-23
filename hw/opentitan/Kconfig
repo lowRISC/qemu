@@ -16,7 +16,6 @@ config OT_AON_TIMER
 
 config OT_AST_DJ
     select IBEX_CLOCK_SRC
-    select OT_RANDOM_SRC
     select OT_CLOCK_CTRL
     bool
 
