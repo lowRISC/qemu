@@ -2926,14 +2926,7 @@ static const OtOTPHWCfg *ot_otp_dj_get_hw_cfg(const OtOTPState *s)
 {
     const OtOTPDjState *ds = OT_OTP_DJ(s);
 
-    return ds->hw_cfg;
-}
-
-static const OtOTPEntropyCfg *ot_otp_dj_get_entropy_cfg(const OtOTPState *s)
-{
-    (void)s;
-    /* not present Darjeeling OTP */
-    return NULL;
+    return (const OtOTPHWCfg *)ds->hw_cfg;
 }
 
 static void ot_otp_dj_request_entropy_bh(void *opaque)
@@ -3550,6 +3543,10 @@ static void ot_otp_dj_pwr_load_hw_cfg(OtOTPDjState *s)
     hw_cfg->en_sram_ifetch =
         s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH] :
                  OT_MULTIBITBOOL8_TRUE;
+    /* do not prevent CSRNG app reads if no OTP configuration is loaded */
+    hw_cfg->en_csrng_sw_app_read =
+        s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_CSRNG_SW_APP_READ] :
+                 OT_MULTIBITBOOL8_TRUE;
 }
 
 static void ot_otp_dj_pwr_load_tokens(OtOTPDjState *s)
@@ -3960,7 +3957,7 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
      *
      * File back-end storage (loading) is processed from
      * the ot_otp_dj_pwr_otp_bh handler, to ensure data is reloaded from the
-     * backend on each reset, prior to this very reset fuction. This reset
+     * backend on each reset, prior to this very reset function. This reset
      * function should not alter the storage content.
      *
      * Ideally the OTP reset functions should be decoupled from the regular
@@ -3988,6 +3985,7 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
     s->keygen->edn_sched = false;
 
     memset(s->regs, 0, REGS_COUNT * sizeof(uint32_t));
+    memset(s->hw_cfg, 0, sizeof(*s->hw_cfg));
 
     s->regs[R_DIRECT_ACCESS_REGWEN] = 0x00000001u;
     s->regs[R_CHECK_TRIGGER_REGWEN] = 0x00000001u;
@@ -4070,7 +4068,7 @@ static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
 
     /*
      * Set the OTP drive's permissions now during realization. We can't leave it
-     * until reset because QEMU might have `-deamonize`d and changed directory,
+     * until reset because QEMU might have `-daemonize`d and changed directory,
      * invalidating the filesystem path to the OTP image.
      */
     if (s->blk) {
@@ -4187,7 +4185,6 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
 
     oc->get_lc_info = &ot_otp_dj_get_lc_info;
     oc->get_hw_cfg = &ot_otp_dj_get_hw_cfg;
-    oc->get_entropy_cfg = &ot_otp_dj_get_entropy_cfg;
     oc->get_otp_key = &ot_otp_dj_get_otp_key;
     oc->get_keymgr_secret = &ot_otp_dj_get_keymgr_secret;
     oc->program_req = &ot_otp_dj_program_req;

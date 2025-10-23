@@ -1871,10 +1871,6 @@ static void ot_entropy_src_reset_enter(Object *obj, ResetType type)
         ibex_irq_set(&s->alerts[ix], 0);
     }
 
-    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-    const OtOTPEntropyCfg *entropy_cfg = oc->get_entropy_cfg(s->otp_ctrl);
-    g_assert(entropy_cfg);
-
     ot_entropy_src_change_state(s, ENTROPY_SRC_IDLE);
 }
 

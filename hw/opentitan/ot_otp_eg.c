@@ -699,7 +699,6 @@ struct OtOTPEgState {
 
     OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;
-    OtOTPEntropyCfg *entropy_cfg;
     OtOTPTokens *tokens;
     char *hexstr;
 
@@ -2803,14 +2802,7 @@ static const OtOTPHWCfg *ot_otp_eg_get_hw_cfg(const OtOTPState *s)
 {
     const OtOTPEgState *es = OT_OTP_EG(s);
 
-    return es->hw_cfg;
-}
-
-static const OtOTPEntropyCfg *ot_otp_eg_get_entropy_cfg(const OtOTPState *s)
-{
-    const OtOTPEgState *es = OT_OTP_EG(s);
-
-    return es->entropy_cfg;
+    return (const OtOTPHWCfg *)es->hw_cfg;
 }
 
 static void ot_otp_eg_request_entropy_bh(void *opaque)
@@ -3425,7 +3417,6 @@ static void ot_otp_eg_pwr_load_hw_cfg(OtOTPEgState *s)
 {
     OtOTPStorage *otp = s->otp;
     OtOTPHWCfg *hw_cfg = s->hw_cfg;
-    OtOTPEntropyCfg *entropy_cfg = s->entropy_cfg;
 
     memcpy(hw_cfg->device_id, &otp->data[R_HW_CFG0_DEVICE_ID],
            sizeof(hw_cfg->device_id));
@@ -3436,7 +3427,7 @@ static void ot_otp_eg_pwr_load_hw_cfg(OtOTPEgState *s)
         s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH] :
                  OT_MULTIBITBOOL8_TRUE;
     /* do not prevent CSRNG app reads if no OTP configuration is loaded */
-    entropy_cfg->en_csrng_sw_app_read =
+    hw_cfg->en_csrng_sw_app_read =
         s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_CSRNG_SW_APP_READ] :
                  OT_MULTIBITBOOL8_TRUE;
 }
@@ -3944,7 +3935,7 @@ static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
      *
      * File back-end storage (loading) is processed from
      * the ot_otp_eg_pwr_otp_bh handler, to ensure data is reloaded from the
-     * backend on each reset, prior to this very reset fuction. This reset
+     * backend on each reset, prior to this very reset function. This reset
      * function should not alter the storage content.
      *
      * Ideally the OTP reset functions should be decoupled from the regular
@@ -3972,6 +3963,7 @@ static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
     s->keygen->edn_sched = false;
 
     memset(s->regs, 0, REGS_COUNT * sizeof(uint32_t));
+    memset(s->hw_cfg, 0, sizeof(*s->hw_cfg));
 
     s->regs[R_DIRECT_ACCESS_REGWEN] = 0x1u;
     s->regs[R_CHECK_TRIGGER_REGWEN] = 0x1u;
@@ -4044,7 +4036,7 @@ static void ot_otp_eg_realize(DeviceState *dev, Error **errp)
 
     /*
      * Set the OTP drive's permissions now during realization. We can't leave it
-     * until reset because QEMU might have `-deamonize`d and changed directory,
+     * until reset because QEMU might have `-daemonize`d and changed directory,
      * invalidating the filesystem path to the OTP image.
      */
     if (s->blk) {
@@ -4104,7 +4096,6 @@ static void ot_otp_eg_init(Object *obj)
                             OT_LC_BROADCAST, OT_OTP_LC_BROADCAST_COUNT);
 
     s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
-    s->entropy_cfg = g_new0(OtOTPEntropyCfg, 1u);
     s->tokens = g_new0(OtOTPTokens, 1u);
     s->regs = g_new0(uint32_t, REGS_COUNT);
     s->dai = g_new0(OtOTPDAIController, 1u);
@@ -4163,7 +4154,6 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
 
     oc->get_lc_info = &ot_otp_eg_get_lc_info;
     oc->get_hw_cfg = &ot_otp_eg_get_hw_cfg;
-    oc->get_entropy_cfg = &ot_otp_eg_get_entropy_cfg;
     oc->get_otp_key = &ot_otp_eg_get_otp_key;
     oc->get_keymgr_secret = &ot_otp_eg_get_keymgr_secret;
     oc->program_req = &ot_otp_eg_program_req;

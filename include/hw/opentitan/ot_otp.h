@@ -57,7 +57,7 @@ typedef enum {
 #define OT_OTP_HWCFG_SOC_DBG_STATE_BYTES 4u
 
 /*
- * Hardware configuration (for HW_CFG partition)
+ * Hardware configuration (for HW_CFG partitions)
  */
 typedef struct {
     uint8_t device_id[OT_OTP_HWCFG_DEVICE_ID_BYTES];
@@ -66,12 +66,8 @@ typedef struct {
     uint8_t soc_dbg_state[OT_OTP_HWCFG_SOC_DBG_STATE_BYTES];
     /* the following value is stored as OT_MULTIBITBOOL8 */
     uint8_t en_sram_ifetch;
-} OtOTPHWCfg;
-
-typedef struct {
-    /* the following values are stored as OT_MULTIBITBOOL8 */
     uint8_t en_csrng_sw_app_read;
-} OtOTPEntropyCfg;
+} OtOTPHWCfg;
 
 typedef enum {
     OTP_TOKEN_TEST_UNLOCK,
@@ -157,14 +153,6 @@ struct OtOTPClass {
      * @return the HW config data (never NULL)
      */
     const OtOTPHWCfg *(*get_hw_cfg)(const OtOTPState *s);
-
-    /*
-     * Retrieve entropy configuration.
-     *
-     * @s the OTP device
-     * @return the entropy config data (may be NULL if not present in OTP)
-     */
-    const OtOTPEntropyCfg *(*get_entropy_cfg)(const OtOTPState *s);
 
     /*
      * Retrieve SRAM scrambling key.
