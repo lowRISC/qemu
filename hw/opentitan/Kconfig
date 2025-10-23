@@ -158,9 +158,6 @@ config OT_PWRMGR
     select OT_CLOCK_CTRL
     bool
 
-config OT_RANDOM_SRC
-    bool
-
 config OT_ROM_CTRL
     bool
     select OT_COMMON
