@@ -34,4 +34,34 @@
 #define TYPE_OT_ENTROPY_SRC "ot-entropy_src"
 OBJECT_DECLARE_TYPE(OtEntropySrcState, OtEntropySrcClass, OT_ENTROPY_SRC)
 
+#define OT_ENTROPY_SRC_PACKET_SIZE_BITS 384u
+
+#define OT_ENTROPY_SRC_BYTE_COUNT  (OT_ENTROPY_SRC_PACKET_SIZE_BITS / 8u)
+#define OT_ENTROPY_SRC_WORD_COUNT  \
+    (OT_ENTROPY_SRC_BYTE_COUNT / sizeof(uint32_t))
+#define OT_ENTROPY_SRC_DWORD_COUNT \
+    (OT_ENTROPY_SRC_BYTE_COUNT / sizeof(uint64_t))
+
+struct OtEntropySrcClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+
+    /*
+     * Fill up a buffer with random values
+     *
+     * @ess the entropy source instance
+     * @random the buffer to fill in with random data
+     * @fips on success, updated to @true if random data are FIPS-compliant
+     * @return 0 on success,
+     *         >=1 if the random source is still initializing or not enough
+     *           entropy is available to fill the output buffer;
+     *           if >1, indicates a hint on how many ns to wait before retrying,
+     *         -1 if the random source is not available, i.e. if the module is
+     *          not enabled or if the selected route is not the HW one,
+     */
+    int (*get_entropy)(OtEntropySrcState *ess,
+                       uint64_t random[OT_ENTROPY_SRC_DWORD_COUNT],
+                       bool *fips);
+};
+
 #endif /* HW_OPENTITAN_OT_ENTROPY_SRC_H */
