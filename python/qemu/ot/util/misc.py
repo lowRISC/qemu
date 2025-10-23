@@ -9,7 +9,7 @@
 from collections.abc import Callable
 from io import BytesIO
 from os.path import abspath, dirname, exists, isdir, isfile, join as joinpath
-from subprocess import SubprocessError, check_output
+from subprocess import DEVNULL, SubprocessError, check_output
 from sys import stdout
 from textwrap import dedent, indent
 from typing import Any, Iterable, Optional, TextIO, Union
@@ -253,7 +253,7 @@ def retrieve_git_version(path: str, max_tag_dist: int = 100) \
     assert cfgdir is not None
     try:
         descstr = check_output(['git', 'describe', '--long', '--dirty'],
-                               text=True, cwd=cfgdir).strip()
+                               text=True, cwd=cfgdir, stderr=DEVNULL).strip()
         gmo = re.match(r'^(?P<tag>.*)-(?P<dist>\d+)-g(?P<commit>[0-9a-f]+)'
                        r'(?:-(?P<dirty>dirty))?$', descstr)
         if not gmo:
@@ -269,9 +269,9 @@ def retrieve_git_version(path: str, max_tag_dist: int = 100) \
         pass
     try:
         change = check_output(['git', 'status', '--porcelain'],
-                              text=True, cwd=cfgdir).strip()
+                              text=True, cwd=cfgdir, stderr=DEVNULL).strip()
         descstr = check_output(['git', 'rev-parse', '--short', 'HEAD'],
-                               text=True, cwd=cfgdir).strip()
+                               text=True, cwd=cfgdir, stderr=DEVNULL).strip()
         if len(change) > 1:
             descstr = f'{descstr}-dirty'
         return descstr
