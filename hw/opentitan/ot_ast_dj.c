@@ -37,6 +37,7 @@
 #include "hw/opentitan/ot_ast_dj.h"
 #include "hw/opentitan/ot_clock_ctrl.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_noise_src.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_clock_src.h"
@@ -133,6 +134,9 @@ static const char REGB_NAMES[REGSB_COUNT][6U] = {
 };
 #undef REG_NAME_ENTRY
 
+/* @todo check with HW what is the best default value */
+#define OT_AST_DJ_NOISE_BITRATE_DEFAULT 1000000u /* 1 MHz */
+
 typedef struct {
     char *name;
     unsigned frequency;
@@ -155,16 +159,13 @@ struct OtASTDjState {
 
     char *cfg_topclocks;
     char *cfg_aonclocks;
+    uint32_t noise_bitrate;
 };
 
 struct OtASTDjClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 };
-
-/* -------------------------------------------------------------------------- */
-/* Private implementation */
-/* -------------------------------------------------------------------------- */
 
 static const char *CFGSEP = ",";
 
@@ -253,6 +254,21 @@ static void ot_ast_dj_clock_ext_freq_select(OtClockCtrlIf *dev, bool enable)
     (void)s;
 
     qemu_log_mask(LOG_UNIMP, "%s: not implemented: %u\n", __func__, enable);
+}
+
+static unsigned ot_ast_dj_get_fill_rate(OtNoiseSrcIf *dev)
+{
+    OtASTDjState *s = OT_AST_DJ(dev);
+
+    return s->noise_bitrate / 8u; /* bit to byte */
+}
+
+static void ot_ast_dj_get_noise(OtNoiseSrcIf *dev, uint8_t *buffer,
+                                size_t length)
+{
+    (void)dev;
+
+    qemu_guest_getrandom_nofail((void *)buffer, length);
 }
 
 static void ot_ast_dj_parse_clocks(OtASTDjState *s, Error **errp)
@@ -456,6 +472,8 @@ static void ot_ast_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static Property ot_ast_dj_properties[] = {
     DEFINE_PROP_STRING("topclocks", OtASTDjState, cfg_topclocks),
     DEFINE_PROP_STRING("aonclocks", OtASTDjState, cfg_aonclocks),
+    DEFINE_PROP_UINT32("noise-bitrate", OtASTDjState, noise_bitrate,
+                       OT_AST_DJ_NOISE_BITRATE_DEFAULT),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -574,6 +592,10 @@ static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
     OtClockCtrlIfClass *cc = OT_CLOCK_CTRL_IF_CLASS(klass);
     cc->clock_enable = &ot_ast_dj_clock_enable;
     cc->clock_ext_freq_select = &ot_ast_dj_clock_ext_freq_select;
+
+    OtNoiseSrcIfClass *nc = OT_NOISE_SRC_IF_CLASS(klass);
+    nc->get_fill_rate = &ot_ast_dj_get_fill_rate;
+    nc->get_noise = &ot_ast_dj_get_noise;
 }
 
 static const TypeInfo ot_ast_dj_info = {
@@ -587,6 +609,7 @@ static const TypeInfo ot_ast_dj_info = {
         (InterfaceInfo[]){
             { TYPE_IBEX_CLOCK_SRC_IF },
             { TYPE_OT_CLOCK_CTRL_IF },
+            { TYPE_OT_NOISE_SRC_IF },
             {},
         },
 };
