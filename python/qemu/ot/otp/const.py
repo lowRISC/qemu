@@ -241,7 +241,7 @@ class OtpConstants:
         except KeyError as exc:
             raise ValueError('No scrambling key constants found') from exc
         if len(key_values) <= idx:
-            raise ValueError(f'No such key {name} in the key array') from exc
+            raise ValueError(f'No such key {name} in the key array')
         return key_values[idx]
 
     def get_partition_inv_defaults(self, partition: int) -> Optional[str]:
