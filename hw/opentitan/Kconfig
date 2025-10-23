@@ -107,6 +107,9 @@ config OT_MBX
     select OT_COMMON
     bool
 
+config OT_NOISE_SRC
+    bool
+
 config OT_OTBN
     select OT_KEY_SINK
     select OT_BIGNUMBER
