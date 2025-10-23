@@ -1228,7 +1228,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(1, 52)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("random_src", ENTROPY_SRC),
+            OT_EG_SOC_DEVLINK("entropy-src", ENTROPY_SRC),
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
         ),
     },
@@ -1246,8 +1246,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(1, 54)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("ast", AST),
+            OT_EG_SOC_DEVLINK("noise-src", AST),
             OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("version", 2)
         ),
     },
     [OT_EG_SOC_DEV_EDN0] = {
