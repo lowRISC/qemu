@@ -71,6 +71,12 @@
 #define OT_MULTIBITBOOL_LC4_TRUE  0xau
 #define OT_MULTIBITBOOL_LC4_FALSE 0x5u
 
+typedef uint8_t ot_mb4_t;
+typedef uint8_t ot_mb8_t;
+typedef uint16_t ot_mb12_t;
+typedef uint16_t ot_mb16_t;
+typedef uint8_t ot_mb_lc4_t;
+
 /*
  * Performs a logical OR operation between two multibit values.
  * This treats "act" as logical 1, and all other values are treated as 0.
