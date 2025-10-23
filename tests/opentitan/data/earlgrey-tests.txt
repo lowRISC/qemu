@@ -485,6 +485,8 @@ pass: //sw/device/tests:kmac_mode_kmac_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:kmac_mode_kmac_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:kmac_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:kmac_smoketest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:lc_ctrl_otp_hw_cfg0_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:lc_ctrl_otp_hw_cfg0_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:otbn_ecdsa_op_irq_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:otbn_ecdsa_op_irq_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:otbn_irq_test_sim_qemu_rom_with_fake_keys
@@ -497,6 +499,7 @@ pass: //sw/device/tests:otbn_rsa_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:otbn_rsa_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:otbn_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:otbn_smoketest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:otp_ctrl_descrambling_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:plic_sw_irq_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:plic_sw_irq_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:pmp_smoketest_napot_sim_qemu_rom_with_fake_keys
@@ -541,6 +544,8 @@ pass: //sw/device/tests:uart_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:uart_smoketest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:usbdev_mem_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:usbdev_mem_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:usbdev_vbus_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:usbdev_vbus_test_sim_qemu_sival_rom_ext
 pass: //third_party/coremark/top_earlgrey:coremark_test_sim_qemu_rom_with_fake_keys
 pass: //third_party/coremark/top_earlgrey:coremark_test_sim_qemu_sival_rom_ext
 pass: //third_party/riscv-compliance:C-ADDI16SP_sim_qemu_rom_with_fake_keys
