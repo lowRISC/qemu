@@ -33,8 +33,4 @@
 #define TYPE_OT_AST_EG "ot-ast-eg"
 OBJECT_DECLARE_TYPE(OtASTEgState, OtASTEgClass, OT_AST_EG)
 
-#define OT_AST_EG_RANDOM_4BIT_RATE 50000u /* 50 kHz */
-
-void ot_ast_eg_getrandom(void *buf, size_t len);
-
 #endif /* HW_OPENTITAN_OT_AST_EG_H */

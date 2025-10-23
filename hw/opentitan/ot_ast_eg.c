@@ -36,6 +36,7 @@
 #include "hw/opentitan/ot_ast_eg.h"
 #include "hw/opentitan/ot_clock_ctrl.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_noise_src.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_clock_src.h"
@@ -132,6 +133,8 @@ static const char REGB_NAMES[REGSB_COUNT][6U] = {
 };
 #undef REG_NAME_ENTRY
 
+#define OT_AST_EG_NOISE_4BIT_RATE 50000u /* 50 kHz */
+
 typedef struct {
     char *name;
     unsigned frequency;
@@ -160,16 +163,6 @@ struct OtASTEgClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 };
-
-/* -------------------------------------------------------------------------- */
-/* Public API */
-/* -------------------------------------------------------------------------- */
-
-void ot_ast_eg_getrandom(void *buf, size_t len)
-{
-    qemu_guest_getrandom_nofail(buf, len);
-}
-
 
 static const char *CFGSEP = ",";
 
@@ -258,6 +251,21 @@ static void ot_ast_eg_clock_ext_freq_select(OtClockCtrlIf *dev, bool enable)
     (void)s;
 
     qemu_log_mask(LOG_UNIMP, "%s: not implemented: %u\n", __func__, enable);
+}
+
+static unsigned ot_ast_eg_get_fill_rate(OtNoiseSrcIf *dev)
+{
+    (void)dev;
+
+    return OT_AST_EG_NOISE_4BIT_RATE / 2u; /* 4 bits to byte */
+}
+
+static void ot_ast_eg_get_noise(OtNoiseSrcIf *dev, uint8_t *buffer,
+                                size_t length)
+{
+    (void)dev;
+
+    qemu_guest_getrandom_nofail((void *)buffer, length);
 }
 
 static void ot_ast_eg_parse_clocks(OtASTEgState *s, Error **errp)
@@ -580,6 +588,10 @@ static void ot_ast_eg_class_init(ObjectClass *klass, void *data)
     OtClockCtrlIfClass *cc = OT_CLOCK_CTRL_IF_CLASS(klass);
     cc->clock_enable = &ot_ast_eg_clock_enable;
     cc->clock_ext_freq_select = &ot_ast_eg_clock_ext_freq_select;
+
+    OtNoiseSrcIfClass *nc = OT_NOISE_SRC_IF_CLASS(klass);
+    nc->get_fill_rate = &ot_ast_eg_get_fill_rate;
+    nc->get_noise = &ot_ast_eg_get_noise;
 }
 
 static const TypeInfo ot_ast_eg_info = {
@@ -593,6 +605,7 @@ static const TypeInfo ot_ast_eg_info = {
         (InterfaceInfo[]){
             { TYPE_IBEX_CLOCK_SRC_IF },
             { TYPE_OT_CLOCK_CTRL_IF },
+            { TYPE_OT_NOISE_SRC_IF },
             {},
         },
 };

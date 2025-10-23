@@ -23,6 +23,7 @@ config OT_AST_DJ
 config OT_AST_EG
     select IBEX_CLOCK_SRC
     select OT_CLOCK_CTRL
+    select OT_NOISE_SRC
     bool
 
 config OT_CLKMGR

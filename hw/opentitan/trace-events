@@ -191,7 +191,7 @@ ot_entropy_src_io_write(const char *id, uint32_t addr, const char * regname, uin
 ot_entropy_src_no_entropy(const char *id, unsigned count) "%s: only %u words available"
 ot_entropy_src_obs_fifo(const char *id, unsigned level, unsigned thold) "%s: level %u, threshold %u"
 ot_entropy_src_push_bypass_entropy(const char *id, unsigned slot) "%s: final FIFO depth: %u"
-ot_entropy_src_reset(const char *id, void) "%s: "
+ot_entropy_src_reset(const char *id, const char *phase) "%s: %s"
 ot_entropy_src_show_buffer(const char *id, const char *func, int line, const char *msg, const char *hexstr) "%s: %s:%u %s: %s"
 ot_entropy_src_update_filler(const char *id, bool iok, bool ook, bool pok, bool all) "%s: in %u, out %u, proc %u -> %u"
 
