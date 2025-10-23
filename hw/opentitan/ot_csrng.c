@@ -37,9 +37,9 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_csrng.h"
+#include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_otp.h"
-#include "hw/opentitan/ot_random_src.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -227,9 +227,9 @@ static const char *CMD_NAMES[] = {
 #define CMD_NAME(_cmd_) \
     (((size_t)(_cmd_)) < ARRAY_SIZE(CMD_NAMES) ? CMD_NAMES[(_cmd_)] : "?")
 
-static_assert(OT_CSRNG_PACKET_WORD_COUNT <= OT_RANDOM_SRC_WORD_COUNT,
+static_assert(OT_CSRNG_PACKET_WORD_COUNT <= OT_ENTROPY_SRC_WORD_COUNT,
               "CSRNG packet cannot be larger than entropy_src packet");
-static_assert((OT_RANDOM_SRC_WORD_COUNT % OT_CSRNG_PACKET_WORD_COUNT) == 0,
+static_assert((OT_ENTROPY_SRC_WORD_COUNT % OT_CSRNG_PACKET_WORD_COUNT) == 0,
               "CSRNG packet should be a multiple of entropy_src packet");
 static_assert(OT_CSRNG_AES_BLOCK_SIZE + OT_CSRNG_AES_KEY_SIZE ==
                   OT_CSRNG_SEED_BYTE_COUNT,
@@ -352,7 +352,7 @@ struct OtCSRNGState {
     OtCSRNGInstance *instances;
     OtCSRNGQueue cmd_requests;
 
-    DeviceState *random_src;
+    OtEntropySrcState *entropy_src;
     OtOTPState *otp_ctrl;
 };
 
@@ -421,8 +421,7 @@ static void ot_csrng_release_hw_app(OtCSRNGInstance *inst);
 static void ot_csrng_update_irqs(OtCSRNGState *s);
 static void ot_csrng_update_alerts(OtCSRNGState *s);
 
-static OtCSRNDCmdResult
-ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0);
+static OtCSRNDCmdResult ot_csrng_drng_reseed(OtCSRNGInstance *inst, bool flag0);
 
 /* -------------------------------------------------------------------------- */
 /* Client API */
@@ -658,8 +657,8 @@ static void ot_csrng_drng_increment(OtCSRNGDrng *drng)
     }
 }
 
-static OtCSRNDCmdResult ot_csrng_drng_instantiate(
-    OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
+static OtCSRNDCmdResult
+ot_csrng_drng_instantiate(OtCSRNGInstance *inst, bool flag0)
 {
     OtCSRNGDrng *drng = &inst->drng;
     if (drng->instantiated) {
@@ -680,7 +679,7 @@ static OtCSRNDCmdResult ot_csrng_drng_instantiate(
     memcpy(drng->key, key, OT_CSRNG_AES_KEY_SIZE);
     drng->instantiated = true;
 
-    res = ot_csrng_drng_reseed(inst, rand_dev, flag0);
+    res = ot_csrng_drng_reseed(inst, flag0);
     if (res) {
         drng->instantiated = false;
         return res;
@@ -764,8 +763,7 @@ static void ot_csrng_drng_update(OtCSRNGInstance *inst)
                                 OT_CSRNG_AES_BLOCK_SIZE);
 }
 
-static OtCSRNDCmdResult
-ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
+static OtCSRNDCmdResult ot_csrng_drng_reseed(OtCSRNGInstance *inst, bool flag0)
 {
     OtCSRNGState *s = inst->parent;
     OtCSRNGDrng *drng = &inst->drng;
@@ -775,19 +773,19 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
     drng->seeded = false;
 
     if (!flag0) {
-        uint64_t buffer[OT_RANDOM_SRC_DWORD_COUNT];
+        uint64_t buffer[OT_ENTROPY_SRC_DWORD_COUNT];
         memset(buffer, 0, sizeof(buffer));
         unsigned len = drng->material_len * sizeof(uint32_t);
         memcpy(buffer, drng->material, MIN(len, sizeof(buffer)));
 
 
-        uint64_t entropy[OT_RANDOM_SRC_DWORD_COUNT];
+        uint64_t entropy[OT_ENTROPY_SRC_DWORD_COUNT];
         int res;
         bool fips;
         trace_ot_csrng_request_entropy(slot);
-        OtRandomSrcIfClass *cls = OT_RANDOM_SRC_IF_GET_CLASS(rand_dev);
-        OtRandomSrcIf *randif = OT_RANDOM_SRC_IF(rand_dev);
-        res = cls->get_random_values(randif, entropy, &fips);
+        OtEntropySrcState *ess = inst->parent->entropy_src;
+        OtEntropySrcClass *esc = OT_ENTROPY_SRC_GET_CLASS(ess);
+        res = esc->get_entropy(ess, entropy, &fips);
 
         if (res < 0) {
             s->entropy_delay = 0;
@@ -802,7 +800,7 @@ ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0)
         }
 
         /* always perform XOR which is a no-op if material_len is zero */
-        for (unsigned ix = 0; ix < OT_RANDOM_SRC_DWORD_COUNT; ix++) {
+        for (unsigned ix = 0; ix < OT_ENTROPY_SRC_DWORD_COUNT; ix++) {
             buffer[ix] ^= entropy[ix];
         }
         memcpy(drng->material, buffer, sizeof(entropy));
@@ -1136,7 +1134,7 @@ ot_csrng_handle_instantiate(OtCSRNGState *s, unsigned slot)
 
     int res;
 
-    res = ot_csrng_drng_instantiate(inst, s->random_src, flag0);
+    res = ot_csrng_drng_instantiate(inst, flag0);
     if ((res == CSRNG_CMD_OK) && !flag0) {
         /* if flag0 is set, entropy source is not used for reseeding */
         s->regs[R_INTR_STATE] |= INTR_CS_ENTROPY_REQ_MASK;
@@ -1237,7 +1235,7 @@ static OtCSRNDCmdResult ot_csrng_handle_reseed(OtCSRNGState *s, unsigned slot)
     }
 
     int res;
-    res = ot_csrng_drng_reseed(inst, s->random_src, flag0);
+    res = ot_csrng_drng_reseed(inst, flag0);
     if ((res == CSRNG_CMD_OK) && !flag0) {
         /* if flag0 is set, entropy source is not used for reseeding */
         s->regs[R_INTR_STATE] |= INTR_CS_ENTROPY_REQ_MASK;
@@ -1944,8 +1942,8 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_csrng_properties[] = {
-    DEFINE_PROP_LINK("random_src", OtCSRNGState, random_src, TYPE_DEVICE,
-                     DeviceState *),
+    DEFINE_PROP_LINK("entropy-src", OtCSRNGState, entropy_src,
+                     TYPE_OT_ENTROPY_SRC, OtEntropySrcState *),
     DEFINE_PROP_LINK("otp_ctrl", OtCSRNGState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_END_OF_LIST(),
@@ -2019,8 +2017,7 @@ static void ot_csrng_realize(DeviceState *dev, Error **errp)
     OtCSRNGState *s = OT_CSRNG(dev);
     (void)errp;
 
-    g_assert(s->random_src);
-    OBJECT_CHECK(OtRandomSrcIf, s->random_src, TYPE_OT_RANDOM_SRC_IF);
+    g_assert(s->entropy_src);
     g_assert(s->otp_ctrl);
 }
 
