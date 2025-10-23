@@ -309,43 +309,51 @@ REG32(TPM_READ_FIFO, 0x34u)
 #define SPI_FLASH_BUFFER_SIZE   256u
 
 typedef enum {
-    READ_STATUS1,
-    READ_STATUS2,
-    READ_STATUS3,
-    READ_JEDEC,
-    READ_SFDP,
-    READ_NORMAL,
-    READ_FAST,
-    READ_DUAL,
-    READ_QUAD,
-    READ_DUAL_IO,
-    READ_QUAD_IO,
-    HW_COMMAND_COUNT
-} SpiDeviceHwCommand;
+    /* Internal HW command slots (0-10) */
+    SLOT_HW_READ_STATUS1, /* slot 0, typically 0x05u */
+    SLOT_HW_READ_STATUS2, /* slot 1, typically 0x35u */
+    SLOT_HW_READ_STATUS3, /* slot 2, typically 0x15u */
+    SLOT_HW_READ_JEDEC, /* slot 3, typically 0x9f */
+    SLOT_HW_READ_SFDP, /* slot 4, typically 0x5a */
+    SLOT_HW_READ_NORMAL, /* slot 5, typically 0x03u */
+    SLOT_HW_READ_FAST, /* slot 6, typically 0x0bu */
+    SLOT_HW_READ_DUAL, /* slot 7, typically 0x3bu */
+    SLOT_HW_READ_QUAD, /* slot 8, typically 0x6bu */
+    SLOT_HW_READ_DUAL_IO, /* slot 9, typically 0xbbu */
+    SLOT_HW_READ_QUAD_IO, /* slot 10, typically 0xebu */
+    /* SW command slots (11-23) */
+    SLOT_SW_CMD_11,
+    SLOT_SW_CMD_12,
+    SLOT_SW_CMD_13,
+    SLOT_SW_CMD_14,
+    SLOT_SW_CMD_15,
+    SLOT_SW_CMD_16,
+    SLOT_SW_CMD_17,
+    SLOT_SW_CMD_18,
+    SLOT_SW_CMD_19,
+    SLOT_SW_CMD_20,
+    SLOT_SW_CMD_21,
+    SLOT_SW_CMD_22,
+    SLOT_SW_CMD_23,
+    /* Configurable HW command slots (EN4B-WRDI, 24-27) */
+    SLOT_HW_EN4B, /* slot 24, typically 0xb7u */
+    SLOT_HW_EX4B, /* slot 25, typically 0xe9u */
+    SLOT_HW_WREN, /* slot 26, typically 0x06u */
+    SLOT_HW_WRDI, /* slot 27, typically 0x04u */
+    SLOT_COUNT,
+    SLOT_INVALID = SLOT_COUNT,
+} OtSpiDeviceCommandSlot;
 
-#define SPI_DEVICE_CMD_HW_STA_COUNT ((unsigned)HW_COMMAND_COUNT)
-#define SPI_DEVICE_CMD_HW_STA_FIRST 0
-#define SPI_DEVICE_CMD_HW_STA_LAST  (SPI_DEVICE_CMD_HW_STA_COUNT - 1u)
-#define SPI_DEVICE_CMD_HW_CFG_FIRST (R_CMD_INFO_EN4B - R_CMD_INFO_0)
-#define SPI_DEVICE_CMD_HW_CFG_LAST  (R_CMD_INFO_WRDI - R_CMD_INFO_0)
-#define SPI_DEVICE_CMD_HW_CFG_COUNT \
-    (SPI_DEVICE_CMD_HW_CFG_LAST - SPI_DEVICE_CMD_HW_CFG_FIRST + 1u)
-#define SPI_DEVICE_CMD_SW_FIRST (SPI_DEVICE_CMD_HW_STA_LAST + 1u)
-#define SPI_DEVICE_CMD_SW_LAST  (SPI_DEVICE_CMD_HW_CFG_FIRST - 1u)
-#define SPI_DEVICE_CMD_SW_COUNT \
-    (SPI_DEVICE_CMD_SW_LAST - SPI_DEVICE_CMD_SW_FIRST + 1u)
+#define SLOT_SW_CMD_FIRST (SLOT_SW_CMD_11)
+#define SLOT_SW_CMD_LAST  (SLOT_SW_CMD_23)
+
+static_assert(SLOT_COUNT == 28u, "Invalid command slot count");
+
 #define TPM_OPCODE_READ_BIT  7u
 #define TPM_OPCODE_SIZE_MASK 0x3Fu
 #define TPM_ADDR_HEADER      0xD4u
 #define TPM_READY            0x01u
 
-
-static_assert((SPI_DEVICE_CMD_HW_STA_COUNT + SPI_DEVICE_CMD_SW_COUNT +
-               SPI_DEVICE_CMD_HW_CFG_COUNT) == 28u,
-              "Invalid command info definitions");
-static_assert(PARAM_NUM_CMD_INFO ==
-                  SPI_DEVICE_CMD_HW_CFG_FIRST - SPI_DEVICE_CMD_HW_STA_FIRST,
-              "Invalid command info definitions");
 static_assert(SPI_SRAM_INGRESS_OFFSET >=
                   (SPI_SRAM_TPM_READ_OFFSET + SPI_SRAM_TPM_READ_SIZE),
               "SPI SRAM Egress buffers overflow into Ingress buffers");
@@ -374,13 +382,6 @@ typedef enum {
 } OtSpiBusState;
 
 typedef enum {
-    SPI_FLASH_CMD_NONE, /* Not decoded / unknown */
-    SPI_FLASH_CMD_HW_STA, /* Hardcoded HW-handled commands */
-    SPI_FLASH_CMD_HW_CFG, /* Configurable HW-handled commands */
-    SPI_FLASH_CMD_SW, /* Configurable SW-handled commands */
-} OtSpiFlashCommand;
-
-typedef enum {
     SPI_FLASH_IDLE, /* No command received */
     SPI_FLASH_COLLECT, /* Collecting address or additional info after cmd */
     SPI_FLASH_BUFFER, /* Reading out data from buffer or SFDP (-> SPI host) */
@@ -405,10 +406,9 @@ typedef enum {
 
 typedef struct {
     OtSpiFlashState state;
-    OtSpiFlashCommand type;
+    OtSpiDeviceCommandSlot slot; /* Command slot */
     unsigned pos; /* Current position in data buffer */
     unsigned len; /* Meaning depends on command and current state */
-    unsigned slot; /* Command slot */
     uint32_t address; /* Address tracking */
     uint32_t last_read_addr; /* Last address read before increment */
     uint32_t cmd_info; /* Selected command info slot */
@@ -608,7 +608,6 @@ static const char *TPM_REG_NAMES[TPM_REGS_COUNT] = {
 
 #define COMMAND_OPCODE(_cmd_info_) \
     ((uint8_t)((_cmd_info_) & CMD_INFO_OPCODE_MASK))
-#define FLASH_SLOT(_name_) ((R_CMD_INFO_##_name_) - R_CMD_INFO_0)
 
 #define STATE_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
 /* clang-format off */
@@ -696,11 +695,15 @@ static void ot_spi_device_flash_change_state_line(
     }
 }
 
-static bool ot_spi_device_flash_is_upload(const SpiDeviceFlash *f)
+static bool ot_spi_device_is_sw_command(OtSpiDeviceCommandSlot slot)
 {
-    return (f->cmd_info & CMD_INFO_UPLOAD_MASK) != 0 &&
-           (f->slot >= SPI_DEVICE_CMD_SW_FIRST) &&
-           (f->slot <= SPI_DEVICE_CMD_SW_LAST);
+    return (slot >= SLOT_SW_CMD_FIRST) && (slot <= SLOT_SW_CMD_LAST);
+}
+
+static bool ot_spi_device_flash_command_is_upload(const SpiDeviceFlash *f)
+{
+    return ot_spi_device_is_sw_command(f->slot) &&
+           ((f->cmd_info & CMD_INFO_UPLOAD_MASK) != 0u);
 }
 
 static bool ot_spi_device_flash_is_readbuf_irq(const OtSPIDeviceState *s)
@@ -724,7 +727,6 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     f->cmd_info = UINT32_MAX;
     f->pos = 0u;
     f->len = 0u;
-    f->type = SPI_FLASH_CMD_NONE;
     g_assert(s->sram);
     f->payload = &((uint8_t *)s->sram)[SPI_SRAM_PAYLOAD_OFFSET];
     memset(f->buffer, 0u, SPI_FLASH_BUFFER_SIZE);
@@ -827,23 +829,6 @@ ot_spi_device_is_mailbox_match(const OtSPIDeviceState *s, uint32_t addr)
     return (addr & R_MAILBOX_ADDR_UPPER_MASK) == mailbox_addr;
 }
 
-static bool ot_spi_device_is_hw_read_command(const OtSPIDeviceState *s)
-{
-    const SpiDeviceFlash *f = &s->flash;
-
-    switch (f->slot) {
-    case READ_NORMAL:
-    case READ_FAST:
-    case READ_DUAL:
-    case READ_QUAD:
-    case READ_DUAL_IO:
-    case READ_QUAD_IO:
-        return true;
-    default:
-        return false;
-    }
-}
-
 static void ot_spi_device_release(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
@@ -891,7 +876,7 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
          * "does not show the commands falling into the mailbox region or
          *  Read SFDP command’s address."
          */
-        if (ot_spi_device_is_hw_read_command(s) &&
+        if (f->slot >= SLOT_HW_READ_NORMAL && f->slot <= SLOT_HW_READ_QUAD_IO &&
             !ot_spi_device_is_mailbox_match(s, f->last_read_addr)) {
             trace_ot_spi_device_update_last_read_addr(s->ot_id,
                                                       f->last_read_addr);
@@ -924,56 +909,61 @@ static void ot_spi_device_flash_pace_spibus(OtSPIDeviceState *s)
     timer_mod(f->irq_timer, (int64_t)(now + SPI_BUS_FLASH_READ_DELAY_NS));
 }
 
-static void ot_spi_device_flash_decode_command(OtSPIDeviceState *s, uint8_t cmd)
+static bool
+ot_spi_device_flash_match_command_slot(OtSPIDeviceState *s, uint8_t cmd)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    if (f->state == SPI_FLASH_IDLE) {
-        for (unsigned ix = 0;
-             ix < PARAM_NUM_CMD_INFO + SPI_DEVICE_CMD_HW_CFG_COUNT; ix++) {
-            uint32_t val32 = s->spi_regs[R_CMD_INFO_0 + ix];
-            if (cmd == (uint8_t)SHARED_FIELD_EX32(val32, CMD_INFO_OPCODE)) {
-                if (SHARED_FIELD_EX32(val32, CMD_INFO_VALID)) {
-                    f->type =
-                        ix < SPI_DEVICE_CMD_HW_STA_COUNT ?
-                            SPI_FLASH_CMD_HW_STA :
-                            (ix < PARAM_NUM_CMD_INFO ? SPI_FLASH_CMD_SW :
-                                                       SPI_FLASH_CMD_HW_CFG);
-                    f->slot = ix;
-                    f->cmd_info = val32;
-                    trace_ot_spi_device_flash_new_command(
-                        s->ot_id,
-                        f->type == SPI_FLASH_CMD_HW_STA ?
-                            "HW" :
-                            (f->type == SPI_FLASH_CMD_SW ? "SW" : "HW_CFG"),
-                        cmd, f->slot);
-                    break;
-                }
+    g_assert(f->state == SPI_FLASH_IDLE);
+
+    /*
+     * Find and match the opcode in the CMD_INFO registers. In case of
+     * multiple matching entries, the last one is used.
+     */
+    bool matched = false;
+    for (unsigned ix = 0u; ix < SLOT_COUNT; ix++) {
+        uint32_t cmd_info = s->spi_regs[R_CMD_INFO_0 + ix];
+        if (cmd == (uint8_t)SHARED_FIELD_EX32(cmd_info, CMD_INFO_OPCODE)) {
+            if (SHARED_FIELD_EX32(cmd_info, CMD_INFO_VALID)) {
+                f->slot = ix;
+                f->cmd_info = cmd_info;
+                matched = true;
+                const char *type =
+                    ot_spi_device_is_sw_command(f->slot) ? "SW" : "HW";
+                trace_ot_spi_device_flash_match(s->ot_id, type, cmd, f->slot);
+            } else {
                 trace_ot_spi_device_flash_disabled_slot(s->ot_id, cmd, ix);
             }
         }
     }
 
-    if (f->type == SPI_FLASH_CMD_NONE) {
-        trace_ot_spi_device_flash_ignored_command(s->ot_id, "unmanaged", cmd);
-        return;
+    if (matched) {
+        const char *type = ot_spi_device_is_sw_command(f->slot) ? "SW" : "HW";
+        trace_ot_spi_device_flash_new_command(s->ot_id, type, cmd, f->slot);
+        return true;
     }
 
-    bool upload = ot_spi_device_flash_is_upload(f);
-    if (upload) {
-        if (fifo8_is_full(&f->cmd_fifo)) {
-            error_setg(&error_warn, "command FIFO overflow\n");
-            return;
-        }
+    trace_ot_spi_device_flash_unmatched_command(s->ot_id, cmd);
+    return false;
+}
 
-        bool set_busy = (bool)(f->cmd_info & CMD_INFO_BUSY_MASK);
-        if (set_busy) {
+static void ot_spi_device_flash_try_upload(OtSPIDeviceState *s)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    if (ot_spi_device_flash_command_is_upload(f)) {
+        bool busy = (bool)(f->cmd_info & CMD_INFO_BUSY_MASK);
+        if (busy) {
             s->spi_regs[R_FLASH_STATUS] |= R_FLASH_STATUS_BUSY_MASK;
         }
-        trace_ot_spi_device_flash_upload(s->ot_id, f->slot, f->cmd_info,
-                                         set_busy);
-        fifo8_push(&f->cmd_fifo, COMMAND_OPCODE(f->cmd_info));
+        if (fifo8_is_full(&f->cmd_fifo)) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: cmd fifo overflow",
+                          __func__, s->ot_id);
+        } else {
+            fifo8_push(&f->cmd_fifo, COMMAND_OPCODE(f->cmd_info));
+        }
         f->new_cmd = true;
+        trace_ot_spi_device_flash_upload(s->ot_id, f->slot, f->cmd_info, busy);
     }
 }
 
@@ -1014,7 +1004,7 @@ static void ot_spi_device_flash_decode_write_enable(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    bool enable = f->slot == FLASH_SLOT(WREN);
+    bool enable = f->slot == SLOT_HW_WREN;
     trace_ot_spi_device_flash_exec(s->ot_id, enable ? "WREN" : "WRDI");
     if (enable) {
         s->spi_regs[R_FLASH_STATUS] |= R_FLASH_STATUS_WEL_MASK;
@@ -1028,7 +1018,7 @@ static void ot_spi_device_flash_decode_addr4_enable(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    bool enable = f->slot == FLASH_SLOT(EN4B);
+    bool enable = f->slot == SLOT_HW_EN4B;
     trace_ot_spi_device_flash_exec(s->ot_id, enable ? "EN4B" : "EX4B");
 
     if (enable) {
@@ -1043,7 +1033,7 @@ static void ot_spi_device_flash_decode_read_status(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    g_assert(f->slot < 3u);
+    g_assert(f->slot <= SLOT_HW_READ_STATUS3);
 
     uint32_t status = s->spi_regs[R_FLASH_STATUS];
     f->buffer[0] = (uint8_t)(status >> (f->slot * 8u));
@@ -1073,14 +1063,14 @@ static void ot_spi_device_flash_decode_read_data(OtSPIDeviceState *s)
     unsigned dummy = 1;
 
     switch (f->slot) {
-    case READ_NORMAL:
+    case SLOT_HW_READ_NORMAL:
         dummy = 0;
         break;
-    case READ_FAST:
-    case READ_DUAL:
-    case READ_QUAD:
-    case READ_DUAL_IO:
-    case READ_QUAD_IO:
+    case SLOT_HW_READ_FAST:
+    case SLOT_HW_READ_DUAL:
+    case SLOT_HW_READ_QUAD:
+    case SLOT_HW_READ_DUAL_IO:
+    case SLOT_HW_READ_QUAD_IO:
         dummy = 1u;
         break;
     default:
@@ -1093,29 +1083,37 @@ static void ot_spi_device_flash_decode_read_data(OtSPIDeviceState *s)
     f->len = dummy + (ot_spi_device_is_addr4b_en(s) ? 4u : 3u);
 }
 
-static void ot_spi_device_flash_decode_hw_static_command(OtSPIDeviceState *s)
+static void ot_spi_device_flash_decode_hw_command(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    switch ((int)f->slot) {
-    case READ_STATUS1:
-    case READ_STATUS2:
-    case READ_STATUS3:
+    switch (f->slot) {
+    case SLOT_HW_READ_STATUS1:
+    case SLOT_HW_READ_STATUS2:
+    case SLOT_HW_READ_STATUS3:
         ot_spi_device_flash_decode_read_status(s);
         break;
-    case READ_JEDEC:
+    case SLOT_HW_READ_JEDEC:
         ot_spi_device_flash_decode_read_jedec(s);
         break;
-    case READ_SFDP:
+    case SLOT_HW_READ_SFDP:
         ot_spi_device_flash_decode_read_sfdp(s);
         break;
-    case READ_NORMAL:
-    case READ_FAST:
-    case READ_DUAL:
-    case READ_QUAD:
-    case READ_DUAL_IO:
-    case READ_QUAD_IO:
+    case SLOT_HW_READ_NORMAL:
+    case SLOT_HW_READ_FAST:
+    case SLOT_HW_READ_DUAL:
+    case SLOT_HW_READ_QUAD:
+    case SLOT_HW_READ_DUAL_IO:
+    case SLOT_HW_READ_QUAD_IO:
         ot_spi_device_flash_decode_read_data(s);
+        break;
+    case SLOT_HW_EN4B:
+    case SLOT_HW_EX4B:
+        ot_spi_device_flash_decode_addr4_enable(s);
+        break;
+    case SLOT_HW_WREN:
+    case SLOT_HW_WRDI:
+        ot_spi_device_flash_decode_write_enable(s);
         break;
     default:
         g_assert_not_reached();
@@ -1152,50 +1150,25 @@ static void ot_spi_device_flash_exec_read_data(OtSPIDeviceState *s)
     f->loop = true;
 }
 
-static void ot_spi_device_exec_command(OtSPIDeviceState *s)
+static void ot_spi_device_flash_exec_command(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    switch (COMMAND_OPCODE(f->cmd_info)) {
-    case 0x5Au: /* READ_SFDP */
+    switch (f->slot) {
+    case SLOT_HW_READ_SFDP:
         ot_spi_device_flash_exec_read_sfdp(s);
         break;
-    case 0x03u: /* READ_NORMAL */
-    case 0x0bu: /* READ_FAST   */
-    case 0x3bu: /* READ_DUAL   */
-    case 0x6bu: /* READ_QUAD   */
-    case 0xbbu: /* READ_DUALIO */
-    case 0xebu: /* READ_QUADIO */
+    case SLOT_HW_READ_NORMAL:
+    case SLOT_HW_READ_FAST:
+    case SLOT_HW_READ_DUAL:
+    case SLOT_HW_READ_QUAD:
+    case SLOT_HW_READ_DUAL_IO:
+    case SLOT_HW_READ_QUAD_IO:
         ot_spi_device_flash_exec_read_data(s);
         break;
     default:
         g_assert_not_reached();
     }
-}
-
-static uint8_t ot_spi_device_flash_exec_hw_cfg_command(OtSPIDeviceState *s)
-{
-    SpiDeviceFlash *f = &s->flash;
-
-    uint8_t tx = SPI_DEFAULT_TX_RX_VALUE;
-    unsigned cmdinfo = f->slot - (R_CMD_INFO_EN4B - R_CMD_INFO_0);
-
-    switch (cmdinfo) {
-    case 0: /* EN4B (typ. 0xB7) */
-    case 1u: /* EX4B (typ. 0xE9u) */
-        ot_spi_device_flash_decode_addr4_enable(s);
-        break;
-    case 2u: /* WREN (typ. 0x06u) */
-    case 3u: /* WRDI (typ. 0x04u) */
-        ot_spi_device_flash_decode_write_enable(s);
-        break;
-    default:
-        error_setg(&error_fatal, "invalid command info %u %u", f->slot,
-                   cmdinfo);
-        g_assert_not_reached();
-    }
-
-    return tx;
 }
 
 static bool ot_spi_device_flash_collect(OtSPIDeviceState *s, uint8_t rx)
@@ -1345,7 +1318,7 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
     } else if (f->cmd_info & CMD_INFO_DUMMY_EN_MASK) {
         f->len = 1u;
         FLASH_CHANGE_STATE(s, UP_DUMMY);
-    } else if (ot_spi_device_flash_is_upload(f)) {
+    } else if (ot_spi_device_flash_command_is_upload(f)) {
         ot_spi_device_flash_init_payload(s);
     } else {
         /*
@@ -1381,7 +1354,7 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
             if (f->cmd_info & CMD_INFO_DUMMY_EN_MASK) {
                 f->len = 1u;
                 FLASH_CHANGE_STATE(s, UP_DUMMY);
-            } else if (ot_spi_device_flash_is_upload(f)) {
+            } else if (ot_spi_device_flash_command_is_upload(f)) {
                 ot_spi_device_flash_init_payload(s);
             } else {
                 /*
@@ -1396,7 +1369,7 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
     case SPI_FLASH_UP_DUMMY:
         f->pos++;
         g_assert(f->pos == f->len);
-        if (ot_spi_device_flash_is_upload(f)) {
+        if (ot_spi_device_flash_command_is_upload(f)) {
             ot_spi_device_flash_init_payload(s);
         } else {
             /*
@@ -1437,36 +1410,28 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
 
     switch (f->state) {
     case SPI_FLASH_IDLE:
-        f->slot = UINT_MAX;
+        f->slot = SLOT_INVALID;
         f->pos = 0;
         f->len = 0;
         f->src = NULL;
         f->loop = false;
-        f->type = SPI_FLASH_CMD_NONE;
-        ot_spi_device_flash_decode_command(s, rx);
-        switch (f->type) {
-        case SPI_FLASH_CMD_HW_STA:
-            ot_spi_device_flash_decode_hw_static_command(s);
-            break;
-        case SPI_FLASH_CMD_HW_CFG:
-            ot_spi_device_flash_exec_hw_cfg_command(s);
-            break;
-        case SPI_FLASH_CMD_SW:
-            ot_spi_device_flash_decode_sw_command(s);
-            break;
-        case SPI_FLASH_CMD_NONE:
+        if (ot_spi_device_flash_match_command_slot(s, rx)) {
+            if (ot_spi_device_is_sw_command(f->slot)) {
+                ot_spi_device_flash_decode_sw_command(s);
+                ot_spi_device_flash_try_upload(s);
+            } else {
+                ot_spi_device_flash_decode_hw_command(s);
+            }
+        } else {
             /* this command cannot be processed, discard all remaining bytes */
             trace_ot_spi_device_flash_unknown_command(s->ot_id, rx);
             FLASH_CHANGE_STATE(s, ERROR);
             BUS_CHANGE_STATE(s, DISCARD);
-            break;
-        default:
-            g_assert_not_reached();
         }
         break;
     case SPI_FLASH_COLLECT:
         if (!ot_spi_device_flash_collect(s, rx)) {
-            ot_spi_device_exec_command(s);
+            ot_spi_device_flash_exec_command(s);
         }
         break;
     case SPI_FLASH_BUFFER:
