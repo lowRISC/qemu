@@ -39,10 +39,10 @@
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "hw/opentitan/ot_alert.h"
-#include "hw/opentitan/ot_ast_eg.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_fifo32.h"
+#include "hw/opentitan/ot_noise_src.h"
 #include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -407,11 +407,8 @@ static const char *REG_HI_NAMES[REGS_HI_COUNT] = {
  * feed rate to ~0.7 ms max. 128-bit packet can be divided down to 32-bit
  * FIFO packets. They are assembled into either 384-bit or 2048-bit packets.
  */
-#define ES_FILL_BITS        128u
-#define ES_FINAL_FIFO_DEPTH 4u
-#define ES_FILL_RATE_NS \
-    ((NANOSECONDS_PER_SECOND * ES_FILL_BITS) / \
-     ((uint64_t)OT_AST_EG_RANDOM_4BIT_RATE * 4u))
+#define ES_FILL_BITS                   128u
+#define ES_FINAL_FIFO_DEPTH            4u
 #define OT_ENTROPY_SRC_FILL_WORD_COUNT (ES_FILL_BITS / (8u * sizeof(uint32_t)))
 #define ES_WORD_COUNT                  (OT_ENTROPY_SRC_WORD_COUNT)
 #define ES_SWREAD_FIFO_WORD_COUNT      ES_WORD_COUNT
@@ -483,6 +480,7 @@ struct OtEntropySrcState {
     OtFifo32 final_fifo; /* output FIFO */
     hash_state sha3_state; /* libtomcrypt hash state */
     OtEntropySrcFsmState state;
+    uint64_t noise_fill_pace_ns;
     unsigned cond_word; /* count of words processed with SHA3 till hash */
     unsigned noise_count; /* count of consumed noise words since enabled */
     unsigned packet_count; /* count of output packets since enabled */
@@ -490,7 +488,7 @@ struct OtEntropySrcState {
 
     char *ot_id;
     unsigned version; /* emulated version */
-    OtASTEgState *ast;
+    DeviceState *noise_src;
     OtOTPState *otp_ctrl;
 };
 
@@ -885,7 +883,7 @@ static void ot_entropy_src_update_filler(OtEntropySrcState *s)
         if (!timer_pending(s->scheduler)) {
             trace_ot_entropy_src_info(s->ot_id, "reschedule");
             uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-            timer_mod(s->scheduler, (int64_t)(now + (uint64_t)ES_FILL_RATE_NS));
+            timer_mod(s->scheduler, (int64_t)(now + s->noise_fill_pace_ns));
         }
     }
 }
@@ -1131,7 +1129,9 @@ static bool ot_entropy_src_fill_noise(OtEntropySrcState *s)
 
     uint32_t buffer[OT_ENTROPY_SRC_FILL_WORD_COUNT];
     /* synchronous read */
-    ot_ast_eg_getrandom(buffer, sizeof(buffer));
+    OtNoiseSrcIfClass *nsc = OT_NOISE_SRC_IF_GET_CLASS(s->noise_src);
+    OtNoiseSrcIf *nsi = OT_NOISE_SRC_IF(s->noise_src);
+    nsc->get_noise(nsi, (uint8_t *)buffer, sizeof(buffer));
 
     /* push the whole entropy buffer into the input FIFO */
     unsigned pos = 0;
@@ -1801,9 +1801,8 @@ static const MemoryRegionOps ot_entropy_src_hi_ops = {
 static Property ot_entropy_src_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtEntropySrcState, ot_id),
     DEFINE_PROP_UINT32("version", OtEntropySrcState, version, 0),
-
-    DEFINE_PROP_LINK("ast", OtEntropySrcState, ast, TYPE_OT_AST_EG,
-                     OtASTEgState *),
+    DEFINE_PROP_LINK("noise-src", OtEntropySrcState, noise_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_LINK("otp_ctrl", OtEntropySrcState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_END_OF_LIST(),
@@ -1814,7 +1813,7 @@ static void ot_entropy_src_reset_enter(Object *obj, ResetType type)
     OtEntropySrcClass *c = OT_ENTROPY_SRC_GET_CLASS(obj);
     OtEntropySrcState *s = OT_ENTROPY_SRC(obj);
 
-    trace_ot_entropy_src_reset(s->ot_id);
+    trace_ot_entropy_src_reset(s->ot_id, "enter");
 
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
@@ -1879,6 +1878,24 @@ static void ot_entropy_src_reset_enter(Object *obj, ResetType type)
     ot_entropy_src_change_state(s, ENTROPY_SRC_IDLE);
 }
 
+static void ot_entropy_src_reset_exit(Object *obj, ResetType type)
+{
+    OtEntropySrcClass *c = OT_ENTROPY_SRC_GET_CLASS(obj);
+    OtEntropySrcState *s = OT_ENTROPY_SRC(obj);
+
+    trace_ot_entropy_src_reset(s->ot_id, "exit");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    OtNoiseSrcIfClass *nsc = OT_NOISE_SRC_IF_GET_CLASS(s->noise_src);
+    OtNoiseSrcIf *nsi = OT_NOISE_SRC_IF(s->noise_src);
+    uint64_t noise_file_rate = nsc->get_fill_rate(nsi);
+    s->noise_fill_pace_ns =
+        (NANOSECONDS_PER_SECOND * ES_FILL_BITS) / (noise_file_rate * 8ull);
+}
+
 static void ot_entropy_src_realize(DeviceState *dev, Error **errp)
 {
     (void)errp;
@@ -1887,8 +1904,10 @@ static void ot_entropy_src_realize(DeviceState *dev, Error **errp)
 
     /* emulated version should be specified */
     g_assert(s->version > 0);
-    g_assert(s->ast);
+    g_assert(s->noise_src);
     g_assert(s->otp_ctrl);
+
+    (void)OBJECT_CHECK(OtNoiseSrcIf, s->noise_src, TYPE_OT_NOISE_SRC_IF);
 }
 
 static void ot_entropy_src_init(Object *obj)
@@ -1949,11 +1968,13 @@ static void ot_entropy_src_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, ot_entropy_src_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
-    ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtEntropySrcClass *ec = OT_ENTROPY_SRC_CLASS(klass);
     ec->get_entropy = &ot_entropy_src_get_entropy;
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_entropy_src_reset_enter, NULL,
-                                       NULL, &ec->parent_phases);
+                                       &ot_entropy_src_reset_exit,
+                                       &ec->parent_phases);
 }
 
 static const TypeInfo ot_entropy_src_info = {

@@ -53,6 +53,7 @@ config OT_EDN
     bool
 
 config OT_ENTROPY_SRC
+    select OT_NOISE_SRC
     bool
 
 config OT_FLASH

@@ -36,9 +36,8 @@ OBJECT_DECLARE_TYPE(OtEntropySrcState, OtEntropySrcClass, OT_ENTROPY_SRC)
 
 #define OT_ENTROPY_SRC_PACKET_SIZE_BITS 384u
 
-#define OT_ENTROPY_SRC_BYTE_COUNT  (OT_ENTROPY_SRC_PACKET_SIZE_BITS / 8u)
-#define OT_ENTROPY_SRC_WORD_COUNT  \
-    (OT_ENTROPY_SRC_BYTE_COUNT / sizeof(uint32_t))
+#define OT_ENTROPY_SRC_BYTE_COUNT (OT_ENTROPY_SRC_PACKET_SIZE_BITS / 8u)
+#define OT_ENTROPY_SRC_WORD_COUNT (OT_ENTROPY_SRC_BYTE_COUNT / sizeof(uint32_t))
 #define OT_ENTROPY_SRC_DWORD_COUNT \
     (OT_ENTROPY_SRC_BYTE_COUNT / sizeof(uint64_t))
 
@@ -60,8 +59,7 @@ struct OtEntropySrcClass {
      *          not enabled or if the selected route is not the HW one,
      */
     int (*get_entropy)(OtEntropySrcState *ess,
-                       uint64_t random[OT_ENTROPY_SRC_DWORD_COUNT],
-                       bool *fips);
+                       uint64_t random[OT_ENTROPY_SRC_DWORD_COUNT], bool *fips);
 };
 
 #endif /* HW_OPENTITAN_OT_ENTROPY_SRC_H */
