@@ -404,7 +404,7 @@ class AutoReg:
                 continue
             desc = field.get('desc')
             bits = field.get('bits')
-            if ':' in bits:
+            if isinstance(bits, str) and ':' in bits:
                 hibit, lobit = (self._parse_bits(x) for x in bits.split(':'))
                 offset = lobit
                 width = hibit-lobit+1
@@ -445,7 +445,7 @@ class AutoReg:
                              f'0x{bitmask:0{nibcount}x}')
         return fields
 
-    def _parse_bits(self, value: str) -> int:
+    def _parse_bits(self, value: Union[int, str]) -> int:
         try:
             # simple integer
             return int(value)
