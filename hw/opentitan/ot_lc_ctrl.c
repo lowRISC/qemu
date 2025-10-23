@@ -2137,7 +2137,7 @@ static void ot_lc_ctrl_get_keymgr_div(const OtLcCtrlState *s,
 
 static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtLcCtrlState, ot_id),
-    DEFINE_PROP_LINK("otp_ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP,
+    DEFINE_PROP_LINK("otp-ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_LINK("kmac", OtLcCtrlState, kmac, TYPE_OT_KMAC, OtKMACState *),
     DEFINE_PROP_STRING("raw_unlock_token", OtLcCtrlState,

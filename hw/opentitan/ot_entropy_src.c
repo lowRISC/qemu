@@ -1803,7 +1803,7 @@ static Property ot_entropy_src_properties[] = {
     DEFINE_PROP_UINT32("version", OtEntropySrcState, version, 0),
     DEFINE_PROP_LINK("noise-src", OtEntropySrcState, noise_src, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_LINK("otp_ctrl", OtEntropySrcState, otp_ctrl, TYPE_OT_OTP,
+    DEFINE_PROP_LINK("otp-ctrl", OtEntropySrcState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_END_OF_LIST(),
 };

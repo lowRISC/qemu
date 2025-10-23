@@ -984,7 +984,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtPwrMgrState, ot_id),
     DEFINE_PROP_STRING("clocks", OtPwrMgrState, cfg_clocks),
-    DEFINE_PROP_LINK("clock_ctrl", OtPwrMgrState, clock_ctrl, TYPE_DEVICE,
+    DEFINE_PROP_LINK("clock-ctrl", OtPwrMgrState, clock_ctrl, TYPE_DEVICE,
                      DeviceState *),
     DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
     DEFINE_PROP_UINT8("version", OtPwrMgrState, version, UINT8_MAX),

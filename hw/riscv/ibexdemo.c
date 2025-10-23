@@ -152,7 +152,7 @@ static const IbexDeviceDef ibexdemo_soc_devices[] = {
     [IBEXDEMO_SOC_DEV_DTM] = {
         .type = TYPE_RISCV_DTM,
         .link = IBEXDEVICELINKDEFS(
-            IBEXDEMO_SOC_DEVLINK("tap_ctrl", TAP_CTRL)
+            IBEXDEMO_SOC_DEVLINK("tap-ctrl", TAP_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("abits", 7u)

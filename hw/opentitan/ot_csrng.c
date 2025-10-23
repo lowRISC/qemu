@@ -1938,7 +1938,7 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static Property ot_csrng_properties[] = {
     DEFINE_PROP_LINK("entropy-src", OtCSRNGState, entropy_src,
                      TYPE_OT_ENTROPY_SRC, OtEntropySrcState *),
-    DEFINE_PROP_LINK("otp_ctrl", OtCSRNGState, otp_ctrl, TYPE_OT_OTP,
+    DEFINE_PROP_LINK("otp-ctrl", OtCSRNGState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
     DEFINE_PROP_END_OF_LIST(),
 };

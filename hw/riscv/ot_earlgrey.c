@@ -363,7 +363,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_DTM] = {
         .type = TYPE_RISCV_DTM,
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("tap_ctrl", TAP_CTRL)
+            OT_EG_SOC_DEVLINK("tap-ctrl", TAP_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("abits", 7u)
@@ -776,7 +776,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL),
             OT_EG_SOC_DEVLINK("kmac", KMAC)
         ),
         .prop = IBEXDEVICEPROPDEFS(
@@ -912,7 +912,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_RSTMGR_RST_REQ, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("clock_ctrl", AST)
+            OT_EG_SOC_DEVLINK("clock-ctrl", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("clocks", "main,io,usb"),
@@ -1076,7 +1076,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 34)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL),
             OT_EG_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
@@ -1204,9 +1204,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DEVLINK("edn", EDN0),
             OT_EG_SOC_DEVLINK("flash_ctrl", FLASH_CTRL),
             OT_EG_SOC_DEVLINK("kmac", KMAC),
-            OT_EG_SOC_DEVLINK("lc_ctrl", LC_CTRL),
+            OT_EG_SOC_DEVLINK("lc-ctrl", LC_CTRL),
             OT_EG_SOC_DEVLINK("otbn", OTBN),
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL),
             OT_EG_SOC_DEVLINK("rom_ctrl", ROM_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
@@ -1229,7 +1229,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("entropy-src", ENTROPY_SRC),
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL)
         ),
     },
     [OT_EG_SOC_DEV_ENTROPY_SRC] = {
@@ -1247,7 +1247,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("noise-src", AST),
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("version", 2)
@@ -1299,7 +1299,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 59)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL),
             OT_EG_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(

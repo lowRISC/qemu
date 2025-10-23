@@ -516,7 +516,7 @@ static void riscv_dtm_activate_dms(RISCVDTMState *s)
 
 static Property riscv_dtm_properties[] = {
     DEFINE_PROP_UINT32("abits", RISCVDTMState, abits, 0x7u),
-    DEFINE_PROP_LINK("tap_ctrl", RISCVDTMState, tap_ctrl, TYPE_DEVICE,
+    DEFINE_PROP_LINK("tap-ctrl", RISCVDTMState, tap_ctrl, TYPE_DEVICE,
                      DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
