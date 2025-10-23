@@ -47,17 +47,19 @@ def main():
                            help='output ROM image file')
 
         params = argparser.add_argument_group(title='Parameters')
-        params.add_argument('-i', '--rom-id', type=int,
-                            help='ROM image identifier')
-        params.add_argument('-z', '--rom-size', metavar='SIZE',
-                            type=HexInt.xparse,
-                            help='ROM image size in bytes (accepts Ki suffix)')
+        params.add_argument('-D', '--digest', action='store_true',
+                            help='Show the ROM digest')
         params.add_argument('-f', '--output-format', choices=out_formats,
                             default=out_formats[0],
                             help=f'Output file format '
                                  f'(default: {out_formats[0]})')
+        params.add_argument('-i', '--rom-id', type=int,
+                            help='ROM image identifier')
         params.add_argument('-s', '--subst-perm', action='store_true',
                             help='Enable legacy mode with S&P mode')
+        params.add_argument('-z', '--rom-size', metavar='SIZE',
+                            type=HexInt.xparse,
+                            help='ROM image size in bytes (accepts Ki suffix)')
 
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
@@ -73,6 +75,9 @@ def main():
         rom_img = ROMImage(None, args.subst_perm)
         rom_img.load_config(args.config, args.rom_id)
         rom_img.load(args.rom[0], args.rom_size)
+
+        if args.digest:
+            print('Digest:', rom_img.hexdigest)
 
         with open(args.output, 'wb') if args.output else \
                 sys.stdout.buffer as wfp:

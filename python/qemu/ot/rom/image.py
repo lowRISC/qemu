@@ -186,6 +186,16 @@ class ROMImage:
         return self._digest
 
     @property
+    def hexdigest(self) -> str:
+        """Return the current digest of the ROM image.
+
+           Digest is computed on-the-fly if not already known.
+
+           :return: the digest as a hexa string.
+        """
+        return hexlify(self.digest).decode()
+
+    @property
     def key(self) -> Optional[int]:
         """Key observer."""
         return None if self._key is None else self._key.to_bytes(16, 'big')

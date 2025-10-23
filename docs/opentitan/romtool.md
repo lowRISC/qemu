@@ -12,8 +12,8 @@ Supported input formats:
 ## Usage
 
 ````text
-usage: romtool.py [-h] -c CFG [-o OUTPUT] [-i ROM_ID] [-z SIZE]
-                  [-f {HEX,BIN,SVMEM,VMEM}] [-s] [-v] [-d]
+usage: romtool.py [-h] -c CFG [-o OUTPUT] [-D] [-f {HEX,BIN,SVMEM,VMEM}]
+                  [-i ROM_ID] [-s] [-z SIZE] [-v] [-d]
                   rom
 
 QEMU OT tool to generate a scrambled ROM image.
@@ -27,11 +27,12 @@ Files:
   -o, --output OUTPUT   output ROM image file
 
 Parameters:
-  -i, --rom-id ROM_ID   ROM image identifier
-  -z, --rom-size SIZE   ROM image size in bytes (accepts Ki suffix)
+  -D, --digest          Show the ROM digest
   -f, --output-format {HEX,BIN,SVMEM,VMEM}
                         Output file format (default: HEX)
+  -i, --rom-id ROM_ID   ROM image identifier
   -s, --subst-perm      Enable legacy mode with S&P mode
+  -z, --rom-size SIZE   ROM image size in bytes (accepts Ki suffix)
 
 Extras:
   -v, --verbose         increase verbosity
@@ -42,6 +43,8 @@ Extras:
 
 * `-c` specify a QEMU [configuration file](otcfg.md) from which to read all the cryptographic
   constants. See [`cfggen.py`](cfggen.md) tool to generate such a file.
+
+* `-D` show the loaded or computed ROM digest as an hexadecimal string
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
