@@ -3540,11 +3540,11 @@ static void ot_otp_dj_pwr_load_hw_cfg(OtOTPDjState *s)
     memcpy(hw_cfg->soc_dbg_state, &otp->data[R_HW_CFG1_SOC_DBG_STATE],
            sizeof(hw_cfg->soc_dbg_state));
     /* do not prevent execution from SRAM if no OTP configuration is loaded */
-    hw_cfg->en_sram_ifetch =
+    hw_cfg->en_sram_ifetch_mb8 =
         s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH] :
                  OT_MULTIBITBOOL8_TRUE;
     /* do not prevent CSRNG app reads if no OTP configuration is loaded */
-    hw_cfg->en_csrng_sw_app_read =
+    hw_cfg->en_csrng_sw_app_read_mb8 =
         s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_CSRNG_SW_APP_READ] :
                  OT_MULTIBITBOOL8_TRUE;
 }

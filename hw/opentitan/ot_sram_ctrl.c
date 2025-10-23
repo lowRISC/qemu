@@ -356,7 +356,7 @@ static void ot_sram_ctrl_update_exec(OtSramCtrlState *s)
      */
     if (s->otp_ctrl) {
         OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-        s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch ==
+        s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch_mb8 ==
                         OT_MULTIBITBOOL8_TRUE;
     }
 

@@ -30,6 +30,7 @@
 #define HW_OPENTITAN_OT_OTP_H
 
 #include "qom/object.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/sysbus.h"
 
 #define TYPE_OT_OTP "ot-otp"
@@ -57,16 +58,20 @@ typedef enum {
 #define OT_OTP_HWCFG_SOC_DBG_STATE_BYTES 4u
 
 /*
- * Hardware configuration (for HW_CFG partitions)
+ * Hardware configuration (for HW_CFG partitions).
+ *
+ * Digests are not added to this structure since real HW does not use them
+ *
+ * Note that some fields may be meaningless / not initialized depending on the
+ * actual OpenTitan top.
  */
 typedef struct {
     uint8_t device_id[OT_OTP_HWCFG_DEVICE_ID_BYTES];
     uint8_t manuf_state[OT_OTP_HWCFG_MANUF_STATE_BYTES];
-    /* soc_dbg_state may be meaningless, dep. on the platform */
     uint8_t soc_dbg_state[OT_OTP_HWCFG_SOC_DBG_STATE_BYTES];
-    /* the following value is stored as OT_MULTIBITBOOL8 */
-    uint8_t en_sram_ifetch;
-    uint8_t en_csrng_sw_app_read;
+    ot_mb8_t en_sram_ifetch_mb8;
+    ot_mb8_t en_csrng_sw_app_read_mb8;
+    ot_mb_lc4_t valid_lc4; /* seems generated but no used on real HW */
 } OtOTPHWCfg;
 
 typedef enum {
