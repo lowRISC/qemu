@@ -1939,6 +1939,20 @@ static int ot_otp_eg_dai_write_u64(OtOTPEgState *s, unsigned address)
     uint32_t lo = s->regs[R_DIRECT_ACCESS_WDATA_0];
     uint32_t hi = s->regs[R_DIRECT_ACCESS_WDATA_1];
 
+    unsigned part_ix = (unsigned)s->dai->partition;
+    bool is_secret = ot_otp_eg_is_secret(part_ix);
+
+    if (is_secret) {
+        const uint8_t *scrambling_key = s->otp_scramble_keys[part_ix];
+        uint64_t data = ((uint64_t)hi << 32u) | lo;
+        g_assert(scrambling_key);
+        OtPresentState *ps = ot_present_new();
+        ot_present_init(ps, scrambling_key);
+        ot_present_encrypt(ps, data, &data);
+        lo = (uint32_t)data;
+        hi = (uint32_t)(data >> 32u);
+    }
+
     if ((dst_lo & ~lo) || (dst_hi & ~hi)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Cannot clear OTP bits\n",
                       __func__, s->ot_id);
