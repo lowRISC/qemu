@@ -2367,6 +2367,8 @@ static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
     case R_DIRECT_ACCESS_RDATA_1:
     case R_DIRECT_ACCESS_ADDRESS:
     case R_VENDOR_TEST_READ_LOCK ... R_ROT_CREATOR_AUTH_STATE_READ_LOCK:
+    case R_CHECK_TRIGGER_REGWEN:
+    case R_CHECK_REGWEN:
         val32 = s->regs[reg];
         break;
     case R_STATUS:
@@ -2378,16 +2380,16 @@ static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
         break;
     /* NOLINTNEXTLINE */
     case R_DIRECT_ACCESS_CMD:
+    case R_CHECK_TRIGGER:
         val32 = 0; /* R0W1C */
         break;
-    case R_CHECK_TRIGGER_REGWEN:
-    case R_CHECK_TRIGGER:
-    case R_CHECK_REGWEN:
     case R_CHECK_TIMEOUT:
     case R_INTEGRITY_CHECK_PERIOD:
     case R_CONSISTENCY_CHECK_PERIOD:
-        /* TODO: not yet implemented */
-        val32 = 0;
+        /* @todo: not yet implemented, but these are R/W registers */
+        qemu_log_mask(LOG_UNIMP, "%s: %s: %s is not supported\n", __func__,
+                      s->ot_id, REG_NAME(reg));
+        val32 = s->regs[reg];
         break;
     case R_VENDOR_TEST_DIGEST_0 ... R_SECRET2_DIGEST_1:
         /*
@@ -2525,8 +2527,14 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
         s->regs[reg] &= val32; /* RW0C */
         break;
     case R_CHECK_TRIGGER_REGWEN:
-    case R_CHECK_TRIGGER:
+        val32 &= R_CHECK_TRIGGER_REGWEN_REGWEN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_CHECK_REGWEN:
+        val32 &= R_CHECK_REGWEN_REGWEN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
+    case R_CHECK_TRIGGER:
     case R_CHECK_TIMEOUT:
     case R_INTEGRITY_CHECK_PERIOD:
     case R_CONSISTENCY_CHECK_PERIOD:
