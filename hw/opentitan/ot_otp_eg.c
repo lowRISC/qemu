@@ -2389,8 +2389,10 @@ static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
         val32 = ot_otp_eg_get_status(s);
         break;
     case R_DIRECT_ACCESS_REGWEN:
-        val32 = FIELD_DP32(0, DIRECT_ACCESS_REGWEN, REGWEN,
-                           (uint32_t)!ot_otp_eg_dai_is_busy(s));
+        /* disabled either if SW locked, or if DAI is busy. */
+        val32 = s->regs[reg];
+        val32 &= FIELD_DP32(0u, DIRECT_ACCESS_REGWEN, REGWEN,
+                            (uint32_t)!ot_otp_eg_dai_is_busy(s));
         break;
     /* NOLINTNEXTLINE */
     case R_DIRECT_ACCESS_CMD:
@@ -2486,7 +2488,6 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_STATUS:
     case R_ERR_CODE_0 ... R_ERR_CODE_12:
-    case R_DIRECT_ACCESS_REGWEN:
     case R_DIRECT_ACCESS_RDATA_0:
     case R_DIRECT_ACCESS_RDATA_1:
     case R_VENDOR_TEST_DIGEST_0 ... R_SECRET2_DIGEST_1:
@@ -2518,6 +2519,10 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
         val32 &= ALERT_WMASK;
         s->regs[reg] = val32;
         ot_otp_eg_update_alerts(s);
+        break;
+    case R_DIRECT_ACCESS_REGWEN:
+        val32 &= R_DIRECT_ACCESS_REGWEN_REGWEN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
         break;
     case R_DIRECT_ACCESS_CMD:
         if (FIELD_EX32(val32, DIRECT_ACCESS_CMD, RD)) {
