@@ -395,7 +395,7 @@ class ROMImage:
             line = line.strip()
             if not line.startswith(b'@'):
                 continue
-            parts = re.split(r'\s+', line[1:])
+            parts = re.split(rb'\s+', line[1:])
             address_str = parts[0]
             data_str = parts[1:]
             scrambled_data = all(len(d) in (9, 10) for d in data_str)
