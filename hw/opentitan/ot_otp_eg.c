@@ -1239,18 +1239,15 @@ static uint32_t ot_otp_eg_verify_ecc(const OtOTPEgState *s, uint32_t data,
     return (data_hi_o << 16u) | data_lo_o;
 }
 
-static uint64_t ot_otd_eg_verify_digest(OtOTPEgState *s, unsigned partition,
-                                        uint64_t digest, uint32_t ecc)
+static uint64_t ot_otp_eg_apply_digest_ecc(OtOTPEgState *s, unsigned partition,
+                                           uint64_t digest, uint32_t ecc)
 {
     uint32_t dig_lo = (uint32_t)(digest & UINT32_MAX);
     uint32_t dig_hi = (uint32_t)(digest >> 32u);
 
     unsigned err = 0;
-    if (ot_otp_eg_is_ecc_enabled(s)) {
-        dig_lo = ot_otp_eg_verify_ecc(s, dig_lo, ecc & 0xffffu, &err);
-        dig_hi = ot_otp_eg_verify_ecc(s, dig_hi, ecc >> 16u, &err);
-    }
-
+    dig_lo = ot_otp_eg_verify_ecc(s, dig_lo, ecc & 0xffffu, &err);
+    dig_hi = ot_otp_eg_verify_ecc(s, dig_hi, ecc >> 16u, &err);
     digest = (((uint64_t)dig_hi) << 32u) | ((uint64_t)dig_lo);
 
     if (err) {
@@ -1321,7 +1318,7 @@ static uint64_t ot_otp_eg_get_part_digest(OtOTPEgState *s, int part)
         unsigned ewaddr = waddr >> 1u;
         g_assert(ewaddr < s->otp->ecc_size);
         uint32_t ecc = s->otp->ecc[ewaddr];
-        digest = ot_otd_eg_verify_digest(s, (unsigned)part, digest, ecc);
+        digest = ot_otp_eg_apply_digest_ecc(s, (unsigned)part, digest, ecc);
     }
 
     return digest;
@@ -1564,7 +1561,7 @@ ot_otp_eg_load_partition_digest(OtOTPEgState *s, unsigned partition)
         unsigned ewaddr = (digoff >> 3u);
         g_assert(ewaddr < s->otp->ecc_size);
         uint32_t ecc = s->otp->ecc[ewaddr];
-        digest = ot_otd_eg_verify_digest(s, partition, digest, ecc);
+        digest = ot_otp_eg_apply_digest_ecc(s, partition, digest, ecc);
     }
 
     return digest;
