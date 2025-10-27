@@ -6,6 +6,7 @@
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *  Loïc Lefort <loic@rivosinc.com>
+ *  Alex Jones <alex.jones@lowrisc.org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -968,8 +969,6 @@ static const char *ERR_CODE_NAMES[] = {
     /* clang-format on */
 };
 
-/* clang-format on */
-
 #undef OTP_NAME_ENTRY
 
 #define BUF_STATE_NAME(_st_) \
@@ -1111,6 +1110,15 @@ static bool ot_otp_dj_is_buffered(int partition)
 {
     if (partition >= 0 && partition < OTP_PART_COUNT) {
         return OtOTPPartDescs[partition].buffered;
+    }
+
+    return false;
+}
+
+static bool ot_otp_dj_is_secret(int partition)
+{
+    if (partition >= 0 && partition < OTP_PART_COUNT) {
+        return OtOTPPartDescs[partition].secret;
     }
 
     return false;
@@ -1475,7 +1483,7 @@ static uint32_t ot_otp_dj_get_part_digest_reg(OtOTPDjState *s, uint32_t offset)
      * digest registers, which would be equivalent as the index of the partition
      * that would exist in a virtual partition-with-digest array.
      */
-    unsigned part_look_ix = (int)(offset / NUM_DIGEST_WORDS);
+    unsigned part_look_ix = (unsigned)(offset / NUM_DIGEST_WORDS);
     /* whether to retrieve the top most 32-bit of the digest or not */
     bool hi = (bool)(offset & 0x1u);
 
@@ -1523,6 +1531,8 @@ static uint32_t ot_otp_dj_get_part_digest_reg(OtOTPDjState *s, uint32_t offset)
 
 static bool ot_otp_dj_is_readable(OtOTPDjState *s, int partition)
 {
+    g_assert(partition < OTP_PART_COUNT);
+
     if (OtOTPPartDescs[partition].secret) {
         /* secret partitions are only readable if digest is not yet set. */
         return ot_otp_dj_get_buffered_part_digest(s, partition) == 0u;
@@ -1558,7 +1568,7 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, int partition)
 
     /*
      * If the previous loop reached the last partition, something
-     * seriously wrong occured. Use this feature as a sanity check
+     * seriously wrong occurred. Use this feature as a sanity check
      */
     g_assert(pix < OTP_PART_LIFE_CYCLE);
 
@@ -1886,7 +1896,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
     bool is_zer = ot_otp_dj_is_part_zer_offset(partition, address);
     bool is_readable = ot_otp_dj_is_readable(s, partition);
     bool is_wide = ot_otp_dj_is_wide_granule(partition, address);
-    bool is_secret = OtOTPPartDescs[partition].secret;
+    bool is_secret = ot_otp_dj_is_secret(partition);
 
     /* "in all partitions, the digest itself is ALWAYS readable." */
     if (!is_digest && !is_zer && !is_readable) {
@@ -2600,7 +2610,7 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
     case A_##_reg_: \
         return stringify(_reg_)
 #define CASE_SUB(_reg_, _sz_) \
-    case A_##_reg_...(A_##_reg_ + (_sz_)): \
+    case A_##_reg_...(A_##_reg_ + (_sz_) - 1u): \
         return stringify(_reg_)
 #define CASE_REG(_reg_) \
     case A_##_reg_...(A_##_reg_ + 3u): \
@@ -2738,7 +2748,6 @@ static const char *ot_otp_dj_swcfg_reg_name(unsigned swreg)
 #undef CASE_SUB
 #undef CASE_REG
 #undef CASE_RANGE
-#undef CASE_SUB_WORD
 #undef CASE_DIGEST
 }
 
