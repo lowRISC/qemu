@@ -666,9 +666,9 @@ typedef struct {
     } state;
     struct {
         uint32_t *data; /* size, see OtOTPPartDescs; w/o digest data */
-        uint64_t digest;
         uint64_t next_digest; /* computed HW digest to store into OTP cell */
     } buffer; /* only meaningful for buffered partitions */
+    uint64_t digest; /* digest as read from OTP back end at init time */
     bool locked;
     bool failed;
     bool read_lock;
@@ -1438,16 +1438,6 @@ static uint64_t ot_otp_dj_get_part_digest(OtOTPDjState *s, unsigned part_ix)
     return digest;
 }
 
-static uint64_t
-ot_otp_dj_get_buffered_part_digest(OtOTPDjState *s, unsigned part_ix)
-{
-    g_assert(ot_otp_dj_is_buffered(part_ix));
-
-    const OtOTPPartController *pctrl = &s->partctrls[part_ix];
-
-    return pctrl->buffer.digest;
-}
-
 static bool ot_otp_dj_is_part_digest_offset(unsigned part_ix, hwaddr addr)
 {
     uint16_t offset = OtOTPPartDescs[part_ix].digest_offset;
@@ -1513,14 +1503,8 @@ static uint32_t ot_otp_dj_get_part_digest_reg(OtOTPDjState *s, uint32_t offset)
                   "LC is expected to be the last partition");
     g_assert(part_ix < OTP_PART_COUNT);
 
-    const OtOTPPartDesc *part = &OtOTPPartDescs[part_ix];
-    uint64_t digest;
-
-    if (part->buffered) {
-        digest = ot_otp_dj_get_buffered_part_digest(s, part_ix);
-    } else {
-        digest = ot_otp_dj_get_part_digest(s, part_ix);
-    }
+    const OtOTPPartController *pctrl = &s->partctrls[part_ix];
+    uint64_t digest = pctrl->digest;
 
     if (hi) {
         digest >>= 32u;
@@ -1538,7 +1522,7 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, unsigned part_ix)
 
     if (pdesc->secret) {
         /* secret partitions are only readable if digest is not yet set. */
-        return ot_otp_dj_get_buffered_part_digest(s, part_ix) == 0u;
+        return pctrl->digest == 0u;
     }
 
     if (!pdesc->read_lock_csr) {
@@ -1751,6 +1735,43 @@ ot_otp_dj_load_partition_digest(OtOTPDjState *s, unsigned partition)
     return digest;
 }
 
+static void ot_otp_dj_unscramble_partition(OtOTPDjState *s, unsigned ix)
+{
+    OtOTPPartController *pctrl = &s->partctrls[ix];
+
+    unsigned offset = (unsigned)OtOTPPartDescs[ix].offset;
+    unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
+
+    /* part_size should be a multiple of PRESENT block size */
+    g_assert((part_size & (sizeof(uint64_t) - 1u)) == 0u);
+    unsigned dword_count = part_size / sizeof(uint64_t);
+
+    const uint8_t *base = (const uint8_t *)s->otp->data;
+    base += offset;
+
+    /* source address should be aligned to 64-bit boundary */
+    g_assert(((uintptr_t)base & (sizeof(uint64_t) - 1u)) == 0u);
+    const uint64_t *scrambled = (const uint64_t *)base;
+
+    /* destination address should be aligned to 64-bit boundary */
+    g_assert(pctrl->buffer.data != NULL);
+    uint64_t *clear = (uint64_t *)pctrl->buffer.data;
+
+    const uint8_t *scrambling_key = s->otp_scramble_keys[ix];
+    g_assert(scrambling_key);
+
+    OtPresentState *ps = ot_present_new();
+    ot_present_init(ps, scrambling_key);
+
+    trace_ot_otp_unscramble_partition(s->ot_id, PART_NAME(ix), ix, part_size);
+    /* neither the digest block nor the zeroizable block are scrambled */
+    for (unsigned dix = 0u; dix < dword_count; dix++) {
+        ot_present_decrypt(ps, scrambled[dix], &clear[dix]);
+    }
+
+    ot_present_free(ps);
+}
+
 static void ot_otp_dj_bufferize_partition(OtOTPDjState *s, unsigned ix)
 {
     OtOTPPartController *pctrl = &s->partctrls[ix];
@@ -1758,25 +1779,37 @@ static void ot_otp_dj_bufferize_partition(OtOTPDjState *s, unsigned ix)
     g_assert(pctrl->buffer.data != NULL);
 
     if (OtOTPPartDescs[ix].hw_digest) {
-        pctrl->buffer.digest = ot_otp_dj_load_partition_digest(s, ix);
+        pctrl->digest = ot_otp_dj_load_partition_digest(s, ix);
     } else {
-        pctrl->buffer.digest = 0;
+        pctrl->digest = 0;
     }
 
-    unsigned offset = (unsigned)OtOTPPartDescs[ix].offset;
-    unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
+    if (OtOTPPartDescs[ix].secret) {
+        /* secret partitions need to be unscrambled */
+        if (s->blk) {
+            /*
+             * nothing to unscramble if no OTP data is loaded
+             * scrambling keys in this case may not be known
+             */
+            ot_otp_dj_unscramble_partition(s, ix);
+        }
+    } else {
+        unsigned offset = (unsigned)OtOTPPartDescs[ix].offset;
+        unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
 
-    const uint8_t *base = (const uint8_t *)s->otp->data;
-    base += offset;
+        const uint8_t *base = (const uint8_t *)s->otp->data;
+        base += offset;
 
-    memcpy(pctrl->buffer.data, base, part_size);
+        memcpy(pctrl->buffer.data, base, part_size);
+    }
 }
 
-static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
+static void
+ot_otp_dj_check_buffered_partition_integrity(OtOTPDjState *s, unsigned ix)
 {
     OtOTPPartController *pctrl = &s->partctrls[ix];
 
-    if (pctrl->buffer.digest == 0) {
+    if (pctrl->digest == 0) {
         trace_ot_otp_skip_digest(s->ot_id, PART_NAME(ix), ix);
         pctrl->locked = false;
         return;
@@ -1784,19 +1817,23 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
 
     pctrl->locked = true;
 
+    /*
+     * digests are always calculated over the original data (scrambled or not)
+     */
+    const uint8_t *part_data =
+        ((const uint8_t *)s->otp->data) + ot_otp_dj_part_data_offset(ix);
     unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
-    uint64_t digest =
-        ot_otp_dj_compute_partition_digest(s,
-                                           (const uint8_t *)pctrl->buffer.data,
-                                           part_size);
 
-    if (digest != pctrl->buffer.digest) {
+    uint64_t digest =
+        ot_otp_dj_compute_partition_digest(s, part_data, part_size);
+
+    if (digest != pctrl->digest) {
         trace_ot_otp_mismatch_digest(s->ot_id, PART_NAME(ix), ix, digest,
-                                     pctrl->buffer.digest);
+                                     pctrl->digest);
 
         TRACE_OTP("compute digest of %s: %016" PRIx64 " from %s\n",
                   PART_NAME(ix), digest,
-                  ot_otp_hexdump(s, pctrl->buffer.data, part_size));
+                  ot_otp_hexdump(s, part_data, part_size));
 
         pctrl->failed = true;
         /* this is a fatal error */
@@ -1972,16 +2009,20 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
         }
     }
 
-    if (is_secret) {
+    if (is_secret && !(is_digest || is_zer)) {
+        /*
+         * if the partition is a secret partition, OTP storage is scrambled
+         * except the digest and the zeroification fields
+         */
         const uint8_t *scrambling_key = s->otp_scramble_keys[partition];
         g_assert(scrambling_key);
-        uint64_t data = ((uint64_t)data_hi << 32u) | data_lo;
+        uint64_t tmp_data = ((uint64_t)data_hi << 32u) | data_lo;
         OtPresentState *ps = ot_present_new();
         ot_present_init(ps, scrambling_key);
-        ot_present_decrypt(ps, data, &data);
+        ot_present_decrypt(ps, tmp_data, &tmp_data);
         ot_present_free(ps);
-        data_lo = data;
-        data_hi = (data >> 32u);
+        data_lo = (uint32_t)tmp_data;
+        data_hi = (uint32_t)(tmp_data >> 32u);
     }
 
     s->regs[R_DIRECT_ACCESS_RDATA_0] = data_lo;
@@ -2306,14 +2347,8 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_READ);
 
-    const uint8_t *data;
-
-    if (OtOTPPartDescs[partition].buffered) {
-        data = ((const uint8_t *)s->otp->data) +
-               ot_otp_dj_part_data_offset(partition);
-    } else {
-        data = (const uint8_t *)pctrl->buffer.data;
-    }
+    const uint8_t *data =
+        ((const uint8_t *)s->otp->data) + ot_otp_dj_part_data_offset(partition);
     unsigned part_size = ot_otp_dj_part_data_byte_size(partition);
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG);
@@ -3126,7 +3161,7 @@ static void ot_otp_dj_get_keymgr_secret(
         data_ptr = ds->inv_default_parts[part_ix];
     }
 
-    secret->valid = ot_otp_dj_get_buffered_part_digest(ds, part_ix) != 0;
+    secret->valid = ds->partctrls[part_ix].digest != 0;
     memcpy(secret->secret, &data_ptr[offset], OT_OTP_KEYMGR_SECRET_SIZE);
 }
 
@@ -3536,6 +3571,9 @@ static void ot_otp_dj_pwr_load_tokens(OtOTPDjState *s)
 static void ot_otp_dj_pwr_initialize_partitions(OtOTPDjState *s)
 {
     for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
+        /* sanity check: all secret partitions are also buffered */
+        g_assert(!OtOTPPartDescs[ix].secret || OtOTPPartDescs[ix].buffered);
+
         if (ot_otp_dj_is_ecc_enabled(s) && OtOTPPartDescs[ix].integrity) {
             if (ot_otp_dj_apply_ecc(s, ix)) {
                 continue;
@@ -3543,15 +3581,15 @@ static void ot_otp_dj_pwr_initialize_partitions(OtOTPDjState *s)
         }
 
         if (OtOTPPartDescs[ix].sw_digest) {
-            uint64_t digest = ot_otp_dj_get_part_digest(s, ix);
-            s->partctrls[ix].locked = digest != 0;
+            s->partctrls[ix].digest = ot_otp_dj_get_part_digest(s, ix);
+            s->partctrls[ix].locked = s->partctrls[ix].digest != 0;
             continue;
         }
 
         if (OtOTPPartDescs[ix].buffered) {
             ot_otp_dj_bufferize_partition(s, ix);
             if (OtOTPPartDescs[ix].hw_digest) {
-                ot_otp_dj_check_partition_integrity(s, ix);
+                ot_otp_dj_check_buffered_partition_integrity(s, ix);
             }
             continue;
         }
@@ -3727,7 +3765,18 @@ static void ot_otp_dj_configure_sram(OtOTPDjState *s)
 static void ot_otp_dj_configure_part_scramble_keys(OtOTPDjState *s)
 {
     for (unsigned ix = 0u; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
+        if (!OtOTPPartDescs[ix].secret) {
+            continue;
+        }
+
         if (!s->otp_scramble_key_xstrs[ix]) {
+            /* if OTP data is loaded, unscrambling keys are mandatory */
+            if (s->blk) {
+                error_setg(&error_fatal,
+                           "%s: %s Missing OTP scrambling key for part %s (%u)",
+                           __func__, s->ot_id, PART_NAME(ix), ix);
+                return;
+            }
             continue;
         }
 
@@ -3735,8 +3784,8 @@ static void ot_otp_dj_configure_part_scramble_keys(OtOTPDjState *s)
         if (len != OTP_SCRAMBLING_KEY_BYTES * 2u) {
             error_setg(
                 &error_fatal,
-                "%s: %s Invalid OTP scrambling key length %zu for partition %u",
-                __func__, s->ot_id, len, ix);
+                "%s: %s Invalid OTP scrambling key length %zu for part %s (%u)",
+                __func__, s->ot_id, len, PART_NAME(ix), ix);
             return;
         }
 
@@ -3747,8 +3796,8 @@ static void ot_otp_dj_configure_part_scramble_keys(OtOTPDjState *s)
                                      s->otp_scramble_key_xstrs[ix],
                                      OTP_SCRAMBLING_KEY_BYTES, true, true)) {
             error_setg(&error_fatal,
-                       "%s: %s unable to parse otp_scramble_keys[%u]", __func__,
-                       s->ot_id, ix);
+                       "%s: %s unable to parse otp_scramble_keys[%u] for %s",
+                       __func__, s->ot_id, ix, PART_NAME(ix));
             return;
         }
 
@@ -3951,7 +4000,7 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
         }
         unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
         memset(s->partctrls[ix].buffer.data, 0, part_size);
-        s->partctrls[ix].buffer.digest = 0;
+        s->partctrls[ix].digest = 0;
         if (OtOTPPartDescs[ix].iskeymgr_creator ||
             OtOTPPartDescs[ix].iskeymgr_owner) {
             s->partctrls[ix].read_lock = true;
