@@ -128,6 +128,8 @@ def main():
         params.add_argument('-f', '--filter', action='append',
                             metavar='PART:FIELD',
                             help='filter which OTP fields are shown')
+        params.add_argument('--force-absorb', action='store_true',
+                            help='force absorption')
         params.add_argument('--no-version', action='store_true',
                             help='do not report the OTP image version')
         commands = argparser.add_argument_group(title='Commands')
@@ -241,7 +243,7 @@ def main():
                 argparser.error('Specified option requires an OTP map')
         else:
             otpmap = OtpMap()
-            otpmap.load(args.otp_map)
+            otpmap.load(args.otp_map, args.force_absorb)
 
         if args.lifecycle:
             lcext = OtpLifecycleExtension()

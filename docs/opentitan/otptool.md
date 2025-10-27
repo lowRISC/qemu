@@ -9,7 +9,7 @@ controller virtual device.
 usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
                   [-x VMEM] [-X VMEM] [-k {auto,otp,fuz}] [-e BITS]
                   [-C CONFIG] [-c INT] [-i INT] [-w] [-n] [-f PART:FIELD]
-                  [--no-version] [-s] [-E] [-D] [-U]
+                  [--force-absorb] [--no-version] [-s] [-E] [-D] [-U]
                   [-g {LCVAL,LCTPL,PARTS,REGS}] [-F] [-G PART]
                   [--change PART:FIELD=VALUE] [--empty PARTITION]
                   [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
@@ -43,6 +43,7 @@ Parameters:
   -n, --no-decode       do not attempt to decode OTP fields
   -f, --filter PART:FIELD
                         filter which OTP fields are shown
+  --force-absorb        force absorption
   --no-version          do not report the OTP image version
 
 Commands:
@@ -214,6 +215,10 @@ Fuse RAW images only use the v1 type.
   their index or their name.
 
 * `--erase` reset a specific field within a partition. The flag may be repeated.
+
+* `--force-absorb` force allocation of aborbable free space. Input HJSON map files already define
+  absorbable space allocated to absorbable partitions. This option forces absorbable space
+  allocation. It may be removed in a future version.
 
 * `--no-version` disable OTP image version reporting when `-s` is used.
 

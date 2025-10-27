@@ -44,7 +44,7 @@ class OtpMap:
         self._partitions: list[OtpPartition] = []
         self._git_version: Optional[str] = None
 
-    def load(self, hfp: TextIO) -> None:
+    def load(self, hfp: TextIO, absorb: Optional[bool] = False) -> None:
         """Parse a HJSON configuration file, typically otp_ctrl_mmap.hjson
         """
         if hjload is None:
@@ -59,7 +59,7 @@ class OtpMap:
                              'wrong input file kind?') from exc
         self._otp_size = int(otp['width']) * int(otp['depth'])
         self._generate_partitions()
-        self._compute_locations()
+        self._compute_locations(absorb)
 
     @property
     def partitions(self) -> dict[str, Any]:
@@ -181,7 +181,7 @@ class OtpMap:
         enable = any(kms[kind])
         return f'{kmprefix}{kind}', enable
 
-    def _compute_locations(self) -> None:
+    def _compute_locations(self, absorb: bool) -> None:
         """Update partitions with their location within the OTP map."""
         absorb_parts = [p for p in self._partitions
                         if getattr(p, 'absorb', False)]
@@ -202,7 +202,8 @@ class OtpMap:
                 extra_blocks -= 1
             self._log.info('Partition %s size augmented from %u to %u bytes',
                            part.name, psize, part.size)
-            part.dispatch_absorb()
+            if absorb:
+                part.dispatch_absorb()
         for part in self._partitions:
             part_offset = 0
             for part in self._partitions:
