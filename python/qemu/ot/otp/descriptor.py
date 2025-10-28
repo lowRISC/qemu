@@ -280,7 +280,7 @@ class OtpRegisterDef:
             case A_##_reg_: \\
                 return stringify(_reg_)
         #define CASE_SUB(_reg_, _sz_) \\
-            case A_##_reg_...(A_##_reg_ + (_sz_)): \\
+            case A_##_reg_...(A_##_reg_ + (_sz_) - 1u): \\
                 return stringify(_reg_)
         #define CASE_REG(_reg_) \\
             case A_##_reg_...(A_##_reg_ + 3u): \\
