@@ -484,6 +484,8 @@ typedef enum {
     OTP_ENTRY_COUNT,
 } OtOTPPartitionType;
 
+static_assert(OTP_PART_OTP_COUNT == NUM_PART, "Invalid partition count");
+
 /* Error code (compliant with ERR_CODE registers) */
 typedef enum {
     OTP_NO_ERROR,
@@ -977,14 +979,14 @@ static void ot_otp_eg_update_alerts(OtOTPEgState *s)
     }
 }
 
-static bool ot_otp_eg_is_wide_granule(int partition, unsigned address)
+static bool ot_otp_eg_is_wide_granule(unsigned part_ix, unsigned address)
 {
-    if ((unsigned)partition < OTP_PART_COUNT) {
-        if (OtOTPPartDescs[partition].secret) {
+    if (part_ix < OTP_PART_COUNT) {
+        if (OtOTPPartDescs[part_ix].secret) {
             return true;
         }
 
-        if (OtOTPPartDescs[partition].digest_offset ==
+        if (OtOTPPartDescs[part_ix].digest_offset ==
             (address & OTP_DIGEST_ADDR_MASK)) {
             return true;
         }
@@ -993,19 +995,19 @@ static bool ot_otp_eg_is_wide_granule(int partition, unsigned address)
     return false;
 }
 
-static bool ot_otp_eg_is_buffered(int partition)
+static bool ot_otp_eg_is_buffered(unsigned part_ix)
 {
-    if (partition >= 0 && partition < OTP_PART_COUNT) {
-        return OtOTPPartDescs[partition].buffered;
+    if (part_ix < OTP_PART_COUNT) {
+        return OtOTPPartDescs[part_ix].buffered;
     }
 
     return false;
 }
 
-static bool ot_otp_eg_is_secret(int partition)
+static bool ot_otp_eg_is_secret(unsigned part_ix)
 {
-    if (partition >= 0 && partition < OTP_PART_COUNT) {
-        return OtOTPPartDescs[partition].secret;
+    if (part_ix < OTP_PART_COUNT) {
+        return OtOTPPartDescs[part_ix].secret;
     }
 
     return false;
@@ -1265,16 +1267,15 @@ static uint64_t ot_otp_eg_apply_digest_ecc(OtOTPEgState *s, unsigned partition,
     return digest;
 }
 
-static int ot_otp_eg_apply_ecc(OtOTPEgState *s, unsigned partition)
+static int ot_otp_eg_apply_ecc(OtOTPEgState *s, unsigned part_ix)
 {
     g_assert(ot_otp_eg_is_ecc_enabled(s));
 
-    unsigned start = OtOTPPartDescs[partition].offset >> 2u;
+    unsigned start = OtOTPPartDescs[part_ix].offset >> 2u;
     unsigned end =
-        (ot_otp_eg_is_buffered((int)partition) &&
-         ot_otp_eg_has_digest(partition)) ?
-            (unsigned)(OtOTPPartDescs[partition].digest_offset >> 2u) :
-            start + (unsigned)(OtOTPPartDescs[partition].size >> 2u);
+        (ot_otp_eg_is_buffered((int)part_ix) && ot_otp_eg_has_digest(part_ix)) ?
+            (unsigned)(OtOTPPartDescs[part_ix].digest_offset >> 2u) :
+            start + (unsigned)(OtOTPPartDescs[part_ix].size >> 2u);
 
     g_assert(start < end && (end / sizeof(uint32_t)) < s->otp->data_size);
     for (unsigned ix = start; ix < end; ix++) {
@@ -1289,11 +1290,11 @@ static int ot_otp_eg_apply_ecc(OtOTPEgState *s, unsigned partition)
              *  Note: need to check if any caller could override the error/state
              * in this case
              */
-            ot_otp_eg_set_error(s, partition, otp_err);
+            ot_otp_eg_set_error(s, part_ix, otp_err);
             if (err > 1) {
-                trace_ot_otp_ecc_init_error(s->ot_id, PART_NAME(partition),
-                                            partition, ix << 2u, *word, ecc);
-                s->partctrls[partition].failed = true;
+                trace_ot_otp_ecc_init_error(s->ot_id, PART_NAME(part_ix),
+                                            part_ix, ix << 2u, *word, ecc);
+                s->partctrls[part_ix].failed = true;
                 return -1;
             }
         }
@@ -1302,11 +1303,11 @@ static int ot_otp_eg_apply_ecc(OtOTPEgState *s, unsigned partition)
     return 0;
 }
 
-static uint64_t ot_otp_eg_get_part_digest(OtOTPEgState *s, int part)
+static uint64_t ot_otp_eg_get_part_digest(OtOTPEgState *s, unsigned part_ix)
 {
-    g_assert(!ot_otp_eg_is_buffered(part));
+    g_assert(!ot_otp_eg_is_buffered(part_ix));
 
-    uint16_t offset = OtOTPPartDescs[part].digest_offset;
+    uint16_t offset = OtOTPPartDescs[part_ix].digest_offset;
 
     if (offset == UINT16_MAX) {
         return 0u;
@@ -1315,29 +1316,30 @@ static uint64_t ot_otp_eg_get_part_digest(OtOTPEgState *s, int part)
     const uint8_t *data = (const uint8_t *)s->otp->data;
     uint64_t digest = ldq_le_p(data + offset);
 
-    if (part != OTP_PART_VENDOR_TEST && ot_otp_eg_is_ecc_enabled(s)) {
+    if (part_ix != OTP_PART_VENDOR_TEST && ot_otp_eg_is_ecc_enabled(s)) {
         unsigned waddr = offset >> 2u;
         unsigned ewaddr = waddr >> 1u;
         g_assert(ewaddr < s->otp->ecc_size);
         uint32_t ecc = s->otp->ecc[ewaddr];
-        digest = ot_otp_eg_apply_digest_ecc(s, (unsigned)part, digest, ecc);
+        digest = ot_otp_eg_apply_digest_ecc(s, part_ix, digest, ecc);
     }
 
     return digest;
 }
 
-static uint64_t ot_otp_eg_get_buffered_part_digest(OtOTPEgState *s, int part)
+static uint64_t
+ot_otp_eg_get_buffered_part_digest(OtOTPEgState *s, unsigned part_ix)
 {
-    g_assert(ot_otp_eg_is_buffered(part));
+    g_assert(ot_otp_eg_is_buffered(part_ix));
 
-    OtOTPPartController *pctrl = &s->partctrls[part];
+    const OtOTPPartController *pctrl = &s->partctrls[part_ix];
 
     return pctrl->buffer.digest;
 }
 
-static bool ot_otp_eg_is_part_digest_offset(int part, hwaddr addr)
+static bool ot_otp_eg_is_part_digest_offset(unsigned part_ix, hwaddr addr)
 {
-    uint16_t offset = OtOTPPartDescs[part].digest_offset;
+    uint16_t offset = OtOTPPartDescs[part_ix].digest_offset;
 
     return (offset != UINT16_MAX) && ((addr & ~OTP_DIGEST_ADDR_MASK) == offset);
 }
@@ -1397,9 +1399,9 @@ static uint32_t ot_otp_eg_get_part_digest_reg(OtOTPEgState *s, uint32_t offset)
     uint64_t digest;
 
     if (part->buffered) {
-        digest = ot_otp_eg_get_buffered_part_digest(s, (int)part_ix);
+        digest = ot_otp_eg_get_buffered_part_digest(s, part_ix);
     } else {
-        digest = ot_otp_eg_get_part_digest(s, (int)part_ix);
+        digest = ot_otp_eg_get_part_digest(s, part_ix);
     }
 
     if (hi) {
@@ -1409,32 +1411,35 @@ static uint32_t ot_otp_eg_get_part_digest_reg(OtOTPEgState *s, uint32_t offset)
     return (uint32_t)digest;
 }
 
-static bool ot_otp_eg_is_readable(OtOTPEgState *s, int partition)
+static bool ot_otp_eg_is_readable(OtOTPEgState *s, unsigned part_ix)
 {
-    g_assert(partition < OTP_PART_COUNT);
+    g_assert(part_ix < OTP_PART_COUNT);
 
-    if (OtOTPPartDescs[partition].secret) {
+    const OtOTPPartDesc *pdesc = &OtOTPPartDescs[part_ix];
+    const OtOTPPartController *pctrl = &s->partctrls[part_ix];
+
+    if (pdesc->secret) {
         /* secret partitions are only readable if digest is not yet set. */
-        return ot_otp_eg_get_buffered_part_digest(s, partition) == 0u;
+        return ot_otp_eg_get_buffered_part_digest(s, part_ix) == 0u;
     }
 
-    if (!OtOTPPartDescs[partition].read_lock_csr) {
-        if (!OtOTPPartDescs[partition].read_lock) {
+    if (!pdesc->read_lock_csr) {
+        if (!pdesc->read_lock) {
             /* read lock is not supported for this partition */
             return true;
         }
 
         /* hw read lock, not locked */
-        return !s->partctrls[partition].read_lock;
+        return !pctrl->read_lock;
     }
 
     unsigned roffset = 0;
     unsigned pix;
     for (pix = 0; pix < OTP_PART_COUNT; pix++) {
-        if (pix == partition) {
+        if (pix == part_ix) {
             break;
         }
-        if (OtOTPPartDescs[partition].read_lock_csr) {
+        if (pdesc->read_lock_csr) {
             roffset++;
         }
     }
@@ -1772,10 +1777,12 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
         return;
     }
 
-    bool is_digest = ot_otp_eg_is_part_digest_offset(partition, address);
-    bool is_readable = ot_otp_eg_is_readable(s, partition);
-    bool is_wide = ot_otp_eg_is_wide_granule(partition, address);
-    bool is_secret = ot_otp_eg_is_secret(partition);
+    unsigned part_ix = (unsigned)partition;
+    bool is_readable = ot_otp_eg_is_readable(s, part_ix);
+    bool is_wide = ot_otp_eg_is_wide_granule(part_ix, address);
+    bool is_buffered = ot_otp_eg_is_buffered(part_ix);
+    bool is_secret = ot_otp_eg_is_secret(part_ix);
+    bool is_digest = ot_otp_eg_is_part_digest_offset(part_ix, address);
 
     /* "in all partitions, the digest itself is ALWAYS readable." */
     if (!is_digest && !is_readable) {
@@ -1786,7 +1793,8 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
         return;
     }
 
-    unsigned waddr = address >> 2u;
+    unsigned part_offset = address - ot_otp_eg_part_data_offset(partition);
+    unsigned part_waddr = part_offset >> 2u;
     bool do_ecc =
         (partition != OTP_PART_VENDOR_TEST) && ot_otp_eg_is_ecc_enabled(s);
 
@@ -1796,13 +1804,22 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
     unsigned err = 0;
     unsigned cell_count = sizeof(uint32_t) + (do_ecc ? sizeof(uint16_t) : 0);
 
+    const uint32_t *data = (const uint32_t *)s->otp->data;
+    /* parenthesis inform the C linter sizeof() call is valid with 'data */
+    data += (ot_otp_eg_part_data_offset(partition) / sizeof(uint32_t));
+
     if (is_wide || is_digest) {
-        waddr &= ~0b1u;
-        data_lo = s->otp->data[waddr];
-        data_hi = s->otp->data[waddr + 1u];
+        /* 64-bit requests */
+        part_waddr &= ~0b1u;
+
+        g_assert((part_waddr + 1u) * sizeof(uint32_t) <
+                 OtOTPPartDescs[partition].size);
+
+        data_lo = data[part_waddr];
+        data_hi = data[part_waddr + 1u];
 
         if (do_ecc) {
-            unsigned ewaddr = waddr >> 1u;
+            unsigned ewaddr = address >> 3u;
             g_assert(ewaddr < s->otp->ecc_size);
             uint32_t ecc = s->otp->ecc[ewaddr];
             if (ot_otp_eg_is_ecc_enabled(s)) {
@@ -1813,14 +1830,18 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
 
         cell_count *= 2u;
     } else {
-        data_lo = s->otp->data[waddr];
+        /* 32-bit request */
+        g_assert(part_waddr * sizeof(uint32_t) <
+                 OtOTPPartDescs[partition].size);
+
+        data_lo = data[part_waddr];
         data_hi = 0u;
 
         if (do_ecc) {
-            unsigned ewaddr = waddr >> 1u;
+            unsigned ewaddr = address >> 3u;
             g_assert(ewaddr < s->otp->ecc_size);
             uint32_t ecc = s->otp->ecc[ewaddr];
-            if (waddr & 1u) {
+            if ((address >> 2u) & 1u) {
                 ecc >>= 16u;
             }
             if (ot_otp_eg_is_ecc_enabled(s)) {
@@ -1856,7 +1877,7 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
 
     s->dai->partition = partition;
 
-    if (!ot_otp_eg_is_buffered(partition)) {
+    if (!is_buffered) {
         /* fake slow access to OTP cell */
         unsigned access_time = s->be_chars.timings.read_ns * cell_count;
         timer_mod(s->dai->delay,
@@ -2014,7 +2035,9 @@ static void ot_otp_eg_dai_write(OtOTPEgState *s)
         return;
     }
 
-    if (partition >= OTP_PART_LIFE_CYCLE) {
+    unsigned part_ix = (unsigned)partition;
+
+    if (part_ix >= OTP_PART_LIFE_CYCLE) {
         qemu_log_mask(
             LOG_GUEST_ERROR,
             "%s: %s: Life cycle partition cannot be accessed from DAI\n",
@@ -2023,17 +2046,17 @@ static void ot_otp_eg_dai_write(OtOTPEgState *s)
         return;
     }
 
-    OtOTPPartController *pctrl = &s->partctrls[partition];
+    OtOTPPartController *pctrl = &s->partctrls[part_ix];
 
     if (pctrl->failed) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s is disabled\n",
-                      __func__, s->ot_id, PART_NAME(partition));
+                      __func__, s->ot_id, PART_NAME(part_ix));
         return;
     }
 
     if (pctrl->locked) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s (%u) is locked\n",
-                      __func__, s->ot_id, PART_NAME(partition), partition);
+                      __func__, s->ot_id, PART_NAME(part_ix), part_ix);
         ot_otp_eg_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2041,13 +2064,13 @@ static void ot_otp_eg_dai_write(OtOTPEgState *s)
     if (pctrl->write_lock) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: artition %s (%u) is write locked\n", __func__,
-                      s->ot_id, PART_NAME(partition), partition);
+                      s->ot_id, PART_NAME(part_ix), part_ix);
         ot_otp_eg_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
-    bool is_digest = ot_otp_eg_is_part_digest_offset(partition, address);
-    bool is_wide = ot_otp_eg_is_wide_granule(partition, address);
+    bool is_digest = ot_otp_eg_is_part_digest_offset(part_ix, address);
+    bool is_wide = ot_otp_eg_is_wide_granule(part_ix, address);
 
     if (is_digest) {
         if (OtOTPPartDescs[partition].hw_digest) {
@@ -2056,7 +2079,7 @@ static void ot_otp_eg_dai_write(OtOTPEgState *s)
                 LOG_GUEST_ERROR,
                 "%s: %s: partition %s (%u) HW digest cannot be directly "
                 "written\n",
-                __func__, s->ot_id, PART_NAME(partition), partition);
+                __func__, s->ot_id, PART_NAME(part_ix), part_ix);
             ot_otp_eg_dai_set_error(s, OTP_ACCESS_ERROR);
             return;
         }
@@ -2633,7 +2656,6 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
 {
     OtOTPEgState *s = OT_OTP_EG(opaque);
     (void)attrs;
-    uint32_t val32;
 
     g_assert(addr + size <= SW_CFG_WINDOW_SIZE);
 
@@ -2642,31 +2664,33 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
 
     if (partition < 0) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "invalid");
-        val32 = 0;
+        *data = 0ull;
+
+        return MEMTX_DECODE_ERROR;
     }
 
-    if (ot_otp_eg_is_buffered(partition)) {
+    unsigned part_ix = (unsigned)partition;
+
+    if (ot_otp_eg_is_buffered(part_ix)) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "buffered");
-        ot_otp_eg_set_error(s, (unsigned)partition, OTP_ACCESS_ERROR);
+        ot_otp_eg_set_error(s, part_ix, OTP_ACCESS_ERROR);
 
         /* real HW seems to stall the Tile Link bus in this case */
         return MEMTX_ACCESS_ERROR;
     }
 
-    bool is_digest = ot_otp_eg_is_part_digest_offset(partition, addr);
-    bool is_readable = ot_otp_eg_is_readable(s, partition);
+    bool is_readable = ot_otp_eg_is_readable(s, part_ix);
+    bool is_digest = ot_otp_eg_is_part_digest_offset(part_ix, addr);
 
-    if (!is_digest && !is_readable) {
+    if (!is_readable && !is_digest) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "not readable");
-        ot_otp_eg_set_error(s, (unsigned)partition, OTP_ACCESS_ERROR);
+        ot_otp_eg_set_error(s, part_ix, OTP_ACCESS_ERROR);
 
         return MEMTX_DECODE_ERROR;
     }
 
-    if (!(partition < 0)) {
-        val32 = s->otp->data[reg];
-        ot_otp_eg_set_error(s, (unsigned)partition, OTP_NO_ERROR);
-    }
+    uint32_t val32 = s->otp->data[reg];
+    ot_otp_eg_set_error(s, part_ix, OTP_NO_ERROR);
 
     uint64_t pc;
 
@@ -2978,17 +3002,18 @@ static void ot_otp_eg_get_keymgr_secret(
         return;
     }
 
-    g_assert(ot_otp_eg_is_buffered(partition));
+    unsigned part_ix = (unsigned)partition;
+    g_assert(ot_otp_eg_is_buffered(part_ix));
 
     const uint8_t *data_ptr;
     if (es->lc_broadcast.current_level & BIT(OT_OTP_LC_SEED_HW_RD_EN)) {
-        data_ptr = (const uint8_t *)es->partctrls[partition].buffer.data;
+        data_ptr = (const uint8_t *)es->partctrls[part_ix].buffer.data;
     } else {
         /* source data from PartInvDefault instead of real buffer */
-        data_ptr = es->inv_default_parts[partition];
+        data_ptr = es->inv_default_parts[part_ix];
     }
 
-    secret->valid = ot_otp_eg_get_buffered_part_digest(es, partition) != 0;
+    secret->valid = ot_otp_eg_get_buffered_part_digest(es, part_ix) != 0;
     memcpy(secret->secret, &data_ptr[offset], OT_OTP_KEYMGR_SECRET_SIZE);
 }
 
@@ -3408,7 +3433,7 @@ static void ot_otp_eg_pwr_initialize_partitions(OtOTPEgState *s)
         }
 
         if (OtOTPPartDescs[ix].sw_digest) {
-            uint64_t digest = ot_otp_eg_get_part_digest(s, (int)ix);
+            uint64_t digest = ot_otp_eg_get_part_digest(s, ix);
             s->partctrls[ix].locked = digest != 0;
             continue;
         }
@@ -3437,16 +3462,23 @@ static void ot_otp_eg_pwr_otp_bh(void *opaque)
      */
     trace_ot_otp_pwr_otp_req(s->ot_id, "initialize");
 
+    /* load OTP data from OTP back-end file */
     ot_otp_eg_pwr_load(s);
+    /* check ECC, digests, configure locks and bufferize partitions */
     ot_otp_eg_pwr_initialize_partitions(s);
+    /* load HW configuration, that is HW "broadcasted signals" */
     ot_otp_eg_pwr_load_hw_cfg(s);
+    /* load LC controller tokens */
     ot_otp_eg_pwr_load_tokens(s);
 
+    /* initialize direct access interface */
     ot_otp_eg_dai_init(s);
+    /* initialize LC controller interface */
     ot_otp_eg_lci_init(s);
 
     trace_ot_otp_pwr_otp_req(s->ot_id, "done");
 
+    /* toggle OTP completion to signal the power manager OTP init is complete */
     ibex_irq_set(&s->pwc_otp_rsp, 1);
     ibex_irq_set(&s->pwc_otp_rsp, 0);
 }
