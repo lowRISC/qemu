@@ -626,6 +626,7 @@ typedef enum {
 /* TODO: wr and rd lock need to be rewritten (not simple boolean) */
 
 typedef struct {
+    const char *name;
     uint16_t size;
     uint16_t offset;
     uint16_t digest_offset;
@@ -645,8 +646,6 @@ typedef struct {
 
 #define OT_OTP_DJ_PARTS
 
-#define OTP_PART_LIFE_CYCLE_SIZE 88u
-
 /* NOLINTNEXTLINE */
 #include "ot_otp_dj_parts.c"
 
@@ -665,7 +664,7 @@ typedef struct {
         OtOTPUnbufState u;
     } state;
     struct {
-        uint32_t *data; /* size, see OtOTPPartDescs; w/o digest data */
+        uint32_t *data; /* size, see OtOTPPartDesc w/o digest data */
         uint64_t next_digest; /* computed HW digest to store into OTP cell */
     } buffer; /* only meaningful for buffered partitions */
     uint64_t digest; /* digest as read from OTP back end at init time */
@@ -688,7 +687,7 @@ typedef struct {
     OtOTPError error;
     ot_otp_program_ack_fn ack_fn;
     void *ack_data;
-    uint16_t data[OTP_PART_LIFE_CYCLE_SIZE / sizeof(uint16_t)];
+    uint16_t *data;
     unsigned hpos; /* current offset in data */
 } OtOTPLCIController;
 
@@ -747,7 +746,10 @@ struct OtOTPDjState {
     OtOTPLcBroadcast lc_broadcast;
     OtOTPDAIController *dai;
     OtOTPLCIController *lci;
-    OtOTPPartController *partctrls;
+    OtOTPPartController *part_ctrls;
+    const OtOTPPartDesc *part_descs;
+    unsigned part_count;
+    unsigned part_life_cycle; /* index of the Life Cycle partition */
     OtOTPKeyGen *keygen;
     OtOTPScrmblKeyInit *scrmbl_key_init;
     OtOtpBeCharacteristics be_chars;
@@ -756,8 +758,8 @@ struct OtOTPDjState {
     uint64_t sram_iv;
     uint8_t sram_const[16u];
     /* OTP scrambling key constants, not constants for deriving other keys */
-    uint8_t *otp_scramble_keys[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
-    uint8_t *inv_default_parts[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
+    uint8_t **otp_scramble_keys; /* some entries may be NULL */
+    uint8_t **inv_default_parts; /* some entries may be NULL */
 
     OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;
@@ -773,8 +775,8 @@ struct OtOTPDjState {
     char *digest_iv_xstr;
     char *sram_const_xstr;
     char *sram_iv_xstr;
-    char *otp_scramble_key_xstrs[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
-    char *inv_default_part_xstrs[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
+    char **otp_scramble_key_xstrs; /* some entries may be NULL */
+    char **inv_default_part_xstrs; /* some entries may be NULL */
     uint8_t edn_ep;
     bool fatal_escalate;
 };
@@ -926,35 +928,6 @@ static const char *OTP_TOKEN_NAMES[] = {
     /* clang-format on */
 };
 
-static const char *PART_NAMES[] = {
-    /* clang-format off */
-    OTP_NAME_ENTRY(OTP_PART_VENDOR_TEST),
-    OTP_NAME_ENTRY(OTP_PART_CREATOR_SW_CFG),
-    OTP_NAME_ENTRY(OTP_PART_OWNER_SW_CFG),
-    OTP_NAME_ENTRY(OTP_PART_OWNERSHIP_SLOT_STATE),
-    OTP_NAME_ENTRY(OTP_PART_ROT_CREATOR_AUTH),
-    OTP_NAME_ENTRY(OTP_PART_ROT_OWNER_AUTH_SLOT0),
-    OTP_NAME_ENTRY(OTP_PART_ROT_OWNER_AUTH_SLOT1),
-    OTP_NAME_ENTRY(OTP_PART_PLAT_INTEG_AUTH_SLOT0),
-    OTP_NAME_ENTRY(OTP_PART_PLAT_INTEG_AUTH_SLOT1),
-    OTP_NAME_ENTRY(OTP_PART_PLAT_OWNER_AUTH_SLOT0),
-    OTP_NAME_ENTRY(OTP_PART_PLAT_OWNER_AUTH_SLOT1),
-    OTP_NAME_ENTRY(OTP_PART_PLAT_OWNER_AUTH_SLOT2),
-    OTP_NAME_ENTRY(OTP_PART_PLAT_OWNER_AUTH_SLOT3),
-    OTP_NAME_ENTRY(OTP_PART_EXT_NVM),
-    OTP_NAME_ENTRY(OTP_PART_ROM_PATCH),
-    OTP_NAME_ENTRY(OTP_PART_HW_CFG0),
-    OTP_NAME_ENTRY(OTP_PART_HW_CFG1),
-    OTP_NAME_ENTRY(OTP_PART_SECRET0),
-    OTP_NAME_ENTRY(OTP_PART_SECRET1),
-    OTP_NAME_ENTRY(OTP_PART_SECRET2),
-    OTP_NAME_ENTRY(OTP_PART_SECRET3),
-    OTP_NAME_ENTRY(OTP_PART_LIFE_CYCLE),
-    /* fake partitions */
-    OTP_NAME_ENTRY(OTP_ENTRY_DAI),
-    OTP_NAME_ENTRY(OTP_ENTRY_KDI),
-    /* clang-format on */
-};
 
 static const char *ERR_CODE_NAMES[] = {
     /* clang-format off */
@@ -991,8 +964,6 @@ static const char *ERR_CODE_NAMES[] = {
     ((unsigned)(_tk_) < ARRAY_SIZE(OTP_TOKEN_NAMES) ? \
          OTP_TOKEN_NAMES[(_tk_)] : \
          "?")
-#define PART_NAME(_pt_) \
-    (((unsigned)(_pt_)) < ARRAY_SIZE(PART_NAMES) ? PART_NAMES[(_pt_)] : "?")
 #define ERR_CODE_NAME(_err_) \
     (((unsigned)(_err_)) < ARRAY_SIZE(ERR_CODE_NAMES) ? \
          ERR_CODE_NAMES[(_err_)] : \
@@ -1022,26 +993,6 @@ ot_otp_dj_lci_change_state_line(OtOTPDjState *s, OtOTPLCIState state, int line);
 #define TRACE_OTP(msg, ...)
 #define ot_otp_hexdump(_s_, _b_, _l_)
 #endif
-
-static inline unsigned ot_otp_dj_part_data_offset(unsigned pix)
-{
-    return (unsigned)(OtOTPPartDescs[pix].offset);
-}
-
-static inline unsigned ot_otp_dj_part_data_byte_size(unsigned pix)
-{
-    size_t size = OtOTPPartDescs[pix].size;
-
-    if (OtOTPPartDescs[pix].hw_digest || OtOTPPartDescs[pix].sw_digest) {
-        size -= sizeof(uint32_t) * NUM_DIGEST_WORDS;
-    }
-
-    if (OtOTPPartDescs[pix].zeroizable) {
-        size -= sizeof(uint32_t) * NUM_ZER_WORDS;
-    }
-
-    return (unsigned)size;
-}
 
 static void ot_otp_dj_update_irqs(OtOTPDjState *s)
 {
@@ -1090,14 +1041,54 @@ static void ot_otp_dj_update_alerts(OtOTPDjState *s)
     }
 }
 
-static bool ot_otp_dj_is_wide_granule(unsigned part_ix, unsigned address)
+static const char *ot_otp_dj_part_name(const OtOTPDjState *s, unsigned part_ix)
 {
-    if (part_ix < OTP_PART_COUNT) {
-        if (OtOTPPartDescs[part_ix].secret) {
+    if (part_ix < s->part_count) {
+        return s->part_descs[part_ix].name;
+    }
+
+    if (part_ix == s->part_count) {
+        return "DAI";
+    }
+
+    if (part_ix == s->part_count + 1u) {
+        return "KDI";
+    }
+
+    return "?";
+}
+
+static inline unsigned
+ot_otp_dj_part_data_offset(const OtOTPDjState *s, unsigned part_ix)
+{
+    return (unsigned)(s->part_descs[part_ix].offset);
+}
+
+static inline unsigned
+ot_otp_dj_part_data_byte_size(const OtOTPDjState *s, unsigned part_ix)
+{
+    size_t size = s->part_descs[part_ix].size;
+
+    if (s->part_descs[part_ix].hw_digest || s->part_descs[part_ix].sw_digest) {
+        size -= sizeof(uint32_t) * NUM_DIGEST_WORDS;
+    }
+
+    if (s->part_descs[part_ix].zeroizable) {
+        size -= sizeof(uint32_t) * NUM_ZER_WORDS;
+    }
+
+    return (unsigned)size;
+}
+
+static bool ot_otp_dj_is_wide_granule(const OtOTPDjState *s, unsigned part_ix,
+                                      unsigned address)
+{
+    if (part_ix < s->part_count) {
+        if (s->part_descs[part_ix].secret) {
             return true;
         }
 
-        if (OtOTPPartDescs[part_ix].digest_offset ==
+        if (s->part_descs[part_ix].digest_offset ==
             (address & OTP_DIGEST_ADDR_MASK)) {
             return true;
         }
@@ -1106,19 +1097,19 @@ static bool ot_otp_dj_is_wide_granule(unsigned part_ix, unsigned address)
     return false;
 }
 
-static bool ot_otp_dj_is_buffered(unsigned part_ix)
+static bool ot_otp_dj_is_buffered(const OtOTPDjState *s, unsigned part_ix)
 {
-    if (part_ix < OTP_PART_COUNT) {
-        return OtOTPPartDescs[part_ix].buffered;
+    if (part_ix < s->part_count) {
+        return s->part_descs[part_ix].buffered;
     }
 
     return false;
 }
 
-static bool ot_otp_dj_is_secret(unsigned part_ix)
+static bool ot_otp_dj_is_secret(const OtOTPDjState *s, unsigned part_ix)
 {
-    if (part_ix < OTP_PART_COUNT) {
-        return OtOTPPartDescs[part_ix].secret;
+    if (part_ix < s->part_count) {
+        return s->part_descs[part_ix].secret;
     }
 
     return false;
@@ -1140,10 +1131,25 @@ static bool ot_otp_dj_is_ecc_enabled(const OtOTPDjState *s)
            ot_otp_dj_is_backend_ecc_enabled(s);
 }
 
-static bool ot_otp_dj_has_digest(unsigned partition)
+static bool ot_otp_dj_has_digest(const OtOTPDjState *s, unsigned part_ix)
 {
-    return OtOTPPartDescs[partition].hw_digest ||
-           OtOTPPartDescs[partition].sw_digest;
+    return s->part_descs[part_ix].hw_digest || s->part_descs[part_ix].sw_digest;
+}
+
+static bool ot_otp_dj_is_part_digest_offset(const OtOTPDjState *s,
+                                            unsigned part_ix, hwaddr addr)
+{
+    uint16_t offset = s->part_descs[part_ix].digest_offset;
+
+    return (offset != UINT16_MAX) && ((addr & ~OTP_DIGEST_ADDR_MASK) == offset);
+}
+
+static bool ot_otp_dj_is_part_zer_offset(const OtOTPDjState *s,
+                                         unsigned part_ix, hwaddr addr)
+{
+    uint16_t offset = s->part_descs[part_ix].zer_offset;
+
+    return (offset != UINT16_MAX) && ((addr & ~OTP_ZER_ADDR_MASK) == offset);
 }
 
 static void ot_otp_dj_disable_all_partitions(OtOTPDjState *s)
@@ -1151,22 +1157,23 @@ static void ot_otp_dj_disable_all_partitions(OtOTPDjState *s)
     DAI_CHANGE_STATE(s, OTP_DAI_ERROR);
     LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
 
-    for (unsigned pix = 0; pix < OTP_PART_COUNT; pix++) {
-        OtOTPPartController *pctrl = &s->partctrls[pix];
+    for (unsigned pix = 0; pix < s->part_count; pix++) {
+        OtOTPPartController *pctrl = &s->part_ctrls[pix];
         pctrl->failed = true;
     }
 }
 
-static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
+static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part_ix,
+                                OtOTPError err)
 {
-    g_assert(part < OTP_ENTRY_COUNT);
+    g_assert(part_ix < OTP_ENTRY_COUNT);
 
     uint32_t errval = ((uint32_t)err) & ERR_CODE_MASK;
-    if (errval || errval != s->regs[R_ERR_CODE_0 + part]) {
-        trace_ot_otp_set_error(s->ot_id, PART_NAME(part), part,
-                               ERR_CODE_NAME(err), err);
+    if (errval || errval != s->regs[R_ERR_CODE_0 + part_ix]) {
+        trace_ot_otp_set_error(s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                               part_ix, ERR_CODE_NAME(err), err);
     }
-    s->regs[R_ERR_CODE_0 + part] = errval;
+    s->regs[R_ERR_CODE_0 + part_ix] = errval;
 
     switch (err) {
     case OTP_MACRO_ERROR:
@@ -1224,13 +1231,13 @@ static uint32_t ot_otp_dj_get_status(const OtOTPDjState *s)
 
 static int ot_otp_dj_get_part_from_address(const OtOTPDjState *s, hwaddr addr)
 {
-    for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-        const OtOTPPartDesc *part = &OtOTPPartDescs[ix];
+    for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
+        const OtOTPPartDesc *part = &s->part_descs[part_ix];
         if ((addr >= part->offset) &&
             ((addr + sizeof(uint32_t)) <= (part->offset + part->size))) {
-            trace_ot_otp_addr_to_part(s->ot_id, (uint32_t)addr, PART_NAME(ix),
-                                      ix);
-            return (OtOTPPartitionType)ix;
+            trace_ot_otp_addr_to_part(s->ot_id, (uint32_t)addr,
+                                      ot_otp_dj_part_name(s, part_ix), part_ix);
+            return (OtOTPPartitionType)part_ix;
         }
     }
 
@@ -1382,11 +1389,11 @@ static int ot_otp_dj_apply_ecc(OtOTPDjState *s, unsigned part_ix)
 {
     g_assert(ot_otp_dj_is_ecc_enabled(s));
 
-    unsigned start = OtOTPPartDescs[part_ix].offset >> 2u;
-    unsigned end =
-        (ot_otp_dj_is_buffered((int)part_ix) && ot_otp_dj_has_digest(part_ix)) ?
-            (unsigned)(OtOTPPartDescs[part_ix].digest_offset >> 2u) :
-            start + (unsigned)(OtOTPPartDescs[part_ix].size >> 2u);
+    unsigned start = s->part_descs[part_ix].offset >> 2u;
+    unsigned end = (ot_otp_dj_is_buffered(s, (int)part_ix) &&
+                    ot_otp_dj_has_digest(s, part_ix)) ?
+                       (unsigned)(s->part_descs[part_ix].digest_offset >> 2u) :
+                       start + (unsigned)(s->part_descs[part_ix].size >> 2u);
 
     g_assert(start < end && (end / sizeof(uint32_t)) < s->otp->data_size);
     for (unsigned ix = start; ix < end; ix++) {
@@ -1403,9 +1410,10 @@ static int ot_otp_dj_apply_ecc(OtOTPDjState *s, unsigned part_ix)
              */
             ot_otp_dj_set_error(s, part_ix, otp_err);
             if (err > 1) {
-                trace_ot_otp_ecc_init_error(s->ot_id, PART_NAME(part_ix),
+                trace_ot_otp_ecc_init_error(s->ot_id,
+                                            ot_otp_dj_part_name(s, part_ix),
                                             part_ix, ix << 2u, *word, ecc);
-                s->partctrls[part_ix].failed = true;
+                s->part_ctrls[part_ix].failed = true;
                 return -1;
             }
         }
@@ -1416,9 +1424,9 @@ static int ot_otp_dj_apply_ecc(OtOTPDjState *s, unsigned part_ix)
 
 static uint64_t ot_otp_dj_get_part_digest(OtOTPDjState *s, unsigned part_ix)
 {
-    g_assert(!ot_otp_dj_is_buffered(part_ix));
+    g_assert(!ot_otp_dj_is_buffered(s, part_ix));
 
-    uint16_t offset = OtOTPPartDescs[part_ix].digest_offset;
+    uint16_t offset = s->part_descs[part_ix].digest_offset;
 
     if (offset == UINT16_MAX) {
         return 0u;
@@ -1427,7 +1435,7 @@ static uint64_t ot_otp_dj_get_part_digest(OtOTPDjState *s, unsigned part_ix)
     const uint8_t *data = (const uint8_t *)s->otp->data;
     uint64_t digest = ldq_le_p(data + offset);
 
-    if (OtOTPPartDescs[part_ix].integrity && ot_otp_dj_is_ecc_enabled(s)) {
+    if (s->part_descs[part_ix].integrity && ot_otp_dj_is_ecc_enabled(s)) {
         unsigned waddr = offset >> 2u;
         unsigned ewaddr = waddr >> 1u;
         g_assert(ewaddr < s->otp->ecc_size);
@@ -1436,20 +1444,6 @@ static uint64_t ot_otp_dj_get_part_digest(OtOTPDjState *s, unsigned part_ix)
     }
 
     return digest;
-}
-
-static bool ot_otp_dj_is_part_digest_offset(unsigned part_ix, hwaddr addr)
-{
-    uint16_t offset = OtOTPPartDescs[part_ix].digest_offset;
-
-    return (offset != UINT16_MAX) && ((addr & ~OTP_DIGEST_ADDR_MASK) == offset);
-}
-
-static bool ot_otp_dj_is_part_zer_offset(unsigned part_ix, hwaddr addr)
-{
-    uint16_t offset = OtOTPPartDescs[part_ix].zer_offset;
-
-    return (offset != UINT16_MAX) && ((addr & ~OTP_ZER_ADDR_MASK) == offset);
 }
 
 static uint32_t ot_otp_dj_get_part_digest_reg(OtOTPDjState *s, uint32_t offset)
@@ -1480,8 +1474,8 @@ static uint32_t ot_otp_dj_get_part_digest_reg(OtOTPDjState *s, uint32_t offset)
     /* part_ix: the partition number in the global partition array */
     unsigned part_ix = 0;
     /* traverse the partition array and count each partition with a digest */
-    for (unsigned part_dig_ix = 0; part_ix < OTP_PART_COUNT; part_ix++) {
-        if (ot_otp_dj_has_digest(part_ix)) {
+    for (unsigned part_dig_ix = 0; part_ix < s->part_count; part_ix++) {
+        if (ot_otp_dj_has_digest(s, part_ix)) {
             /*
              * stop searching if we've found the part-with-digest defined from
              * the offset argument. Otherwise, increment the part-with-digest
@@ -1499,11 +1493,10 @@ static uint32_t ot_otp_dj_get_part_digest_reg(OtOTPDjState *s, uint32_t offset)
      * with the partition table or the register definitions, as it is assumed
      * that LifeCycle partition is the last partition.
      */
-    static_assert(OTP_PART_LIFE_CYCLE == NUM_PART - 1,
-                  "LC is expected to be the last partition");
-    g_assert(part_ix < OTP_PART_COUNT);
+    g_assert(s->part_life_cycle == s->part_count - 1u);
+    g_assert(part_ix < s->part_count);
 
-    const OtOTPPartController *pctrl = &s->partctrls[part_ix];
+    const OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
     uint64_t digest = pctrl->digest;
 
     if (hi) {
@@ -1513,12 +1506,20 @@ static uint32_t ot_otp_dj_get_part_digest_reg(OtOTPDjState *s, uint32_t offset)
     return (uint32_t)digest;
 }
 
-static bool ot_otp_dj_is_readable(OtOTPDjState *s, unsigned part_ix)
+static uint32_t
+ot_otp_dj_get_sw_readlock(const OtOTPDjState *s, unsigned rdlk_ix)
 {
-    g_assert(part_ix < OTP_PART_COUNT);
+    uint32_t reg = R_VENDOR_TEST_READ_LOCK + rdlk_ix;
 
-    const OtOTPPartDesc *pdesc = &OtOTPPartDescs[part_ix];
-    const OtOTPPartController *pctrl = &s->partctrls[part_ix];
+    return (bool)SHARED_FIELD_EX32(s->regs[reg], READ_LOCK);
+}
+
+static bool ot_otp_dj_is_readable(const OtOTPDjState *s, unsigned part_ix)
+{
+    g_assert(part_ix < s->part_count);
+
+    const OtOTPPartDesc *pdesc = &s->part_descs[part_ix];
+    const OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
     if (pdesc->secret) {
         /* secret partitions are only readable if digest is not yet set. */
@@ -1537,7 +1538,7 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, unsigned part_ix)
 
     unsigned roffset = 0;
     unsigned pix;
-    for (pix = 0; pix < OTP_PART_COUNT; pix++) {
+    for (pix = 0; pix < s->part_count; pix++) {
         if (pix == part_ix) {
             break;
         }
@@ -1551,21 +1552,19 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, unsigned part_ix)
      * static_assert, but C being C, constants are not defined as such
      * at build time...
      */
-    g_assert(!OtOTPPartDescs[OTP_PART_LIFE_CYCLE].read_lock_csr);
+    g_assert(!s->part_descs[s->part_life_cycle].read_lock_csr);
 
     /*
      * If the previous loop reached the last partition, something
      * seriously wrong occurred. Use this feature as a sanity check
      */
-    g_assert(pix < OTP_PART_LIFE_CYCLE);
+    g_assert(pix < s->part_life_cycle);
 
     /*
      * now that the count of read_lock_csr is known, use it to access
      * the register for the selected partition
      */
-    uint32_t reg = R_VENDOR_TEST_READ_LOCK + roffset;
-
-    return (bool)SHARED_FIELD_EX32(s->regs[reg], READ_LOCK);
+    return ot_otp_dj_get_sw_readlock(s, roffset);
 }
 
 static void
@@ -1649,18 +1648,18 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
                           s->ot_id);
             break;
         case OT_OTP_LC_CREATOR_SEED_SW_RW_EN:
-            for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-                if (OtOTPPartDescs[ix].iskeymgr_creator) {
-                    s->partctrls[ix].read_lock = !level;
-                    s->partctrls[ix].write_lock = !level;
+            for (unsigned ix = 0; ix < s->part_count; ix++) {
+                if (s->part_descs[ix].iskeymgr_creator) {
+                    s->part_ctrls[ix].read_lock = !level;
+                    s->part_ctrls[ix].write_lock = !level;
                 }
             }
             break;
         case OT_OTP_LC_OWNER_SEED_SW_RW_EN:
-            for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-                if (OtOTPPartDescs[ix].iskeymgr_owner) {
-                    s->partctrls[ix].read_lock = !level;
-                    s->partctrls[ix].write_lock = !level;
+            for (unsigned ix = 0; ix < s->part_count; ix++) {
+                if (s->part_descs[ix].iskeymgr_owner) {
+                    s->part_ctrls[ix].read_lock = !level;
+                    s->part_ctrls[ix].write_lock = !level;
                 }
             }
             break;
@@ -1713,7 +1712,7 @@ static uint64_t ot_otp_dj_compute_partition_digest(
 static uint64_t
 ot_otp_dj_load_partition_digest(OtOTPDjState *s, unsigned partition)
 {
-    unsigned digoff = (unsigned)OtOTPPartDescs[partition].digest_offset;
+    unsigned digoff = (unsigned)s->part_descs[partition].digest_offset;
 
     if ((digoff + sizeof(uint64_t)) > s->otp->data_size) {
         error_setg(&error_fatal, "%s: partition located outside storage?",
@@ -1735,12 +1734,12 @@ ot_otp_dj_load_partition_digest(OtOTPDjState *s, unsigned partition)
     return digest;
 }
 
-static void ot_otp_dj_unscramble_partition(OtOTPDjState *s, unsigned ix)
+static void ot_otp_dj_unscramble_partition(OtOTPDjState *s, unsigned part_ix)
 {
-    OtOTPPartController *pctrl = &s->partctrls[ix];
+    OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
-    unsigned offset = (unsigned)OtOTPPartDescs[ix].offset;
-    unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
+    unsigned offset = (unsigned)s->part_descs[part_ix].offset;
+    unsigned part_size = ot_otp_dj_part_data_byte_size(s, part_ix);
 
     /* part_size should be a multiple of PRESENT block size */
     g_assert((part_size & (sizeof(uint64_t) - 1u)) == 0u);
@@ -1757,13 +1756,14 @@ static void ot_otp_dj_unscramble_partition(OtOTPDjState *s, unsigned ix)
     g_assert(pctrl->buffer.data != NULL);
     uint64_t *clear = (uint64_t *)pctrl->buffer.data;
 
-    const uint8_t *scrambling_key = s->otp_scramble_keys[ix];
+    const uint8_t *scrambling_key = s->otp_scramble_keys[part_ix];
     g_assert(scrambling_key);
 
     OtPresentState *ps = ot_present_new();
     ot_present_init(ps, scrambling_key);
 
-    trace_ot_otp_unscramble_partition(s->ot_id, PART_NAME(ix), ix, part_size);
+    trace_ot_otp_unscramble_partition(s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                                      part_ix, part_size);
     /* neither the digest block nor the zeroizable block are scrambled */
     for (unsigned dix = 0u; dix < dword_count; dix++) {
         ot_present_decrypt(ps, scrambled[dix], &clear[dix]);
@@ -1772,30 +1772,30 @@ static void ot_otp_dj_unscramble_partition(OtOTPDjState *s, unsigned ix)
     ot_present_free(ps);
 }
 
-static void ot_otp_dj_bufferize_partition(OtOTPDjState *s, unsigned ix)
+static void ot_otp_dj_bufferize_partition(OtOTPDjState *s, unsigned part_ix)
 {
-    OtOTPPartController *pctrl = &s->partctrls[ix];
+    OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
     g_assert(pctrl->buffer.data != NULL);
 
-    if (OtOTPPartDescs[ix].hw_digest) {
-        pctrl->digest = ot_otp_dj_load_partition_digest(s, ix);
+    if (s->part_descs[part_ix].hw_digest) {
+        pctrl->digest = ot_otp_dj_load_partition_digest(s, part_ix);
     } else {
         pctrl->digest = 0;
     }
 
-    if (OtOTPPartDescs[ix].secret) {
+    if (s->part_descs[part_ix].secret) {
         /* secret partitions need to be unscrambled */
         if (s->blk) {
             /*
              * nothing to unscramble if no OTP data is loaded
              * scrambling keys in this case may not be known
              */
-            ot_otp_dj_unscramble_partition(s, ix);
+            ot_otp_dj_unscramble_partition(s, part_ix);
         }
     } else {
-        unsigned offset = (unsigned)OtOTPPartDescs[ix].offset;
-        unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
+        unsigned offset = (unsigned)s->part_descs[part_ix].offset;
+        unsigned part_size = ot_otp_dj_part_data_byte_size(s, part_ix);
 
         const uint8_t *base = (const uint8_t *)s->otp->data;
         base += offset;
@@ -1805,12 +1805,13 @@ static void ot_otp_dj_bufferize_partition(OtOTPDjState *s, unsigned ix)
 }
 
 static void
-ot_otp_dj_check_buffered_partition_integrity(OtOTPDjState *s, unsigned ix)
+ot_otp_dj_check_buffered_partition_integrity(OtOTPDjState *s, unsigned part_ix)
 {
-    OtOTPPartController *pctrl = &s->partctrls[ix];
+    OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
     if (pctrl->digest == 0) {
-        trace_ot_otp_skip_digest(s->ot_id, PART_NAME(ix), ix);
+        trace_ot_otp_skip_digest(s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                                 part_ix);
         pctrl->locked = false;
         return;
     }
@@ -1820,27 +1821,28 @@ ot_otp_dj_check_buffered_partition_integrity(OtOTPDjState *s, unsigned ix)
     /*
      * digests are always calculated over the original data (scrambled or not)
      */
-    const uint8_t *part_data =
-        ((const uint8_t *)s->otp->data) + ot_otp_dj_part_data_offset(ix);
-    unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
+    const uint8_t *part_data = ((const uint8_t *)s->otp->data) +
+                               ot_otp_dj_part_data_offset(s, part_ix);
+    unsigned part_size = ot_otp_dj_part_data_byte_size(s, part_ix);
 
     uint64_t digest =
         ot_otp_dj_compute_partition_digest(s, part_data, part_size);
 
     if (digest != pctrl->digest) {
-        trace_ot_otp_mismatch_digest(s->ot_id, PART_NAME(ix), ix, digest,
-                                     pctrl->digest);
+        trace_ot_otp_mismatch_digest(s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                                     part_ix, digest, pctrl->digest);
 
         TRACE_OTP("compute digest of %s: %016" PRIx64 " from %s\n",
-                  PART_NAME(ix), digest,
+                  ot_otp_dj_part_name(s, part_ix), digest,
                   ot_otp_hexdump(s, part_data, part_size));
 
         pctrl->failed = true;
         /* this is a fatal error */
-        ot_otp_dj_set_error(s, ix, OTP_CHECK_FAIL_ERROR);
+        ot_otp_dj_set_error(s, part_ix, OTP_CHECK_FAIL_ERROR);
         /* TODO: revert buffered part to default */
     } else {
-        trace_ot_otp_integrity_report(s->ot_id, PART_NAME(ix), ix, "digest OK");
+        trace_ot_otp_integrity_report(s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                                      part_ix, "digest OK");
     }
 }
 
@@ -1916,7 +1918,9 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
         return;
     }
 
-    if (partition >= OTP_PART_LIFE_CYCLE) {
+    unsigned part_ix = (unsigned)partition;
+
+    if (part_ix >= OTP_PART_LIFE_CYCLE) {
         qemu_log_mask(
             LOG_GUEST_ERROR,
             "%s: %s: life cycle partition cannot be accessed from DAI\n",
@@ -1925,34 +1929,33 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
         return;
     }
 
-    const OtOTPPartController *pctrl = &s->partctrls[partition];
+    const OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
     if (pctrl->failed) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s is disabled\n",
-                      __func__, s->ot_id, PART_NAME(partition));
+                      __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix));
         return;
     }
 
-    unsigned part_ix = (unsigned)partition;
     bool is_readable = ot_otp_dj_is_readable(s, part_ix);
-    bool is_wide = ot_otp_dj_is_wide_granule(part_ix, address);
-    bool is_buffered = ot_otp_dj_is_buffered(part_ix);
-    bool is_secret = ot_otp_dj_is_secret(part_ix);
-    bool is_digest = ot_otp_dj_is_part_digest_offset(part_ix, address);
-    bool is_zer = ot_otp_dj_is_part_zer_offset(part_ix, address);
+    bool is_wide = ot_otp_dj_is_wide_granule(s, part_ix, address);
+    bool is_buffered = ot_otp_dj_is_buffered(s, part_ix);
+    bool is_secret = ot_otp_dj_is_secret(s, part_ix);
+    bool is_digest = ot_otp_dj_is_part_digest_offset(s, part_ix, address);
+    bool is_zer = ot_otp_dj_is_part_zer_offset(s, part_ix, address);
 
     /* "in all partitions, the digest itself is ALWAYS readable." */
     if (!is_digest && !is_zer && !is_readable) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: partition %s @ 0x%04x not readable\n", __func__,
-                      s->ot_id, PART_NAME(partition), address);
+                      s->ot_id, ot_otp_dj_part_name(s, part_ix), address);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
-    unsigned part_offset = address - ot_otp_dj_part_data_offset(partition);
+    unsigned part_offset = address - ot_otp_dj_part_data_offset(s, part_ix);
     unsigned part_waddr = part_offset >> 2u;
     bool do_ecc =
-        OtOTPPartDescs[part_ix].integrity && ot_otp_dj_is_ecc_enabled(s);
+        s->part_descs[part_ix].integrity && ot_otp_dj_is_ecc_enabled(s);
 
     DAI_CHANGE_STATE(s, OTP_DAI_READ_WAIT);
 
@@ -1962,14 +1965,14 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
 
     const uint32_t *data = (const uint32_t *)s->otp->data;
     /* parenthesis inform the C linter sizeof() call is valid with 'data */
-    data += (ot_otp_dj_part_data_offset(partition) / sizeof(uint32_t));
+    data += (ot_otp_dj_part_data_offset(s, part_ix) / sizeof(uint32_t));
 
     if (is_wide || is_digest) {
         /* 64-bit requests */
         part_waddr &= ~0b1u;
 
         g_assert((part_waddr + 1u) * sizeof(uint32_t) <
-                 OtOTPPartDescs[partition].size);
+                 s->part_descs[part_ix].size);
 
         data_lo = data[part_waddr];
         data_hi = data[part_waddr + 1u];
@@ -1987,8 +1990,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
         cell_count *= 2u;
     } else {
         /* 32-bit request */
-        g_assert(part_waddr * sizeof(uint32_t) <
-                 OtOTPPartDescs[partition].size);
+        g_assert(part_waddr * sizeof(uint32_t) < s->part_descs[part_ix].size);
 
         data_lo = data[part_waddr];
         data_hi = 0u;
@@ -2014,7 +2016,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
          * if the partition is a secret partition, OTP storage is scrambled
          * except the digest and the zeroification fields
          */
-        const uint8_t *scrambling_key = s->otp_scramble_keys[partition];
+        const uint8_t *scrambling_key = s->otp_scramble_keys[part_ix];
         g_assert(scrambling_key);
         uint64_t tmp_data = ((uint64_t)data_hi << 32u) | data_lo;
         OtPresentState *ps = ot_present_new();
@@ -2059,8 +2061,8 @@ static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
     uint32_t hi = s->regs[R_DIRECT_ACCESS_WDATA_1];
 
     unsigned part_ix = (unsigned)s->dai->partition;
-    bool is_secret = ot_otp_dj_is_secret(part_ix);
-    bool is_zer = ot_otp_dj_is_part_zer_offset(part_ix, address);
+    bool is_secret = ot_otp_dj_is_secret(s, part_ix);
+    bool is_zer = ot_otp_dj_is_part_zer_offset(s, part_ix, address);
 
     if (is_secret && !is_zer) {
         const uint8_t *scrambling_key = s->otp_scramble_keys[part_ix];
@@ -2117,7 +2119,9 @@ static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
             return -1;
         }
 
-        trace_ot_otp_dai_new_dword_ecc(s->ot_id, PART_NAME(s->dai->partition),
+        trace_ot_otp_dai_new_dword_ecc(s->ot_id,
+                                       ot_otp_dj_part_name(s, (unsigned)s->dai
+                                                                  ->partition),
                                        s->dai->partition, *dst, *edst);
     }
 
@@ -2170,7 +2174,9 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
             return -1;
         }
 
-        trace_ot_otp_dai_new_word_ecc(s->ot_id, PART_NAME(s->dai->partition),
+        trace_ot_otp_dai_new_word_ecc(s->ot_id,
+                                      ot_otp_dj_part_name(s, (unsigned)s->dai
+                                                                 ->partition),
                                       s->dai->partition, *dst, *edst);
     }
 
@@ -2212,7 +2218,7 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
 
     unsigned part_ix = (unsigned)partition;
 
-    if (part_ix >= OTP_PART_LIFE_CYCLE) {
+    if (part_ix >= s->part_life_cycle) {
         qemu_log_mask(
             LOG_GUEST_ERROR,
             "%s: %s: Life cycle partition cannot be accessed from DAI\n",
@@ -2221,17 +2227,18 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
         return;
     }
 
-    OtOTPPartController *pctrl = &s->partctrls[part_ix];
+    OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
     if (pctrl->failed) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s is disabled\n",
-                      __func__, s->ot_id, PART_NAME(part_ix));
+                      __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix));
         return;
     }
 
     if (pctrl->locked) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s (%u) is locked\n",
-                      __func__, s->ot_id, PART_NAME(part_ix), part_ix);
+                      __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                      part_ix);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2239,22 +2246,22 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
     if (pctrl->write_lock) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: artition %s (%u) is write locked\n", __func__,
-                      s->ot_id, PART_NAME(part_ix), part_ix);
+                      s->ot_id, ot_otp_dj_part_name(s, part_ix), part_ix);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
-    bool is_digest = ot_otp_dj_is_part_digest_offset(part_ix, address);
-    bool is_wide = ot_otp_dj_is_wide_granule(part_ix, address);
+    bool is_digest = ot_otp_dj_is_part_digest_offset(s, part_ix, address);
+    bool is_wide = ot_otp_dj_is_wide_granule(s, part_ix, address);
 
     if (is_digest) {
-        if (OtOTPPartDescs[partition].hw_digest) {
+        if (s->part_descs[part_ix].hw_digest) {
             /* should have been a Digest command, not a Write command */
             qemu_log_mask(
                 LOG_GUEST_ERROR,
                 "%s: %s: partition %s (%u) HW digest cannot be directly "
                 "written\n",
-                __func__, s->ot_id, PART_NAME(part_ix), part_ix);
+                __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix), part_ix);
             ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
             return;
         }
@@ -2320,7 +2327,9 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
         return;
     }
 
-    if (partition >= OTP_PART_LIFE_CYCLE) {
+    unsigned part_ix = (unsigned)partition;
+
+    if (part_ix >= s->part_life_cycle) {
         qemu_log_mask(
             LOG_GUEST_ERROR,
             "%s: %s: Life cycle partition cannot be accessed from DAI\n",
@@ -2329,25 +2338,27 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
         return;
     }
 
-    if (!OtOTPPartDescs[partition].hw_digest) {
+    if (!s->part_descs[part_ix].hw_digest) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: Invalid partition, no HW digest on %s (#%u)\n",
-                      __func__, s->ot_id, PART_NAME(partition), partition);
+                      __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                      part_ix);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
-    OtOTPPartController *pctrl = &s->partctrls[partition];
+    OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
     if (pctrl->failed) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s is disabled\n",
-                      __func__, s->ot_id, PART_NAME(partition));
+                      __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix));
         return;
     }
 
     if (pctrl->locked) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Partition %s (%u) is locked\n",
-                      __func__, s->ot_id, PART_NAME(partition), partition);
+                      __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                      part_ix);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2355,16 +2366,16 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
     if (pctrl->write_lock) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: Partition %s (%u) is write locked\n", __func__,
-                      s->ot_id, PART_NAME(partition), partition);
+                      s->ot_id, ot_otp_dj_part_name(s, part_ix), part_ix);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_READ);
 
-    const uint8_t *data =
-        ((const uint8_t *)s->otp->data) + ot_otp_dj_part_data_offset(partition);
-    unsigned part_size = ot_otp_dj_part_data_byte_size(partition);
+    const uint8_t *data = ((const uint8_t *)s->otp->data) +
+                          ot_otp_dj_part_data_offset(s, part_ix);
+    unsigned part_size = ot_otp_dj_part_data_byte_size(s, part_ix);
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG);
 
@@ -2387,12 +2398,14 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
 {
     OtOTPDjState *s = OT_OTP_DJ(opaque);
 
-    g_assert((s->dai->partition >= 0) && (s->dai->partition < OTP_PART_COUNT));
+    g_assert((s->dai->partition >= 0) && (s->dai->partition < s->part_count));
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE);
 
-    OtOTPPartController *pctrl = &s->partctrls[s->dai->partition];
-    unsigned address = OtOTPPartDescs[s->dai->partition].digest_offset;
+    unsigned part_ix = (unsigned)s->dai->partition;
+
+    OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
+    unsigned address = s->part_descs[part_ix].digest_offset;
     unsigned dwaddr = address / sizeof(uint64_t);
     uint64_t *dst = &((uint64_t *)s->otp->data)[dwaddr];
     uint64_t data = pctrl->buffer.next_digest;
@@ -2436,8 +2449,8 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
         return;
     }
 
-    trace_ot_otp_dai_new_digest_ecc(s->ot_id, PART_NAME(s->dai->partition),
-                                    s->dai->partition, *dst, *edst);
+    trace_ot_otp_dai_new_digest_ecc(s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                                    part_ix, *dst, *edst);
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
@@ -2454,8 +2467,10 @@ static void ot_otp_dj_dai_complete(void *opaque)
     switch (s->dai->state) {
     case OTP_DAI_READ_WAIT:
         g_assert(s->dai->partition >= 0);
-        trace_ot_otp_dai_read(s->ot_id, PART_NAME(s->dai->partition),
-                              s->dai->partition,
+        trace_ot_otp_dai_read(s->ot_id,
+                              ot_otp_dj_part_name(s,
+                                                  (unsigned)s->dai->partition),
+                              (unsigned)s->dai->partition,
                               s->regs[R_DIRECT_ACCESS_RDATA_1],
                               s->regs[R_DIRECT_ACCESS_RDATA_1]);
         s->dai->partition = -1;
@@ -2839,9 +2854,8 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     void *opaque, hwaddr addr, uint64_t *data, unsigned size, MemTxAttrs attrs)
 {
     OtOTPDjState *s = OT_OTP_DJ(opaque);
+    (void)size;
     (void)attrs;
-
-    g_assert(addr + size <= SW_CFG_WINDOW_SIZE);
 
     hwaddr reg = R32_OFF(addr);
     int partition = ot_otp_dj_get_part_from_address(s, addr);
@@ -2855,7 +2869,7 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
 
     unsigned part_ix = (unsigned)partition;
 
-    if (ot_otp_dj_is_buffered(part_ix)) {
+    if (ot_otp_dj_is_buffered(s, part_ix)) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "buffered");
         ot_otp_dj_set_error(s, part_ix, OTP_ACCESS_ERROR);
 
@@ -2864,8 +2878,8 @@ static MemTxResult ot_otp_dj_swcfg_read_with_attrs(
     }
 
     bool is_readable = ot_otp_dj_is_readable(s, part_ix);
-    bool is_digest = ot_otp_dj_is_part_digest_offset(part_ix, addr);
-    bool is_zer = ot_otp_dj_is_part_zer_offset(part_ix, addr);
+    bool is_digest = ot_otp_dj_is_part_digest_offset(s, part_ix, addr);
+    bool is_zer = ot_otp_dj_is_part_zer_offset(s, part_ix, addr);
 
     if (!is_readable && !(is_digest || is_zer)) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "not readable");
@@ -2905,15 +2919,15 @@ static void ot_otp_dj_get_lc_info(
     }
 
     if (lc_valid) {
-        *lc_valid = !(ds->partctrls[OTP_PART_SECRET0].failed ||
-                      ds->partctrls[OTP_PART_SECRET2].failed ||
-                      ds->partctrls[OTP_PART_LIFE_CYCLE].failed) ?
+        *lc_valid = !(ds->part_ctrls[OTP_PART_SECRET0].failed ||
+                      ds->part_ctrls[OTP_PART_SECRET2].failed ||
+                      ds->part_ctrls[ds->part_life_cycle].failed) ?
                         OT_MULTIBITBOOL_LC4_TRUE :
                         OT_MULTIBITBOOL_LC4_FALSE;
     }
     if (secret_valid) {
-        *secret_valid = (!ds->partctrls[OTP_PART_SECRET2].failed &&
-                         ds->partctrls[OTP_PART_SECRET2].locked) ?
+        *secret_valid = (!ds->part_ctrls[OTP_PART_SECRET2].failed &&
+                         ds->part_ctrls[OTP_PART_SECRET2].locked) ?
                             OT_MULTIBITBOOL_LC4_TRUE :
                             OT_MULTIBITBOOL_LC4_FALSE;
     }
@@ -3043,10 +3057,10 @@ static void ot_otp_dj_generate_scrambling_key(
     OtPresentState *ps = s->keygen->present;
 
     /* read the key seed from the OTP SECRET1 partition */
-    OtOTPPartController *pctrl = &s->partctrls[OTP_PART_SECRET1];
-    g_assert(ot_otp_dj_is_buffered(OTP_PART_SECRET1));
+    OtOTPPartController *pctrl = &s->part_ctrls[OTP_PART_SECRET1];
+    g_assert(ot_otp_dj_is_buffered(s, OTP_PART_SECRET1));
     uint32_t poffset =
-        OtOTPPartDescs[OTP_PART_SECRET1].offset / sizeof(uint32_t);
+        s->part_descs[OTP_PART_SECRET1].offset / sizeof(uint32_t);
     const uint32_t *key_seed = &pctrl->buffer.data[key_reg - poffset];
 
     /* check the key seed's validity */
@@ -3148,20 +3162,20 @@ static void ot_otp_dj_get_keymgr_secret(
     case OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0:
         partition = OTP_PART_SECRET2;
         offset = A_SECRET2_CREATOR_ROOT_KEY_SHARE0 -
-                 OtOTPPartDescs[partition].offset;
+                 ds->part_descs[partition].offset;
         break;
     case OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1:
         partition = OTP_PART_SECRET2;
         offset = A_SECRET2_CREATOR_ROOT_KEY_SHARE1 -
-                 OtOTPPartDescs[partition].offset;
+                 ds->part_descs[partition].offset;
         break;
     case OTP_KEYMGR_SECRET_CREATOR_SEED:
         partition = OTP_PART_SECRET2;
-        offset = A_SECRET2_CREATOR_SEED - OtOTPPartDescs[partition].offset;
+        offset = A_SECRET2_CREATOR_SEED - ds->part_descs[partition].offset;
         break;
     case OTP_KEYMGR_SECRET_OWNER_SEED:
         partition = OTP_PART_SECRET3;
-        offset = A_SECRET3_OWNER_SEED - OtOTPPartDescs[partition].offset;
+        offset = A_SECRET3_OWNER_SEED - ds->part_descs[partition].offset;
         break;
     default:
         error_report("%s: %s: invalid OTP keymgr secret type: %d", __func__,
@@ -3172,17 +3186,17 @@ static void ot_otp_dj_get_keymgr_secret(
     }
 
     unsigned part_ix = (unsigned)partition;
-    g_assert(ot_otp_dj_is_buffered(part_ix));
+    g_assert(ot_otp_dj_is_buffered(ds, part_ix));
 
     const uint8_t *data_ptr;
     if (ds->lc_broadcast.current_level & BIT(OT_OTP_LC_SEED_HW_RD_EN)) {
-        data_ptr = (const uint8_t *)ds->partctrls[part_ix].buffer.data;
+        data_ptr = (const uint8_t *)ds->part_ctrls[part_ix].buffer.data;
     } else {
         /* source data from PartInvDefault instead of real buffer */
         data_ptr = ds->inv_default_parts[part_ix];
     }
 
-    secret->valid = ds->partctrls[part_ix].digest != 0;
+    secret->valid = ds->part_ctrls[part_ix].digest != 0;
     memcpy(secret->secret, &data_ptr[offset], OT_OTP_KEYMGR_SECRET_SIZE);
 }
 
@@ -3220,7 +3234,7 @@ static bool ot_otp_dj_program_req(OtOTPState *s, const uint16_t *lc_tcount,
         memcpy(&lci->data[hpos], lc_state, LC_STATE_SIZE);
         hpos += LC_STATE_SIZE / sizeof(uint16_t);
         g_assert(hpos ==
-                 OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size / sizeof(uint16_t));
+                 ds->part_descs[ds->part_life_cycle].size / sizeof(uint16_t));
 
         /* current position in LC buffer to write to backend */
         lci->hpos = 0u;
@@ -3245,7 +3259,7 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
          * if the LC partition has been modified somehow, even if the request
          * has failed, update the backend file
          */
-        const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
+        const OtOTPPartDesc *lcdesc = &s->part_descs[s->part_life_cycle];
         unsigned lc_off = lcdesc->offset / sizeof(uint32_t);
         uintptr_t offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
         if (ot_otp_dj_write_backend(s, &s->otp->data[lc_off],
@@ -3282,7 +3296,7 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
     lci->hpos = 0u;
 
     if (!success && lci->error != OTP_NO_ERROR) {
-        ot_otp_dj_set_error(s, OTP_PART_LIFE_CYCLE, lci->error);
+        ot_otp_dj_set_error(s, s->part_life_cycle, lci->error);
     }
 
     (*ack_fn)(ack_data, success);
@@ -3292,7 +3306,7 @@ static void ot_otp_dj_lci_write_word(void *opaque)
 {
     OtOTPDjState *s = OT_OTP_DJ(opaque);
     OtOTPLCIController *lci = s->lci;
-    const OtOTPPartDesc *lcdesc = &OtOTPPartDescs[OTP_PART_LIFE_CYCLE];
+    const OtOTPPartDesc *lcdesc = &s->part_descs[s->part_life_cycle];
 
     /* should not be called if already in error */
     if (lci->state == OTP_LCI_ERROR) {
@@ -3434,8 +3448,8 @@ static void ot_otp_dj_pwr_load(OtOTPDjState *s)
     size_t data_size = 0u;
     size_t ecc_size = 0u;
 
-    for (unsigned ix = 0u; ix < OTP_PART_COUNT; ix++) {
-        size_t psize = (size_t)OtOTPPartDescs[ix].size;
+    for (unsigned part_ix = 0u; part_ix < s->part_count; part_ix++) {
+        size_t psize = (size_t)s->part_descs[part_ix].size;
         size_t dsize = ROUND_UP(psize, sizeof(uint64_t));
         data_size += dsize;
         /* up to 1 ECC byte for 2 data bytes */
@@ -3563,28 +3577,28 @@ static void ot_otp_dj_pwr_load_tokens(OtOTPDjState *s)
 
         switch (tkx) {
         case OTP_TOKEN_TEST_UNLOCK:
-            partition = OTP_PART_SECRET0;
+            partition = (unsigned)OTP_PART_SECRET0;
             secret_addr = A_SECRET0_TEST_UNLOCK_TOKEN;
             break;
         case OTP_TOKEN_TEST_EXIT:
             partition = OTP_PART_SECRET0;
-            secret_addr = A_SECRET0_TEST_EXIT_TOKEN;
+            secret_addr = (unsigned)A_SECRET0_TEST_EXIT_TOKEN;
             break;
         case OTP_TOKEN_RMA:
             partition = OTP_PART_SECRET2;
-            secret_addr = A_SECRET2_RMA_TOKEN;
+            secret_addr = (unsigned)A_SECRET2_RMA_TOKEN;
             break;
         default:
             g_assert_not_reached();
             break;
         }
 
-        OtOTPPartController *pctrl = &s->partctrls[partition];
+        OtOTPPartController *pctrl = &s->part_ctrls[partition];
         g_assert(pctrl->buffer.data != NULL);
 
         /* byte offset of the secret within the partition */
         unsigned secret_offset =
-            secret_addr - ot_otp_dj_part_data_offset(partition);
+            secret_addr - ot_otp_dj_part_data_offset(s, partition);
         g_assert(secret_offset + sizeof(OtOTPTokenValue) <=
                  OtOTPPartDescs[partition].size);
 
@@ -3592,7 +3606,7 @@ static void ot_otp_dj_pwr_load_tokens(OtOTPDjState *s)
         memcpy(&value, &pctrl->buffer.data[secret_offset / sizeof(uint32_t)],
                sizeof(OtOTPTokenValue));
 
-        if (s->partctrls[partition].locked) {
+        if (s->part_ctrls[partition].locked) {
             tokens->values[tkx] = value;
             tokens->valid_bm |= 1u << tkx;
         }
@@ -3605,25 +3619,25 @@ static void ot_otp_dj_pwr_load_tokens(OtOTPDjState *s)
 
 static void ot_otp_dj_pwr_initialize_partitions(OtOTPDjState *s)
 {
-    for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
+    for (unsigned ix = 0; ix < s->part_count; ix++) {
         /* sanity check: all secret partitions are also buffered */
-        g_assert(!OtOTPPartDescs[ix].secret || OtOTPPartDescs[ix].buffered);
+        g_assert(!s->part_descs[ix].secret || s->part_descs[ix].buffered);
 
-        if (ot_otp_dj_is_ecc_enabled(s) && OtOTPPartDescs[ix].integrity) {
+        if (ot_otp_dj_is_ecc_enabled(s) && s->part_descs[ix].integrity) {
             if (ot_otp_dj_apply_ecc(s, ix)) {
                 continue;
             }
         }
 
-        if (OtOTPPartDescs[ix].sw_digest) {
-            s->partctrls[ix].digest = ot_otp_dj_get_part_digest(s, ix);
-            s->partctrls[ix].locked = s->partctrls[ix].digest != 0;
+        if (s->part_descs[ix].sw_digest) {
+            s->part_ctrls[ix].digest = ot_otp_dj_get_part_digest(s, ix);
+            s->part_ctrls[ix].locked = s->part_ctrls[ix].digest != 0;
             continue;
         }
 
-        if (OtOTPPartDescs[ix].buffered) {
+        if (s->part_descs[ix].buffered) {
             ot_otp_dj_bufferize_partition(s, ix);
-            if (OtOTPPartDescs[ix].hw_digest) {
+            if (s->part_descs[ix].hw_digest) {
                 ot_otp_dj_check_buffered_partition_integrity(s, ix);
             }
             continue;
@@ -3799,54 +3813,65 @@ static void ot_otp_dj_configure_sram(OtOTPDjState *s)
 
 static void ot_otp_dj_configure_part_scramble_keys(OtOTPDjState *s)
 {
-    for (unsigned ix = 0u; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
-        if (!OtOTPPartDescs[ix].secret) {
+    for (unsigned part_ix = 0u; part_ix < s->part_count; part_ix++) {
+        if (!s->part_descs[part_ix].secret) {
             continue;
         }
 
-        if (!s->otp_scramble_key_xstrs[ix]) {
+        if (!s->otp_scramble_key_xstrs[part_ix]) {
             /* if OTP data is loaded, unscrambling keys are mandatory */
             if (s->blk) {
                 error_setg(&error_fatal,
                            "%s: %s Missing OTP scrambling key for part %s (%u)",
-                           __func__, s->ot_id, PART_NAME(ix), ix);
+                           __func__, s->ot_id, ot_otp_dj_part_name(s, part_ix),
+                           part_ix);
                 return;
             }
             continue;
         }
 
-        size_t len = strlen(s->otp_scramble_key_xstrs[ix]);
+        size_t len = strlen(s->otp_scramble_key_xstrs[part_ix]);
         if (len != OTP_SCRAMBLING_KEY_BYTES * 2u) {
             error_setg(
                 &error_fatal,
                 "%s: %s Invalid OTP scrambling key length %zu for part %s (%u)",
-                __func__, s->ot_id, len, PART_NAME(ix), ix);
+                __func__, s->ot_id, len, ot_otp_dj_part_name(s, part_ix),
+                part_ix);
             return;
         }
 
-        g_assert(!s->otp_scramble_keys[ix]);
+        g_assert(!s->otp_scramble_keys[part_ix]);
 
-        s->otp_scramble_keys[ix] = g_new0(uint8_t, OTP_SCRAMBLING_KEY_BYTES);
-        if (ot_common_parse_hexa_str(s->otp_scramble_keys[ix],
-                                     s->otp_scramble_key_xstrs[ix],
+        s->otp_scramble_keys[part_ix] =
+            g_new0(uint8_t, OTP_SCRAMBLING_KEY_BYTES);
+        if (ot_common_parse_hexa_str(s->otp_scramble_keys[part_ix],
+                                     s->otp_scramble_key_xstrs[part_ix],
                                      OTP_SCRAMBLING_KEY_BYTES, true, true)) {
             error_setg(&error_fatal,
                        "%s: %s unable to parse otp_scramble_keys[%u] for %s",
-                       __func__, s->ot_id, ix, PART_NAME(ix));
+                       __func__, s->ot_id, part_ix,
+                       ot_otp_dj_part_name(s, part_ix));
             return;
         }
 
-        TRACE_OTP("otp_scramble_keys[%s] %s", PART_NAME(ix),
-                  ot_otp_hexdump(s, s->otp_scramble_keys[ix],
+        TRACE_OTP("otp_scramble_keys[%s] %s", ot_otp_dj_part_name(s, part_ix),
+                  ot_otp_hexdump(s, s->otp_scramble_keys[part_ix],
                                  OTP_SCRAMBLING_KEY_BYTES));
     }
 }
 
-static void ot_otp_dj_class_add_scramble_key_props(OtOTPClass *odc)
+static void ot_otp_dj_add_scramble_key_props(OtOTPDjState *s)
 {
+    /*
+     * @todo: we know the number of secret partitions, so use it rather than
+     * whole partition count
+     */
+    s->otp_scramble_keys = g_new0(uint8_t *, s->part_count);
+    s->otp_scramble_key_xstrs = g_new0(char *, s->part_count);
+
     unsigned secret_ix = 0u;
-    for (unsigned ix = 0u; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
-        if (!OtOTPPartDescs[ix].secret) {
+    for (unsigned part_ix = 0u; part_ix < s->part_count; part_ix++) {
+        if (!s->part_descs[part_ix].secret) {
             continue;
         }
 
@@ -3858,68 +3883,79 @@ static void ot_otp_dj_class_add_scramble_key_props(OtOTPClass *odc)
          */
         prop->name = g_strdup_printf("secret%u_scramble_key", secret_ix++);
         prop->info = &qdev_prop_string;
-        prop->offset = offsetof(OtOTPDjState, otp_scramble_key_xstrs) +
-                       sizeof(char *) * ix;
+        /*
+         * Property stores the address of the stored string as a relative offset
+         * from the parent address
+         */
+        prop->offset =
+            (intptr_t)&s->otp_scramble_key_xstrs[part_ix] - (intptr_t)s;
 
-        object_class_property_add(OBJECT_CLASS(odc), prop->name,
-                                  prop->info->name, prop->info->get,
-                                  prop->info->set, prop->info->release, prop);
+        object_property_add(OBJECT(s), prop->name, prop->info->name,
+                            prop->info->get, prop->info->set,
+                            prop->info->release, prop);
     }
 }
 
 static void ot_otp_dj_configure_inv_default_parts(OtOTPDjState *s)
 {
-    for (unsigned ix = 0; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
-        if (!s->inv_default_part_xstrs[ix]) {
+    for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
+        if (!s->inv_default_part_xstrs[part_ix]) {
             continue;
         }
 
-        const OtOTPPartDesc *part = &OtOTPPartDescs[ix];
+        const OtOTPPartDesc *part = &s->part_descs[part_ix];
 
         size_t len;
 
-        len = strlen(s->inv_default_part_xstrs[ix]);
+        len = strlen(s->inv_default_part_xstrs[part_ix]);
         if (len != part->size * 2u) {
             error_setg(&error_fatal,
                        "%s: %s invalid inv_default_part[%u] length\n", __func__,
-                       s->ot_id, ix);
+                       s->ot_id, part_ix);
             return;
         }
 
-        g_assert(!s->inv_default_parts[ix]);
+        g_assert(!s->inv_default_parts[part_ix]);
 
-        s->inv_default_parts[ix] = g_new0(uint8_t, part->size + 1u);
-        if (ot_common_parse_hexa_str(s->inv_default_parts[ix],
-                                     s->inv_default_part_xstrs[ix], part->size,
-                                     false, true)) {
+        s->inv_default_parts[part_ix] = g_new0(uint8_t, part->size + 1u);
+        if (ot_common_parse_hexa_str(s->inv_default_parts[part_ix],
+                                     s->inv_default_part_xstrs[part_ix],
+                                     part->size, false, true)) {
             error_setg(&error_fatal,
                        "%s: %s unable to parse inv_default_part[%u]\n",
-                       __func__, s->ot_id, ix);
+                       __func__, s->ot_id, part_ix);
             return;
         }
 
-        TRACE_OTP("inv_default_part[%s] %s", PART_NAME(ix),
-                  ot_otp_hexdump(s, s->inv_default_parts[ix], part->size));
+        TRACE_OTP("inv_default_part[%s] %s", ot_otp_dj_part_name(s, part_ix),
+                  ot_otp_hexdump(s, s->inv_default_parts[part_ix], part->size));
     }
 }
 
-static void ot_otp_dj_class_add_inv_def_props(OtOTPClass *odc)
+static void ot_otp_dj_add_inv_def_props(OtOTPDjState *s)
 {
-    for (unsigned ix = 0; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
-        if (!OtOTPPartDescs[ix].buffered) {
+    s->inv_default_parts = g_new0(uint8_t *, s->part_count);
+    s->inv_default_part_xstrs = g_new0(char *, s->part_count);
+
+    for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
+        if (!s->part_descs[part_ix].buffered) {
             continue;
         }
 
         Property *prop = g_new0(Property, 1u);
 
-        prop->name = g_strdup_printf("inv_default_part_%u", ix);
+        prop->name = g_strdup_printf("inv_default_part_%u", part_ix);
         prop->info = &qdev_prop_string;
-        prop->offset = offsetof(OtOTPDjState, inv_default_part_xstrs) +
-                       sizeof(char *) * ix;
+        /*
+         * Property stores the address of the stored string as a relative offset
+         * from the parent address
+         */
+        prop->offset =
+            (intptr_t)&s->inv_default_part_xstrs[part_ix] - (intptr_t)s;
 
-        object_class_property_add(OBJECT_CLASS(odc), prop->name,
-                                  prop->info->name, prop->info->get,
-                                  prop->info->set, prop->info->release, prop);
+        object_property_add(OBJECT(s), prop->name, prop->info->name,
+                            prop->info->get, prop->info->set,
+                            prop->info->release, prop);
     }
 }
 
@@ -4026,21 +4062,21 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
     ot_otp_dj_update_alerts(s);
     ibex_irq_set(&s->pwc_otp_rsp, 0);
 
-    for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
+    for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
         /* TODO: initialize with actual default partition data once known */
-        if (OtOTPPartDescs[ix].buffered) {
-            s->partctrls[ix].state.b = OTP_BUF_IDLE;
+        if (s->part_descs[part_ix].buffered) {
+            s->part_ctrls[part_ix].state.b = OTP_BUF_IDLE;
         } else {
-            s->partctrls[ix].state.u = OTP_UNBUF_IDLE;
+            s->part_ctrls[part_ix].state.u = OTP_UNBUF_IDLE;
             continue;
         }
-        unsigned part_size = ot_otp_dj_part_data_byte_size(ix);
-        memset(s->partctrls[ix].buffer.data, 0, part_size);
-        s->partctrls[ix].digest = 0;
-        if (OtOTPPartDescs[ix].iskeymgr_creator ||
-            OtOTPPartDescs[ix].iskeymgr_owner) {
-            s->partctrls[ix].read_lock = true;
-            s->partctrls[ix].write_lock = true;
+        unsigned part_size = ot_otp_dj_part_data_byte_size(s, part_ix);
+        memset(s->part_ctrls[part_ix].buffer.data, 0, part_size);
+        s->part_ctrls[part_ix].digest = 0;
+        if (s->part_descs[part_ix].iskeymgr_creator ||
+            s->part_descs[part_ix].iskeymgr_owner) {
+            s->part_ctrls[part_ix].read_lock = true;
+            s->part_ctrls[part_ix].write_lock = true;
         }
     }
     DAI_CHANGE_STATE(s, OTP_DAI_RESET);
@@ -4136,23 +4172,29 @@ static void ot_otp_dj_init(Object *obj)
     qdev_init_gpio_in_named(DEVICE(obj), &ot_otp_dj_lc_broadcast_recv,
                             OT_LC_BROADCAST, OT_OTP_LC_BROADCAST_COUNT);
 
+    s->part_descs = OtOTPPartDescs;
+    s->part_count = ARRAY_SIZE(OtOTPPartDescs);
+    s->part_life_cycle = OTP_PART_LIFE_CYCLE;
+
     s->hw_cfg = g_new0(OtOTPHWCfg, 1u);
     s->tokens = g_new0(OtOTPTokens, 1u);
     s->regs = g_new0(uint32_t, REGS_COUNT);
     s->dai = g_new0(OtOTPDAIController, 1u);
     s->lci = g_new0(OtOTPLCIController, 1u);
-    s->partctrls = g_new0(OtOTPPartController, OTP_PART_COUNT);
+    s->part_ctrls = g_new0(OtOTPPartController, s->part_count);
     s->keygen = g_new0(OtOTPKeyGen, 1u);
     s->otp = g_new0(OtOTPStorage, 1u);
     s->scrmbl_key_init = g_new0(OtOTPScrmblKeyInit, 1u);
+    s->lci->data = g_new0(uint16_t, s->part_descs[s->part_life_cycle].size /
+                                        sizeof(uint16_t));
 
-    for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-        if (!OtOTPPartDescs[ix].buffered) {
+    for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
+        if (!s->part_descs[part_ix].buffered) {
             continue;
         }
         size_t part_words =
-            ot_otp_dj_part_data_byte_size(ix) / sizeof(uint32_t);
-        s->partctrls[ix].buffer.data = g_new0(uint32_t, part_words);
+            ot_otp_dj_part_data_byte_size(s, part_ix) / sizeof(uint32_t);
+        s->part_ctrls[part_ix].buffer.data = g_new0(uint32_t, part_words);
     }
 
     ot_fifo32_create(&s->keygen->entropy_buf, OTP_ENTROPY_BUF_COUNT);
@@ -4170,6 +4212,9 @@ static void ot_otp_dj_init(Object *obj)
     int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     ot_prng_reseed(s->keygen->prng, (uint32_t)now);
 
+    ot_otp_dj_add_scramble_key_props(s);
+    ot_otp_dj_add_inv_def_props(s);
+
 #ifdef OT_OTP_DEBUG
     s->hexstr = g_new0(char, OT_OTP_HEXSTR_SIZE);
 #endif
@@ -4179,9 +4224,6 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
-
-    g_assert(OTP_PART_LIFE_CYCLE_SIZE ==
-             OtOTPPartDescs[OTP_PART_LIFE_CYCLE].size);
 
     dc->realize = &ot_otp_dj_realize;
     device_class_set_props(dc, ot_otp_dj_properties);
@@ -4198,9 +4240,6 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
     oc->get_otp_key = &ot_otp_dj_get_otp_key;
     oc->get_keymgr_secret = &ot_otp_dj_get_keymgr_secret;
     oc->program_req = &ot_otp_dj_program_req;
-
-    ot_otp_dj_class_add_scramble_key_props(oc);
-    ot_otp_dj_class_add_inv_def_props(oc);
 }
 
 static const TypeInfo ot_otp_dj_info = {
