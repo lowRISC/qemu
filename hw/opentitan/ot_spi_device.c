@@ -367,13 +367,6 @@ typedef enum {
 } OtSpiDeviceMode;
 
 typedef enum {
-    ADDR_MODE_ADDRDISABLED,
-    ADDR_MODE_ADDRCFG,
-    ADDR_MODE_ADDR3B,
-    ADDR_MODE_ADDR4B,
-} OtSpiDeviceAddrMode;
-
-typedef enum {
     SPI_BUS_IDLE,
     SPI_BUS_FLASH,
     SPI_BUS_TPM,
@@ -815,6 +808,25 @@ static bool ot_spi_device_is_addr4b_en(const OtSPIDeviceState *s)
 static bool ot_spi_device_is_mailbox_en(const OtSPIDeviceState *s)
 {
     return (bool)(s->spi_regs[R_CFG] & R_CFG_MAILBOX_EN_MASK);
+}
+
+static unsigned
+ot_spi_device_get_command_address_size(const OtSPIDeviceState *s)
+{
+    const SpiDeviceFlash *f = &s->flash;
+
+    switch (SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_ADDR_MODE)) {
+    case 0x0u: /* AddrDisabled */
+        return 0u;
+    case 0x1u: /* AddrCfg */
+        return ot_spi_device_is_addr4b_en(s) ? 4u : 3u;
+    case 0x2u: /* Addr3B */
+        return 3u;
+    case 0x3u: /* Addr4B */
+        return 4u;
+    default:
+        g_assert_not_reached();
+    }
 }
 
 static bool
@@ -1291,29 +1303,10 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    unsigned addr_count;
-    uint32_t addr_mode = SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_ADDR_MODE);
-    switch ((int)addr_mode) {
-    case ADDR_MODE_ADDRDISABLED:
-        addr_count = 0;
-        break;
-    case ADDR_MODE_ADDRCFG:
-        addr_count = ot_spi_device_is_addr4b_en(s) ? 4u : 3u;
-        break;
-    case ADDR_MODE_ADDR3B:
-        addr_count = 3u;
-        break;
-    case ADDR_MODE_ADDR4B:
-        addr_count = 4u;
-        break;
-    default:
-        g_assert_not_reached();
-        break;
-    }
-
-    f->pos = 0;
-    if (addr_count != 0) {
-        f->len = addr_count;
+    unsigned addr_size = ot_spi_device_get_command_address_size(s);
+    f->pos = 0u;
+    if (addr_size != 0u) {
+        f->len = addr_size;
         FLASH_CHANGE_STATE(s, UP_ADDR);
     } else if (f->cmd_info & CMD_INFO_DUMMY_EN_MASK) {
         f->len = 1u;
