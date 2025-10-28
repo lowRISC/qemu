@@ -458,6 +458,7 @@ typedef struct {
     Fifo8 chr_fifo; /* QEMU protocol input FIFO */
     uint8_t mode; /* Polarity/phase mismatch */
     bool release; /* Whether to release /CS on last byte */
+    bool failed_transaction; /* Whether to discard until /CS is deasserted */
     bool rev_rx; /* Reverse RX bits */
     bool rev_tx; /* Reverse TX bits */
 } SpiDeviceBus;
@@ -876,6 +877,7 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
 
     BUS_CHANGE_STATE(s, IDLE);
     bus->byte_count = 0u;
+    bus->failed_transaction = false;
 
     bool update_irq = false;
     switch (ot_spi_device_get_mode(s)) {
@@ -2028,6 +2030,12 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
         return;
     }
 
+    /* discard the packet if we're within a failed transaction */
+    if (bus->failed_transaction) {
+        BUS_CHANGE_STATE(s, DISCARD);
+        return;
+    }
+
     /* @todo: Check that the tpm chip-select was assigned.*/
     if (ot_spi_device_is_tpm_enabled(s)) {
         ot_spi_device_tpm_init_buffers(s);
@@ -2292,6 +2300,8 @@ static void ot_spi_device_chr_receive(void *opaque, const uint8_t *buf,
     case SPI_BUS_DISCARD:
     case SPI_BUS_ERROR:
         ot_spi_device_chr_recv_discard(s, buf, (unsigned)size);
+        /* we need to discard the other packets in this transaction */
+        bus->failed_transaction = true;
         break;
     default:
         g_assert_not_reached();
