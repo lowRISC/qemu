@@ -1316,7 +1316,7 @@ static uint64_t ot_otp_eg_get_part_digest(OtOTPEgState *s, unsigned part_ix)
     const uint8_t *data = (const uint8_t *)s->otp->data;
     uint64_t digest = ldq_le_p(data + offset);
 
-    if (part_ix != OTP_PART_VENDOR_TEST && ot_otp_eg_is_ecc_enabled(s)) {
+    if (OtOTPPartDescs[part_ix].integrity && ot_otp_eg_is_ecc_enabled(s)) {
         unsigned waddr = offset >> 2u;
         unsigned ewaddr = waddr >> 1u;
         g_assert(ewaddr < s->otp->ecc_size);
@@ -1833,7 +1833,7 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
     unsigned part_offset = address - ot_otp_eg_part_data_offset(partition);
     unsigned part_waddr = part_offset >> 2u;
     bool do_ecc =
-        (partition != OTP_PART_VENDOR_TEST) && ot_otp_eg_is_ecc_enabled(s);
+        OtOTPPartDescs[part_ix].integrity && ot_otp_eg_is_ecc_enabled(s);
 
     DAI_CHANGE_STATE(s, OTP_DAI_READ_WAIT);
 
