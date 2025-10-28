@@ -91,6 +91,7 @@ class OtpPartitionDesc:
         print('static const OtOTPPartDesc OtOTPPartDescs[] = {', file=cfp)
         for part in self._otpmap.enumerate_partitions():
             print(f'    [OTP_PART_{part.name}] = {{', file=cfp)
+            print(f'        .name = "{part.name}",', file=cfp)
             print(f'        .size = {part.size}u,', file=cfp)
             print(f'        .offset = {part.offset}u,', file=cfp)
             if part.zer_offset is not None:
