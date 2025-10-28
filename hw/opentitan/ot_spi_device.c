@@ -2064,6 +2064,7 @@ static void ot_spi_device_chr_recv_discard(OtSPIDeviceState *s,
     (void)buf;
 
     ot_spi_device_chr_send_discard(s, size);
+    s->bus.byte_count -= size;
 }
 
 static void ot_spi_device_chr_recv_flash(OtSPIDeviceState *s,
@@ -2297,7 +2298,7 @@ static void ot_spi_device_chr_receive(void *opaque, const uint8_t *buf,
         break;
     }
 
-    if (!bus->byte_count) {
+    if (!bus->byte_count && bus->state != SPI_BUS_ERROR) {
         if (bus->release) {
             ot_spi_device_release(s);
         } else {
