@@ -10,6 +10,7 @@
 /* NOLINTBEGIN */
 static const OtOTPPartDesc OtOTPPartDescs[] = {
     [OTP_PART_VENDOR_TEST] = {
+        .name = "VENDOR_TEST",
         .size = 64u,
         .offset = 0u,
         .zer_offset = UINT16_MAX,
@@ -25,6 +26,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_CREATOR_SW_CFG] = {
+        .name = "CREATOR_SW_CFG",
         .size = 304u,
         .offset = 64u,
         .zer_offset = UINT16_MAX,
@@ -40,6 +42,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_OWNER_SW_CFG] = {
+        .name = "OWNER_SW_CFG",
         .size = 600u,
         .offset = 368u,
         .zer_offset = UINT16_MAX,
@@ -55,6 +58,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_OWNERSHIP_SLOT_STATE] = {
+        .name = "OWNERSHIP_SLOT_STATE",
         .size = 48u,
         .offset = 968u,
         .zer_offset = UINT16_MAX,
@@ -70,6 +74,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_ROT_CREATOR_AUTH] = {
+        .name = "ROT_CREATOR_AUTH",
         .size = 1424u,
         .offset = 1016u,
         .zer_offset = UINT16_MAX,
@@ -85,6 +90,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_ROT_OWNER_AUTH_SLOT0] = {
+        .name = "ROT_OWNER_AUTH_SLOT0",
         .size = 328u,
         .offset = 2440u,
         .zer_offset = UINT16_MAX,
@@ -100,6 +106,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_ROT_OWNER_AUTH_SLOT1] = {
+        .name = "ROT_OWNER_AUTH_SLOT1",
         .size = 328u,
         .offset = 2768u,
         .zer_offset = UINT16_MAX,
@@ -115,6 +122,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_PLAT_INTEG_AUTH_SLOT0] = {
+        .name = "PLAT_INTEG_AUTH_SLOT0",
         .size = 328u,
         .offset = 3096u,
         .zer_offset = UINT16_MAX,
@@ -130,6 +138,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_PLAT_INTEG_AUTH_SLOT1] = {
+        .name = "PLAT_INTEG_AUTH_SLOT1",
         .size = 328u,
         .offset = 3424u,
         .zer_offset = UINT16_MAX,
@@ -145,6 +154,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_PLAT_OWNER_AUTH_SLOT0] = {
+        .name = "PLAT_OWNER_AUTH_SLOT0",
         .size = 328u,
         .offset = 3752u,
         .zer_offset = UINT16_MAX,
@@ -160,6 +170,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_PLAT_OWNER_AUTH_SLOT1] = {
+        .name = "PLAT_OWNER_AUTH_SLOT1",
         .size = 328u,
         .offset = 4080u,
         .zer_offset = UINT16_MAX,
@@ -175,6 +186,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_PLAT_OWNER_AUTH_SLOT2] = {
+        .name = "PLAT_OWNER_AUTH_SLOT2",
         .size = 328u,
         .offset = 4408u,
         .zer_offset = UINT16_MAX,
@@ -190,6 +202,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_PLAT_OWNER_AUTH_SLOT3] = {
+        .name = "PLAT_OWNER_AUTH_SLOT3",
         .size = 328u,
         .offset = 4736u,
         .zer_offset = UINT16_MAX,
@@ -205,6 +218,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_EXT_NVM] = {
+        .name = "EXT_NVM",
         .size = 1024u,
         .offset = 5064u,
         .zer_offset = UINT16_MAX,
@@ -220,6 +234,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_ROM_PATCH] = {
+        .name = "ROM_PATCH",
         .size = 9864u,
         .offset = 6088u,
         .zer_offset = UINT16_MAX,
@@ -235,6 +250,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_HW_CFG0] = {
+        .name = "HW_CFG0",
         .size = 72u,
         .offset = 15952u,
         .zer_offset = UINT16_MAX,
@@ -249,6 +265,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_HW_CFG1] = {
+        .name = "HW_CFG1",
         .size = 16u,
         .offset = 16024u,
         .zer_offset = UINT16_MAX,
@@ -263,6 +280,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = false,
     },
     [OTP_PART_SECRET0] = {
+        .name = "SECRET0",
         .size = 48u,
         .offset = 16040u,
         .zer_offset = 16080u,
@@ -277,6 +295,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = true,
     },
     [OTP_PART_SECRET1] = {
+        .name = "SECRET1",
         .size = 32u,
         .offset = 16088u,
         .zer_offset = 16112u,
@@ -291,6 +310,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .zeroizable = true,
     },
     [OTP_PART_SECRET2] = {
+        .name = "SECRET2",
         .size = 128u,
         .offset = 16120u,
         .zer_offset = 16240u,
@@ -306,6 +326,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .iskeymgr_creator = true,
     },
     [OTP_PART_SECRET3] = {
+        .name = "SECRET3",
         .size = 48u,
         .offset = 16248u,
         .zer_offset = 16288u,
@@ -321,6 +342,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .iskeymgr_owner = true,
     },
     [OTP_PART_LIFE_CYCLE] = {
+        .name = "LIFE_CYCLE",
         .size = 88u,
         .offset = 16296u,
         .zer_offset = UINT16_MAX,
