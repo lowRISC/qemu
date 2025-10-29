@@ -1720,7 +1720,7 @@ static void ot_eg_soc_reset_hold(Object *obj, ResetType type)
      * PowerManager takes care of managing Ibex reset when ready
      */
     CPUState *cs = CPU(s->devices[OT_EG_SOC_DEV_HART]);
-    cs->disabled = false;
+    cs->disabled = true;
 }
 
 static void ot_eg_soc_reset_exit(Object *obj, ResetType type)
