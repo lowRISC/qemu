@@ -7,6 +7,7 @@
 /* NOLINTBEGIN */
 static const OtOTPPartDesc OtOTPPartDescs[] = {
     [OTP_PART_VENDOR_TEST] = {
+        .name = "VENDOR_TEST",
         .size = 64u,
         .offset = 0u,
         .digest_offset = 56u,
@@ -20,6 +21,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = false,
     },
     [OTP_PART_CREATOR_SW_CFG] = {
+        .name = "CREATOR_SW_CFG",
         .size = 368u,
         .offset = 64u,
         .digest_offset = 424u,
@@ -33,6 +35,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_OWNER_SW_CFG] = {
+        .name = "OWNER_SW_CFG",
         .size = 712u,
         .offset = 432u,
         .digest_offset = 1136u,
@@ -46,6 +49,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_ROT_CREATOR_AUTH_CODESIGN] = {
+        .name = "ROT_CREATOR_AUTH_CODESIGN",
         .size = 472u,
         .offset = 1144u,
         .digest_offset = 1608u,
@@ -59,6 +63,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_ROT_CREATOR_AUTH_STATE] = {
+        .name = "ROT_CREATOR_AUTH_STATE",
         .size = 40u,
         .offset = 1616u,
         .digest_offset = 1648u,
@@ -72,6 +77,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_HW_CFG0] = {
+        .name = "HW_CFG0",
         .size = 72u,
         .offset = 1656u,
         .digest_offset = 1720u,
@@ -84,6 +90,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_HW_CFG1] = {
+        .name = "HW_CFG1",
         .size = 16u,
         .offset = 1728u,
         .digest_offset = 1736u,
@@ -96,6 +103,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_SECRET0] = {
+        .name = "SECRET0",
         .size = 40u,
         .offset = 1744u,
         .digest_offset = 1776u,
@@ -108,6 +116,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_SECRET1] = {
+        .name = "SECRET1",
         .size = 88u,
         .offset = 1784u,
         .digest_offset = 1864u,
@@ -120,6 +129,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .integrity = true,
     },
     [OTP_PART_SECRET2] = {
+        .name = "SECRET2",
         .size = 88u,
         .offset = 1872u,
         .digest_offset = 1952u,
@@ -133,6 +143,7 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
         .iskeymgr_creator = true,
     },
     [OTP_PART_LIFE_CYCLE] = {
+        .name = "LIFE_CYCLE",
         .size = 88u,
         .offset = 1960u,
         .digest_offset = UINT16_MAX,
