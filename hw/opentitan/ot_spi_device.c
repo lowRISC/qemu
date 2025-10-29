@@ -2,9 +2,11 @@
  * QEMU OpenTitan SPI Device controller
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Alice Ziuziakowska <a.ziuziakowska@lowrisc.org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -383,6 +385,9 @@ typedef enum {
     SPI_FLASH_UP_ADDR, /* Uploading address (<- SPI host) */
     SPI_FLASH_UP_DUMMY, /* Uploading dummy (<- SPI host) */
     SPI_FLASH_UP_PAYLOAD, /* Uploading payload (<- SPI host) */
+    SPI_FLASH_PASSTHROUGH_UP_ADDR, /* Passthrough mode - Uploading address */
+    SPI_FLASH_PASSTHROUGH_UP_DUMMY, /* Passthrough mode - Uploading dummy */
+    SPI_FLASH_PASSTHROUGH_UP_PAYLOAD, /* Passthrough mode - Uploading payload */
     SPI_FLASH_DONE, /* No more clock expected for the current command */
     SPI_FLASH_ERROR, /* On error */
 } OtSpiFlashState;
@@ -399,8 +404,17 @@ typedef enum {
 } OtSpiTpmState;
 
 typedef struct {
+    unsigned address_size; /* Length of address field for current command */
+    bool cmd_addr_swap; /* Address byte swapping is enabled */
+    bool cmd_dummy; /* Command has dummy field */
+    bool cmd_payload_swap; /* Payload byte swapping is enabled */
+    bool cmd_payload_dir_out; /* Payload is from flash to host */
+} OtSpiCommandParams;
+
+typedef struct {
     OtSpiFlashState state;
     OtSpiDeviceCommandSlot slot; /* Command slot */
+    OtSpiCommandParams cmd_params; /* Parameters for current command */
     unsigned pos; /* Current position in data buffer */
     unsigned len; /* Meaning depends on command and current state */
     uint32_t address; /* Address tracking */
@@ -479,6 +493,7 @@ struct OtSPIDeviceClass {
     ResettablePhases parent_phases;
 };
 
+#define REG_BITS     (8u * sizeof(uint32_t))
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_SPI_LAST_REG (R_CMD_INFO_WRDI)
@@ -626,6 +641,9 @@ static const char *FLASH_STATE_NAMES[] = {
     STATE_NAME_ENTRY(SPI_FLASH_UP_ADDR),
     STATE_NAME_ENTRY(SPI_FLASH_UP_DUMMY),
     STATE_NAME_ENTRY(SPI_FLASH_UP_PAYLOAD),
+    STATE_NAME_ENTRY(SPI_FLASH_PASSTHROUGH_UP_ADDR),
+    STATE_NAME_ENTRY(SPI_FLASH_PASSTHROUGH_UP_DUMMY),
+    STATE_NAME_ENTRY(SPI_FLASH_PASSTHROUGH_UP_PAYLOAD),
     STATE_NAME_ENTRY(SPI_FLASH_DONE),
     STATE_NAME_ENTRY(SPI_FLASH_ERROR),
 };
@@ -721,9 +739,10 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
 
     timer_del(f->irq_timer);
     FLASH_CHANGE_STATE(s, IDLE);
+    f->slot = SLOT_INVALID;
+    f->cmd_info = 0u;
     f->address = 0u;
     f->last_read_addr = 0u;
-    f->cmd_info = UINT32_MAX;
     f->pos = 0u;
     f->len = 0u;
     g_assert(s->sram);
@@ -859,51 +878,68 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
     bus->failed_transaction = false;
 
     bool update_irq = false;
-    switch (ot_spi_device_get_mode(s)) {
+
+    OtSpiDeviceMode mode = ot_spi_device_get_mode(s);
+    switch (mode) {
     case CTRL_MODE_FLASH:
+    case CTRL_MODE_PASSTHROUGH:
+        /* new uploaded command */
         if (!fifo8_is_empty(&f->cmd_fifo) && f->new_cmd) {
             s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_CMDFIFO_NOT_EMPTY_MASK;
             update_irq = true;
         }
-        if (f->state == SPI_FLASH_UP_PAYLOAD) {
-            unsigned pos;
-            unsigned len;
-            if (f->pos) {
-                s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_PAYLOAD_NOT_EMPTY_MASK;
-                update_irq = true;
-            }
-            if (f->pos > f->len) {
-                pos = f->pos % SPI_SRAM_PAYLOAD_SIZE;
-                len = SPI_SRAM_PAYLOAD_SIZE;
+        /* uploaded payload */
+        if (f->pos) {
+            s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_PAYLOAD_NOT_EMPTY_MASK;
+            update_irq = true;
+        }
+        /* update upload status register with payload information */
+        if ((mode == CTRL_MODE_FLASH && f->state == SPI_FLASH_UP_PAYLOAD) ||
+            (mode == CTRL_MODE_PASSTHROUGH &&
+             f->state == SPI_FLASH_PASSTHROUGH_UP_PAYLOAD)) {
+            unsigned payload_start, payload_len;
+            if (f->pos > SPI_SRAM_PAYLOAD_SIZE) {
+                payload_start = f->pos % SPI_SRAM_PAYLOAD_SIZE;
+                payload_len = SPI_SRAM_PAYLOAD_SIZE;
                 s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_PAYLOAD_OVERFLOW_MASK;
                 update_irq = true;
                 trace_ot_spi_device_flash_overflow(s->ot_id, "payload");
             } else {
-                pos = 0;
-                len = f->pos;
+                payload_start = 0u;
+                payload_len = f->pos;
             }
             s->spi_regs[R_UPLOAD_STATUS2] =
-                FIELD_DP32(0, UPLOAD_STATUS2, PAYLOAD_START_IDX, pos);
+                FIELD_DP32(0, UPLOAD_STATUS2, PAYLOAD_START_IDX, payload_start);
             s->spi_regs[R_UPLOAD_STATUS2] =
                 FIELD_DP32(s->spi_regs[R_UPLOAD_STATUS2], UPLOAD_STATUS2,
-                           PAYLOAD_DEPTH, len);
-            trace_ot_spi_device_flash_payload(s->ot_id, f->pos, pos, len);
+                           PAYLOAD_DEPTH, payload_len);
+            trace_ot_spi_device_flash_payload(s->ot_id, f->pos, payload_start,
+                                              payload_len);
         }
-        /*
-         * "shows the last address accessed by the host system."
-         * "does not show the commands falling into the mailbox region or
-         *  Read SFDP command’s address."
-         */
+        /* passthrough mode: release CS */
+        if (mode == CTRL_MODE_PASSTHROUGH) {
+            ibex_irq_raise(&s->passthrough_cs);
+        }
+        FLASH_CHANGE_STATE(s, IDLE);
+        break;
+    default:
+        break;
+    }
+
+    /*
+     * "shows the last address accessed by the host system."
+     * "does not show the commands falling into the mailbox region or
+     *  Read SFDP command’s address."
+     */
+    switch (mode) {
+    case CTRL_MODE_FLASH:
+    case CTRL_MODE_PASSTHROUGH:
         if (f->slot >= SLOT_HW_READ_NORMAL && f->slot <= SLOT_HW_READ_QUAD_IO &&
             !ot_spi_device_is_mailbox_match(s, f->last_read_addr)) {
             trace_ot_spi_device_update_last_read_addr(s->ot_id,
                                                       f->last_read_addr);
             s->spi_regs[R_LAST_READ_ADDR] = f->last_read_addr;
         }
-        FLASH_CHANGE_STATE(s, IDLE);
-        break;
-    case CTRL_MODE_PASSTHROUGH:
-        s->spi_regs[R_LAST_READ_ADDR] = f->address;
         break;
     default:
         break;
@@ -1460,6 +1496,12 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
     return tx;
 }
 
+static uint8_t ot_spi_device_flash_spi_transfer(OtSPIDeviceState *s, uint8_t rx)
+{
+    OtSPIHostClass *spihostc = OT_SPI_HOST_GET_CLASS(s->spi_host);
+    return spihostc->ssi_downstream_transfer(s->spi_host, rx);
+}
+
 static void ot_spi_device_flash_resume_read(void *opaque)
 {
     OtSPIDeviceState *s = opaque;
@@ -1467,6 +1509,346 @@ static void ot_spi_device_flash_resume_read(void *opaque)
     trace_ot_spi_device_flash_pace(s->ot_id, "release",
                                    timer_pending(s->flash.irq_timer));
     qemu_chr_fe_accept_input(&s->chr);
+}
+
+static bool
+ot_spi_device_flash_command_is_filter(OtSPIDeviceState *s, uint8_t cmd)
+{
+    return (bool)(s->spi_regs[R_CMD_FILTER_0 + (cmd / REG_BITS)] &
+                  (1u << (cmd % REG_BITS)));
+}
+
+static uint8_t ot_spi_device_swap_byte_data(
+    uint8_t byte, unsigned byte_sel, uint32_t swap_mask, uint32_t swap_data)
+{
+    g_assert(byte_sel < 4u);
+    uint8_t mask = (uint8_t)(swap_mask >> (byte_sel * 8u));
+    uint8_t data = (uint8_t)(swap_data >> (byte_sel * 8u));
+    return (byte & ~mask) | (data & mask);
+}
+
+static bool ot_spi_device_flash_try_intercept_hw_command(OtSPIDeviceState *s)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    uint32_t intercept_val32 = s->spi_regs[R_INTERCEPT_EN];
+    bool intercepted = false;
+
+    switch (f->slot) {
+    case SLOT_HW_READ_STATUS1:
+    case SLOT_HW_READ_STATUS2:
+    case SLOT_HW_READ_STATUS3:
+        if (FIELD_EX32(intercept_val32, INTERCEPT_EN, STATUS)) {
+            ot_spi_device_flash_decode_read_status(s);
+            intercepted = true;
+        }
+        break;
+    case SLOT_HW_READ_JEDEC:
+        if (FIELD_EX32(intercept_val32, INTERCEPT_EN, JEDEC)) {
+            ot_spi_device_flash_decode_read_jedec(s);
+            intercepted = true;
+        }
+        break;
+    case SLOT_HW_READ_SFDP:
+        if (FIELD_EX32(intercept_val32, INTERCEPT_EN, SFDP)) {
+            ot_spi_device_flash_decode_read_sfdp(s);
+            intercepted = true;
+        }
+        break;
+    case SLOT_HW_READ_NORMAL:
+    case SLOT_HW_READ_FAST:
+    case SLOT_HW_READ_DUAL:
+    case SLOT_HW_READ_QUAD:
+    case SLOT_HW_READ_DUAL_IO:
+    case SLOT_HW_READ_QUAD_IO:
+        /* We try to intercept these at every read after an address is given */
+        break;
+    case SLOT_HW_EN4B:
+    case SLOT_HW_EX4B:
+        /* Always intercepted */
+        ot_spi_device_flash_decode_addr4_enable(s);
+        intercepted = true;
+        break;
+    case SLOT_HW_WREN:
+    case SLOT_HW_WRDI:
+        /* Always intercepted */
+        ot_spi_device_flash_decode_write_enable(s);
+        intercepted = true;
+        break;
+    default:
+        break;
+    }
+
+    if (intercepted) {
+        trace_ot_spi_device_flash_intercepted_command(s->ot_id, f->slot);
+    }
+
+    return intercepted;
+}
+
+static void ot_spi_device_flash_passthrough_command_params(OtSPIDeviceState *s)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    OtSpiCommandParams *p = &f->cmd_params;
+
+    p->address_size = ot_spi_device_get_command_address_size(s);
+    p->cmd_addr_swap =
+        (bool)SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_ADDR_SWAP_EN);
+    p->cmd_payload_swap =
+        (bool)SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_PAYLOAD_SWAP_EN);
+    p->cmd_payload_dir_out =
+        (bool)SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_PAYLOAD_DIR);
+
+    /*
+     * SPI transfers in QEMU are modelled at the granularity of bytes,
+     * therefore we can only support either 0 dummy cycles (dummy_en = 0), or
+     * 8 dummy cycles (dummy_en = 1, dummy_size = 7). Anything in between we
+     * round up to 1 dummy byte, so we only check dummy_en.
+     */
+    p->cmd_dummy = (bool)SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_DUMMY_EN);
+
+    if (p->cmd_dummy &&
+        ((uint8_t)SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_DUMMY_SIZE) != 7u)) {
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: %s: slot %d: set non-zero dummy cycle count is "
+                      "unsupported, using 8 cycles (1 byte)",
+                      __func__, s->ot_id, f->slot);
+    }
+
+    if (SHARED_FIELD_EX32(f->cmd_info, CMD_INFO_READ_PIPELINE_MODE) != 0u) {
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: %s: slot %d: 2-stage read pipeline is unsupported",
+                      __func__, s->ot_id, f->slot);
+    }
+
+    trace_ot_spi_device_flash_command_params(s->ot_id, p->address_size,
+                                             p->cmd_addr_swap, p->cmd_dummy,
+                                             p->cmd_payload_swap);
+}
+
+static void
+ot_spi_device_flash_passthrough_address_phase(OtSPIDeviceState *s, uint8_t rx)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    OtSpiCommandParams *p = &f->cmd_params;
+
+    f->len = 4u;
+
+    f->buffer[f->pos] = rx;
+    if (p->cmd_addr_swap) {
+        unsigned byte_sel = (f->len - f->pos - 1u);
+        uint8_t swapped_rx =
+            ot_spi_device_swap_byte_data(rx, byte_sel,
+                                         s->spi_regs[R_ADDR_SWAP_MASK],
+                                         s->spi_regs[R_ADDR_SWAP_DATA]);
+        trace_ot_spi_device_flash_swap_byte(s->ot_id, "address", byte_sel, rx,
+                                            swapped_rx);
+        rx = swapped_rx;
+    }
+
+    (void)ot_spi_device_flash_spi_transfer(s, rx);
+
+    f->pos++;
+    if (f->pos == f->len) { /* end of address phase */
+        f->pos = 0u;
+        f->address = ldl_be_p(f->buffer);
+
+        /* if upload command, push address FIFO */
+        if (ot_spi_device_flash_command_is_upload(f)) {
+            if (!ot_fifo32_is_full(&f->address_fifo)) {
+                ot_fifo32_push(&f->address_fifo, f->address);
+            } else {
+                g_assert_not_reached();
+            }
+        }
+
+        if (p->cmd_dummy) {
+            FLASH_CHANGE_STATE(s, PASSTHROUGH_UP_DUMMY);
+        } else {
+            FLASH_CHANGE_STATE(s, PASSTHROUGH_UP_PAYLOAD);
+        }
+    }
+}
+
+static void ot_spi_device_flash_passthrough_dummy_phase(OtSPIDeviceState *s)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    OtSpiCommandParams *p = &f->cmd_params;
+
+    g_assert(p->cmd_dummy);
+
+    (void)ot_spi_device_flash_spi_transfer(s, SPI_DEFAULT_TX_RX_VALUE);
+
+    FLASH_CHANGE_STATE(s, PASSTHROUGH_UP_PAYLOAD);
+}
+
+static uint8_t
+ot_spi_device_flash_passthrough_payload_phase(OtSPIDeviceState *s, uint8_t rx)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    OtSpiCommandParams *p = &f->cmd_params;
+
+    if (p->cmd_payload_dir_out) { /* flash -> SPI Host */
+
+        /* try intercept read to mailbox region */
+        if (FIELD_EX32(s->spi_regs[R_INTERCEPT_EN], INTERCEPT_EN, MBX) != 0u) {
+            if (f->slot >= SLOT_HW_READ_NORMAL &&
+                f->slot <= SLOT_HW_READ_QUAD_IO) {
+                if (p->address_size != 0u) {
+                    if (ot_spi_device_is_mailbox_match(s, f->address)) {
+                        trace_ot_spi_device_flash_intercept_mailbox(s->ot_id,
+                                                                    f->address);
+                        unsigned word_idx =
+                            (f->address >> 2u) & (SPI_SRAM_MBX_SIZE - 1u);
+                        unsigned byte_idx = f->address % 4u;
+                        uint32_t word =
+                            s->sram[(SPI_SRAM_MBX_OFFSET >> 2u) + word_idx];
+                        uint8_t tx = (uint8_t)(word >> (8u * byte_idx));
+
+                        f->address += 1u;
+                        return tx;
+                    }
+                } else {
+                    qemu_log_mask(
+                        LOG_GUEST_ERROR,
+                        "%s: %s: Mailbox read intercept enabled but HW READ "
+                        "CMD %d has no address field",
+                        __func__, s->ot_id, f->slot);
+                }
+            }
+        }
+
+        /* common out path: read from flash, update last read address */
+        f->last_read_addr = f->address;
+        f->address += 1u;
+        return ot_spi_device_flash_spi_transfer(s, SPI_DEFAULT_TX_RX_VALUE);
+
+    } /* SPI Host -> flash */
+
+    /* if this command is to be uploaded, upload payload */
+    if (ot_spi_device_flash_command_is_upload(f)) {
+        f->payload[f->pos % SPI_SRAM_PAYLOAD_SIZE] = rx;
+    }
+
+    /* if payload swap is enabled, swap the first 4 bytes of payload */
+    if (f->pos < 4u && p->cmd_payload_swap) {
+        uint8_t swapped_rx =
+            ot_spi_device_swap_byte_data(rx, f->pos,
+                                         s->spi_regs[R_PAYLOAD_SWAP_MASK],
+                                         s->spi_regs[R_PAYLOAD_SWAP_DATA]);
+        trace_ot_spi_device_flash_swap_byte(s->ot_id, "payload", f->pos, rx,
+                                            swapped_rx);
+        rx = swapped_rx;
+    }
+
+    f->pos++;
+
+    (void)ot_spi_device_flash_spi_transfer(s, rx);
+
+    return SPI_DEFAULT_TX_RX_VALUE;
+}
+
+
+static uint8_t
+ot_spi_device_flash_transfer_passthrough(OtSPIDeviceState *s, uint8_t rx)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    OtSpiCommandParams *p = &f->cmd_params;
+
+    trace_ot_spi_device_flash_transfer(s->ot_id, "->", rx);
+
+    uint8_t tx = SPI_DEFAULT_TX_RX_VALUE;
+
+    switch (f->state) {
+    case SPI_FLASH_IDLE:
+        f->slot = SLOT_INVALID;
+        f->cmd_info = 0u;
+        f->pos = 0u;
+        f->len = 0u;
+        f->address = 0u;
+        f->src = NULL;
+        f->loop = false;
+        memset(f->buffer, 0u, 4u);
+        /*
+         * Unmatched commands are not necessarily erroneous and the HW
+         * will continue the transfer with these default parameters,
+         * unless it is filtered later on.
+         */
+        memset(&f->cmd_params, 0u, sizeof(OtSpiCommandParams));
+
+        if (ot_spi_device_flash_match_command_slot(s, rx)) {
+            if (ot_spi_device_flash_try_intercept_hw_command(s)) {
+                break;
+            }
+            /* only matched software/not intercepted commands can be uploaded */
+            ot_spi_device_flash_try_upload(s);
+            ot_spi_device_flash_passthrough_command_params(s);
+        }
+
+        if (ot_spi_device_flash_command_is_filter(s, rx)) {
+            /* command opcode is filtered, do not send to downstream */
+            trace_ot_spi_device_flash_filtered_command(s->ot_id, rx);
+            ibex_irq_raise(&s->passthrough_cs);
+        } else {
+            /* issue the command: assert chip select (active low) */
+            ibex_irq_lower(&s->passthrough_cs);
+            /* pass the opcode through */
+            tx = ot_spi_device_flash_spi_transfer(s, rx);
+        }
+
+        if (p->address_size != 0u) {
+            /* command has address field */
+            f->pos = 4u - p->address_size;
+            FLASH_CHANGE_STATE(s, PASSTHROUGH_UP_ADDR);
+            break;
+        }
+        if (p->cmd_dummy) {
+            /* no address field, but has dummy */
+            FLASH_CHANGE_STATE(s, PASSTHROUGH_UP_DUMMY);
+            break;
+        }
+        /* no address or dummy field, rest is payload */
+        FLASH_CHANGE_STATE(s, PASSTHROUGH_UP_PAYLOAD);
+        break;
+    case SPI_FLASH_PASSTHROUGH_UP_ADDR:
+        ot_spi_device_flash_passthrough_address_phase(s, rx);
+        break;
+    case SPI_FLASH_PASSTHROUGH_UP_DUMMY:
+        ot_spi_device_flash_passthrough_dummy_phase(s);
+        break;
+    case SPI_FLASH_PASSTHROUGH_UP_PAYLOAD:
+        tx = ot_spi_device_flash_passthrough_payload_phase(s, rx);
+        break;
+    /* HW intercepted commands */
+    case SPI_FLASH_COLLECT:
+        if (!ot_spi_device_flash_collect(s, rx)) {
+            g_assert(f->slot == SLOT_HW_READ_SFDP);
+            ot_spi_device_flash_exec_read_sfdp(s);
+        }
+        break;
+    case SPI_FLASH_BUFFER:
+        g_assert(f->slot <= SLOT_HW_READ_SFDP);
+        tx = ot_spi_device_flash_read_buffer(s);
+        break;
+    case SPI_FLASH_DONE:
+        FLASH_CHANGE_STATE(s, ERROR);
+        break;
+    case SPI_FLASH_ERROR:
+        break;
+    default:
+        error_setg(&error_fatal, "unexpected state %s[%d]",
+                   FLASH_STATE_NAME(f->state), f->state);
+        g_assert_not_reached();
+    }
+
+    trace_ot_spi_device_flash_transfer(s->ot_id, "<-", tx);
+
+    return tx;
 }
 
 static uint64_t
@@ -1639,16 +2021,32 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         if ((val32 & R_CONTROL_MODE_MASK) !=
             (s->spi_regs[reg] & R_CONTROL_MODE_MASK)) {
             ot_spi_device_clear_modes(s);
+            if (s->bus.state == SPI_BUS_FLASH) {
+                /*
+                 * Hardware assumes that control mode does not change during a
+                 * transaction, so the behaviour is undefined if that happens.
+                 * We choose to cancel any ongoing SPI transfer until the next
+                 * CS.
+                 */
+                qemu_log_mask(LOG_TRACE,
+                              "%s: %s: Flash mode changed during transfer, "
+                              "discarding rest of transfer\n",
+                              __func__, s->ot_id);
+                BUS_CHANGE_STATE(s, DISCARD);
+            }
         }
         s->spi_regs[reg] = val32;
         switch (ot_spi_device_get_mode(s)) {
-        case CTRL_MODE_FLASH:
-            break;
-        case CTRL_MODE_DISABLED:
-        case CTRL_MODE_PASSTHROUGH:
-        default:
-            qemu_log_mask(LOG_UNIMP, "%s: %s: unsupported mode\n", __func__,
+        case CTRL_MODE_INVALID:
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid mode\n", __func__,
                           s->ot_id);
+        /* fallthrough */
+        case CTRL_MODE_FLASH:
+        case CTRL_MODE_DISABLED:
+            ibex_irq_lower(&s->passthrough_en);
+            break;
+        case CTRL_MODE_PASSTHROUGH:
+            ibex_irq_raise(&s->passthrough_en);
             break;
         }
         break;
@@ -1985,10 +2383,11 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
     switch (ot_spi_device_get_mode(s)) {
     case CTRL_MODE_FLASH:
+    case CTRL_MODE_PASSTHROUGH:
         BUS_CHANGE_STATE(s, FLASH);
         break;
     case CTRL_MODE_DISABLED:
-    case CTRL_MODE_PASSTHROUGH:
+    case CTRL_MODE_INVALID:
     default:
         BUS_CHANGE_STATE(s, DISCARD);
         break;
@@ -2024,7 +2423,18 @@ static void ot_spi_device_chr_recv_flash(OtSPIDeviceState *s,
         if (bus->rev_rx) {
             rx = revbit8(rx);
         }
-        uint8_t tx = ot_spi_device_flash_transfer(s, rx) ^ bus->mode;
+        uint8_t tx;
+        switch (ot_spi_device_get_mode(s)) {
+        case CTRL_MODE_FLASH:
+            tx = ot_spi_device_flash_transfer(s, rx);
+            break;
+        case CTRL_MODE_PASSTHROUGH:
+            tx = ot_spi_device_flash_transfer_passthrough(s, rx);
+            break;
+        default:
+            g_assert_not_reached();
+        }
+        tx ^= bus->mode;
         if (bus->rev_tx) {
             tx = revbit8(tx);
         }
@@ -2362,8 +2772,8 @@ static void ot_spi_device_reset_enter(Object *obj, ResetType type)
 
     ot_spi_device_clear_modes(s);
 
-    memset(s->spi_regs, 0, SPI_REGS_SIZE);
-    memset(s->tpm_regs, 0, TPM_REGS_SIZE);
+    memset(s->spi_regs, 0u, SPI_REGS_SIZE);
+    memset(s->tpm_regs, 0u, TPM_REGS_SIZE);
 
     fifo8_reset(&bus->chr_fifo);
     /* not sure if the following FIFOs should be reset on clear_modes instead */
@@ -2376,9 +2786,11 @@ static void ot_spi_device_reset_enter(Object *obj, ResetType type)
     s->spi_regs[R_CONTROL] = 0x10u;
     s->spi_regs[R_STATUS] = 0x60u;
     s->spi_regs[R_JEDEC_CC] = 0x7fu;
-    for (unsigned ix = 0; ix < PARAM_NUM_CMD_INFO; ix++) {
+    for (unsigned ix = 0u; ix < PARAM_NUM_CMD_INFO; ix++) {
         s->spi_regs[R_CMD_INFO_0 + ix] = 0x7000u;
     }
+
+    memset(&f->cmd_params, 0u, sizeof(OtSpiCommandParams));
 
     s->tpm_regs[R_TPM_CAP] = 0x660100u;
 
@@ -2395,6 +2807,8 @@ static void ot_spi_device_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+
+    g_assert(s->spi_host);
 
     qemu_chr_fe_set_handlers(&s->chr, &ot_spi_device_chr_can_receive,
                              &ot_spi_device_chr_receive,
