@@ -451,12 +451,10 @@ typedef enum {
     ENTROPY_SRC_CONT_HT_RUNNING,
     ENTROPY_SRC_FW_INSERT_START,
     ENTROPY_SRC_FW_INSERT_MSG,
-    ENTROPY_SRC_SHA3_MSGDONE,
-    ENTROPY_SRC_SHA3_PREP,
+    ENTROPY_SRC_SHA3_MSG_DONE,
     ENTROPY_SRC_SHA3_PROCESS,
     ENTROPY_SRC_SHA3_VALID,
     ENTROPY_SRC_SHA3_DONE,
-    ENTROPY_SRC_SHA3_QUIESCE,
     ENTROPY_SRC_ALERT_STATE,
     ENTROPY_SRC_ALERT_HANG,
     ENTROPY_SRC_ERROR,
@@ -496,7 +494,6 @@ struct OtEntropySrcState {
     OtOTPState *otp_ctrl;
 };
 
-/* @todo: need to check the FSM code are identical on v2 and v3... */
 static const uint16_t OtEDNFsmStateCode[] = {
     [ENTROPY_SRC_IDLE] = 0b011110101,
     [ENTROPY_SRC_BOOT_HT_RUNNING] = 0b111010010,
@@ -510,15 +507,13 @@ static const uint16_t OtEDNFsmStateCode[] = {
     [ENTROPY_SRC_CONT_HT_RUNNING] = 0b110100010,
     [ENTROPY_SRC_FW_INSERT_START] = 0b011000011,
     [ENTROPY_SRC_FW_INSERT_MSG] = 0b001011001,
-    [ENTROPY_SRC_SHA3_MSGDONE] = 0b100001111,
-    [ENTROPY_SRC_SHA3_PREP] = 0b011111000,
-    [ENTROPY_SRC_SHA3_PROCESS] = 0b010111111,
-    [ENTROPY_SRC_SHA3_VALID] = 0b101110001,
+    [ENTROPY_SRC_SHA3_MSG_DONE] = 0b100001111,
+    [ENTROPY_SRC_SHA3_PROCESS] = 0b011111000,
+    [ENTROPY_SRC_SHA3_VALID] = 0b010111111,
     [ENTROPY_SRC_SHA3_DONE] = 0b110011000,
-    [ENTROPY_SRC_SHA3_QUIESCE] = 0b111001101,
-    [ENTROPY_SRC_ALERT_STATE] = 0b111111011,
-    [ENTROPY_SRC_ALERT_HANG] = 0b101011100,
-    [ENTROPY_SRC_ERROR] = 0b100111101,
+    [ENTROPY_SRC_ALERT_STATE] = 0b111001101,
+    [ENTROPY_SRC_ALERT_HANG] = 0b111111011,
+    [ENTROPY_SRC_ERROR] = 0b001110011,
 };
 
 #define STATE_NAME_ENTRY(_st_) [ENTROPY_SRC_##_st_] = stringify(_st_)
@@ -535,12 +530,10 @@ static const char *STATE_NAMES[] = {
     STATE_NAME_ENTRY(CONT_HT_RUNNING),
     STATE_NAME_ENTRY(FW_INSERT_START),
     STATE_NAME_ENTRY(FW_INSERT_MSG),
-    STATE_NAME_ENTRY(SHA3_MSGDONE),
-    STATE_NAME_ENTRY(SHA3_PREP),
+    STATE_NAME_ENTRY(SHA3_MSG_DONE),
     STATE_NAME_ENTRY(SHA3_PROCESS),
     STATE_NAME_ENTRY(SHA3_VALID),
     STATE_NAME_ENTRY(SHA3_DONE),
-    STATE_NAME_ENTRY(SHA3_QUIESCE),
     STATE_NAME_ENTRY(ALERT_STATE),
     STATE_NAME_ENTRY(ALERT_HANG),
     STATE_NAME_ENTRY(ERROR),
@@ -583,8 +576,7 @@ static int ot_entropy_src_get_entropy(
         break;
     case ENTROPY_SRC_CONT_HT_RUNNING:
     case ENTROPY_SRC_CONT_HT_START:
-    case ENTROPY_SRC_SHA3_MSGDONE:
-    case ENTROPY_SRC_SHA3_PREP:
+    case ENTROPY_SRC_SHA3_MSG_DONE:
     case ENTROPY_SRC_SHA3_PROCESS:
     case ENTROPY_SRC_SHA3_VALID:
     case ENTROPY_SRC_SHA3_DONE:
@@ -615,7 +607,6 @@ static int ot_entropy_src_get_entropy(
         return -1;
     case ENTROPY_SRC_FW_INSERT_START:
     case ENTROPY_SRC_FW_INSERT_MSG:
-    case ENTROPY_SRC_SHA3_QUIESCE: /* this state is never emulated */
     case ENTROPY_SRC_ALERT_STATE:
     case ENTROPY_SRC_ALERT_HANG:
     case ENTROPY_SRC_ERROR:
@@ -933,7 +924,6 @@ ot_entropy_src_push_entropy_to_conditioner(OtEntropySrcState *s, uint32_t word)
     int res;
     if (s->cond_word == 0) {
         res = sha3_384_init(&s->sha3_state);
-        ot_entropy_src_change_state(s, ENTROPY_SRC_SHA3_PREP);
         g_assert(res == CRYPT_OK);
     }
 
@@ -980,7 +970,7 @@ static void ot_entropy_src_perform_hash(OtEntropySrcState *s)
                                       OT_ENTROPY_SRC_WORD_COUNT *
                                           sizeof(uint32_t));
 
-    ot_entropy_src_change_state(s, ENTROPY_SRC_SHA3_MSGDONE);
+    ot_entropy_src_change_state(s, ENTROPY_SRC_SHA3_MSG_DONE);
 
     for (unsigned ix = 0; ix < OT_ENTROPY_SRC_WORD_COUNT; ix++) {
         g_assert(!ot_fifo32_is_full(&s->final_fifo));
@@ -1185,11 +1175,10 @@ static void ot_entropy_src_noise_refill(void *opaque)
     case ENTROPY_SRC_CONT_HT_RUNNING:
     case ENTROPY_SRC_CONT_HT_START:
     case ENTROPY_SRC_BOOT_PHASE_DONE:
-    case ENTROPY_SRC_SHA3_PREP:
     case ENTROPY_SRC_SHA3_VALID:
     case ENTROPY_SRC_SHA3_PROCESS:
     case ENTROPY_SRC_SHA3_DONE:
-    case ENTROPY_SRC_SHA3_MSGDONE:
+    case ENTROPY_SRC_SHA3_MSG_DONE:
         break;
     default:
         trace_ot_entropy_src_error(s->ot_id, "unexpected state",
@@ -1210,11 +1199,10 @@ static void ot_entropy_src_scheduler(void *opaque)
     case ENTROPY_SRC_STARTUP_HT_START:
     case ENTROPY_SRC_CONT_HT_START:
     case ENTROPY_SRC_CONT_HT_RUNNING:
-    case ENTROPY_SRC_SHA3_PREP:
     case ENTROPY_SRC_SHA3_VALID:
     case ENTROPY_SRC_SHA3_PROCESS:
     case ENTROPY_SRC_SHA3_DONE:
-    case ENTROPY_SRC_SHA3_MSGDONE:
+    case ENTROPY_SRC_SHA3_MSG_DONE:
         ot_entropy_src_noise_refill(s);
         break;
     case ENTROPY_SRC_IDLE:
@@ -1225,7 +1213,6 @@ static void ot_entropy_src_scheduler(void *opaque)
     case ENTROPY_SRC_STARTUP_FAIL1:
     case ENTROPY_SRC_FW_INSERT_START:
     case ENTROPY_SRC_FW_INSERT_MSG:
-    case ENTROPY_SRC_SHA3_QUIESCE:
     case ENTROPY_SRC_ALERT_STATE:
     case ENTROPY_SRC_ALERT_HANG:
     case ENTROPY_SRC_ERROR:
