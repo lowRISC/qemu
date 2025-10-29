@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan One Time Programmable (OTP) memory controller
+ * QEMU OpenTitan One Time Programmable (OTP) memory controller public interface
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
  *
@@ -26,15 +26,18 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_OTP_H
-#define HW_OPENTITAN_OT_OTP_H
+#ifndef HW_OPENTITAN_OT_OTP_IF_H
+#define HW_OPENTITAN_OT_OTP_IF_H
 
 #include "qom/object.h"
 #include "hw/opentitan/ot_common.h"
-#include "hw/sysbus.h"
 
-#define TYPE_OT_OTP "ot-otp"
-OBJECT_DECLARE_TYPE(OtOTPState, OtOTPClass, OT_OTP)
+#define TYPE_OT_OTP_IF "ot-otp_if"
+typedef struct OtOTPIfClass OtOTPIfClass;
+typedef struct OtOTPIf OtOTPIf;
+
+DECLARE_CLASS_CHECKERS(OtOTPIfClass, OT_OTP_IF, TYPE_OT_OTP_IF)
+#define OT_OTP_IF(_obj_) INTERFACE_CHECK(OtOTPIf, (_obj_), TYPE_OT_OTP_IF)
 
 /* Input signals from life cycle */
 typedef enum {
@@ -125,20 +128,15 @@ typedef struct {
     bool valid; /* whether the key/seed data is valid */
 } OtOTPKeyMgrSecret;
 
-struct OtOTPState {
-    SysBusDevice parent_obj;
-};
-
 typedef void (*ot_otp_program_ack_fn)(void *opaque, bool ack);
 
-struct OtOTPClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
+struct OtOTPIfClass {
+    InterfaceClass parent_class;
 
     /*
      * Provide OTP lifecycle information.
      *
-     * @s the OTP device
+     * @dev the OTP device
      * @lc_tcount if not NULL, updated with the raw LifeCycle transition count
      *            buffer.
      * @lc_state if not NULL, updated with the raw LifeCycle state buffer.
@@ -147,35 +145,35 @@ struct OtOTPClass {
      *
      * @note: lc_valid and secret_valid use OT_MULTIBITBOOL_LC4 encoding
      */
-    void (*get_lc_info)(const OtOTPState *s, uint16_t *lc_state,
+    void (*get_lc_info)(const OtOTPIf *dev, uint16_t *lc_state,
                         uint16_t *lc_tcount, uint8_t *lc_valid,
                         uint8_t *secret_valid, const OtOTPTokens **tokens);
 
     /*
      * Retrieve HW configuration.
      *
-     * @s the OTP device
+     * @dev the OTP device
      * @return the HW config data (never NULL)
      */
-    const OtOTPHWCfg *(*get_hw_cfg)(const OtOTPState *s);
+    const OtOTPHWCfg *(*get_hw_cfg)(const OtOTPIf *dev);
 
     /*
      * Retrieve SRAM scrambling key.
      *
-     * @s the OTP device
+     * @dev the OTP device
      * @type the type of the key to retrieve
      * @key the key record to update
      */
-    void (*get_otp_key)(OtOTPState *s, OtOTPKeyType type, OtOTPKey *key);
+    void (*get_otp_key)(OtOTPIf *dev, OtOTPKeyType type, OtOTPKey *key);
 
     /*
      * Retrieve Key Manager secret (key or seeds).
      *
-     * @s the OTP device
+     * @dev the OTP device
      * @type the type of secret to retrieve
      * @secret the key manager secret record to update
      */
-    void (*get_keymgr_secret)(OtOTPState *s, OtOTPKeyMgrSecretType type,
+    void (*get_keymgr_secret)(OtOTPIf *dev, OtOTPKeyMgrSecretType type,
                               OtOTPKeyMgrSecret *secret);
 
     /**
@@ -185,16 +183,16 @@ struct OtOTPClass {
      * callback. Conversely, it should always invoke the callback if the request
      * is accepted.
      *
-     * @s the OTP device
+     * @dev the OTP device
      * @lc_tcount the raw LifeCycle transition count buffer
      * @lc_state the raw LifeCycle state buffer
      * @ack the callback to asynchronously invoke on OTP completion/error
      * @opaque opaque data to forward to the ot_otp_program_ack_fn function
      * @return @c true if request is accepted, @c false is rejected.
      */
-    bool (*program_req)(OtOTPState *s, const uint16_t *lc_tcount,
+    bool (*program_req)(OtOTPIf *dev, const uint16_t *lc_tcount,
                         const uint16_t *lc_state, ot_otp_program_ack_fn ack,
                         void *opaque);
 };
 
-#endif /* HW_OPENTITAN_OT_OTP_H */
+#endif /* HW_OPENTITAN_OT_OTP_IF_H */

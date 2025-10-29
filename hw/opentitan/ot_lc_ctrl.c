@@ -38,7 +38,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
-#include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_socdbg_ctrl.h"
 #include "hw/qdev-properties.h"
@@ -410,7 +410,7 @@ struct OtLcCtrlState {
 
     /* properties */
     char *ot_id;
-    OtOTPState *otp_ctrl;
+    DeviceState *otp_ctrl;
     OtKMACState *kmac;
     char *raw_unlock_token_xstr;
     char *km_div_xstrs[LC_DIV_COUNT];
@@ -1136,14 +1136,14 @@ static void ot_lc_ctrl_kmac_handle_resp(void *opaque, const OtKMACAppRsp *rsp)
 
 static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
 {
-    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
     OtLcCtrlStateValue lc_state;
     OtLcCtrlTransitionCountValue lc_tcount;
     uint8_t lc_valid;
     uint8_t secret_valid;
     const OtOTPTokens *tokens = NULL;
-    oc->get_lc_info(s->otp_ctrl, lc_tcount, lc_state, &lc_valid, &secret_valid,
-                    &tokens);
+    oc->get_lc_info(oi, lc_tcount, lc_state, &lc_valid, &secret_valid, &tokens);
 
     if (s->force_raw) {
         trace_ot_lc_ctrl_load_lc_info_force_raw(s->ot_id);
@@ -1215,8 +1215,9 @@ static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
 
 static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
 {
-    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-    const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(s->otp_ctrl);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+    const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(oi);
 
     static_assert(sizeof(hw_cfg->device_id) == LC_DEV_ID_WIDTH,
                   "HW_CFG Device ID size does not match size in registers");
@@ -1294,7 +1295,8 @@ static void ot_lc_ctrl_handle_otp_ack(void *opaque, bool ack)
 static void ot_lc_ctrl_program_otp(OtLcCtrlState *s, unsigned lc_tcount,
                                    OtLcState lc_state)
 {
-    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
 
     if (!oc->program_req) {
         qemu_log_mask(LOG_UNIMP,
@@ -1310,7 +1312,7 @@ static void ot_lc_ctrl_program_otp(OtLcCtrlState *s, unsigned lc_tcount,
     const uint16_t *transition_val = s->lc_transitions[tcix];
     const uint16_t *state_val = s->lc_states[stix];
 
-    if (!oc->program_req(s->otp_ctrl, transition_val, state_val,
+    if (!oc->program_req(oi, transition_val, state_val,
                          &ot_lc_ctrl_handle_otp_ack, s)) {
         trace_ot_lc_ctrl_error(s->ot_id, "OTP program request rejected");
         s->regs[R_STATUS] |= R_STATUS_STATE_ERROR_MASK;
@@ -2137,8 +2139,8 @@ static void ot_lc_ctrl_get_keymgr_div(const OtLcCtrlState *s,
 
 static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtLcCtrlState, ot_id),
-    DEFINE_PROP_LINK("otp-ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP,
-                     OtOTPState *),
+    DEFINE_PROP_LINK("otp-ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP_IF,
+                     DeviceState *),
     DEFINE_PROP_LINK("kmac", OtLcCtrlState, kmac, TYPE_OT_KMAC, OtKMACState *),
     DEFINE_PROP_STRING("raw_unlock_token", OtLcCtrlState,
                        raw_unlock_token_xstr),
@@ -2256,6 +2258,9 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
     g_assert(s->otp_ctrl);
     g_assert(s->kmac);
     g_assert(s->kmac_app != UINT8_MAX);
+
+    (void)OBJECT_CHECK(OtOTPIf, s->otp_ctrl, TYPE_OT_OTP_IF);
+
     OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
     g_assert(kc->connect_app);
     g_assert(kc->app_request);

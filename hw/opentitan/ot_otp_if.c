@@ -1,7 +1,7 @@
 /*
- * QEMU OpenTitan One Time Programmable (OTP) memory controller
+ * QEMU OpenTitan One Time Programmable (OTP) memory controller public interface
  *
- * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -26,14 +26,17 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/opentitan/ot_common.h"
-#include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_otp_if.h"
 
-OT_OBJECT_DEFINE_ABSTRACT_TYPE(OtOTPState, OtOTPClass, ot_otp, OT_OTP,
-                               SYS_BUS_DEVICE)
+static const TypeInfo ot_otp_if_info = {
+    .name = TYPE_OT_OTP_IF,
+    .parent = TYPE_INTERFACE,
+    .class_size = sizeof(OtOTPIfClass),
+};
 
-static void ot_otp_class_init(ObjectClass *oc, void *data) {}
+static void ot_otp_if_register_types(void)
+{
+    type_register_static(&ot_otp_if_info);
+}
 
-static void ot_otp_init(Object *obj) {}
-
-static void ot_otp_finalize(Object *obj) {}
+type_init(ot_otp_if_register_types);

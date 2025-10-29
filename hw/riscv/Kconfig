@@ -45,6 +45,7 @@ config OT_DARJEELING
     select OT_LC_CTRL
     select OT_MBX
     select OT_OTBN
+    select OT_OTP_IF
     select OT_OTP_DJ
     select OT_OTP_OT_BE
     select OT_PINMUX_DJ
@@ -90,6 +91,7 @@ config OT_EARLGREY
     select OT_LC_CTRL
     select OT_OTBN
     select OT_OTP_EG
+    select OT_OTP_IF
     select OT_OTP_OT_BE
     select OT_PINMUX_EG
     select OT_PLIC_EXT

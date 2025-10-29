@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan Darjeeling One Time Programmable (OTP) memory controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -29,9 +29,7 @@
 #ifndef HW_OPENTITAN_OT_OTP_DJ_H
 #define HW_OPENTITAN_OT_OTP_DJ_H
 
-#include "hw/opentitan/ot_otp.h"
-
 #define TYPE_OT_OTP_DJ "ot-otp-dj"
-OBJECT_DECLARE_TYPE(OtOTPDjState, OtOTPClass, OT_OTP_DJ)
+OBJECT_DECLARE_TYPE(OtOTPDjState, OtOTPDjClass, OT_OTP_DJ)
 
 #endif /* HW_OPENTITAN_OT_OTP_DJ_H */

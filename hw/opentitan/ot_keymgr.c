@@ -49,7 +49,7 @@
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
-#include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/qdev-properties.h"
@@ -452,7 +452,7 @@ typedef struct OtKeyMgrState {
     uint8_t kmac_app;
     OtFlashState *flash_ctrl;
     OtLcCtrlState *lc_ctrl;
-    OtOTPState *otp_ctrl;
+    DeviceState *otp_ctrl;
     OtRomCtrlState *rom_ctrl;
     DeviceState *key_sinks[KEYMGR_KEY_SINK_COUNT];
     char *seed_xstrs[KEYMGR_SEED_COUNT];
@@ -1068,8 +1068,9 @@ static size_t ot_keymgr_kdf_append_km_div(OtKeyMgrState *s)
 
 static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s)
 {
-    OtOTPClass *otp_oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-    const OtOTPHWCfg *hw_cfg = otp_oc->get_hw_cfg(s->otp_ctrl);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+    const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(oi);
 
     ot_keymgr_kdf_push_bytes(s, hw_cfg->device_id,
                              OT_OTP_HWCFG_DEVICE_ID_BYTES);
@@ -1193,12 +1194,12 @@ static size_t ot_keymgr_kdf_append_key_version(OtKeyMgrState *s)
 static void ot_keymgr_get_root_key(OtKeyMgrState *s, OtOTPKeyMgrSecret *share0,
                                    OtOTPKeyMgrSecret *share1)
 {
-    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-    g_assert(oc);
-    oc->get_keymgr_secret(s->otp_ctrl,
-                          OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0, share0);
-    oc->get_keymgr_secret(s->otp_ctrl,
-                          OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1, share1);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
+                          share0);
+    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
+                          share1);
 
     if (trace_event_get_state(TRACE_OT_KEYMGR_DUMP_CREATOR_ROOT_KEY)) {
         trace_ot_keymgr_dump_creator_root_key(
@@ -2332,8 +2333,8 @@ static Property ot_keymgr_properties[] = {
     DEFINE_PROP_UINT8("kmac-app", OtKeyMgrState, kmac_app, UINT8_MAX),
     DEFINE_PROP_LINK("lc-ctrl", OtKeyMgrState, lc_ctrl, TYPE_OT_LC_CTRL,
                      OtLcCtrlState *),
-    DEFINE_PROP_LINK("otp-ctrl", OtKeyMgrState, otp_ctrl, TYPE_OT_OTP,
-                     OtOTPState *),
+    DEFINE_PROP_LINK("otp-ctrl", OtKeyMgrState, otp_ctrl, TYPE_OT_OTP_IF,
+                     DeviceState *),
     DEFINE_PROP_LINK("rom_ctrl", OtKeyMgrState, rom_ctrl, TYPE_OT_ROM_CTRL,
                      OtRomCtrlState *),
     DEFINE_PROP_LINK("aes", OtKeyMgrState, key_sinks[KEYMGR_KEY_SINK_AES],
@@ -2398,6 +2399,8 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     g_assert(s->lc_ctrl);
     g_assert(s->otp_ctrl);
     g_assert(s->rom_ctrl);
+
+    (void)OBJECT_CHECK(OtOTPIf, s->otp_ctrl, TYPE_OT_OTP_IF);
 
     /* reset registers */
     memset(s->regs, 0u, sizeof(s->regs));

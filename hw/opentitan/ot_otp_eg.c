@@ -41,6 +41,7 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otp_be_if.h"
 #include "hw/opentitan/ot_otp_eg.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_present.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_pwrmgr.h"
@@ -662,7 +663,7 @@ typedef struct {
 } OtOTPScrmblKeyInit;
 
 struct OtOTPEgState {
-    OtOTPState parent_obj;
+    SysBusDevice parent_obj;
 
     struct {
         MemoryRegion ctrl;
@@ -723,6 +724,11 @@ struct OtOTPEgState {
     char **inv_default_part_xstrs; /* some entries may be NULL */
     uint8_t edn_ep;
     bool fatal_escalate;
+};
+
+struct OtOTPEgClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
@@ -2794,10 +2800,10 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
 }
 
 static void ot_otp_eg_get_lc_info(
-    const OtOTPState *s, uint16_t *lc_tcount, uint16_t *lc_state,
+    const OtOTPIf *dev, uint16_t *lc_tcount, uint16_t *lc_state,
     uint8_t *lc_valid, uint8_t *secret_valid, const OtOTPTokens **tokens)
 {
-    const OtOTPEgState *es = OT_OTP_EG(s);
+    const OtOTPEgState *es = OT_OTP_EG(dev);
     const OtOTPStorage *otp = es->otp;
 
     if (lc_tcount) {
@@ -2827,9 +2833,9 @@ static void ot_otp_eg_get_lc_info(
     }
 }
 
-static const OtOTPHWCfg *ot_otp_eg_get_hw_cfg(const OtOTPState *s)
+static const OtOTPHWCfg *ot_otp_eg_get_hw_cfg(const OtOTPIf *dev)
 {
-    const OtOTPEgState *es = OT_OTP_EG(s);
+    const OtOTPEgState *es = OT_OTP_EG(dev);
 
     return (const OtOTPHWCfg *)es->hw_cfg;
 }
@@ -2995,10 +3001,10 @@ static void ot_otp_eg_generate_scrambling_key(
     }
 }
 
-static void ot_otp_eg_get_otp_key(OtOTPState *s, OtOTPKeyType type,
+static void ot_otp_eg_get_otp_key(OtOTPIf *dev, OtOTPKeyType type,
                                   OtOTPKey *key)
 {
-    OtOTPEgState *es = OT_OTP_EG(s);
+    OtOTPEgState *es = OT_OTP_EG(dev);
 
     hwaddr key_offset;
 
@@ -3058,9 +3064,9 @@ static void ot_otp_eg_get_otp_key(OtOTPState *s, OtOTPKeyType type,
 }
 
 static void ot_otp_eg_get_keymgr_secret(
-    OtOTPState *s, OtOTPKeyMgrSecretType type, OtOTPKeyMgrSecret *secret)
+    OtOTPIf *dev, OtOTPKeyMgrSecretType type, OtOTPKeyMgrSecret *secret)
 {
-    OtOTPEgState *es = OT_OTP_EG(s);
+    OtOTPEgState *es = OT_OTP_EG(dev);
     int partition;
     size_t offset;
 
@@ -3100,11 +3106,11 @@ static void ot_otp_eg_get_keymgr_secret(
     memcpy(secret->secret, &data_ptr[offset], OT_OTP_KEYMGR_SECRET_SIZE);
 }
 
-static bool ot_otp_eg_program_req(OtOTPState *s, const uint16_t *lc_tcount,
+static bool ot_otp_eg_program_req(OtOTPIf *dev, const uint16_t *lc_tcount,
                                   const uint16_t *lc_state,
                                   ot_otp_program_ack_fn ack, void *opaque)
 {
-    OtOTPEgState *es = OT_OTP_EG(s);
+    OtOTPEgState *es = OT_OTP_EG(dev);
     OtOTPLCIController *lci = es->lci;
 
     switch (lci->state) {
@@ -3985,7 +3991,7 @@ static const MemoryRegionOps ot_otp_eg_swcfg_ops = {
 
 static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
 {
-    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPEgClass *c = OT_OTP_EG_GET_CLASS(obj);
     OtOTPEgState *s = OT_OTP_EG(obj);
 
     /*
@@ -4068,7 +4074,7 @@ static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
 
 static void ot_otp_eg_reset_exit(Object *obj, ResetType type)
 {
-    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPEgClass *c = OT_OTP_EG_GET_CLASS(obj);
     OtOTPEgState *s = OT_OTP_EG(obj);
 
     trace_ot_otp_reset(s->ot_id, "exit");
@@ -4127,17 +4133,17 @@ static void ot_otp_eg_init(Object *obj)
      *   - "swcfg", software config window
      *     offset SW_CFG_WINDOW, size SW_CFG_WINDOW_SIZE
      */
-    memory_region_init(&s->mmio.ctrl, obj, TYPE_OT_OTP "-ctrl",
+    memory_region_init(&s->mmio.ctrl, obj, TYPE_OT_OTP_EG "-ctrl",
                        SW_CFG_WINDOW + SW_CFG_WINDOW_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.ctrl);
 
     memory_region_init_io(&s->mmio.sub.regs, obj, &ot_otp_eg_reg_ops, s,
-                          TYPE_OT_OTP "-regs", REGS_SIZE);
+                          TYPE_OT_OTP_EG "-regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, 0u, &s->mmio.sub.regs);
 
     /* TODO: it might be worthwhile to use a ROM-kind here */
     memory_region_init_io(&s->mmio.sub.swcfg, obj, &ot_otp_eg_swcfg_ops, s,
-                          TYPE_OT_OTP "-swcfg", SW_CFG_WINDOW_SIZE);
+                          TYPE_OT_OTP_EG "-swcfg", SW_CFG_WINDOW_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, SW_CFG_WINDOW,
                                 &s->mmio.sub.swcfg);
 
@@ -4214,11 +4220,12 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
-    OtOTPClass *oc = OT_OTP_CLASS(klass);
+    OtOTPEgClass *edc = OT_OTP_EG_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_otp_eg_reset_enter, NULL,
                                        &ot_otp_eg_reset_exit,
-                                       &oc->parent_phases);
+                                       &edc->parent_phases);
 
+    OtOTPIfClass *oc = OT_OTP_IF_CLASS(klass);
     oc->get_lc_info = &ot_otp_eg_get_lc_info;
     oc->get_hw_cfg = &ot_otp_eg_get_hw_cfg;
     oc->get_otp_key = &ot_otp_eg_get_otp_key;
@@ -4228,11 +4235,16 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo ot_otp_eg_info = {
     .name = TYPE_OT_OTP_EG,
-    .parent = TYPE_OT_OTP,
+    .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtOTPEgState),
     .instance_init = &ot_otp_eg_init,
-    .class_size = sizeof(OtOTPClass),
+    .class_size = sizeof(OtOTPEgClass),
     .class_init = &ot_otp_eg_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { TYPE_OT_OTP_IF },
+            {},
+        },
 };
 
 static void ot_otp_eg_register_types(void)

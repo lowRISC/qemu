@@ -35,7 +35,7 @@
 #include "qemu/typedefs.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
-#include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/opentitan/ot_vmapper.h"
@@ -136,7 +136,7 @@ struct OtSramCtrlState {
     char *hexstr;
 
     char *ot_id;
-    OtOTPState *otp_ctrl; /* optional */
+    DeviceState *otp_ctrl; /* optional */
     OtVMapperState *vmapper; /* optional */
     uint32_t size; /* in bytes */
     uint32_t init_chunk_words; /* init chunk size in words */
@@ -284,13 +284,15 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
      *       neither PRINCE block cipher nor shallow substitution-permutation.
      *       Seed and Nonce are combined to initialize a QEMU PRNG instance.
      */
-    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+
     if (!oc->get_otp_key) {
         /* on EarlGrey, OTP key handing has not been implemented */
         qemu_log_mask(LOG_UNIMP, "%s: %s OTP does not support key generation\n",
                       __func__, s->ot_id);
     } else {
-        oc->get_otp_key(s->otp_ctrl, OTP_KEY_SRAM, s->otp_key);
+        oc->get_otp_key(oi, OTP_KEY_SRAM, s->otp_key);
 
         TRACE_SRAM_CTRL("Scrambing seed:  %s (valid: %u)",
                         ot_sram_ctrl_hexdump(s, s->otp_key->seed,
@@ -355,9 +357,10 @@ static void ot_sram_ctrl_update_exec(OtSramCtrlState *s)
      * Configuration need to be loaded on demand
      */
     if (s->otp_ctrl) {
-        OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-        s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch_mb8 ==
-                        OT_MULTIBITBOOL8_TRUE;
+        OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+        OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+        s->otp_ifetch =
+            oc->get_hw_cfg(oi)->en_sram_ifetch_mb8 == OT_MULTIBITBOOL8_TRUE;
     }
 
     bool ifetch = s->ifetch && s->csr_ifetch && s->otp_ifetch;
@@ -668,8 +671,8 @@ static MemTxResult ot_sram_ctrl_mem_init_write_with_attrs(
 
 static Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSramCtrlState, ot_id),
-    DEFINE_PROP_LINK("otp-ctrl", OtSramCtrlState, otp_ctrl, TYPE_OT_OTP,
-                     OtOTPState *),
+    DEFINE_PROP_LINK("otp-ctrl", OtSramCtrlState, otp_ctrl, TYPE_OT_OTP_IF,
+                     DeviceState *),
     DEFINE_PROP_LINK("vmapper", OtSramCtrlState, vmapper, TYPE_OT_VMAPPER,
                      OtVMapperState *),
     DEFINE_PROP_UINT32("size", OtSramCtrlState, size, 0u),
@@ -751,6 +754,8 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
      * associated OTP
      */
     g_assert(s->ifetch || !s->otp_ctrl || s->vmapper);
+
+    (void)OBJECT_CHECK(OtOTPIf, s->otp_ctrl, TYPE_OT_OTP_IF);
 
     s->wsize = DIV_ROUND_UP(s->size, sizeof(uint32_t));
     unsigned size = s->wsize * sizeof(uint32_t);

@@ -57,6 +57,7 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_eg.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_otp_ot_be.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_plic_ext.h"
@@ -1246,8 +1247,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(1, 54)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("noise-src", AST),
-            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("noise-src", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("version", 2)
@@ -1408,7 +1408,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_SPLITTER_LC_HW_DEBUG] = {
         .type = TYPE_SPLIT_IRQ,
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 1u) /** @todo to be changed */
+            IBEX_DEV_UINT_PROP("num-lines", 1u) /* @todo to be changed */
         )
     },
     [OT_EG_SOC_SPLITTER_LC_ESCALATE] = {
@@ -1420,7 +1420,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                           OT_FLASH_LC_ESCALATE_EN)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 2u) /** @todo to be changed */
+            IBEX_DEV_UINT_PROP("num-lines", 2u) /* @todo to be changed */
         )
     },
     [OT_EG_SOC_SPLITTER_LC_SEED_HW_RD] = {
