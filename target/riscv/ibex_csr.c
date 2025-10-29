@@ -113,8 +113,9 @@ static RISCVException write_mtvec(CPURISCVState *env, int csrno,
                       "CSR_MTVEC: reserved mode not supported 0x" TARGET_FMT_lx
                       "\n",
                       val);
-        /* WARL */
-        return RISCV_EXCP_NONE;
+        /* WARL, Ibex will tie any invalid mode writes to 0b01 (vectored) */
+        val &= ~3u;
+        val |= 1u;
     }
 
     /* bits [7:2] are always 0, address should be aligned in 256 bytes */
