@@ -55,6 +55,7 @@ config OT_EDN
 
 config OT_ENTROPY_SRC
     select OT_NOISE_SRC
+    select OT_OTP_IF
     bool
 
 config OT_FLASH
@@ -89,6 +90,7 @@ config OT_KEY_SINK
 config OT_KEYMGR
     select OT_KEY_SINK
     select OT_LC_CTRL
+    select OT_OTP_IF
     select OT_ROM_CTRL
     bool
 
@@ -103,6 +105,7 @@ config OT_KMAC
     bool
 
 config OT_LC_CTRL
+    select OT_OTP_IF
     bool
 
 config OT_MBX
@@ -117,23 +120,25 @@ config OT_OTBN
     select OT_BIGNUMBER
     bool
 
-config OT_OTP
-    select OT_OTP_BE_IF
-
 config OT_OTP_BE_IF
     bool
 
 config OT_OTP_DJ
-    select OT_OTP
+    select OT_OTP_IF
     select OT_PRESENT
     bool
 
 config OT_OTP_EG
-    select OT_OTP
+    select OT_OTP_IF
+    select OT_PRESENT
+    bool
+
+config OT_OTP_IF
     bool
 
 config OT_OTP_OT_BE
     select OT_OTP_BE_IF
+    select OT_OTP_IF
     bool
 
 config OT_PINMUX_DJ
@@ -184,6 +189,7 @@ config OT_SPI_HOST
 
 config OT_SRAM_CTRL
     select OT_PRESENT
+    select OT_OTP_IF
     bool
 
 config OT_TIMER

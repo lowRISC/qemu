@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Earlgrey 1.0.0 Entropy Source device
+ * QEMU OpenTitan Earlgrey Entropy Source device
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.
@@ -43,7 +43,6 @@
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_noise_src.h"
-#include "hw/opentitan/ot_otp.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -489,7 +488,6 @@ struct OtEntropySrcState {
     char *ot_id;
     unsigned version; /* emulated version */
     DeviceState *noise_src;
-    OtOTPState *otp_ctrl;
 };
 
 static const uint16_t OtEDNFsmStateCode[] = {
@@ -1803,8 +1801,6 @@ static Property ot_entropy_src_properties[] = {
     DEFINE_PROP_UINT32("version", OtEntropySrcState, version, 0),
     DEFINE_PROP_LINK("noise-src", OtEntropySrcState, noise_src, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_LINK("otp-ctrl", OtEntropySrcState, otp_ctrl, TYPE_OT_OTP,
-                     OtOTPState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1901,7 +1897,6 @@ static void ot_entropy_src_realize(DeviceState *dev, Error **errp)
     /* emulated version should be specified */
     g_assert(s->version > 0);
     g_assert(s->noise_src);
-    g_assert(s->otp_ctrl);
 
     (void)OBJECT_CHECK(OtNoiseSrcIf, s->noise_src, TYPE_OT_NOISE_SRC_IF);
 }

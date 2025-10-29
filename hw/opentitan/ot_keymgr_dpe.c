@@ -41,7 +41,7 @@
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otbn.h"
-#include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/qdev-properties.h"
@@ -410,7 +410,7 @@ typedef struct OtKeyMgrDpeState {
     OtKMACState *kmac;
     uint8_t kmac_app;
     OtLcCtrlState *lc_ctrl;
-    OtOTPState *otp;
+    DeviceState *otp_ctrl;
     OtRomCtrlState *rom_ctrl[NUM_ROM_DIGEST_INPUTS];
     DeviceState *key_sinks[KEYMGR_DPE_KEY_SINK_COUNT];
     char *seed_xstrs[KEYMGR_DPE_SEED_COUNT];
@@ -1027,9 +1027,9 @@ ot_keymgr_dpe_kdf_append_creator_seed(OtKeyMgrDpeState *s, bool *dvalid)
 {
     OtOTPKeyMgrSecret secret = { 0u };
 
-    OtOTPClass *otp_oc = OBJECT_GET_CLASS(OtOTPClass, s->otp, TYPE_OT_OTP);
-    g_assert(otp_oc);
-    otp_oc->get_keymgr_secret(s->otp, OTP_KEYMGR_SECRET_CREATOR_SEED, &secret);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_SEED, &secret);
 
     ot_keymgr_dpe_kdf_push_bytes(s, secret.secret, OT_OTP_KEYMGR_SECRET_SIZE);
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
@@ -1076,8 +1076,9 @@ static size_t ot_keymgr_dpe_kdf_append_km_div(OtKeyMgrDpeState *s, bool *dvalid)
 
 static size_t ot_keymgr_dpe_kdf_append_dev_id(OtKeyMgrDpeState *s, bool *dvalid)
 {
-    OtOTPClass *otp_oc = OBJECT_GET_CLASS(OtOTPClass, s->otp, TYPE_OT_OTP);
-    const OtOTPHWCfg *hw_cfg = otp_oc->get_hw_cfg(s->otp);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+    const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(oi);
 
     ot_keymgr_dpe_kdf_push_bytes(s, hw_cfg->device_id,
                                  OT_OTP_HWCFG_DEVICE_ID_BYTES);
@@ -1106,8 +1107,9 @@ ot_keymgr_dpe_kdf_append_owner_seed(OtKeyMgrDpeState *s, bool *dvalid)
 {
     OtOTPKeyMgrSecret secret = { 0u };
 
-    OtOTPClass *otp_oc = OBJECT_GET_CLASS(OtOTPClass, s->otp, TYPE_OT_OTP);
-    otp_oc->get_keymgr_secret(s->otp, OTP_KEYMGR_SECRET_OWNER_SEED, &secret);
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_OWNER_SEED, &secret);
 
     ot_keymgr_dpe_kdf_push_bytes(s, secret.secret, OT_OTP_KEYMGR_SECRET_SIZE);
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
@@ -1445,11 +1447,11 @@ static void ot_keymgr_dpe_xchange_main_fsm_state(
 static void ot_keymgr_dpe_get_root_key(
     OtKeyMgrDpeState *s, OtOTPKeyMgrSecret *share0, OtOTPKeyMgrSecret *share1)
 {
-    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp, TYPE_OT_OTP);
-    g_assert(oc);
-    oc->get_keymgr_secret(s->otp, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
+    OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+    OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
                           share0);
-    oc->get_keymgr_secret(s->otp, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
+    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
                           share1);
 
     if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_DUMP_CREATOR_ROOT_KEY)) {
@@ -2004,8 +2006,8 @@ static Property ot_keymgr_dpe_properties[] = {
     DEFINE_PROP_UINT8("kmac-app", OtKeyMgrDpeState, kmac_app, UINT8_MAX),
     DEFINE_PROP_LINK("lc-ctrl", OtKeyMgrDpeState, lc_ctrl, TYPE_OT_LC_CTRL,
                      OtLcCtrlState *),
-    DEFINE_PROP_LINK("otp-ctrl", OtKeyMgrDpeState, otp, TYPE_OT_OTP,
-                     OtOTPState *),
+    DEFINE_PROP_LINK("otp-ctrl", OtKeyMgrDpeState, otp_ctrl, TYPE_OT_OTP_IF,
+                     DeviceState *),
     DEFINE_PROP_LINK("rom0", OtKeyMgrDpeState, rom_ctrl[0], TYPE_OT_ROM_CTRL,
                      OtRomCtrlState *),
     DEFINE_PROP_LINK("rom1", OtKeyMgrDpeState, rom_ctrl[1], TYPE_OT_ROM_CTRL,
@@ -2061,9 +2063,11 @@ static void ot_keymgr_dpe_reset_enter(Object *obj, ResetType type)
     g_assert(s->kmac);
     g_assert(s->kmac_app != UINT8_MAX);
     g_assert(s->lc_ctrl);
-    g_assert(s->otp);
+    g_assert(s->otp_ctrl);
     g_assert(s->rom_ctrl[0]);
     g_assert(s->rom_ctrl[1]);
+
+    (void)OBJECT_CHECK(OtOTPIf, s->otp_ctrl, TYPE_OT_OTP_IF);
 
     s->key_sinks[KEYMGR_DPE_KEY_SINK_KMAC] = DEVICE(s->kmac);
 

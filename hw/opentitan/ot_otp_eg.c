@@ -41,6 +41,7 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otp_be_if.h"
 #include "hw/opentitan/ot_otp_eg.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_present.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_pwrmgr.h"
@@ -662,7 +663,7 @@ typedef struct {
 } OtOTPScrmblKeyInit;
 
 struct OtOTPEgState {
-    OtOTPState parent_obj;
+    SysBusDevice parent_obj;
 
     struct {
         MemoryRegion ctrl;
@@ -723,6 +724,11 @@ struct OtOTPEgState {
     char **inv_default_part_xstrs; /* some entries may be NULL */
     uint8_t edn_ep;
     bool fatal_escalate;
+};
+
+struct OtOTPEgClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
@@ -833,9 +839,9 @@ static const char *OTP_TOKEN_NAMES[] = {
     /* clang-format on */
 };
 
-    /* clang-format off */
+/* clang-format off */
     /* fake partitions */
-    /* clang-format on */
+/* clang-format on */
 
 static const char *ERR_CODE_NAMES[] = {
     /* clang-format off */
@@ -903,9 +909,6 @@ ot_otp_eg_lci_change_state_line(OtOTPEgState *s, OtOTPLCIState state, int line);
 #endif
 
 
-
-
-
 static void ot_otp_eg_update_irqs(OtOTPEgState *s)
 {
     uint32_t levels = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
@@ -970,12 +973,14 @@ static const char *ot_otp_eg_part_name(const OtOTPEgState *s, unsigned part_ix)
     return "?";
 }
 
-static inline unsigned ot_otp_eg_part_data_offset(const OtOTPEgState *s, unsigned part_ix)
+static inline unsigned
+ot_otp_eg_part_data_offset(const OtOTPEgState *s, unsigned part_ix)
 {
     return (unsigned)(s->part_descs[part_ix].offset);
 }
 
-static inline unsigned ot_otp_eg_part_data_byte_size(const OtOTPEgState *s, unsigned part_ix)
+static inline unsigned
+ot_otp_eg_part_data_byte_size(const OtOTPEgState *s, unsigned part_ix)
 {
     size_t size = s->part_descs[part_ix].size;
 
@@ -986,7 +991,8 @@ static inline unsigned ot_otp_eg_part_data_byte_size(const OtOTPEgState *s, unsi
     return (unsigned)size;
 }
 
-static bool ot_otp_eg_is_wide_granule(const OtOTPEgState *s, unsigned part_ix, unsigned address)
+static bool ot_otp_eg_is_wide_granule(const OtOTPEgState *s, unsigned part_ix,
+                                      unsigned address)
 {
     if (part_ix < s->part_count) {
         if (s->part_descs[part_ix].secret) {
@@ -1038,17 +1044,16 @@ static bool ot_otp_eg_is_ecc_enabled(const OtOTPEgState *s)
 
 static bool ot_otp_eg_has_digest(const OtOTPEgState *s, unsigned part_ix)
 {
-    return s->part_descs[part_ix].hw_digest ||
-           s->part_descs[part_ix].sw_digest;
+    return s->part_descs[part_ix].hw_digest || s->part_descs[part_ix].sw_digest;
 }
 
-static bool ot_otp_eg_is_part_digest_offset(const OtOTPEgState *s, unsigned part_ix, hwaddr addr)
+static bool ot_otp_eg_is_part_digest_offset(const OtOTPEgState *s,
+                                            unsigned part_ix, hwaddr addr)
 {
     uint16_t offset = s->part_descs[part_ix].digest_offset;
 
     return (offset != UINT16_MAX) && ((addr & ~OTP_DIGEST_ADDR_MASK) == offset);
 }
-
 
 
 static void ot_otp_eg_disable_all_partitions(OtOTPEgState *s)
@@ -1062,14 +1067,15 @@ static void ot_otp_eg_disable_all_partitions(OtOTPEgState *s)
     }
 }
 
-static void ot_otp_eg_set_error(OtOTPEgState *s, unsigned part_ix, OtOTPError err)
+static void ot_otp_eg_set_error(OtOTPEgState *s, unsigned part_ix,
+                                OtOTPError err)
 {
     g_assert(part_ix < OTP_ENTRY_COUNT);
 
     uint32_t errval = ((uint32_t)err) & ERR_CODE_MASK;
     if (errval || errval != s->regs[R_ERR_CODE_0 + part_ix]) {
-        trace_ot_otp_set_error(s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix,
-                               ERR_CODE_NAME(err), err);
+        trace_ot_otp_set_error(s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                               part_ix, ERR_CODE_NAME(err), err);
     }
     s->regs[R_ERR_CODE_0 + part_ix] = errval;
 
@@ -1133,8 +1139,8 @@ static int ot_otp_eg_get_part_from_address(const OtOTPEgState *s, hwaddr addr)
         const OtOTPPartDesc *part = &s->part_descs[part_ix];
         if ((addr >= part->offset) &&
             ((addr + sizeof(uint32_t)) <= (part->offset + part->size))) {
-            trace_ot_otp_addr_to_part(s->ot_id, (uint32_t)addr, ot_otp_eg_part_name(s, part_ix),
-                part_ix);
+            trace_ot_otp_addr_to_part(s->ot_id, (uint32_t)addr,
+                                      ot_otp_eg_part_name(s, part_ix), part_ix);
             return (OtOTPPartitionType)part_ix;
         }
     }
@@ -1288,10 +1294,10 @@ static int ot_otp_eg_apply_ecc(OtOTPEgState *s, unsigned part_ix)
     g_assert(ot_otp_eg_is_ecc_enabled(s));
 
     unsigned start = s->part_descs[part_ix].offset >> 2u;
-    unsigned end =
-        (ot_otp_eg_is_buffered(s, (int)part_ix) && ot_otp_eg_has_digest(s, part_ix)) ?
-            (unsigned)(s->part_descs[part_ix].digest_offset >> 2u) :
-            start + (unsigned)(s->part_descs[part_ix].size >> 2u);
+    unsigned end = (ot_otp_eg_is_buffered(s, (int)part_ix) &&
+                    ot_otp_eg_has_digest(s, part_ix)) ?
+                       (unsigned)(s->part_descs[part_ix].digest_offset >> 2u) :
+                       start + (unsigned)(s->part_descs[part_ix].size >> 2u);
 
     g_assert(start < end && (end / sizeof(uint32_t)) < s->otp->data_size);
     for (unsigned ix = start; ix < end; ix++) {
@@ -1308,7 +1314,8 @@ static int ot_otp_eg_apply_ecc(OtOTPEgState *s, unsigned part_ix)
              */
             ot_otp_eg_set_error(s, part_ix, otp_err);
             if (err > 1) {
-                trace_ot_otp_ecc_init_error(s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                trace_ot_otp_ecc_init_error(s->ot_id,
+                                            ot_otp_eg_part_name(s, part_ix),
                                             part_ix, ix << 2u, *word, ecc);
                 s->part_ctrls[part_ix].failed = true;
                 return -1;
@@ -1403,7 +1410,8 @@ static uint32_t ot_otp_eg_get_part_digest_reg(OtOTPEgState *s, uint32_t offset)
     return (uint32_t)digest;
 }
 
-static uint32_t ot_otp_eg_get_sw_readlock(const OtOTPEgState *s, unsigned rdlk_ix)
+static uint32_t
+ot_otp_eg_get_sw_readlock(const OtOTPEgState *s, unsigned rdlk_ix)
 {
     uint32_t reg = R_VENDOR_TEST_READ_LOCK + rdlk_ix;
 
@@ -1658,7 +1666,8 @@ static void ot_otp_eg_unscramble_partition(OtOTPEgState *s, unsigned part_ix)
     OtPresentState *ps = ot_present_new();
     ot_present_init(ps, scrambling_key);
 
-    trace_ot_otp_unscramble_partition(s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix, part_size);
+    trace_ot_otp_unscramble_partition(s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                                      part_ix, part_size);
     /* neither the digest block nor the zeroizable block are scrambled */
     for (unsigned dix = 0u; dix < dword_count; dix++) {
         ot_present_decrypt(ps, scrambled[dix], &clear[dix]);
@@ -1705,7 +1714,8 @@ ot_otp_eg_check_buffered_partition_integrity(OtOTPEgState *s, unsigned part_ix)
     OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
     if (pctrl->digest == 0) {
-        trace_ot_otp_skip_digest(s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix);
+        trace_ot_otp_skip_digest(s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                                 part_ix);
         pctrl->locked = false;
         return;
     }
@@ -1715,16 +1725,16 @@ ot_otp_eg_check_buffered_partition_integrity(OtOTPEgState *s, unsigned part_ix)
     /*
      * digests are always calculated over the original data (scrambled or not)
      */
-    const uint8_t *part_data =
-        ((const uint8_t *)s->otp->data) + ot_otp_eg_part_data_offset(s, part_ix);
-        unsigned part_size = ot_otp_eg_part_data_byte_size(s, part_ix);
+    const uint8_t *part_data = ((const uint8_t *)s->otp->data) +
+                               ot_otp_eg_part_data_offset(s, part_ix);
+    unsigned part_size = ot_otp_eg_part_data_byte_size(s, part_ix);
 
     uint64_t digest =
         ot_otp_eg_compute_partition_digest(s, part_data, part_size);
 
     if (digest != pctrl->digest) {
-        trace_ot_otp_mismatch_digest(s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix, digest,
-                                     pctrl->digest);
+        trace_ot_otp_mismatch_digest(s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                                     part_ix, digest, pctrl->digest);
 
         TRACE_OTP("compute digest of %s: %016" PRIx64 " from %s\n",
                   ot_otp_eg_part_name(s, part_ix), digest,
@@ -1735,7 +1745,8 @@ ot_otp_eg_check_buffered_partition_integrity(OtOTPEgState *s, unsigned part_ix)
         ot_otp_eg_set_error(s, part_ix, OTP_CHECK_FAIL_ERROR);
         /* TODO: revert buffered part to default */
     } else {
-        trace_ot_otp_integrity_report(s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix, "digest OK");
+        trace_ot_otp_integrity_report(s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                                      part_ix, "digest OK");
     }
 }
 
@@ -2009,7 +2020,9 @@ static int ot_otp_eg_dai_write_u64(OtOTPEgState *s, unsigned address)
             return -1;
         }
 
-        trace_ot_otp_dai_new_dword_ecc(s->ot_id, ot_otp_eg_part_name(s, (unsigned)s->dai->partition),
+        trace_ot_otp_dai_new_dword_ecc(s->ot_id,
+                                       ot_otp_eg_part_name(s, (unsigned)s->dai
+                                                                  ->partition),
                                        s->dai->partition, *dst, *edst);
     }
 
@@ -2062,7 +2075,9 @@ static int ot_otp_eg_dai_write_u32(OtOTPEgState *s, unsigned address)
             return -1;
         }
 
-        trace_ot_otp_dai_new_word_ecc(s->ot_id, ot_otp_eg_part_name(s, (unsigned)s->dai->partition),
+        trace_ot_otp_dai_new_word_ecc(s->ot_id,
+                                      ot_otp_eg_part_name(s, (unsigned)s->dai
+                                                                 ->partition),
                                       s->dai->partition, *dst, *edst);
     }
 
@@ -2123,7 +2138,8 @@ static void ot_otp_eg_dai_write(OtOTPEgState *s)
 
     if (pctrl->locked) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s (%u) is locked\n",
-                      __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix);
+                      __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                      part_ix);
         ot_otp_eg_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2226,7 +2242,8 @@ static void ot_otp_eg_dai_digest(OtOTPEgState *s)
     if (!s->part_descs[part_ix].hw_digest) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: Invalid partition, no HW digest on %s (#%u)\n",
-                      __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix);
+                      __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                      part_ix);
         ot_otp_eg_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2241,7 +2258,8 @@ static void ot_otp_eg_dai_digest(OtOTPEgState *s)
 
     if (pctrl->locked) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Partition %s (%u) is locked\n",
-                      __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix);
+                      __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                      part_ix);
         ot_otp_eg_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2256,9 +2274,9 @@ static void ot_otp_eg_dai_digest(OtOTPEgState *s)
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_READ);
 
-    const uint8_t *data =
-        ((const uint8_t *)s->otp->data) + ot_otp_eg_part_data_offset(s, part_ix);
-        unsigned part_size = ot_otp_eg_part_data_byte_size(s, part_ix);
+    const uint8_t *data = ((const uint8_t *)s->otp->data) +
+                          ot_otp_eg_part_data_offset(s, part_ix);
+    unsigned part_size = ot_otp_eg_part_data_byte_size(s, part_ix);
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG);
 
@@ -2331,8 +2349,8 @@ static void ot_otp_eg_dai_write_digest(void *opaque)
         return;
     }
 
-    trace_ot_otp_dai_new_digest_ecc(s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix,
-                                    *dst, *edst);
+    trace_ot_otp_dai_new_digest_ecc(s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                                    part_ix, *dst, *edst);
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
@@ -2349,7 +2367,9 @@ static void ot_otp_eg_dai_complete(void *opaque)
     switch (s->dai->state) {
     case OTP_DAI_READ_WAIT:
         g_assert(s->dai->partition >= 0);
-        trace_ot_otp_dai_read(s->ot_id, ot_otp_eg_part_name(s, (unsigned)s->dai->partition),
+        trace_ot_otp_dai_read(s->ot_id,
+                              ot_otp_eg_part_name(s,
+                                                  (unsigned)s->dai->partition),
                               (unsigned)s->dai->partition,
                               s->regs[R_DIRECT_ACCESS_RDATA_1],
                               s->regs[R_DIRECT_ACCESS_RDATA_1]);
@@ -2780,10 +2800,10 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
 }
 
 static void ot_otp_eg_get_lc_info(
-    const OtOTPState *s, uint16_t *lc_tcount, uint16_t *lc_state,
+    const OtOTPIf *dev, uint16_t *lc_tcount, uint16_t *lc_state,
     uint8_t *lc_valid, uint8_t *secret_valid, const OtOTPTokens **tokens)
 {
-    const OtOTPEgState *es = OT_OTP_EG(s);
+    const OtOTPEgState *es = OT_OTP_EG(dev);
     const OtOTPStorage *otp = es->otp;
 
     if (lc_tcount) {
@@ -2813,9 +2833,9 @@ static void ot_otp_eg_get_lc_info(
     }
 }
 
-static const OtOTPHWCfg *ot_otp_eg_get_hw_cfg(const OtOTPState *s)
+static const OtOTPHWCfg *ot_otp_eg_get_hw_cfg(const OtOTPIf *dev)
 {
-    const OtOTPEgState *es = OT_OTP_EG(s);
+    const OtOTPEgState *es = OT_OTP_EG(dev);
 
     return (const OtOTPHWCfg *)es->hw_cfg;
 }
@@ -2981,10 +3001,10 @@ static void ot_otp_eg_generate_scrambling_key(
     }
 }
 
-static void ot_otp_eg_get_otp_key(OtOTPState *s, OtOTPKeyType type,
+static void ot_otp_eg_get_otp_key(OtOTPIf *dev, OtOTPKeyType type,
                                   OtOTPKey *key)
 {
-    OtOTPEgState *es = OT_OTP_EG(s);
+    OtOTPEgState *es = OT_OTP_EG(dev);
 
     hwaddr key_offset;
 
@@ -3044,9 +3064,9 @@ static void ot_otp_eg_get_otp_key(OtOTPState *s, OtOTPKeyType type,
 }
 
 static void ot_otp_eg_get_keymgr_secret(
-    OtOTPState *s, OtOTPKeyMgrSecretType type, OtOTPKeyMgrSecret *secret)
+    OtOTPIf *dev, OtOTPKeyMgrSecretType type, OtOTPKeyMgrSecret *secret)
 {
-    OtOTPEgState *es = OT_OTP_EG(s);
+    OtOTPEgState *es = OT_OTP_EG(dev);
     int partition;
     size_t offset;
 
@@ -3086,11 +3106,11 @@ static void ot_otp_eg_get_keymgr_secret(
     memcpy(secret->secret, &data_ptr[offset], OT_OTP_KEYMGR_SECRET_SIZE);
 }
 
-static bool ot_otp_eg_program_req(OtOTPState *s, const uint16_t *lc_tcount,
+static bool ot_otp_eg_program_req(OtOTPIf *dev, const uint16_t *lc_tcount,
                                   const uint16_t *lc_state,
                                   ot_otp_program_ack_fn ack, void *opaque)
 {
-    OtOTPEgState *es = OT_OTP_EG(s);
+    OtOTPEgState *es = OT_OTP_EG(dev);
     OtOTPLCIController *lci = es->lci;
 
     switch (lci->state) {
@@ -3798,7 +3818,8 @@ static void ot_otp_eg_configure_part_scramble_keys(OtOTPEgState *s)
             if (s->blk) {
                 error_setg(&error_fatal,
                            "%s: %s Missing OTP scrambling key for part %s (%u)",
-                           __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix), part_ix);
+                           __func__, s->ot_id, ot_otp_eg_part_name(s, part_ix),
+                           part_ix);
                 return;
             }
             continue;
@@ -3809,19 +3830,22 @@ static void ot_otp_eg_configure_part_scramble_keys(OtOTPEgState *s)
             error_setg(
                 &error_fatal,
                 "%s: %s Invalid OTP scrambling key length %zu for part %s (%u)",
-                __func__, s->ot_id, len, ot_otp_eg_part_name(s, part_ix), part_ix);
+                __func__, s->ot_id, len, ot_otp_eg_part_name(s, part_ix),
+                part_ix);
             return;
         }
 
         g_assert(!s->otp_scramble_keys[part_ix]);
 
-        s->otp_scramble_keys[part_ix] = g_new0(uint8_t, OTP_SCRAMBLING_KEY_BYTES);
+        s->otp_scramble_keys[part_ix] =
+            g_new0(uint8_t, OTP_SCRAMBLING_KEY_BYTES);
         if (ot_common_parse_hexa_str(s->otp_scramble_keys[part_ix],
                                      s->otp_scramble_key_xstrs[part_ix],
                                      OTP_SCRAMBLING_KEY_BYTES, true, true)) {
             error_setg(&error_fatal,
                        "%s: %s unable to parse otp_scramble_keys[%u] for %s",
-                       __func__, s->ot_id, part_ix, ot_otp_eg_part_name(s, part_ix));
+                       __func__, s->ot_id, part_ix,
+                       ot_otp_eg_part_name(s, part_ix));
             return;
         }
 
@@ -3858,12 +3882,12 @@ static void ot_otp_eg_add_scramble_key_props(OtOTPEgState *s)
          * Property stores the address of the stored string as a relative offset
          * from the parent address
          */
-        prop->offset = (intptr_t)&s->otp_scramble_key_xstrs[part_ix] -
-                       (intptr_t)s;
+        prop->offset =
+            (intptr_t)&s->otp_scramble_key_xstrs[part_ix] - (intptr_t)s;
 
-        object_property_add(OBJECT(s), prop->name,
-                            prop->info->name, prop->info->get,
-                            prop->info->set, prop->info->release, prop);
+        object_property_add(OBJECT(s), prop->name, prop->info->name,
+                            prop->info->get, prop->info->set,
+                            prop->info->release, prop);
     }
 }
 
@@ -3890,8 +3914,8 @@ static void ot_otp_eg_configure_inv_default_parts(OtOTPEgState *s)
 
         s->inv_default_parts[part_ix] = g_new0(uint8_t, part->size + 1u);
         if (ot_common_parse_hexa_str(s->inv_default_parts[part_ix],
-                                     s->inv_default_part_xstrs[part_ix], part->size,
-                                     false, true)) {
+                                     s->inv_default_part_xstrs[part_ix],
+                                     part->size, false, true)) {
             error_setg(&error_fatal,
                        "%s: %s unable to parse inv_default_part[%u]\n",
                        __func__, s->ot_id, part_ix);
@@ -3921,12 +3945,12 @@ static void ot_otp_eg_add_inv_def_props(OtOTPEgState *s)
          * Property stores the address of the stored string as a relative offset
          * from the parent address
          */
-        prop->offset = (intptr_t)&s->inv_default_part_xstrs[part_ix] -
-                       (intptr_t)s;
+        prop->offset =
+            (intptr_t)&s->inv_default_part_xstrs[part_ix] - (intptr_t)s;
 
-        object_property_add(OBJECT(s), prop->name,
-                            prop->info->name, prop->info->get,
-                            prop->info->set, prop->info->release, prop);
+        object_property_add(OBJECT(s), prop->name, prop->info->name,
+                            prop->info->get, prop->info->set,
+                            prop->info->release, prop);
     }
 }
 
@@ -3967,7 +3991,7 @@ static const MemoryRegionOps ot_otp_eg_swcfg_ops = {
 
 static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
 {
-    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPEgClass *c = OT_OTP_EG_GET_CLASS(obj);
     OtOTPEgState *s = OT_OTP_EG(obj);
 
     /*
@@ -4050,7 +4074,7 @@ static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
 
 static void ot_otp_eg_reset_exit(Object *obj, ResetType type)
 {
-    OtOTPClass *c = OT_OTP_GET_CLASS(obj);
+    OtOTPEgClass *c = OT_OTP_EG_GET_CLASS(obj);
     OtOTPEgState *s = OT_OTP_EG(obj);
 
     trace_ot_otp_reset(s->ot_id, "exit");
@@ -4109,17 +4133,17 @@ static void ot_otp_eg_init(Object *obj)
      *   - "swcfg", software config window
      *     offset SW_CFG_WINDOW, size SW_CFG_WINDOW_SIZE
      */
-    memory_region_init(&s->mmio.ctrl, obj, TYPE_OT_OTP "-ctrl",
+    memory_region_init(&s->mmio.ctrl, obj, TYPE_OT_OTP_EG "-ctrl",
                        SW_CFG_WINDOW + SW_CFG_WINDOW_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio.ctrl);
 
     memory_region_init_io(&s->mmio.sub.regs, obj, &ot_otp_eg_reg_ops, s,
-                          TYPE_OT_OTP "-regs", REGS_SIZE);
+                          TYPE_OT_OTP_EG "-regs", REGS_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, 0u, &s->mmio.sub.regs);
 
     /* TODO: it might be worthwhile to use a ROM-kind here */
     memory_region_init_io(&s->mmio.sub.swcfg, obj, &ot_otp_eg_swcfg_ops, s,
-                          TYPE_OT_OTP "-swcfg", SW_CFG_WINDOW_SIZE);
+                          TYPE_OT_OTP_EG "-swcfg", SW_CFG_WINDOW_SIZE);
     memory_region_add_subregion(&s->mmio.ctrl, SW_CFG_WINDOW,
                                 &s->mmio.sub.swcfg);
 
@@ -4151,8 +4175,8 @@ static void ot_otp_eg_init(Object *obj)
     s->keygen = g_new0(OtOTPKeyGen, 1u);
     s->otp = g_new0(OtOTPStorage, 1u);
     s->scrmbl_key_init = g_new0(OtOTPScrmblKeyInit, 1u);
-    s->lci->data = g_new0(uint16_t,
-        s->part_descs[s->part_life_cycle].size / sizeof(uint16_t));
+    s->lci->data = g_new0(uint16_t, s->part_descs[s->part_life_cycle].size /
+                                        sizeof(uint16_t));
 
     for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
         if (!s->part_descs[part_ix].buffered) {
@@ -4196,11 +4220,12 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
-    OtOTPClass *oc = OT_OTP_CLASS(klass);
+    OtOTPEgClass *edc = OT_OTP_EG_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_otp_eg_reset_enter, NULL,
                                        &ot_otp_eg_reset_exit,
-                                       &oc->parent_phases);
+                                       &edc->parent_phases);
 
+    OtOTPIfClass *oc = OT_OTP_IF_CLASS(klass);
     oc->get_lc_info = &ot_otp_eg_get_lc_info;
     oc->get_hw_cfg = &ot_otp_eg_get_hw_cfg;
     oc->get_otp_key = &ot_otp_eg_get_otp_key;
@@ -4210,11 +4235,16 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo ot_otp_eg_info = {
     .name = TYPE_OT_OTP_EG,
-    .parent = TYPE_OT_OTP,
+    .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtOTPEgState),
     .instance_init = &ot_otp_eg_init,
-    .class_size = sizeof(OtOTPClass),
+    .class_size = sizeof(OtOTPEgClass),
     .class_init = &ot_otp_eg_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { TYPE_OT_OTP_IF },
+            {},
+        },
 };
 
 static void ot_otp_eg_register_types(void)

@@ -39,7 +39,7 @@
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_fifo32.h"
-#include "hw/opentitan/ot_otp.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -353,7 +353,7 @@ struct OtCSRNGState {
     OtCSRNGQueue cmd_requests;
 
     OtEntropySrcState *entropy_src;
-    OtOTPState *otp_ctrl;
+    DeviceState *otp_ctrl;
 };
 
 /* clang-format off */
@@ -1822,9 +1822,10 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         if (change) {
             xtrace_ot_csrng_info("handling CTRL change", val32);
             ot_csrng_handle_enable(s);
-            OtOTPClass *oc =
-                OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-            const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(s->otp_ctrl);
+
+            OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
+            OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
+            const OtOTPHWCfg *hw_cfg = oc->get_hw_cfg(oi);
             g_assert(hw_cfg);
             if (hw_cfg->en_csrng_sw_app_read_mb8 == OT_MULTIBITBOOL8_TRUE) {
                 uint32_t sw_app_en = FIELD_EX32(val32, CTRL, SW_APP_ENABLE);
@@ -1938,8 +1939,8 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static Property ot_csrng_properties[] = {
     DEFINE_PROP_LINK("entropy-src", OtCSRNGState, entropy_src,
                      TYPE_OT_ENTROPY_SRC, OtEntropySrcState *),
-    DEFINE_PROP_LINK("otp-ctrl", OtCSRNGState, otp_ctrl, TYPE_OT_OTP,
-                     OtOTPState *),
+    DEFINE_PROP_LINK("otp-ctrl", OtCSRNGState, otp_ctrl, TYPE_OT_OTP_IF,
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2013,6 +2014,8 @@ static void ot_csrng_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->entropy_src);
     g_assert(s->otp_ctrl);
+
+    (void)OBJECT_CHECK(OtOTPIf, s->otp_ctrl, TYPE_OT_OTP_IF);
 }
 
 static void ot_csrng_init(Object *obj)

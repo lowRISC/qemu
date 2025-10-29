@@ -55,6 +55,7 @@
 #include "hw/opentitan/ot_mbx.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/ot_otp_dj.h"
+#include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_otp_ot_be.h"
 #include "hw/opentitan/ot_pinmux_dj.h"
 #include "hw/opentitan/ot_plic_ext.h"
@@ -758,8 +759,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
          OT_DJ_SOC_GPIO_ALERT(1, 36)
         ),
         .link = IBEXDEVICELINKDEFS(
-         OT_DJ_SOC_DEVLINK("noise-src", AST),
-         OT_DJ_SOC_DEVLINK("otp-ctrl", OTP_CTRL)
+         OT_DJ_SOC_DEVLINK("noise-src", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("version", 3)
