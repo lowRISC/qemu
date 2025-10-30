@@ -640,6 +640,8 @@ pass: //third_party/riscv-compliance:I-CSRRWI-01_sim_qemu_rom_with_fake_keys
 pass: //third_party/riscv-compliance:I-CSRRWI-01_sim_qemu_sival_rom_ext
 pass: //third_party/riscv-compliance:I-DELAY_SLOTS-01_sim_qemu_rom_with_fake_keys
 pass: //third_party/riscv-compliance:I-DELAY_SLOTS-01_sim_qemu_sival_rom_ext
+pass: //third_party/riscv-compliance:I-ECALL-01_sim_qemu_rom_with_fake_keys
+pass: //third_party/riscv-compliance:I-ECALL-01_sim_qemu_sival_rom_ext
 pass: //third_party/riscv-compliance:I-ENDIANESS-01_sim_qemu_rom_with_fake_keys
 pass: //third_party/riscv-compliance:I-ENDIANESS-01_sim_qemu_sival_rom_ext
 pass: //third_party/riscv-compliance:I-IO-01_sim_qemu_rom_with_fake_keys
