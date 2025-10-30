@@ -136,6 +136,9 @@ config OT_OTP_EG
 config OT_OTP_IF
     bool
 
+config OT_OTP_IMPL_IF
+    bool
+
 config OT_OTP_OT_BE
     select OT_OTP_BE_IF
     select OT_OTP_IF
