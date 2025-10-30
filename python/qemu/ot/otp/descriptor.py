@@ -88,7 +88,7 @@ class OtpPartitionDesc:
         print(file=cfp)
         print('/* clang-format off */', file=cfp)
         print('/* NOLINTBEGIN */', file=cfp)
-        print('static const OtOTPPartDesc OtOTPPartDescs[] = {', file=cfp)
+        print('static const OtOTPPartDesc OT_OTP_PART_DESCS[] = {', file=cfp)
         for part in self._otpmap.enumerate_partitions():
             print(f'    [OTP_PART_{part.name}] = {{', file=cfp)
             print(f'        .name = "{part.name}",', file=cfp)
@@ -123,11 +123,32 @@ class OtpPartitionDesc:
                     if isinstance(attr_val, bool):
                         attr_val = str(attr_val).lower()
                     print(f'        .{attr_name} = {attr_val},', file=cfp)
-            print(f'    }},', file=cfp)  # noqa: F541
+            print('    },', file=cfp)
         print('};', file=cfp)
         print('', file=cfp)
-        print('#define OTP_PART_COUNT ARRAY_SIZE(OtOTPPartDescs)', file=cfp)
+        print('#define OTP_PART_COUNT ARRAY_SIZE(OT_OTP_PART_DESCS)', file=cfp)
         print(file=cfp)
+        key_seeds: list[tuple[str, str, int, int]] = []
+        for kseed in self._otpmap.key_seeds:
+            if kseed.name == 'SRAM_DATA':
+                key_seeds.append(('OTP_KEY_OTBN', f'OTP_PART_{kseed.part_name}',
+                                  kseed.offset, kseed.size))
+                key_seeds.append(('OTP_KEY_SRAM', f'OTP_PART_{kseed.part_name}',
+                                  kseed.offset, kseed.size))
+                continue
+            key_seeds.append((f'OTP_KEY_{kseed.name}',
+                              f'OTP_PART_{kseed.part_name}',
+                              kseed.offset, kseed.size))
+        print('static const OtOTPKeySeed OT_OTP_KEY_SEEDS[OTP_KEY_COUNT] = {',
+              file=cfp)
+        for ksd in key_seeds:
+            print(f'    [{ksd[0]}] = {{', file=cfp)
+            print(f'        .partition = {ksd[1]},', file=cfp)
+            print(f'        .offset = {ksd[2]},', file=cfp)
+            print(f'        .size = {ksd[3]},', file=cfp)
+            print('    },', file=cfp)
+        print('};', file=cfp)
+        print('', file=cfp)
         print('/* NOLINTEND */', file=cfp)
         print('/* clang-format on */', file=cfp)
         # pylint: enable=f-string-without-interpolation

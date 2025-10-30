@@ -10,7 +10,8 @@ from binascii import hexlify, unhexlify, Error as hexerror
 from io import BytesIO
 from logging import getLogger
 from re import IGNORECASE, match
-from typing import BinaryIO, NamedTuple, Optional, Sequence, TextIO, Union
+from typing import (BinaryIO, Iterator, NamedTuple, Optional, Sequence, TextIO,
+                    Union)
 
 from .lifecycle import OtpLifecycle
 
@@ -433,6 +434,18 @@ class OtpPartition:
         except ValueError:
             return False
 
+    def enumerate_properties(self) -> Iterator[OtpPartitionItemProp]:
+        """Enumerate all partition properties."""
+        offset = 0
+        itsize = 0
+        mubi8 = False
+        for itname, itdef in self.items.items():
+            itsize = itdef['size']
+            mubi8 = itsize == 1 and itdef.get('ismubi', False)
+            yield OtpPartitionItemProp(itname, offset, itsize, offset + itsize,
+                                       mubi8)
+            offset += itsize
+
     def document_fields(self) -> list[str]:
         """Return the documentation of each 16-bit word.
 
@@ -463,7 +476,7 @@ class OtpPartition:
                 fields.extend([f'{self.name}_ZER'] * (self.ZER_SIZE // 2))
         return fields
 
-    def _retrieve_properties(self, field: str) -> tuple[int, int]:
+    def _retrieve_properties(self, field: str) -> OtpPartitionItemProp:
         is_digest = self.has_digest and field.upper() == 'DIGEST'
         if not is_digest:
             if field not in self.items:

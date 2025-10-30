@@ -7,7 +7,7 @@
 """
 
 from logging import getLogger
-from typing import Any, Iterator, Optional, TextIO
+from typing import Any, Iterator, NamedTuple, Optional, TextIO
 
 try:
     # try to load HJSON if available
@@ -17,6 +17,22 @@ except ImportError:
 
 from ot.util.mbb import MB8_FALSE, MB8_TRUE
 from ot.util.misc import retrieve_git_version, round_up
+
+
+class OtpKeySeed(NamedTuple):
+    """Key seed definition."""
+
+    name: str
+    """Name of the key seed."""
+
+    part_name: str
+    """Partition name where the key seed is stored."""
+
+    offset: int
+    """Offset of the first data byte of the item within the partition."""
+
+    size: int
+    """Length in bytes of the item within the partition."""
 
 
 class OtpMap:
@@ -89,6 +105,23 @@ class OtpMap:
            :return: a list of partitions which contains such a field
         """
         return [p for p in self.enumerate_partitions() if p.has_field(field)]
+
+    @property
+    def key_seeds(self) -> list[OtpKeySeed]:
+        """Return the list of defined key seeds.
+
+           :return: a list of OtpKeySeed
+        """
+        key_seeds: list[OtpKeySeed] = []
+        key_seed_suffix = '_KEY_SEED'
+        for part in self.enumerate_partitions():
+            for prop in part.enumerate_properties():
+                if not prop.name.endswith(key_seed_suffix):
+                    continue
+                key_seed = OtpKeySeed(prop.name.removesuffix(key_seed_suffix),
+                                      part.name, prop.offset, prop.size)
+                key_seeds.append(key_seed)
+        return key_seeds
 
     def _generate_partitions(self) -> None:
         parts = self._map.get('partitions', [])
