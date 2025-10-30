@@ -1347,9 +1347,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 7u),
-            IBEX_DEV_UINT_PROP("num-regions", OT_EG_IBEX_WRAPPER_NUM_REGIONS),
-            /* remove the following line once LC state is implemented */
-            IBEX_DEV_BOOL_PROP("lc-ignore", true)
+            IBEX_DEV_UINT_PROP("num-regions", OT_EG_IBEX_WRAPPER_NUM_REGIONS)
         ),
     },
     [OT_EG_SOC_DEV_RV_DM] = {
