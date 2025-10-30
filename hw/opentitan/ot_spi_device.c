@@ -1547,7 +1547,8 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
         if (!fifo8_is_empty(&f->cmd_fifo)) {
             val32 = (uint32_t)fifo8_pop(&f->cmd_fifo);
         } else {
-            qemu_log_mask(LOG_UNIMP, "%s: CMD_FIFO is empty\n", __func__);
+            qemu_log_mask(LOG_UNIMP, "%s: %s: CMD_FIFO is empty\n", __func__,
+                          s->ot_id);
             val32 = 0;
         }
         break;
@@ -1555,20 +1556,20 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
         if (!ot_fifo32_is_empty(&f->address_fifo)) {
             val32 = ot_fifo32_pop(&f->address_fifo);
         } else {
-            qemu_log_mask(LOG_UNIMP, "%s: ADDR_FIFO is empty\n", __func__);
+            qemu_log_mask(LOG_UNIMP, "%s: %s: ADDR_FIFO is empty\n", __func__,
+                          s->ot_id);
             val32 = 0;
         }
         break;
     case R_INTR_TEST:
     case R_ALERT_TEST:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, SPI_REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, SPI_REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -1640,7 +1641,8 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         case CTRL_MODE_DISABLED:
         case CTRL_MODE_PASSTHROUGH:
         default:
-            qemu_log_mask(LOG_UNIMP, "%s: unsupported mode\n", __func__);
+            qemu_log_mask(LOG_UNIMP, "%s: %s: unsupported mode\n", __func__,
+                          s->ot_id);
             break;
         }
         break;
@@ -1728,13 +1730,12 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
     case R_UPLOAD_STATUS2:
     case R_UPLOAD_CMDFIFO:
     case R_UPLOAD_ADDRFIFO:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, SPI_REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, SPI_REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 };
@@ -1768,19 +1769,18 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_TPM_INT_STATUS:
     case R_TPM_DID_VID:
     case R_TPM_RID:
-        qemu_log_mask(LOG_UNIMP, "%s: %s: not supported\n", __func__,
-                      TPM_REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "%s: %s: %s: not supported\n", __func__,
+                      s->ot_id, TPM_REG_NAME(reg));
         val32 = s->tpm_regs[reg];
         break;
     case R_TPM_READ_FIFO:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, SPI_REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, SPI_REG_NAME(reg));
         val32 = 0u;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0u;
         break;
     }
@@ -1832,13 +1832,12 @@ static void ot_spi_device_tpm_regs_write(void *opaque, hwaddr addr,
         break;
     case R_TPM_CAP:
     case R_TPM_CMD_ADDR:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, TPM_REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, TPM_REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 };
@@ -1854,8 +1853,8 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
 
     if (addr < SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: cannot read egress buffer 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+                      "%s: %s: cannot read egress buffer 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         return MEMTX_DECODE_ERROR;
     }
 
@@ -1875,9 +1874,8 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
         val32 = s->flash.address_fifo.data[addr >> 2u];
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Invalid ingress buffer access to 0x%" HWADDR_PRIx
-                      "-0x%" HWADDR_PRIx "\n",
-                      __func__, addr, last);
+                      "%s: %s: Invalid ingress buffer access to 0x%x-0x%x\n",
+                      __func__, s->ot_id, (uint32_t)addr, (uint32_t)last);
         val32 = 0;
     }
 
@@ -1909,8 +1907,8 @@ static MemTxResult ot_spi_device_buf_write_with_attrs(
 
     if (last >= SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: cannot write ingress buffer 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+                      "%s: %s: cannot write ingress buffer 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         return MEMTX_DECODE_ERROR;
     }
     s->sram[addr >> 2u] = val32;
