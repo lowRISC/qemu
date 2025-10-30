@@ -800,7 +800,7 @@ static void ot_spi_device_update_alerts(OtSPIDeviceState *s)
 
 static bool ot_spi_device_is_tpm_enabled(const OtSPIDeviceState *s)
 {
-    return (bool)FIELD_EX32(s->spi_regs[R_TPM_CFG], TPM_CFG, EN);
+    return (bool)FIELD_EX32(s->tpm_regs[R_TPM_CFG], TPM_CFG, EN);
 }
 
 /*
@@ -810,7 +810,7 @@ static bool ot_spi_device_is_tpm_enabled(const OtSPIDeviceState *s)
  */
 static bool ot_spi_device_is_tpm_mode_crb(const OtSPIDeviceState *s)
 {
-    return (bool)FIELD_EX32(s->spi_regs[R_TPM_CFG], TPM_CFG, TPM_MODE);
+    return (bool)FIELD_EX32(s->tpm_regs[R_TPM_CFG], TPM_CFG, TPM_MODE);
 }
 
 /*
@@ -820,7 +820,7 @@ static bool ot_spi_device_is_tpm_mode_crb(const OtSPIDeviceState *s)
  */
 static bool ot_spi_device_tpm_disable_hw_regs(const OtSPIDeviceState *s)
 {
-    return (bool)FIELD_EX32(s->spi_regs[R_TPM_CFG], TPM_CFG, HW_REG_DIS);
+    return (bool)FIELD_EX32(s->tpm_regs[R_TPM_CFG], TPM_CFG, HW_REG_DIS);
 }
 
 static OtSpiDeviceMode ot_spi_device_get_mode(const OtSPIDeviceState *s)
