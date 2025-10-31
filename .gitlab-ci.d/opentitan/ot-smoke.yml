@@ -12,5 +12,5 @@ smoke-tests-ot:
         -object ot-rom_img,id=rom,file=build/exit_eg.bin -d in_asm,int
         -nographic -global ot-ibex_wrapper.lc-ignore=on
     - timeout -s KILL 4 build/qemu-system-riscv32 -M ot-darjeeling,no_epmp_cfg=true
-        -object ot-rom_img,id=rom,file=build/exit_dj.bin -d in_asm,int
+        -object ot-rom_img,id=rom0,file=build/exit_dj.bin -d in_asm,int
          -nographic -global ot-ibex_wrapper.lc-ignore=on

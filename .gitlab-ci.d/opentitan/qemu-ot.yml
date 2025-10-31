@@ -1,5 +1,5 @@
 variables:
-  BAREMETAL_REF: "b0-250724-1"
+  BAREMETAL_REF: "a0-251104-1"
   QEMU_BUILD_OPTS: "--disable-install-blobs"
 
 include:
