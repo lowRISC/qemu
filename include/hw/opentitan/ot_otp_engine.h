@@ -157,6 +157,9 @@ typedef struct {
     bool failed;
     bool read_lock;
     bool write_lock;
+    /* OTP scrambling key constant, not constant for deriving other keys */
+    uint8_t *otp_scramble_key; /* may be NULL */
+    uint8_t *inv_default_data; /* may be NULL */
 } OtOTPPartController;
 
 typedef struct OtOTPDAIController {
@@ -237,9 +240,6 @@ struct OtOTPEngineState {
     uint8_t flash_data_const[16u];
     uint64_t flash_addr_iv;
     uint8_t flash_addr_const[16u];
-    /* OTP scrambling key constants, not constants for deriving other keys */
-    uint8_t **otp_scramble_keys; /* some entries may be NULL */
-    uint8_t **inv_default_parts; /* some entries may be NULL */
 
     OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;

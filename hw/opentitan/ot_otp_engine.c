@@ -864,11 +864,10 @@ ot_otp_engine_unscramble_partition(OtOTPEngineState *s, unsigned part_ix)
     g_assert(pctrl->buffer.data != NULL);
     uint64_t *clear = (uint64_t *)pctrl->buffer.data;
 
-    const uint8_t *scrambling_key = s->otp_scramble_keys[part_ix];
-    g_assert(scrambling_key);
+    g_assert(pctrl->otp_scramble_key);
 
     OtPresentState *ps = ot_present_new();
-    ot_present_init(ps, scrambling_key);
+    ot_present_init(ps, pctrl->otp_scramble_key);
 
     trace_ot_otp_unscramble_partition(s->ot_id,
                                       ot_otp_engine_part_name(s, part_ix),
@@ -1133,11 +1132,10 @@ static void ot_otp_engine_dai_read(OtOTPEngineState *s)
          * if the partition is a secret partition, OTP storage is scrambled
          * except the digest and the zeroification fields
          */
-        const uint8_t *scrambling_key = s->otp_scramble_keys[part_ix];
-        g_assert(scrambling_key);
+        g_assert(pctrl->otp_scramble_key);
         uint64_t tmp_data = ((uint64_t)data_hi << 32u) | data_lo;
         OtPresentState *ps = ot_present_new();
-        ot_present_init(ps, scrambling_key);
+        ot_present_init(ps, pctrl->otp_scramble_key);
         ot_present_decrypt(ps, tmp_data, &tmp_data);
         ot_present_free(ps);
         data_lo = (uint32_t)tmp_data;
@@ -1182,11 +1180,12 @@ static int ot_otp_engine_dai_write_u64(OtOTPEngineState *s, unsigned address)
     bool is_zer = ot_otp_engine_is_part_zer_offset(s, part_ix, address);
 
     if (is_secret && !is_zer) {
-        const uint8_t *scrambling_key = s->otp_scramble_keys[part_ix];
+        OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
+        g_assert(pctrl->otp_scramble_key);
+
         uint64_t data = ((uint64_t)hi << 32u) | lo;
-        g_assert(scrambling_key);
         OtPresentState *ps = ot_present_new();
-        ot_present_init(ps, scrambling_key);
+        ot_present_init(ps, pctrl->otp_scramble_key);
         ot_present_encrypt(ps, data, &data);
         lo = (uint32_t)data;
         hi = (uint32_t)(data >> 32u);
@@ -1835,7 +1834,7 @@ static void ot_otp_engine_get_otp_key(OtOTPIf *dev, OtOTPKeyType type,
         iv = &s->flash_data_iv;
         constant = s->flash_data_const;
         ingest_entropy = false;
-        return;
+        break;
     case OTP_KEY_FLASH_ADDR:
         if (!ic->has_flash_support) {
             iv = NULL;
@@ -1846,21 +1845,21 @@ static void ot_otp_engine_get_otp_key(OtOTPIf *dev, OtOTPKeyType type,
         iv = &s->flash_addr_iv;
         constant = s->flash_addr_const;
         ingest_entropy = false;
-        return;
+        break;
     case OTP_KEY_OTBN:
         key->seed_size = (uint8_t)ic->key_seeds[type].size;
         key->nonce_size = key->seed_size / 2u;
         iv = &s->sram_iv;
         constant = s->sram_const;
         ingest_entropy = true;
-        return;
+        break;
     case OTP_KEY_SRAM:
         key->seed_size = (uint8_t)ic->key_seeds[type].size;
         key->nonce_size = key->seed_size;
         iv = &s->sram_iv;
         constant = s->sram_const;
         ingest_entropy = true;
-        return;
+        break;
     default:
         iv = NULL;
         ingest_entropy = false;
@@ -2527,12 +2526,17 @@ static void ot_otp_engine_configure_part_scramble_keys(OtOTPEngineState *s)
 {
     g_assert(s->part_count);
 
+    unsigned secret_ix = 0;
     for (unsigned part_ix = 0u; part_ix < s->part_count; part_ix++) {
         if (!s->part_descs[part_ix].secret) {
             continue;
         }
 
-        if (!s->otp_scramble_key_xstrs[part_ix]) {
+        /*
+         * the property exists, but QEMU only assigns a value when the property
+         * is given a value.
+         */
+        if (!s->otp_scramble_key_xstrs[secret_ix]) {
             /* if OTP data is loaded, unscrambling keys are mandatory */
             if (s->blk) {
                 error_setg(&error_fatal,
@@ -2541,10 +2545,11 @@ static void ot_otp_engine_configure_part_scramble_keys(OtOTPEngineState *s)
                            ot_otp_engine_part_name(s, part_ix), part_ix);
                 return;
             }
+            secret_ix += 1u;
             continue;
         }
 
-        size_t len = strlen(s->otp_scramble_key_xstrs[part_ix]);
+        size_t len = strlen(s->otp_scramble_key_xstrs[secret_ix]);
         if (len != OTP_SCRAMBLING_KEY_BYTES * 2u) {
             error_setg(
                 &error_fatal,
@@ -2554,12 +2559,11 @@ static void ot_otp_engine_configure_part_scramble_keys(OtOTPEngineState *s)
             return;
         }
 
-        g_assert(!s->otp_scramble_keys[part_ix]);
+        OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
+        pctrl->otp_scramble_key = g_new0(uint8_t, OTP_SCRAMBLING_KEY_BYTES);
 
-        s->otp_scramble_keys[part_ix] =
-            g_new0(uint8_t, OTP_SCRAMBLING_KEY_BYTES);
-        if (ot_common_parse_hexa_str(s->otp_scramble_keys[part_ix],
-                                     s->otp_scramble_key_xstrs[part_ix],
+        if (ot_common_parse_hexa_str(pctrl->otp_scramble_key,
+                                     s->otp_scramble_key_xstrs[secret_ix],
                                      OTP_SCRAMBLING_KEY_BYTES, true, true)) {
             error_setg(&error_fatal,
                        "%s: %s unable to parse otp_scramble_keys[%u] for %s",
@@ -2570,8 +2574,10 @@ static void ot_otp_engine_configure_part_scramble_keys(OtOTPEngineState *s)
 
         TRACE_OTP("otp_scramble_keys[%s] %s",
                   ot_otp_engine_part_name(s, part_ix),
-                  ot_otp_hexdump(s, s->otp_scramble_keys[part_ix],
+                  ot_otp_hexdump(s, pctrl->otp_scramble_key,
                                  OTP_SCRAMBLING_KEY_BYTES));
+
+        secret_ix += 1u;
     }
 }
 
@@ -2579,13 +2585,14 @@ static void ot_otp_engine_add_scramble_key_props(OtOTPEngineState *s)
 {
     g_assert(s->part_count);
 
-    /*
-     * @todo we know the number of secret partitions, so use it rather than
-     * whole partition count
-     */
-    s->otp_scramble_keys = g_new0(uint8_t *, s->part_count);
-    s->otp_scramble_key_xstrs = g_new0(char *, s->part_count);
+    unsigned secret_part_count = 0;
+    for (unsigned part_ix = 0u; part_ix < s->part_count; part_ix++) {
+        if (s->part_descs[part_ix].secret) {
+            secret_part_count++;
+        }
+    }
 
+    s->otp_scramble_key_xstrs = g_new0(char *, secret_part_count);
     unsigned secret_ix = 0u;
     for (unsigned part_ix = 0u; part_ix < s->part_count; part_ix++) {
         if (!s->part_descs[part_ix].secret) {
@@ -2598,18 +2605,20 @@ static void ot_otp_engine_add_scramble_key_props(OtOTPEngineState *s)
          * Assumes secret partitions are sequentially ordered and named
          * SECRET0, SECRET1, SECRET2, ...
          */
-        prop->name = g_strdup_printf("secret%u_scramble_key", secret_ix++);
+        prop->name = g_strdup_printf("secret%u_scramble_key", secret_ix);
         prop->info = &qdev_prop_string;
         /*
          * Property stores the address of the stored string as a relative offset
          * from the parent address
          */
         prop->offset =
-            (intptr_t)&s->otp_scramble_key_xstrs[part_ix] - (intptr_t)s;
+            (intptr_t)&s->otp_scramble_key_xstrs[secret_ix] - (intptr_t)s;
 
         object_property_add(OBJECT(s), prop->name, prop->info->name,
                             prop->info->get, prop->info->set,
                             prop->info->release, prop);
+
+        secret_ix++;
     }
 }
 
@@ -2634,10 +2643,9 @@ static void ot_otp_engine_configure_inv_default_parts(OtOTPEngineState *s)
             return;
         }
 
-        g_assert(!s->inv_default_parts[part_ix]);
-
-        s->inv_default_parts[part_ix] = g_new0(uint8_t, part->size + 1u);
-        if (ot_common_parse_hexa_str(s->inv_default_parts[part_ix],
+        OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
+        pctrl->inv_default_data = g_new0(uint8_t, part->size + 1u);
+        if (ot_common_parse_hexa_str(pctrl->inv_default_data,
                                      s->inv_default_part_xstrs[part_ix],
                                      part->size, false, true)) {
             error_setg(&error_fatal,
@@ -2648,7 +2656,7 @@ static void ot_otp_engine_configure_inv_default_parts(OtOTPEngineState *s)
 
         TRACE_OTP("inv_default_part[%s] %s",
                   ot_otp_engine_part_name(s, part_ix),
-                  ot_otp_hexdump(s, s->inv_default_parts[part_ix], part->size));
+                  ot_otp_hexdump(s, pctrl->inv_default_data, part->size));
     }
 }
 
@@ -2656,7 +2664,6 @@ static void ot_otp_engine_add_inv_def_props(OtOTPEngineState *s)
 {
     g_assert(s->part_count);
 
-    s->inv_default_parts = g_new0(uint8_t *, s->part_count);
     s->inv_default_part_xstrs = g_new0(char *, s->part_count);
 
     for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {

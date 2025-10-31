@@ -1073,7 +1073,8 @@ static void ot_otp_dj_get_keymgr_secret(
         data_ptr = (const uint8_t *)s->part_ctrls[part_ix].buffer.data;
     } else {
         /* source data from PartInvDefault instead of real buffer */
-        data_ptr = s->inv_default_parts[part_ix];
+        OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
+        data_ptr = pctrl->inv_default_data;
     }
 
     secret->valid = s->part_ctrls[part_ix].digest != 0;
