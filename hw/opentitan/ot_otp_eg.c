@@ -32,8 +32,8 @@
 #include "qemu/log.h"
 #include "qom/object.h"
 #include "hw/opentitan/ot_otp_eg.h"
+#include "hw/opentitan/ot_otp_engine.h"
 #include "hw/opentitan/ot_otp_impl_if.h"
-#include "ot_otp_engine.h"
 #include "trace.h"
 
 #define NUM_ERROR_ENTRIES       13u
