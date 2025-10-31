@@ -1118,22 +1118,31 @@ ot_otp_dj_update_status_error(OtOTPImplIf *dev, OtOTPStatus error, bool set)
 
 static void ot_otp_dj_pwr_load_hw_cfg(OtOTPEngineState *s)
 {
-    OtOTPStorage *otp = s->otp;
+    OtOTPImplIfClass *ic = OT_OTP_IMPL_IF_GET_CLASS(s);
+
+    const OtOTPPartDesc *pdesc0 = &ic->part_descs[OTP_PART_HW_CFG0];
+    const OtOTPPartDesc *pdesc1 = &ic->part_descs[OTP_PART_HW_CFG1];
+    const OtOTPPartController *pctrl0 = &s->part_ctrls[OTP_PART_HW_CFG0];
+    const OtOTPPartController *pctrl1 = &s->part_ctrls[OTP_PART_HW_CFG1];
+    const uint8_t *pdata0 = (const uint8_t *)pctrl0->buffer.data;
+    const uint8_t *pdata1 = (const uint8_t *)pctrl1->buffer.data;
+
     OtOTPHWCfg *hw_cfg = s->hw_cfg;
 
-    memcpy(hw_cfg->device_id, &otp->data[R_HW_CFG0_DEVICE_ID],
+    memcpy(hw_cfg->device_id, &pdata0[A_HW_CFG0_DEVICE_ID - pdesc0->offset],
            sizeof(hw_cfg->device_id));
-    memcpy(hw_cfg->manuf_state, &otp->data[R_HW_CFG0_MANUF_STATE],
+    memcpy(hw_cfg->manuf_state, &pdata0[A_HW_CFG0_MANUF_STATE - pdesc0->offset],
            sizeof(hw_cfg->manuf_state));
-    memcpy(hw_cfg->soc_dbg_state, &otp->data[R_HW_CFG1_SOC_DBG_STATE],
+    memcpy(hw_cfg->soc_dbg_state,
+           &pdata1[A_HW_CFG1_SOC_DBG_STATE - pdesc1->offset],
            sizeof(hw_cfg->soc_dbg_state));
     /* do not prevent execution from SRAM if no OTP configuration is loaded */
     hw_cfg->en_sram_ifetch_mb8 =
-        s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH] :
+        s->blk ? pdata1[A_HW_CFG1_EN_SRAM_IFETCH - pdesc1->offset] :
                  OT_MULTIBITBOOL8_TRUE;
     /* do not prevent CSRNG app reads if no OTP configuration is loaded */
     hw_cfg->en_csrng_sw_app_read_mb8 =
-        s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_CSRNG_SW_APP_READ] :
+        s->blk ? pdata1[A_HW_CFG1_EN_CSRNG_SW_APP_READ - pdesc1->offset] :
                  OT_MULTIBITBOOL8_TRUE;
 }
 
