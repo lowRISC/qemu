@@ -82,11 +82,14 @@ struct OtOTPImplIfClass {
     /* Array of OTP_KEY_COUNT descriptors */
     const OtOTPKeySeed *key_seeds;
 
-    /* Count of partition */
+    /* Number of partition */
     unsigned part_count;
 
     /* Index of the life cycle partition in part_descs */
     unsigned part_lc_num;
+
+    /* Number of SRAM KEY requester slots */
+    unsigned sram_key_req_slot_count;
 
     /* Whether embedded flash support is present */
     bool has_flash_support;

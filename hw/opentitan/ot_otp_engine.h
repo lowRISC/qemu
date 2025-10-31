@@ -45,60 +45,14 @@
 #define TYPE_OT_OTP_ENGINE "ot-otp_engine"
 OBJECT_DECLARE_TYPE(OtOTPEngineState, OtOTPEngineClass, OT_OTP_ENGINE)
 
-#define NUM_IRQS               2u
-#define NUM_ALERTS             5u
-#define NUM_DAI_WORDS          2u
-#define NUM_DIGEST_WORDS       2u
-#define NUM_ZER_WORDS          2u
-#define NUM_SRAM_KEY_REQ_SLOTS 4u
-
-/*
- * The OTP may be used before any CPU is started, This may cause the default
- * virtual clock to stall, as the hart does not execute. OTP nevertheless may
- * be active, updating the OTP content where write delays are still needed.
- * Use the alternative clock source which counts even when the CPU is stalled.
- */
-#define OT_OTP_HW_CLOCK QEMU_CLOCK_VIRTUAL_RT
-
-/* the following delays are arbitrary for now */
-#define DAI_DIGEST_DELAY_NS 50000u /* 50us */
-#define LCI_PROG_SCHED_NS   1000u /* 1us*/
-
-/* The size of keys used for OTP scrambling */
-#define OTP_SCRAMBLING_KEY_WIDTH 128u
-#define OTP_SCRAMBLING_KEY_BYTES ((OTP_SCRAMBLING_KEY_WIDTH) / 8u)
-
-/* Sizes of constants used for deriving scrambling keys */
-#define FLASH_KEY_SEED_WIDTH 256u
-#define SRAM_KEY_SEED_WIDTH  128u
-#define KEY_MGR_KEY_WIDTH    256u
-#define FLASH_KEY_WIDTH      128u
-/* nonce is same size as key: see req_bundles[0] in rtl/otp_ctrl_kdi.sv */
-#define FLASH_NONCE_WIDTH (FLASH_KEY_WIDTH)
-#define SRAM_KEY_WIDTH    128u
-#define SRAM_NONCE_WIDTH  128u
-#define OTBN_KEY_WIDTH    128u
-#define OTBN_NONCE_WIDTH  64u
-
-#define FLASH_KEY_BYTES   ((FLASH_KEY_WIDTH) / 8u)
-#define FLASH_NONCE_BYTES ((FLASH_NONCE_WIDTH) / 8u)
-#define SRAM_KEY_BYTES    ((SRAM_KEY_WIDTH) / 8u)
-#define SRAM_NONCE_BYTES  ((SRAM_NONCE_WIDTH) / 8u)
-#define OTBN_KEY_BYTES    ((OTBN_KEY_WIDTH) / 8u)
-#define OTBN_NONCE_BYTES  ((OTBN_NONCE_WIDTH) / 8u)
+#define NUM_IRQS         2u
+#define NUM_ALERTS       5u
+#define NUM_DAI_WORDS    2u
+#define NUM_DIGEST_WORDS 2u
+#define NUM_ZER_WORDS    2u
 
 #define LC_TRANSITION_CNT_SIZE 48u
 #define LC_STATE_SIZE          40u
-
-/* Need 128 bits of entropy to compute each 64-bit key part */
-#define OTP_ENTROPY_PRESENT_BITS \
-    (((NUM_SRAM_KEY_REQ_SLOTS * SRAM_KEY_WIDTH) + OTBN_KEY_WIDTH) * 128u / 64u)
-#define OTP_ENTROPY_PRESENT_WORDS (OTP_ENTROPY_PRESENT_BITS / 32u)
-#define OTP_ENTROPY_NONCE_BITS \
-    (NUM_SRAM_KEY_REQ_SLOTS * SRAM_NONCE_WIDTH + OTBN_NONCE_WIDTH)
-#define OTP_ENTROPY_NONCE_WORDS (OTP_ENTROPY_NONCE_BITS / 32u)
-#define OTP_ENTROPY_BUF_COUNT \
-    (OTP_ENTROPY_PRESENT_WORDS + OTP_ENTROPY_NONCE_WORDS)
 
 #define OTP_DIGEST_ADDR_MASK (sizeof(uint64_t) - 1u)
 #define OTP_ZER_ADDR_MASK    (sizeof(uint64_t) - 1u)
@@ -205,7 +159,7 @@ typedef struct {
     bool write_lock;
 } OtOTPPartController;
 
-typedef struct {
+typedef struct OtOTPDAIController {
     QEMUTimer *delay; /* simulate delayed access completion */
     QEMUBH *digest_bh; /* write computed digest to OTP cell */
     OtOTPDAIState state;
@@ -243,18 +197,8 @@ typedef struct {
 static_assert(OT_OTP_LC_BROADCAST_COUNT < 8 * sizeof(uint16_t),
               "Invalid OT_OTP_LC_BROADCAST_COUNT");
 
-typedef struct {
-    QEMUBH *entropy_bh;
-    OtPresentState *present;
-    OtPrngState *prng;
-    OtFifo32 entropy_buf;
-    bool edn_sched;
-} OtOTPKeyGen;
-
-typedef struct {
-    uint8_t key[SRAM_KEY_BYTES];
-    uint8_t nonce[SRAM_NONCE_BYTES];
-} OtOTPScrmblKeyInit;
+typedef struct OtOTPKeyGen_ OtOTPKeyGen;
+typedef struct OtOTPScrmblKeyInit_ OtOTPScrmblKeyInit;
 
 typedef struct {
     uint32_t dai_base; /* offset of DIRECT_ACCESS_REGWEN register */

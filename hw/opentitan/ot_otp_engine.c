@@ -45,6 +45,28 @@
 #include "sysemu/block-backend.h"
 #include "trace.h"
 
+/*
+ * The OTP may be used before any CPU is started, This may cause the default
+ * virtual clock to stall, as the hart does not execute. OTP nevertheless may
+ * be active, updating the OTP content where write delays are still needed.
+ * Use the alternative clock source which counts even when the CPU is stalled.
+ */
+#define OT_OTP_HW_CLOCK QEMU_CLOCK_VIRTUAL_RT
+
+/* the following delays are arbitrary for now */
+#define DAI_DIGEST_DELAY_NS 50000u /* 50us */
+#define LCI_PROG_SCHED_NS   1000u /* 1us*/
+
+/* The size of keys used for OTP scrambling */
+#define OTP_SCRAMBLING_KEY_WIDTH 128u
+#define OTP_SCRAMBLING_KEY_BYTES ((OTP_SCRAMBLING_KEY_WIDTH) / 8u)
+
+#define LC_TRANSITION_CNT_SIZE 48u
+#define LC_STATE_SIZE          40u
+
+/* Sizes of constants used for deriving scrambling keys */
+#define KEY_MGR_KEY_WIDTH 256u
+
 static const char *DAI_STATE_NAMES[] = {
     /* clang-format off */
     OTP_NAME_ENTRY(OTP_DAI_RESET),
@@ -124,6 +146,29 @@ static const char *ERR_CODE_NAMES[] = {
 #define ERR_CODE_PART_REG(_s_, _pix_) \
     ((_s_)->regs[(_s_)->reg_offset.err_code_base + (_pix_)])
 
+/*
+ * See RTL files otp_ctrl/rtl/otp_ctrl_kdi.sv and otp_ctrl/rtl/otp_ctrl_pkg.sv
+ * and OTP doc otp_ctrl/theory_of_operation.html#scrambling-key-derivation.
+ */
+#define SRAM_KEY_BYTES(_ic_)   ((_ic_)->key_seeds[OTP_KEY_SRAM].size)
+#define SRAM_NONCE_BYTES(_ic_) ((_ic_)->key_seeds[OTP_KEY_SRAM].size)
+#define OTBN_KEY_BYTES(_ic_)   ((_ic_)->key_seeds[OTP_KEY_OTBN].size)
+#define OTBN_NONCE_BYTES(_ic_) (((_ic_)->key_seeds[OTP_KEY_OTBN].size) / 2u)
+
+#define OT_OTP_SCRMBL_KEY_SIZE  16u
+#define OT_OTP_SCRMBL_NONE_SIZE (OT_OTP_SCRMBL_KEY_SIZE)
+
+/* Need 128 bits of entropy to compute each 64-bit key part */
+#define OTP_ENTROPY_PRESENT_BYTES(_ic_) \
+    (((((_ic_)->sram_key_req_slot_count) * SRAM_KEY_BYTES(_ic_)) + \
+      (OTBN_KEY_BYTES(_ic_))) * \
+     2u)
+#define OTP_ENTROPY_NONCE_BYTES(_ic_) \
+    (((_ic_)->sram_key_req_slot_count) * SRAM_NONCE_BYTES(_ic_) + \
+     OTBN_NONCE_BYTES(_ic_))
+#define OTP_ENTROPY_BUF_COUNT(_ic_) \
+    ((OTP_ENTROPY_PRESENT_BYTES(_ic_) + OTP_ENTROPY_NONCE_BYTES(_ic_)) / 4u)
+
 #ifdef OT_OTP_DEBUG
 #define OT_OTP_HEXSTR_SIZE  256u
 #define TRACE_OTP(msg, ...) qemu_log("%s: " msg "\n", __func__, ##__VA_ARGS__);
@@ -145,6 +190,19 @@ static void ot_otp_engine_dai_change_state_line(OtOTPEngineState *s,
                                                 OtOTPDAIState state, int line);
 static void ot_otp_engine_lci_change_state_line(OtOTPEngineState *s,
                                                 OtOTPLCIState state, int line);
+
+struct OtOTPScrmblKeyInit_ {
+    uint8_t key[OT_OTP_SCRMBL_KEY_SIZE];
+    uint8_t nonce[OT_OTP_SCRMBL_NONE_SIZE];
+};
+
+struct OtOTPKeyGen_ {
+    QEMUBH *entropy_bh;
+    OtPresentState *present;
+    OtPrngState *prng;
+    OtFifo32 entropy_buf;
+    bool edn_sched;
+};
 
 static void ot_otp_engine_update_irqs(OtOTPEngineState *s)
 {
@@ -1763,54 +1821,67 @@ static void ot_otp_engine_get_otp_key(OtOTPIf *dev, OtOTPKeyType type,
     trace_ot_otp_get_otp_key(s->ot_id, type);
 
     /* reference: req_bundles in OpenTitan rtl/otp_ctrl_kdi.sv */
+    const uint64_t *iv;
+    const uint8_t *constant;
+    bool ingest_entropy;
     switch (type) {
     case OTP_KEY_FLASH_DATA:
         if (!ic->has_flash_support) {
+            iv = NULL;
             break;
         }
-        memcpy(key->seed, s->scrmbl_key_init->key, FLASH_KEY_BYTES);
-        memcpy(key->nonce, s->scrmbl_key_init->nonce, FLASH_NONCE_BYTES);
-        key->seed_size = FLASH_KEY_BYTES;
-        key->nonce_size = FLASH_NONCE_BYTES;
-        key->seed_valid = false;
-        ot_otp_engine_generate_scrambling_key(s, key, type, s->flash_data_iv,
-                                              s->flash_data_const, true, false);
+        key->seed_size = (uint8_t)ic->key_seeds[type].size;
+        key->nonce_size = key->seed_size;
+        iv = &s->flash_data_iv;
+        constant = s->flash_data_const;
+        ingest_entropy = false;
         return;
     case OTP_KEY_FLASH_ADDR:
         if (!ic->has_flash_support) {
+            iv = NULL;
             break;
         }
-        memcpy(key->seed, s->scrmbl_key_init->key, FLASH_KEY_BYTES);
-        key->seed_size = FLASH_KEY_BYTES;
-        key->nonce_size = 0u; /* FLASH_ADDR_KEY has nonce_size = 0 */
-        key->seed_valid = false;
-        ot_otp_engine_generate_scrambling_key(s, key, type, s->flash_addr_iv,
-                                              s->flash_addr_const, true, false);
+        key->seed_size = (uint8_t)ic->key_seeds[type].size;
+        key->nonce_size = 0u;
+        iv = &s->flash_addr_iv;
+        constant = s->flash_addr_const;
+        ingest_entropy = false;
         return;
     case OTP_KEY_OTBN:
-        memcpy(key->seed, s->scrmbl_key_init->key, OTBN_KEY_BYTES);
-        memcpy(key->nonce, s->scrmbl_key_init->nonce, OTBN_NONCE_BYTES);
-        key->seed_size = OTBN_KEY_BYTES;
-        key->nonce_size = OTBN_NONCE_BYTES;
-        key->seed_valid = false;
-        ot_otp_engine_generate_scrambling_key(s, key, type, s->sram_iv,
-                                              s->sram_const, true, true);
+        key->seed_size = (uint8_t)ic->key_seeds[type].size;
+        key->nonce_size = key->seed_size / 2u;
+        iv = &s->sram_iv;
+        constant = s->sram_const;
+        ingest_entropy = true;
         return;
     case OTP_KEY_SRAM:
-        memcpy(key->seed, s->scrmbl_key_init->key, SRAM_KEY_BYTES);
-        memcpy(key->nonce, s->scrmbl_key_init->nonce, SRAM_NONCE_BYTES);
-        key->seed_size = SRAM_KEY_BYTES;
-        key->nonce_size = SRAM_NONCE_BYTES;
-        key->seed_valid = false;
-        ot_otp_engine_generate_scrambling_key(s, key, type, s->sram_iv,
-                                              s->sram_const, true, true);
+        key->seed_size = (uint8_t)ic->key_seeds[type].size;
+        key->nonce_size = key->seed_size;
+        iv = &s->sram_iv;
+        constant = s->sram_const;
+        ingest_entropy = true;
         return;
     default:
-        return;
+        iv = NULL;
+        ingest_entropy = false;
+        break;
     }
 
-    error_report("%s: %s: invalid OTP key type: %d", __func__, s->ot_id, type);
+    if (!iv) {
+        error_report("%s: %s: invalid OTP key type: %d", __func__, s->ot_id,
+                     type);
+        g_assert_not_reached();
+    }
+
+    g_assert(key->seed_size <= sizeof(s->scrmbl_key_init->key));
+    g_assert(key->nonce_size <= sizeof(s->scrmbl_key_init->nonce));
+    memcpy(key->seed, s->scrmbl_key_init->key, key->seed_size);
+    memcpy(key->nonce, s->scrmbl_key_init->nonce, key->nonce_size);
+    key->seed_valid = false;
+    ot_otp_engine_generate_scrambling_key(s, key, type, *iv, constant, true,
+                                          ingest_entropy);
 }
+
 static bool ot_otp_engine_program_req(OtOTPIf *dev, const uint16_t *lc_tcount,
                                       const uint16_t *lc_state,
                                       ot_otp_program_ack_fn ack, void *opaque)
@@ -2222,20 +2293,24 @@ static void ot_otp_engine_pwr_otp_bh(void *opaque)
 
 static void ot_otp_engine_configure_scrmbl_key(OtOTPEngineState *s)
 {
+    OtOTPImplIfClass *ic = OT_OTP_IMPL_IF_GET_CLASS(s);
+
     if (!s->scrmbl_key_xstr) {
         trace_ot_otp_configure_missing(s->ot_id, "scrmbl_key");
         return;
     }
 
+    size_t sram_key_bytes = SRAM_KEY_BYTES(ic);
+    size_t sram_nonce_bytes = SRAM_NONCE_BYTES(ic);
     size_t len = strlen(s->scrmbl_key_xstr);
-    if (len != (size_t)(SRAM_KEY_BYTES + SRAM_NONCE_BYTES) * 2u) {
+    if (len != (size_t)(sram_key_bytes + sram_nonce_bytes) * 2u) {
         error_setg(&error_fatal, "%s: %s invalid scrmbl_key length\n", __func__,
                    s->ot_id);
         return;
     }
 
     if (ot_common_parse_hexa_str(s->scrmbl_key_init->key,
-                                 &s->scrmbl_key_xstr[0], SRAM_KEY_BYTES, false,
+                                 &s->scrmbl_key_xstr[0], sram_key_bytes, false,
                                  false)) {
         error_setg(&error_fatal, "%s: %s unable to parse scrmbl_key\n",
                    __func__, s->ot_id);
@@ -2243,8 +2318,8 @@ static void ot_otp_engine_configure_scrmbl_key(OtOTPEngineState *s)
     }
 
     if (ot_common_parse_hexa_str(s->scrmbl_key_init->nonce,
-                                 &s->scrmbl_key_xstr[SRAM_KEY_BYTES * 2u],
-                                 SRAM_NONCE_BYTES, false, true)) {
+                                 &s->scrmbl_key_xstr[sram_key_bytes * 2u],
+                                 sram_nonce_bytes, false, true)) {
         error_setg(&error_fatal, "%s: %s unable to parse scrmbl_key\n",
                    __func__, s->ot_id);
         return;
@@ -2770,6 +2845,7 @@ static void ot_otp_engine_init(Object *obj)
     g_assert(ic->part_descs != NULL);
     g_assert(ic->part_count > 1u);
     g_assert(ic->part_lc_num > 0u && ic->part_lc_num < ic->part_count);
+    g_assert(ic->sram_key_req_slot_count > 0u);
 
     /*
      * The following members are constant values, and are used very often in
@@ -2806,7 +2882,7 @@ static void ot_otp_engine_init(Object *obj)
     s->lci->data =
         g_new0(uint16_t, s->part_descs[s->part_lc_num].size / sizeof(uint16_t));
 
-    ot_fifo32_create(&s->keygen->entropy_buf, OTP_ENTROPY_BUF_COUNT);
+    ot_fifo32_create(&s->keygen->entropy_buf, OTP_ENTROPY_BUF_COUNT(ic));
     s->keygen->present = ot_present_new();
     s->keygen->prng = ot_prng_allocate();
 

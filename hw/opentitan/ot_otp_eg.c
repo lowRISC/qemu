@@ -40,6 +40,7 @@
 #define NUM_PART                11u
 #define NUM_PART_BUF            6u
 #define NUM_PART_UNBUF          5u
+#define NUM_SRAM_KEY_REQ_SLOTS  4u
 #define NUM_SW_CFG_WINDOW_WORDS 512u
 
 #define OTP_BYTE_ADDR_WIDTH 11u
@@ -354,13 +355,6 @@ REG32(LC_STATE, 2008u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
-
-static_assert(FLASH_KEY_SEED_WIDTH == SECRET1_FLASH_ADDR_KEY_SEED_SIZE * 8u,
-              "Flash key seed size does not match flash address field size");
-static_assert(FLASH_KEY_SEED_WIDTH == SECRET1_FLASH_DATA_KEY_SEED_SIZE * 8u,
-              "Flash key seed size does not match flash data field size");
-static_assert(SRAM_KEY_SEED_WIDTH == SECRET1_SRAM_DATA_KEY_SEED_SIZE * 8u,
-              "SRAM key seed size does not match OTP field size");
 
 typedef enum {
     OTP_PART_VENDOR_TEST,
@@ -1176,6 +1170,8 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
     ic->part_descs = OT_OTP_PART_DESCS;
     ic->part_count = (unsigned)OTP_PART_COUNT;
     ic->part_lc_num = (unsigned)OTP_PART_LIFE_CYCLE;
+    ic->sram_key_req_slot_count = NUM_SRAM_KEY_REQ_SLOTS;
+
     ic->key_seeds = OT_OTP_KEY_SEEDS;
     ic->has_flash_support = true;
     ic->has_zer_support = false;
@@ -1183,6 +1179,13 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
         g_assert(!ic->part_descs[part_ix].zeroizable &&
                  ic->part_descs[part_ix].zer_offset == UINT16_MAX);
     }
+
+    g_assert(OT_OTP_KEY_SEEDS[OTP_KEY_FLASH_ADDR].size ==
+             SECRET1_FLASH_ADDR_KEY_SEED_SIZE);
+    g_assert(OT_OTP_KEY_SEEDS[OTP_KEY_FLASH_DATA].size ==
+             SECRET1_FLASH_DATA_KEY_SEED_SIZE);
+    g_assert(OT_OTP_KEY_SEEDS[OTP_KEY_SRAM].size ==
+             SECRET1_SRAM_DATA_KEY_SEED_SIZE);
 }
 
 static const TypeInfo ot_otp_eg_info = {
