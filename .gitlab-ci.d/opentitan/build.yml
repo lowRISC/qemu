@@ -28,6 +28,7 @@ build-clang:
         sed -E 's,'"$QEMU_DIR"',@QEMU_DIR@,g' > compile_commands.json.tpl
     - ../scripts/opentitan/swexit.py -t ibexdemo -b 0x0 -o exit_id.bin
     - ../scripts/opentitan/swexit.py -t earlgrey -b 0x80 -o exit_eg.bin
+    - ../scripts/opentitan/swexit.py -t darjeeling -b 0x80 -o exit_dj.bin
   artifacts:
     public: false
     expire_in: 1 hour
