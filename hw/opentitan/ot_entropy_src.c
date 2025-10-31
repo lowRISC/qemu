@@ -1,5 +1,5 @@
 /*
- * QEMU OpenTitan Earlgrey Entropy Source device
+ * QEMU OpenTitan Entropy Source device
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
  * Copyright (c) 2025 lowRISC contributors.

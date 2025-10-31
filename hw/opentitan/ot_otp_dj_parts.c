@@ -8,7 +8,7 @@
 
 /* clang-format off */
 /* NOLINTBEGIN */
-static const OtOTPPartDesc OtOTPPartDescs[] = {
+static const OtOTPPartDesc OT_OTP_PART_DESCS[] = {
     [OTP_PART_VENDOR_TEST] = {
         .name = "VENDOR_TEST",
         .size = 64u,
@@ -357,7 +357,20 @@ static const OtOTPPartDesc OtOTPPartDescs[] = {
     },
 };
 
-#define OTP_PART_COUNT ARRAY_SIZE(OtOTPPartDescs)
+#define OTP_PART_COUNT ARRAY_SIZE(OT_OTP_PART_DESCS)
+
+static const OtOTPKeySeed OT_OTP_KEY_SEEDS[OTP_KEY_COUNT] = {
+    [OTP_KEY_OTBN] = {
+        .partition = OTP_PART_SECRET1,
+        .offset = 0,
+        .size = 16,
+    },
+    [OTP_KEY_SRAM] = {
+        .partition = OTP_PART_SECRET1,
+        .offset = 0,
+        .size = 16,
+    },
+};
 
 /* NOLINTEND */
 /* clang-format on */
