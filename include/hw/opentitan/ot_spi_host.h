@@ -8,6 +8,7 @@
  * Author(s):
  *  Wilfred Mallawa <wilfred.mallawa@wdc.com>
  *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Alice Ziuziakowska <a.ziuziakowska@lowrisc.org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -32,9 +33,33 @@
 #define HW_OPENTITAN_OT_SPI_HOST_H
 
 #include "qom/object.h"
+#include "hw/resettable.h"
+#include "hw/sysbus.h"
 
 #define TYPE_OT_SPI_HOST "ot-spi_host"
 OBJECT_DECLARE_TYPE(OtSPIHostState, OtSPIHostClass, OT_SPI_HOST)
+
+/* this class is only required to manage on-hold reset */
+struct OtSPIHostClass {
+    SysBusDeviceClass parent_class;
+
+    /*
+     * Transfer a byte over this downstream SPI Host's SPI bus.
+     * If Passthrough Enable is not asserted, or the SPI Host supports more
+     * than one Chip Select, the transfer does not take place on the bus and a
+     * default value is returned.
+     *
+     * @tx byte to be transferred
+     * @return received byte from SPI bus, or a default value
+     */
+    uint8_t (*ssi_downstream_transfer)(OtSPIHostState *, uint8_t tx);
+
+    ResettablePhases parent_phases;
+};
+
+/* IRQ lines from upstream OT SPI Device */
+#define OT_SPI_HOST_PASSTHROUGH_EN (TYPE_OT_SPI_HOST "-passthrough-en")
+#define OT_SPI_HOST_PASSTHROUGH_CS (TYPE_OT_SPI_HOST "-passthrough-cs")
 
 /* Supported SPI Host versions */
 typedef enum {

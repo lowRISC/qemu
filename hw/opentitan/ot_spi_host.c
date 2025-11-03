@@ -35,11 +35,9 @@
 #include "qemu/bswap.h"
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
 #include "qemu/module.h"
 #include "qemu/timer.h"
 #include "qapi/error.h"
-#include "hw/irq.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_spi_host.h"
@@ -257,6 +255,8 @@ typedef struct {
 } TraceCache;
 #endif /* DISCARD_REPEATED_STATUS_TRACES */
 
+#define SPI_DEFAULT_TX_RX_VALUE ((uint8_t)0xffu)
+
 /* ------------------------------------------------------------------------ */
 /* Types */
 /* ------------------------------------------------------------------------ */
@@ -324,12 +324,6 @@ typedef struct {
     unsigned size;
 } OtSPIHostCmd;
 
-/* this class is only required to manage on-hold reset */
-struct OtSPIHostClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
-};
-
 struct OtSPIHostState {
     SysBusDevice parent_obj;
 
@@ -355,6 +349,19 @@ struct OtSPIHostState {
 
     OtSPIHostFsm fsm;
     bool on_reset;
+
+    /*
+     * Upstream SPI Device Passthrough enable and chip select. If we support
+     * passthrough mode (only one CS), The SPI Host CS is muxed with the
+     * passthrough CS, controlled by the passthrough enable signal.
+     */
+    bool passthrough_en; /* Upstream SPI Device Passthrough enable line */
+    bool passthrough_cs; /* Upstream SPI Device Chip Select */
+    bool host_cs0; /* Our Chip Select 0 */
+
+    /* Already emitted a guest error on first byte of invalid transfer */
+    bool transfer_error_emitted;
+
     unsigned pclk; /* Current input clock */
     const char *clock_src_name; /* IRQ name once connected */
 
@@ -524,13 +531,39 @@ static bool ot_spi_host_is_ready(const OtSPIHostState *s)
     return !cmdfifo_is_full(s->cmd_fifo);
 }
 
+/* Passthrough functionality is only implemented if there is one CS */
+static inline bool ot_spi_host_supports_passthrough(const OtSPIHostState *s)
+{
+    return s->num_cs == 1u;
+}
+
+static void ot_spi_host_update_muxed_cs0(OtSPIHostState *s)
+{
+    if (ot_spi_host_supports_passthrough(s)) {
+        ibex_irq_set(&s->cs_lines[0],
+                     s->passthrough_en ? s->passthrough_cs : s->host_cs0);
+    } else {
+        ibex_irq_set(&s->cs_lines[0], s->host_cs0);
+    }
+}
+
 static void ot_spi_host_chip_select(OtSPIHostState *s, unsigned csid,
                                     bool activate)
 {
     if (csid < s->num_cs) {
         trace_ot_spi_host_cs(s->ot_id, csid, activate ? "" : "de");
-        ibex_irq_set(&s->cs_lines[csid], !activate);
+        if (csid == 0u) {
+            s->host_cs0 = !activate;
+            ot_spi_host_update_muxed_cs0(s);
+        } else {
+            ibex_irq_set(&s->cs_lines[csid], !activate);
+        }
     }
+}
+
+static inline bool ot_spi_host_passthrough_active(const OtSPIHostState *s)
+{
+    return ot_spi_host_supports_passthrough(s) && s->passthrough_en;
 }
 
 static bool ot_spi_host_update_stall(OtSPIHostState *s)
@@ -826,13 +859,33 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
         if (!s->fsm.transaction) {
             s->fsm.transaction = true;
+            if (ot_spi_host_passthrough_active(s)) {
+                qemu_log_mask(
+                    LOG_GUEST_ERROR,
+                    "%s: %s: SPI Host active CS while Passthrough is active\n",
+                    __func__, s->ot_id);
+            }
             ot_spi_host_chip_select(s, s->active.cmd.cs, s->fsm.transaction);
         }
 
-        uint8_t tx =
-            write ? (uint8_t)txfifo_pop(s->tx_fifo, length == 1u) : 0xffu;
+        uint8_t tx = write ? (uint8_t)txfifo_pop(s->tx_fifo, length == 1u) :
+                             SPI_DEFAULT_TX_RX_VALUE;
 
-        uint8_t rx = s->fsm.output_en ? ssi_transfer(s->ssi, tx) : 0xffu;
+        uint8_t rx = SPI_DEFAULT_TX_RX_VALUE;
+
+        if (s->fsm.output_en) {
+            if (ot_spi_host_passthrough_active(s)) {
+                if (!s->transfer_error_emitted) {
+                    s->transfer_error_emitted = true;
+                    qemu_log_mask(
+                        LOG_GUEST_ERROR,
+                        "%s: %s: Host transfer while Passthrough is active\n",
+                        __func__, s->ot_id);
+                }
+            } else {
+                rx = (uint8_t)ssi_transfer(s->ssi, tx);
+            }
+        }
 
         if (multi && read && write) {
             /* invalid command, lets corrupt input data */
@@ -1293,6 +1346,78 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
+static uint8_t ot_spi_host_downstream_transfer(OtSPIHostState *s, uint8_t tx)
+{
+    if (!ot_spi_host_supports_passthrough(s)) {
+        if (!s->transfer_error_emitted) {
+            s->transfer_error_emitted = true;
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: SPI Host does not support passthrough: more "
+                          "than one CS\n",
+                          __func__, s->ot_id);
+        }
+        return SPI_DEFAULT_TX_RX_VALUE;
+    }
+
+    if (!s->passthrough_en) {
+        trace_ot_spi_host_passthrough_disabled(s->ot_id);
+        return SPI_DEFAULT_TX_RX_VALUE;
+    }
+
+    /* Forward to downstream flash */
+    return (uint8_t)ssi_transfer(s->ssi, (uint32_t)tx);
+}
+
+static void
+ot_spi_host_device_passthrough_en_input(void *opaque, int irq, int level)
+{
+    OtSPIHostState *s = opaque;
+    g_assert(irq == 0u);
+
+    s->transfer_error_emitted = false;
+
+    if (!ot_spi_host_supports_passthrough(s)) {
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: %s: SPI Host does not support passthrough: more than one CS\n",
+            __func__, s->ot_id);
+        return;
+    }
+
+    if ((bool)level && !s->host_cs0) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Passthrough enabled while Host CS is active\n",
+                      __func__, s->ot_id);
+    }
+
+    s->passthrough_en = (bool)level;
+
+    ot_spi_host_update_muxed_cs0(s);
+}
+
+static void
+ot_spi_host_device_passthrough_cs_input(void *opaque, int irq, int level)
+{
+    OtSPIHostState *s = opaque;
+    g_assert(irq == 0u);
+
+    if (!ot_spi_host_supports_passthrough(s)) {
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: %s: SPI Host does not support passthrough: more than one CS\n",
+            __func__, s->ot_id);
+        return;
+    }
+
+    if (!s->passthrough_en) {
+        trace_ot_spi_host_passthrough_disabled(s->ot_id);
+    }
+
+    s->passthrough_cs = (bool)level;
+
+    ot_spi_host_update_muxed_cs0(s);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Device description/instanciation */
 /* ------------------------------------------------------------------------ */
@@ -1346,6 +1471,12 @@ static void ot_spi_host_reset_enter(Object *obj, ResetType type)
     s->regs[R_EVENT_ENABLE] = 0x00u;
 
     s->on_reset = true;
+
+    s->passthrough_en = false;
+    s->passthrough_cs = true;
+    s->host_cs0 = true;
+
+    s->transfer_error_emitted = false;
 
     if (!s->clock_src_name) {
         IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
@@ -1413,6 +1544,11 @@ static void ot_spi_host_instance_init(Object *obj)
                         ARRAY_SIZE(s->irqs));
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
+    qdev_init_gpio_in_named(DEVICE(s), &ot_spi_host_device_passthrough_en_input,
+                            OT_SPI_HOST_PASSTHROUGH_EN, 1);
+    qdev_init_gpio_in_named(DEVICE(s), &ot_spi_host_device_passthrough_cs_input,
+                            OT_SPI_HOST_PASSTHROUGH_CS, 1);
+
     s->regs = g_new0(uint32_t, REGS_COUNT);
 
     s->rx_fifo = g_new0(RxFifo, 1u);
@@ -1434,8 +1570,10 @@ static void ot_spi_host_class_init(ObjectClass *klass, void *data)
     dc->realize = ot_spi_host_realize;
     device_class_set_props(dc, ot_spi_host_properties);
 
-    ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtSPIHostClass *sc = OT_SPI_HOST_CLASS(klass);
+    sc->ssi_downstream_transfer = &ot_spi_host_downstream_transfer;
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_spi_host_reset_enter, NULL,
                                        &ot_spi_host_reset_exit,
                                        &sc->parent_phases);
