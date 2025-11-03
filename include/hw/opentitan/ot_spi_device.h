@@ -2,9 +2,11 @@
  * QEMU OpenTitan SPI Device controller
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
+ *  Alice Ziuziakowska <a.ziuziakowska@lowrisc.org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -32,5 +34,9 @@
 
 #define TYPE_OT_SPI_DEVICE "ot-spi_device"
 OBJECT_DECLARE_TYPE(OtSPIDeviceState, OtSPIDeviceClass, OT_SPI_DEVICE)
+
+/* IRQ lines to downstream OT SPI Host */
+#define OT_SPI_DEVICE_PASSTHROUGH_EN (TYPE_OT_SPI_DEVICE "-passthrough-en")
+#define OT_SPI_DEVICE_PASSTHROUGH_CS (TYPE_OT_SPI_DEVICE "-passthrough-cs")
 
 #endif /* HW_OPENTITAN_OT_SPI_DEVICE_H */

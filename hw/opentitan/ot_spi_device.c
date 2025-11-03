@@ -36,6 +36,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_spi_device.h"
+#include "hw/opentitan/ot_spi_host.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -458,12 +459,17 @@ struct OtSPIDeviceState {
     SpiDeviceFlash flash;
     SpiDeviceTpm tpm;
 
+    /* CS signal for downstream flash in passthrough mode, active low */
+    IbexIRQ passthrough_cs;
+    IbexIRQ passthrough_en;
+
     uint32_t *spi_regs; /* Registers */
     uint32_t *tpm_regs; /* Registers */
     uint32_t *sram;
 
     /* Properties */
     char *ot_id;
+    OtSPIHostState *spi_host; /* downstream SPI Host */
     CharBackend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
 };
@@ -2312,6 +2318,8 @@ static int ot_spi_device_chr_be_change(void *opaque)
 static Property ot_spi_device_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSPIDeviceState, ot_id),
     DEFINE_PROP_CHR("chardev", OtSPIDeviceState, chr),
+    DEFINE_PROP_LINK("spi-host", OtSPIDeviceState, spi_host, TYPE_OT_SPI_HOST,
+                     OtSPIHostState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2374,6 +2382,9 @@ static void ot_spi_device_reset_enter(Object *obj, ResetType type)
 
     s->tpm_regs[R_TPM_CAP] = 0x660100u;
 
+    ibex_irq_lower(&s->passthrough_en);
+    ibex_irq_raise(&s->passthrough_cs);
+
     ot_spi_device_update_irqs(s);
     ot_spi_device_update_alerts(s);
 }
@@ -2430,6 +2441,12 @@ static void ot_spi_device_init(Object *obj)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
+
+    /* Passthrough enable is active high, CS is active low */
+    ibex_qdev_init_irq_default(OBJECT(s), &s->passthrough_en,
+                               OT_SPI_DEVICE_PASSTHROUGH_EN, 0);
+    ibex_qdev_init_irq_default(OBJECT(s), &s->passthrough_cs,
+                               OT_SPI_DEVICE_PASSTHROUGH_CS, 1);
 
     /*
      * This timer is used to hand over to the vCPU whenever a READBUF_* irq is

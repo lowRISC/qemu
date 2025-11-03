@@ -196,6 +196,7 @@ config OT_SOCDBG_CTRL
 
 config OT_SPI_DEVICE
     bool
+    select OT_SPI_HOST
 
 config OT_SPI_HOST
     bool
