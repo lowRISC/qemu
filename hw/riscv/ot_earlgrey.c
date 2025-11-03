@@ -553,6 +553,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { .base = 0x40050000u }
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("spi-host", SPI_HOST0)
+        ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 69),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 70),
@@ -562,7 +565,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 74),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 75),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 76),
-            OT_EG_SOC_GPIO_ALERT(0, 5)
+            OT_EG_SOC_GPIO_ALERT(0, 5),
+            OT_EG_SOC_SIGNAL(OT_SPI_DEVICE_PASSTHROUGH_EN, 0, SPI_HOST0,
+                OT_SPI_HOST_PASSTHROUGH_EN, 0),
+            OT_EG_SOC_SIGNAL(OT_SPI_DEVICE_PASSTHROUGH_CS, 0, SPI_HOST0,
+                OT_SPI_HOST_PASSTHROUGH_CS, 0)
         ),
     },
     [OT_EG_SOC_DEV_I2C0] = {

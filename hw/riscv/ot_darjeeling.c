@@ -2,6 +2,7 @@
  * QEMU RISC-V Board Compatible with OpenTitan Darjeeling platform
  *
  * Copyright (c) 2023-2025 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -1325,6 +1326,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .memmap = MEMMAPENTRIES(
             { .base = 0x30310000u }
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("spi-host", SPI_HOST0)
+        ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 42),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 43),
@@ -1334,7 +1338,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(5, PLIC, 47),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(6, PLIC, 48),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 49),
-            OT_DJ_SOC_GPIO_ALERT(0, 2)
+            OT_DJ_SOC_GPIO_ALERT(0, 2),
+            OT_DJ_SOC_SIGNAL(OT_SPI_DEVICE_PASSTHROUGH_EN, 0, SPI_HOST0,
+                OT_SPI_HOST_PASSTHROUGH_EN, 0),
+            OT_DJ_SOC_SIGNAL(OT_SPI_DEVICE_PASSTHROUGH_CS, 0, SPI_HOST0,
+                OT_SPI_HOST_PASSTHROUGH_CS, 0)
         ),
     },
     [OT_DJ_SOC_DEV_PWRMGR] = {
