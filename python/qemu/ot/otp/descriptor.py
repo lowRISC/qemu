@@ -131,15 +131,19 @@ class OtpPartitionDesc:
         key_seeds: list[tuple[str, str, int, int]] = []
         for kseed in self._otpmap.key_seeds:
             if kseed.name == 'SRAM_DATA':
-                key_seeds.append(('OTP_KEY_OTBN', f'OTP_PART_{kseed.part_name}',
+                # the OTBN key is derived from the SRAM key
+                key_seeds.append(('OT_OTP_KEY_OTBN',
+                                  f'OTP_PART_{kseed.part_name}',
                                   kseed.offset, kseed.size))
-                key_seeds.append(('OTP_KEY_SRAM', f'OTP_PART_{kseed.part_name}',
+                key_seeds.append(('OT_OTP_KEY_SRAM',
+                                  f'OTP_PART_{kseed.part_name}',
                                   kseed.offset, kseed.size))
                 continue
-            key_seeds.append((f'OTP_KEY_{kseed.name}',
+            key_seeds.append((f'OT_OTP_KEY_{kseed.name}',
                               f'OTP_PART_{kseed.part_name}',
                               kseed.offset, kseed.size))
-        print('static const OtOTPKeySeed OT_OTP_KEY_SEEDS[OTP_KEY_COUNT] = {',
+        print('static const OtOTPKeySeed '
+              'OT_OTP_KEY_SEEDS[OT_OTP_KEY_COUNT] = {',
               file=cfp)
         for ksd in key_seeds:
             print(f'    [{ksd[0]}] = {{', file=cfp)
@@ -272,10 +276,10 @@ class OtpRegisterDef:
         print('static const char *PART_NAMES[] = {', file=cfp)
         print('    /* clang-format off */', file=cfp)
         for pname in part_names[:pcount]:
-            print(f'    OTP_NAME_ENTRY({pname}),', file=cfp)
+            print(f'    OT_OTP_NAME_ENTRY({pname}),', file=cfp)
         print('    /* fake partitions */', file=cfp)
-        print('    OTP_NAME_ENTRY(OTP_ENTRY_DAI),', file=cfp)
-        print('    OTP_NAME_ENTRY(OTP_ENTRY_KDI),', file=cfp)
+        print('    OT_OTP_NAME_ENTRY(OTP_ENTRY_DAI),', file=cfp)
+        print('    OT_OTP_NAME_ENTRY(OTP_ENTRY_KDI),', file=cfp)
         print('    /* clang-format on */', file=cfp)
         print('};', file=cfp)
         print(file=cfp)
