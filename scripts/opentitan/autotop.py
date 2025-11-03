@@ -468,7 +468,7 @@ class AutoTop:
         for name, val in sorted(alerts.items(), key=lambda alert: alert[1]):
             print(f'    pub const {name}: usize = {val};', file=tfp)
             max_val = max(val, max_val)
-        print(f'    pub const COUNT: usize = {max_val};', file=tfp)
+        print(f'    pub const COUNT: usize = {max_val + 1};', file=tfp)
         print('}\n', file=tfp)
 
     def _generate_bmtest_pinmux(self, tfp) -> None:
@@ -481,7 +481,7 @@ class AutoTop:
                 us_ion = camel_to_snake_uppercase(ion)
                 print(f'    pub const {us_ion}: usize = {val};', file=tfp)
                 max_val = max(val, max_val)
-            print(f'    pub const COUNT: usize = {max_val};', file=tfp)
+            print(f'    pub const COUNT: usize = {max_val + 1};', file=tfp)
             print('}\n', file=tfp)
 
 
