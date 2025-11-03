@@ -292,7 +292,7 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
         qemu_log_mask(LOG_UNIMP, "%s: %s OTP does not support key generation\n",
                       __func__, s->ot_id);
     } else {
-        oc->get_otp_key(oi, OTP_KEY_SRAM, s->otp_key);
+        oc->get_otp_key(oi, OT_OTP_KEY_SRAM, s->otp_key);
 
         TRACE_SRAM_CTRL("Scrambing seed:  %s (valid: %u)",
                         ot_sram_ctrl_hexdump(s, s->otp_key->seed,

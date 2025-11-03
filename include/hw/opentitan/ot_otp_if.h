@@ -78,10 +78,10 @@ typedef struct {
 } OtOTPHWCfg;
 
 typedef enum {
-    OTP_TOKEN_TEST_UNLOCK,
-    OTP_TOKEN_TEST_EXIT,
-    OTP_TOKEN_RMA,
-    OTP_TOKEN_COUNT
+    OT_OTP_TOKEN_TEST_UNLOCK,
+    OT_OTP_TOKEN_TEST_EXIT,
+    OT_OTP_TOKEN_RMA,
+    OT_OTP_TOKEN_COUNT
 } OtOTPToken;
 
 typedef struct {
@@ -90,16 +90,16 @@ typedef struct {
 } OtOTPTokenValue;
 
 typedef struct {
-    OtOTPTokenValue values[OTP_TOKEN_COUNT];
+    OtOTPTokenValue values[OT_OTP_TOKEN_COUNT];
     uint32_t valid_bm; /* OtLcCtrlToken-indexed valid bit flags */
 } OtOTPTokens;
 
 typedef enum {
-    OTP_KEY_FLASH_DATA,
-    OTP_KEY_FLASH_ADDR,
-    OTP_KEY_OTBN,
-    OTP_KEY_SRAM,
-    OTP_KEY_COUNT
+    OT_OTP_KEY_FLASH_DATA,
+    OT_OTP_KEY_FLASH_ADDR,
+    OT_OTP_KEY_OTBN,
+    OT_OTP_KEY_SRAM,
+    OT_OTP_KEY_COUNT
 } OtOTPKeyType;
 
 #define OT_OTP_SEED_MAX_SIZE  32u /* 256 bits */
@@ -114,11 +114,11 @@ typedef struct {
 } OtOTPKey;
 
 typedef enum {
-    OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
-    OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
-    OTP_KEYMGR_SECRET_CREATOR_SEED,
-    OTP_KEYMGR_SECRET_OWNER_SEED,
-    OTP_KEYMGR_SECRET_COUNT
+    OT_OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
+    OT_OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
+    OT_OTP_KEYMGR_SECRET_CREATOR_SEED,
+    OT_OTP_KEYMGR_SECRET_OWNER_SEED,
+    OT_OTP_KEYMGR_SECRET_COUNT
 } OtOTPKeyMgrSecretType;
 
 #define OT_OTP_KEYMGR_SECRET_SIZE 32u /* 256 bits (for both keys and seeds) */

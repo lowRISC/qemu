@@ -45,102 +45,103 @@
 #define TYPE_OT_OTP_ENGINE "ot-otp_engine"
 OBJECT_DECLARE_TYPE(OtOTPEngineState, OtOTPEngineClass, OT_OTP_ENGINE)
 
-#define NUM_IRQS         2u
-#define NUM_ALERTS       5u
-#define NUM_DAI_WORDS    2u
-#define NUM_DIGEST_WORDS 2u
-#define NUM_ZER_WORDS    2u
+#define OT_OTP_NUM_IRQS         2u
+#define OT_OTP_NUM_ALERTS       5u
+#define OT_OTP_NUM_DAI_WORDS    2u
+#define OT_OTP_NUM_DIGEST_WORDS 2u
+#define OT_OTP_NUM_ZER_WORDS    2u
+
 
 #define LC_TRANSITION_CNT_SIZE 48u
 #define LC_STATE_SIZE          40u
 
-#define OTP_DIGEST_ADDR_MASK (sizeof(uint64_t) - 1u)
-#define OTP_ZER_ADDR_MASK    (sizeof(uint64_t) - 1u)
+#define OT_OTP_DIGEST_ADDR_MASK (sizeof(uint64_t) - 1u)
+#define OT_OTP_ZER_ADDR_MASK    (sizeof(uint64_t) - 1u)
 
 /* Error code (compliant with ERR_CODE registers) */
 typedef enum {
-    OTP_NO_ERROR,
-    OTP_MACRO_ERROR,
-    OTP_MACRO_ECC_CORR_ERROR, /* This is NOT an error */
-    OTP_MACRO_ECC_UNCORR_ERROR,
-    OTP_MACRO_WRITE_BLANK_ERROR,
-    OTP_ACCESS_ERROR,
-    OTP_CHECK_FAIL_ERROR, /* Digest error */
-    OTP_FSM_STATE_ERROR,
-    OTP_ERROR_COUNT,
+    OT_OTP_NO_ERROR,
+    OT_OTP_MACRO_ERROR,
+    OT_OTP_MACRO_ECC_CORR_ERROR, /* This is NOT an error */
+    OT_OTP_MACRO_ECC_UNCORR_ERROR,
+    OT_OTP_MACRO_WRITE_BLANK_ERROR,
+    OT_OTP_ACCESS_ERROR,
+    OT_OTP_CHECK_FAIL_ERROR, /* Digest error */
+    OT_OTP_FSM_STATE_ERROR,
+    OT_OTP_ERROR_COUNT,
 } OtOTPError;
 
 /* States of an unbuffered partition FSM */
 typedef enum {
-    OTP_UNBUF_RESET,
-    OTP_UNBUF_INIT,
-    OTP_UNBUF_INIT_WAIT,
-    OTP_UNBUF_IDLE,
-    OTP_UNBUF_READ,
-    OTP_UNBUF_READ_WAIT,
-    OTP_UNBUF_ERROR,
+    OT_OTP_UNBUF_RESET,
+    OT_OTP_UNBUF_INIT,
+    OT_OTP_UNBUF_INIT_WAIT,
+    OT_OTP_UNBUF_IDLE,
+    OT_OTP_UNBUF_READ,
+    OT_OTP_UNBUF_READ_WAIT,
+    OT_OTP_UNBUF_ERROR,
 } OtOTPUnbufState;
 
 /* States of a buffered partition FSM */
 typedef enum {
-    OTP_BUF_RESET,
-    OTP_BUF_INIT,
-    OTP_BUF_INIT_WAIT,
-    OTP_BUF_INIT_DESCR,
-    OTP_BUF_INIT_DESCR_WAIT,
-    OTP_BUF_IDLE,
-    OTP_BUF_INTEG_SCR,
-    OTP_BUF_INTEG_SCR_WAIT,
-    OTP_BUF_INTEG_DIG_CLR,
-    OTP_BUF_INTEG_DIG,
-    OTP_BUF_INTEG_DIG_PAD,
-    OTP_BUF_INTEG_DIG_FIN,
-    OTP_BUF_INTEG_DIG_WAIT,
-    OTP_BUF_CNSTY_READ,
-    OTP_BUF_CNSTY_READ_WAIT,
-    OTP_BUF_ERROR,
+    OT_OTP_BUF_RESET,
+    OT_OTP_BUF_INIT,
+    OT_OTP_BUF_INIT_WAIT,
+    OT_OTP_BUF_INIT_DESCR,
+    OT_OTP_BUF_INIT_DESCR_WAIT,
+    OT_OTP_BUF_IDLE,
+    OT_OTP_BUF_INTEG_SCR,
+    OT_OTP_BUF_INTEG_SCR_WAIT,
+    OT_OTP_BUF_INTEG_DIG_CLR,
+    OT_OTP_BUF_INTEG_DIG,
+    OT_OTP_BUF_INTEG_DIG_PAD,
+    OT_OTP_BUF_INTEG_DIG_FIN,
+    OT_OTP_BUF_INTEG_DIG_WAIT,
+    OT_OTP_BUF_CNSTY_READ,
+    OT_OTP_BUF_CNSTY_READ_WAIT,
+    OT_OTP_BUF_ERROR,
 } OtOTPBufState;
 
 /* Direct Access Interface states */
 typedef enum {
-    OTP_DAI_RESET,
-    OTP_DAI_INIT_OTP,
-    OTP_DAI_INIT_PART,
-    OTP_DAI_IDLE,
-    OTP_DAI_ERROR,
-    OTP_DAI_READ,
-    OTP_DAI_READ_WAIT,
-    OTP_DAI_DESCR,
-    OTP_DAI_DESCR_WAIT,
-    OTP_DAI_WRITE,
-    OTP_DAI_WRITE_WAIT,
-    OTP_DAI_SCR,
-    OTP_DAI_SCR_WAIT,
-    OTP_DAI_DIG_CLR,
-    OTP_DAI_DIG_READ,
-    OTP_DAI_DIG_READ_WAIT,
-    OTP_DAI_DIG,
-    OTP_DAI_DIG_PAD,
-    OTP_DAI_DIG_FIN,
-    OTP_DAI_DIG_WAIT,
+    OT_OTP_DAI_RESET,
+    OT_OTP_DAI_INIT_OTP,
+    OT_OTP_DAI_INIT_PART,
+    OT_OTP_DAI_IDLE,
+    OT_OTP_DAI_ERROR,
+    OT_OTP_DAI_READ,
+    OT_OTP_DAI_READ_WAIT,
+    OT_OTP_DAI_DESCR,
+    OT_OTP_DAI_DESCR_WAIT,
+    OT_OTP_DAI_WRITE,
+    OT_OTP_DAI_WRITE_WAIT,
+    OT_OTP_DAI_SCR,
+    OT_OTP_DAI_SCR_WAIT,
+    OT_OTP_DAI_DIG_CLR,
+    OT_OTP_DAI_DIG_READ,
+    OT_OTP_DAI_DIG_READ_WAIT,
+    OT_OTP_DAI_DIG,
+    OT_OTP_DAI_DIG_PAD,
+    OT_OTP_DAI_DIG_FIN,
+    OT_OTP_DAI_DIG_WAIT,
 } OtOTPDAIState;
 
 typedef enum {
-    OTP_LCI_RESET,
-    OTP_LCI_IDLE,
-    OTP_LCI_WRITE,
-    OTP_LCI_WRITE_WAIT,
-    OTP_LCI_ERROR,
+    OT_OTP_LCI_RESET,
+    OT_OTP_LCI_IDLE,
+    OT_OTP_LCI_WRITE,
+    OT_OTP_LCI_WRITE_WAIT,
+    OT_OTP_LCI_ERROR,
 } OtOTPLCIState;
 
 typedef enum {
-    DA_REG_REGWEN,
-    DA_REG_CMD,
-    DA_REG_ADDRESS,
-    DA_REG_WDATA_0,
-    DA_REG_WDATA_1,
-    DA_REG_RDATA_0,
-    DA_REG_RDATA_1,
+    OT_OTP_DA_REG_REGWEN,
+    OT_OTP_DA_REG_CMD,
+    OT_OTP_DA_REG_ADDRESS,
+    OT_OTP_DA_REG_WDATA_0,
+    OT_OTP_DA_REG_WDATA_1,
+    OT_OTP_DA_REG_RDATA_0,
+    OT_OTP_DA_REG_RDATA_1,
 } OtOTPDirectAccessRegister;
 
 typedef struct {
@@ -213,8 +214,8 @@ struct OtOTPEngineState {
     SysBusDevice parent_obj;
 
     QEMUBH *pwr_otp_bh;
-    IbexIRQ irqs[NUM_IRQS];
-    IbexIRQ alerts[NUM_ALERTS];
+    IbexIRQ irqs[OT_OTP_NUM_IRQS];
+    IbexIRQ alerts[OT_OTP_NUM_ALERTS];
     IbexIRQ pwc_otp_rsp;
 
     uint32_t *regs;
@@ -287,13 +288,16 @@ struct OtOTPEngineClass {
                         void *opaque);
 };
 
+#ifdef OT_OTP_COMPORTABLE_REGS
+
 /* Comportable registers are identical for all OTP variants */
-REG32(INTR_STATE, 0x000u)
+REG32(INTR_STATE, 0x00u)
 SHARED_FIELD(INTR_OTP_OPERATION_DONE, 0u, 1u)
 SHARED_FIELD(INTR_OTP_ERROR, 1u, 1u)
-REG32(INTR_ENABLE, 0x004u)
-REG32(INTR_TEST, 0x008u)
-REG32(ALERT_TEST, 0x00cu)
+REG32(INTR_ENABLE, 0x04u)
+REG32(INTR_TEST, 0x08u)
+REG32(ALERT_TEST, 0x0cu)
+REG32(OTP_FIRST_IMPL_REG, 0x10u)
 SHARED_FIELD(ALERT_FATAL_MACRO_ERROR, 0u, 1u)
 SHARED_FIELD(ALERT_FATAL_CHECK_ERROR, 1u, 1u)
 SHARED_FIELD(ALERT_FATAL_BUS_INTEG_ERROR, 2u, 1u)
@@ -307,21 +311,20 @@ SHARED_FIELD(ALERT_RECOV_PRIM_OTP_ALERT, 4u, 1u)
      ALERT_FATAL_BUS_INTEG_ERROR_MASK | ALERT_FATAL_PRIM_OTP_ALERT_MASK | \
      ALERT_RECOV_PRIM_OTP_ALERT_MASK)
 
-/* REG32 bitfields common to all new OTP versions */
-FIELD(DIRECT_ACCESS_CMD, RD, 0u, 1u)
-FIELD(DIRECT_ACCESS_CMD, WR, 1u, 1u)
-FIELD(DIRECT_ACCESS_CMD, DIGEST, 2u, 1u)
-/* ZEROIZE has been introduced in OTP v2.10, after Earlgrey v1.0 / OTP v2.0 */
-FIELD(DIRECT_ACCESS_CMD, ZEROIZE, 3u, 1u)
+#endif /* OT_OTP_COMPORTABLE_REGS */
 
-SHARED_FIELD(ERR_CODE, 0u, 3u)
-static_assert(ERR_CODE_MASK >= OTP_ERROR_COUNT - 1u,
+/* REG32 bitfields common to all new OTP versions */
+FIELD(OT_OTP_DIRECT_ACCESS_CMD, RD, 0u, 1u)
+FIELD(OT_OTP_DIRECT_ACCESS_CMD, WR, 1u, 1u)
+FIELD(OT_OTP_DIRECT_ACCESS_CMD, DIGEST, 2u, 1u)
+/* ZEROIZE has been introduced in OTP v2.10, after Earlgrey v1.0 / OTP v2.0 */
+FIELD(OT_OTP_DIRECT_ACCESS_CMD, ZEROIZE, 3u, 1u)
+
+SHARED_FIELD(OT_OTP_ERR_CODE, 0u, 3u)
+static_assert(OT_OTP_ERR_CODE_MASK >= OT_OTP_ERROR_COUNT - 1u,
               "Error mask not large enough");
 
-SHARED_FIELD(READ_LOCK, 0u, 1u)
-
-#define R32_OFF(_r_)         ((_r_) / sizeof(uint32_t))
-#define OTP_NAME_ENTRY(_st_) [_st_] = stringify(_st_)
+SHARED_FIELD(OT_OTP_READ_LOCK, 0u, 1u)
 
 static inline unsigned
 ot_otp_engine_part_data_offset(const OtOTPEngineState *s, unsigned part_ix)
@@ -335,11 +338,11 @@ ot_otp_engine_part_data_byte_size(const OtOTPEngineState *s, unsigned part_ix)
     size_t size = s->part_descs[part_ix].size;
 
     if (s->part_descs[part_ix].hw_digest || s->part_descs[part_ix].sw_digest) {
-        size -= sizeof(uint32_t) * NUM_DIGEST_WORDS;
+        size -= sizeof(uint32_t) * OT_OTP_NUM_DIGEST_WORDS;
     }
 
     if (s->part_descs[part_ix].zeroizable) {
-        size -= sizeof(uint32_t) * NUM_ZER_WORDS;
+        size -= sizeof(uint32_t) * OT_OTP_NUM_ZER_WORDS;
     }
 
     return (unsigned)size;
@@ -393,7 +396,8 @@ static inline bool ot_otp_engine_is_part_digest_offset(
 {
     uint16_t offset = s->part_descs[part_ix].digest_offset;
 
-    return (offset != UINT16_MAX) && ((addr & ~OTP_DIGEST_ADDR_MASK) == offset);
+    return (offset != UINT16_MAX) &&
+           ((addr & ~OT_OTP_DIGEST_ADDR_MASK) == offset);
 }
 
 static inline bool ot_otp_engine_is_part_zer_offset(
@@ -401,12 +405,12 @@ static inline bool ot_otp_engine_is_part_zer_offset(
 {
     uint16_t offset = s->part_descs[part_ix].zer_offset;
 
-    return (offset != UINT16_MAX) && ((addr & ~OTP_ZER_ADDR_MASK) == offset);
+    return (offset != UINT16_MAX) && ((addr & ~OT_OTP_ZER_ADDR_MASK) == offset);
 }
 
 static inline uint32_t ot_otp_engine_dai_is_busy(const OtOTPEngineState *s)
 {
-    return s->dai->state != OTP_DAI_IDLE;
+    return s->dai->state != OT_OTP_DAI_IDLE;
 }
 
 #endif /* HW_OPENTITAN_OT_OTP_ENGINE_H */

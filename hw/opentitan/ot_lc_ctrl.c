@@ -1192,9 +1192,9 @@ static uint32_t ot_lc_ctrl_load_lc_info(OtLcCtrlState *s)
     g_assert(tokens);
 
     uint32_t valid_bm = tokens->valid_bm;
-    for (unsigned otix = 0; otix < OTP_TOKEN_COUNT; otix++) {
+    for (unsigned otix = 0; otix < OT_OTP_TOKEN_COUNT; otix++) {
         /* beware: LC controller and OTP controller do not use same indices */
-        unsigned ltix = otix + LC_TK_TEST_UNLOCK - OTP_TOKEN_TEST_UNLOCK;
+        unsigned ltix = otix + LC_TK_TEST_UNLOCK - OT_OTP_TOKEN_TEST_UNLOCK;
         /* 'valid' is OT terminology, should be considered as 'defined' */
         bool valid = (bool)(valid_bm & (1u << otix));
         if (valid) {

@@ -28,6 +28,8 @@
  * THE SOFTWARE.
  */
 
+#define OT_OTP_COMPORTABLE_REGS
+
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qom/object.h"
@@ -350,11 +352,17 @@ REG32(LC_STATE, 2008u)
 #define SW_CFG_WINDOW_OFFSET 0x800u
 #define SW_CFG_WINDOW_SIZE   (NUM_SW_CFG_WINDOW_WORDS * sizeof(uint32_t))
 
+#define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
+
 #define R_LAST_REG (R_SECRET2_DIGEST_1)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+
+/* note: useless casts are required for GCC linter */
+static_assert((unsigned)R_STATUS == (unsigned)R_OTP_FIRST_IMPL_REG,
+              "Invalid register address");
 
 typedef enum {
     OTP_PART_VENDOR_TEST,
@@ -466,11 +474,13 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
+#define OT_OTP_NAME_ENTRY(_st_) [OT_OTP_##_st_] = stringify(OT_OTP_##_st_)
+
 static const char *OTP_TOKEN_NAMES[] = {
     /* clang-format off */
-    OTP_NAME_ENTRY(OTP_TOKEN_TEST_UNLOCK),
-    OTP_NAME_ENTRY(OTP_TOKEN_TEST_EXIT),
-    OTP_NAME_ENTRY(OTP_TOKEN_RMA),
+    OT_OTP_NAME_ENTRY(TOKEN_TEST_UNLOCK),
+    OT_OTP_NAME_ENTRY(TOKEN_TEST_EXIT),
+    OT_OTP_NAME_ENTRY(TOKEN_RMA),
     /* clang-format on */
 };
 
@@ -652,11 +662,11 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
         s->regs[reg] &= val32; /* RW0C */
         break;
     case R_DIRECT_ACCESS_CMD:
-        if (FIELD_EX32(val32, DIRECT_ACCESS_CMD, RD)) {
+        if (FIELD_EX32(val32, OT_OTP_DIRECT_ACCESS_CMD, RD)) {
             c->dai_read(s);
-        } else if (FIELD_EX32(val32, DIRECT_ACCESS_CMD, WR)) {
+        } else if (FIELD_EX32(val32, OT_OTP_DIRECT_ACCESS_CMD, WR)) {
             c->dai_write(s);
-        } else if (FIELD_EX32(val32, DIRECT_ACCESS_CMD, DIGEST)) {
+        } else if (FIELD_EX32(val32, OT_OTP_DIRECT_ACCESS_CMD, DIGEST)) {
             c->dai_digest(s);
         }
         break;
@@ -669,7 +679,7 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
         s->regs[reg] = val32;
         break;
     case R_VENDOR_TEST_READ_LOCK ... R_ROT_CREATOR_AUTH_STATE_READ_LOCK:
-        val32 &= READ_LOCK_MASK;
+        val32 &= OT_OTP_READ_LOCK_MASK;
         s->regs[reg] &= val32; /* RW0C */
         break;
     case R_CHECK_TRIGGER_REGWEN:
@@ -862,7 +872,7 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
 
     if (ot_otp_engine_is_buffered(s, part_ix)) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "buffered");
-        c->set_error(s, part_ix, OTP_ACCESS_ERROR);
+        c->set_error(s, part_ix, OT_OTP_ACCESS_ERROR);
 
         /* real HW seems to stall the Tile Link bus in this case */
         return MEMTX_ACCESS_ERROR;
@@ -874,13 +884,13 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
 
     if (!is_readable && !(is_digest || is_zer)) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "not readable");
-        c->set_error(s, part_ix, OTP_ACCESS_ERROR);
+        c->set_error(s, part_ix, OT_OTP_ACCESS_ERROR);
 
         return MEMTX_DECODE_ERROR;
     }
 
     uint32_t val32 = s->otp->data[reg];
-    c->set_error(s, part_ix, OTP_NO_ERROR);
+    c->set_error(s, part_ix, OT_OTP_NO_ERROR);
 
     uint64_t pc;
 
@@ -934,18 +944,18 @@ static void ot_otp_eg_get_keymgr_secret(
     size_t offset;
 
     switch (type) {
-    case OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0:
+    case OT_OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0:
         partition = OTP_PART_SECRET2;
         offset =
             A_SECRET2_CREATOR_ROOT_KEY_SHARE0 - s->part_descs[partition].offset;
         break;
-    case OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1:
+    case OT_OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1:
         partition = OTP_PART_SECRET2;
         offset =
             A_SECRET2_CREATOR_ROOT_KEY_SHARE1 - s->part_descs[partition].offset;
         break;
-    case OTP_KEYMGR_SECRET_CREATOR_SEED:
-    case OTP_KEYMGR_SECRET_OWNER_SEED:
+    case OT_OTP_KEYMGR_SECRET_CREATOR_SEED:
+    case OT_OTP_KEYMGR_SECRET_OWNER_SEED:
     default:
         error_report("%s: %s: invalid OTP keymgr secret type: %d", __func__,
                      s->ot_id, type);
@@ -1022,20 +1032,20 @@ static void ot_otp_eg_pwr_load_tokens(OtOTPEngineState *s)
 
     static_assert(sizeof(OtOTPTokenValue) == 16u, "Invalid token size");
 
-    for (unsigned tkx = 0; tkx < OTP_TOKEN_COUNT; tkx++) {
+    for (unsigned tkx = 0; tkx < OT_OTP_TOKEN_COUNT; tkx++) {
         unsigned partition;
         uint32_t secret_addr;
 
         switch (tkx) {
-        case OTP_TOKEN_TEST_UNLOCK:
+        case OT_OTP_TOKEN_TEST_UNLOCK:
             partition = (unsigned)OTP_PART_SECRET0;
             secret_addr = A_SECRET0_TEST_UNLOCK_TOKEN;
             break;
-        case OTP_TOKEN_TEST_EXIT:
+        case OT_OTP_TOKEN_TEST_EXIT:
             partition = (unsigned)OTP_PART_SECRET0;
             secret_addr = A_SECRET0_TEST_EXIT_TOKEN;
             break;
-        case OTP_TOKEN_RMA:
+        case OT_OTP_TOKEN_RMA:
             partition = (unsigned)OTP_PART_SECRET2;
             secret_addr = A_SECRET2_RMA_TOKEN;
             break;
@@ -1181,11 +1191,11 @@ static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
                  ic->part_descs[part_ix].zer_offset == UINT16_MAX);
     }
 
-    g_assert(OT_OTP_KEY_SEEDS[OTP_KEY_FLASH_ADDR].size ==
+    g_assert(OT_OTP_KEY_SEEDS[OT_OTP_KEY_FLASH_ADDR].size ==
              SECRET1_FLASH_ADDR_KEY_SEED_SIZE);
-    g_assert(OT_OTP_KEY_SEEDS[OTP_KEY_FLASH_DATA].size ==
+    g_assert(OT_OTP_KEY_SEEDS[OT_OTP_KEY_FLASH_DATA].size ==
              SECRET1_FLASH_DATA_KEY_SEED_SIZE);
-    g_assert(OT_OTP_KEY_SEEDS[OTP_KEY_SRAM].size ==
+    g_assert(OT_OTP_KEY_SEEDS[OT_OTP_KEY_SRAM].size ==
              SECRET1_SRAM_DATA_KEY_SEED_SIZE);
 }
 

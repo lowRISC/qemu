@@ -1029,7 +1029,7 @@ ot_keymgr_dpe_kdf_append_creator_seed(OtKeyMgrDpeState *s, bool *dvalid)
 
     OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
     OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
-    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_SEED, &secret);
+    oc->get_keymgr_secret(oi, OT_OTP_KEYMGR_SECRET_CREATOR_SEED, &secret);
 
     ot_keymgr_dpe_kdf_push_bytes(s, secret.secret, OT_OTP_KEYMGR_SECRET_SIZE);
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
@@ -1109,7 +1109,7 @@ ot_keymgr_dpe_kdf_append_owner_seed(OtKeyMgrDpeState *s, bool *dvalid)
 
     OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
     OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
-    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_OWNER_SEED, &secret);
+    oc->get_keymgr_secret(oi, OT_OTP_KEYMGR_SECRET_OWNER_SEED, &secret);
 
     ot_keymgr_dpe_kdf_push_bytes(s, secret.secret, OT_OTP_KEYMGR_SECRET_SIZE);
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
@@ -1449,9 +1449,9 @@ static void ot_keymgr_dpe_get_root_key(
 {
     OtOTPIfClass *oc = OT_OTP_IF_GET_CLASS(s->otp_ctrl);
     OtOTPIf *oi = OT_OTP_IF(s->otp_ctrl);
-    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
+    oc->get_keymgr_secret(oi, OT_OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
                           share0);
-    oc->get_keymgr_secret(oi, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
+    oc->get_keymgr_secret(oi, OT_OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
                           share1);
 
     if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_DUMP_CREATOR_ROOT_KEY)) {
