@@ -1404,7 +1404,7 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    (void)rx;
+    trace_ot_spi_device_flash_transfer(s->ot_id, "->", rx);
 
     uint8_t tx = SPI_DEFAULT_TX_RX_VALUE;
 
@@ -1455,6 +1455,8 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
                    FLASH_STATE_NAME(f->state), f->state);
         g_assert_not_reached();
     }
+
+    trace_ot_spi_device_flash_transfer(s->ot_id, "<-", tx);
 
     return tx;
 }
