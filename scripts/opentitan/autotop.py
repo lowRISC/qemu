@@ -324,7 +324,7 @@ class AutoTop:
             lines.append(f'{u_ioname}_COUNT, /* {max_val + 1} */')
             code = redent('\n'.join(lines), 4)
             print(code, file=tfp)
-            print('}\n', file=tfp)
+            print('};\n', file=tfp)
 
     def _generate_qemu_devices(self, prefix: str, dev: str, tfp: TextIO) \
             -> None:
