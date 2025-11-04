@@ -25,8 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *
- * Note: for now, only a minimalist subset of Life Cycle controller device is
- *       implemented in order to enable OpenTitan's ROM boot to progress
+ * Based on OpenTitan 0fc384d8a6
  */
 
 #include "qemu/osdep.h"
@@ -58,11 +57,11 @@
 #define REVISION_ID_WIDTH        8u
 
 /* clang-format off */
-REG32(ALERT_TEST, 0x0u)
+REG32(ALERT_TEST, 0x00u)
     SHARED_FIELD(ALERT_FATAL_PROG_ERROR, 0u, 1u)
     SHARED_FIELD(ALERT_FATAL_STATE_ERROR, 1u, 1u)
     SHARED_FIELD(ALERT_FATAL_BUS_INTEG_ERROR, 2u, 1u)
-REG32(STATUS, 0x4u)
+REG32(STATUS, 0x04u)
     FIELD(STATUS, INITIALIZED, 0u, 1u)
     FIELD(STATUS, READY, 1u, 1u)
     FIELD(STATUS, EXT_CLOCK_SWITCHED, 2u, 1u)
@@ -75,10 +74,10 @@ REG32(STATUS, 0x4u)
     FIELD(STATUS, STATE_ERROR, 9u, 1u)
     FIELD(STATUS, BUS_INTEG_ERROR, 10u, 1u)
     FIELD(STATUS, OTP_PARTITION_ERROR, 11u, 1u)
-REG32(CLAIM_TRANSITION_IF_REGWEN, 0x8u)
+REG32(CLAIM_TRANSITION_IF_REGWEN, 0x08u)
     FIELD(CLAIM_TRANSITION_IF_REGWEN, EN, 0u, 1u)
-REG32(CLAIM_TRANSITION_IF, 0xcu)
-    FIELD(CLAIM_TRANSITION, IF_MUTEX, 0u, 8u)
+REG32(CLAIM_TRANSITION_IF, 0x0cu)
+    FIELD(CLAIM_TRANSITION_IF, MUTEX, 0u, 8u)
 REG32(TRANSITION_REGWEN, 0x10u)
     FIELD(TRANSITION_REGWEN, EN, 0u, 1u)
 REG32(TRANSITION_CMD, 0x14u)
@@ -125,6 +124,13 @@ REG32(MANUF_STATE_6, 0x84u)
 REG32(MANUF_STATE_7, 0x88u)
 /* clang-format on */
 
+#define ALERT_TEST_WMASK \
+    (ALERT_FATAL_PROG_ERROR_MASK | ALERT_FATAL_STATE_ERROR_MASK | \
+     ALERT_FATAL_BUS_INTEG_ERROR_MASK)
+#define TRANSITION_CTRL_WMASK \
+    (TRANSITION_CTRL_EXT_CLOCK_EN_MASK | \
+     TRANSITION_CTRL_VOLATILE_RAW_UNLOCK_MASK)
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_LAST_REG (R_MANUF_STATE_7)
@@ -137,10 +143,6 @@ REG32(MANUF_STATE_7, 0x88u)
 #define R_LAST_EXCLUSIVE_REG  (R_TRANSITION_TARGET)
 #define EXCLUSIVE_REGS_COUNT  (R_LAST_EXCLUSIVE_REG - R_FIRST_EXCLUSIVE_REG + 1u)
 #define XREGS_OFFSET(_r_)     ((_r_) - R_FIRST_EXCLUSIVE_REG)
-
-#define ALERT_TEST_MASK \
-    (ALERT_FATAL_PROG_ERROR_MASK | ALERT_FATAL_STATE_ERROR_MASK | \
-     ALERT_FATAL_BUS_INTEG_ERROR_MASK)
 
 #define LC_TRANSITION_COUNT_MAX 24u
 #define LC_TOKEN_WIDTH          16u /* 128 bits */
@@ -708,7 +710,7 @@ LC_STATES_TPL[NUM_LC_STATE][LC_STATE_WORDS] = {
 #ifdef OT_LC_CTRL_DEBUG
 #define OT_LC_CTRL_HEXSTR_SIZE 256u
 #define TRACE_LC_CTRL(msg, ...) \
-    qemu_log("%s: " msg "\n", __func__, ##__VA_ARGS__);
+    qemu_log("%s: %s: " msg "\n", __func__, s->ot_id, ##__VA_ARGS__);
 #define ot_lc_ctrl_hexdump(_s_, _b_, _l_) \
     ot_common_lhexdump((const uint8_t *)_b_, _l_, false, (_s_)->hexstr, \
                        OT_LC_CTRL_HEXSTR_SIZE)
@@ -823,15 +825,16 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
             div_type = LC_DIV_DEV;
             break;
         case LC_STATE_RMA:
-            sigbm =
-                LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
-                LC_BCAST_BIT(NVM_DEBUG_EN) | LC_BCAST_BIT(HW_DEBUG_EN) |
-                LC_BCAST_BIT(CPU_EN) | LC_BCAST_BIT(KEYMGR_EN) |
-                LC_BCAST_BIT(CHECK_BYP_EN) |
-                LC_BCAST_BIT(CREATOR_SEED_SW_RW_EN) |
-                LC_BCAST_BIT(OWNER_SEED_SW_RW_EN) |
-                LC_BCAST_BIT(ISO_PART_SW_RD_EN) |
-                LC_BCAST_BIT(ISO_PART_SW_WR_EN) | LC_BCAST_BIT(SEED_HW_RD_EN);
+            /* note: RMA signal not available on EG 1.0.0 */
+            sigbm = LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
+                    LC_BCAST_BIT(NVM_DEBUG_EN) | LC_BCAST_BIT(HW_DEBUG_EN) |
+                    LC_BCAST_BIT(CPU_EN) | LC_BCAST_BIT(KEYMGR_EN) |
+                    LC_BCAST_BIT(CHECK_BYP_EN) |
+                    LC_BCAST_BIT(CREATOR_SEED_SW_RW_EN) |
+                    LC_BCAST_BIT(OWNER_SEED_SW_RW_EN) |
+                    LC_BCAST_BIT(ISO_PART_SW_RD_EN) |
+                    LC_BCAST_BIT(ISO_PART_SW_WR_EN) |
+                    LC_BCAST_BIT(SEED_HW_RD_EN) | LC_BCAST_BIT(RMA);
             div_type = LC_DIV_RMA;
             break;
         case LC_STATE_SCRAP:
@@ -1301,8 +1304,8 @@ static void ot_lc_ctrl_program_otp(OtLcCtrlState *s, unsigned lc_tcount,
 
     if (!oc->program_req) {
         qemu_log_mask(LOG_UNIMP,
-                      "%s: OTP implementation does not support programming",
-                      __func__);
+                      "%s: %s: OTP implementation does not support programming",
+                      __func__, s->ot_id);
         s->regs[R_STATUS] |= R_STATUS_OTP_ERROR_MASK;
         LC_FSM_CHANGE_STATE(s, ST_POST_TRANS);
         s->lc_state = LC_STATE_POST_TRANSITION;
@@ -1765,13 +1768,14 @@ static uint32_t ot_lc_ctrl_regs_read(OtLcCtrlState *s, hwaddr addr,
         break;
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0;
         break;
     }
@@ -1819,7 +1823,7 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
 
     switch (reg) {
     case R_ALERT_TEST:
-        val32 &= ALERT_TEST_MASK;
+        val32 &= ALERT_TEST_WMASK;
         s->regs[R_ALERT_TEST] = val32;
         ot_lc_ctrl_update_alerts(s);
         break;
@@ -1830,8 +1834,9 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
     case R_CLAIM_TRANSITION_IF:
         if (!(s->regs[R_CLAIM_TRANSITION_IF_REGWEN] &
               R_CLAIM_TRANSITION_IF_REGWEN_EN_MASK)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: CLAIM_TRANSITION_IF disabled\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: CLAIM_TRANSITION_IF disabled\n", __func__,
+                          s->ot_id);
             break;
         }
         val32 &= R_CLAIM_TRANSITION_IF_MUTEX_MASK;
@@ -1845,8 +1850,8 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
         val32 &= R_TRANSITION_CMD_START_MASK;
         if (val32) {
             if (!ot_lc_ctrl_is_transition_en(s, ifreq)) {
-                qemu_log_mask(LOG_GUEST_ERROR, "%s: LC IF not available\n",
-                              __func__);
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: LC IF not available\n",
+                              __func__, s->ot_id);
                 break;
             }
             ot_lc_ctrl_start_transition(s);
@@ -1854,8 +1859,8 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
         break;
     case R_TRANSITION_CTRL:
         if (!ot_lc_ctrl_is_transition_en(s, ifreq)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: LC IF not available\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: LC IF not available\n",
+                          __func__, s->ot_id);
             break;
         }
         if (val32 & R_TRANSITION_CTRL_EXT_CLOCK_EN_MASK) {
@@ -1874,8 +1879,8 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
     case R_TRANSITION_TOKEN_2:
     case R_TRANSITION_TOKEN_3:
         if (!ot_lc_ctrl_is_transition_en(s, ifreq)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: LC IF not available\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: LC IF not available\n",
+                          __func__, s->ot_id);
             break;
         }
         g_assert(LC_XSLOT(ifreq) < EXCLUSIVE_SLOTS_COUNT);
@@ -1883,8 +1888,8 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
         break;
     case R_TRANSITION_TARGET:
         if (!ot_lc_ctrl_is_transition_en(s, ifreq)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: LC IF not available\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: LC IF not available\n",
+                          __func__, s->ot_id);
             break;
         }
         val32 &= R_TRANSITION_TARGET_STATE_MASK;
@@ -1895,8 +1900,8 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
         break;
     case R_OTP_VENDOR_TEST_CTRL:
         if (!ot_lc_ctrl_is_transition_en(s, ifreq)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: LC IF not available\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: LC IF not available\n",
+                          __func__, s->ot_id);
             break;
         }
         s->regs[reg] = val32;
@@ -1926,12 +1931,13 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
     case R_MANUF_STATE_6:
     case R_MANUF_STATE_7:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 };
@@ -1997,7 +2003,7 @@ static void ot_lc_ctrl_load_transitions(OtLcCtrlState *s,
         len = strlen(s->trans_cfg[trans].state[ix]);
         /* each byte is encoding with two ASCII nibbles */
         if (len != tdesc->word_count * sizeof(uint16_t) * 2u) {
-            qemu_log("%s %s %s %zu %zu\n", __func__, tdesc->name,
+            qemu_log("%s: %s: %s %s %zu %zu\n", __func__, s->ot_id, tdesc->name,
                      TSTATE_NAME(ix), len,
                      tdesc->word_count * sizeof(uint16_t));
             error_setg(&err, "%s: %s invalid %s %s length\n", __func__,
@@ -2101,7 +2107,7 @@ static void ot_lc_ctrl_configure_transitions(
     /* dump the generated transition tables */
     lcval = table;
     for (unsigned tix = 0; tix < tdesc->step_count; tix++) {
-        qemu_log("%s: %s[%2u]", __func__, tdesc->name, tix);
+        qemu_log("%s: %s: %s[%2u]", __func__, s->ot_id, tdesc->name, tix);
         for (unsigned wix = 0; wix < tdesc->word_count; wix++) {
             qemu_log(" %04hx", *lcval++);
         };

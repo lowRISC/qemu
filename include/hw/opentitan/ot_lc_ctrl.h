@@ -57,6 +57,7 @@ typedef enum {
     OT_LC_ISO_PART_SW_RD_EN, /* for embed. flash, not used in DJ */
     OT_LC_ISO_PART_SW_WR_EN, /* for embed. flash, not used in DJ */
     OT_LC_SEED_HW_RD_EN, /* for OTP and embed. flash */
+    OT_LC_RMA, /* RMA state */
     OT_LC_BROADCAST_COUNT,
 } OtLcCtrlBroadcast;
 
