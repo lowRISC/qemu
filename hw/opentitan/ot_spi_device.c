@@ -1125,8 +1125,7 @@ static void ot_spi_device_flash_exec_read_sfdp(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    unsigned address = ldl_be_p(f->src);
-    address &= (1u << 24u) - 1u; /* discard dummy byte */
+    unsigned address = ldl_be_p(f->src) >> 8u; /* discard dummy byte */
     f->pos = address % SPI_SRAM_SFDP_SIZE;
     f->len = SPI_SRAM_SFDP_SIZE;
     f->src = &((uint8_t *)s->sram)[SPI_SRAM_SFDP_OFFSET];
