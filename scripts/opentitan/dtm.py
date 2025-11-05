@@ -123,7 +123,7 @@ def main():
         mem.add_argument('-F', '--fast-mode', default=False,
                          action='store_true',
                          help='do not check system bus status while '
-                              'transfering')
+                              'transferring')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')

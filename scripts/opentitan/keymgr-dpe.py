@@ -92,7 +92,7 @@ def main():
                             choices=KeyManagerDpe.TARGETS, required=True,
                             help='destination device')
 
-        exeparser = subparsers.add_parser('execute', help='execute sqeuence')
+        exeparser = subparsers.add_parser('execute', help='execute sequence')
         exeparser.add_argument('-s', '--sequence', metavar='INI', required=True,
                                type=FileType('rt'),
                                help='execution sequence definition')
@@ -111,7 +111,8 @@ def main():
         if not (args.vmem or args.raw):
             argparser.error('Either VMEM or RAW image file must be specified')
         if args.vmem and args.raw:
-            argparser.error('Only one of VMEM or RAW image file can be specified')
+            argparser.error('Only one of VMEM or RAW image file can be '
+                            'specified')
 
         if args.exec == 'generate':
             KeyManagerDpe.from_args(args)

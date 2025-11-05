@@ -48,7 +48,7 @@ Memory:
   -f, --file FILE       file to read/write data for memory access
   -D, --data DATA       data to write using memory access
   -e, --elf ELF         load ELF file into memory
-  -F, --fast-mode       do not check system bus status while transfering
+  -F, --fast-mode       do not check system bus status while transferring
 
 Extras:
   -v, --verbose         increase verbosity
@@ -67,7 +67,7 @@ Extras:
 * `-c` read and report a CSR from the Ibex core.
 
 * `-D` data to write, useful with `--mem` option in write mode. Mutually exclusive with `--file`.
-  Data may be specifed as an decimal or hexadecimal integer, limited to 32-bit integers. It is also
+  Data may be specified as an decimal or hexadecimal integer, limited to 32-bit integers. It is also
   possible to use `:` followed with a string of hexadecimal nibbles (without 0x prefix).
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
@@ -76,7 +76,7 @@ Extras:
 
 * `-F` assume System Bus can cope with received data pace. This feature increases transfer data
   rate by bypassing SB status check. However it  may cause the transfer to fail in case System Bus
-  becomes busy while data are transfered.
+  becomes busy while data are transferred.
 
 * `-f` specify the file to read from or write to when option `--mem` is used. Mutually exclusive
   with option `--data`.

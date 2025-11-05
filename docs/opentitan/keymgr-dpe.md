@@ -79,22 +79,37 @@ Depending on the execution mode, the following options are available:
 This mode can be used to generate a single output key, which can be stored into an output file.
 
 ```
-usage: keymgr-dpe.py generate [-h] [-b HEXSTR] [-g {HW,SW}] -k HEXSTR [-o OUTPUT] [-R NAME] -s HEXSTR -t {AES,KMAC,OTBN,NONE}
+usage: keymgr-dpe.py [-h] -c CFG -j HJSON [-l SV] [-m VMEM] [-R RAW] [-r ROM]
+                     [-e BITS] [-z SIZE] [-v] [-d]
+                     {generate,execute,verify} ...
+
+QEMU OT tool to generate Key Manager DPE keys.
+
+positional arguments:
+  {generate,execute,verify}
+                        Execution mode
+    generate            generate a key
+    execute             execute sequence
+    verify              verify execution log
 
 options:
   -h, --help            show this help message and exit
-  -b, --swbindings HEXSTR
-                        SW bindings, may be repeated
-  -g, --gen-out {HW,SW}
-                        generation output (default: auto)
-  -k, --key-version HEXSTR
-                        Key version
-  -o, --output OUTPUT   output file with generated key
-  -R, --rust-const NAME
-                        Rust constant name for the generated key
-  -s, --salt HEXSTR     Salt
-  -t, --target {AES,KMAC,OTBN,NONE}
-                        destination device
+
+Files:
+  -c, --config CFG      input QEMU OT config file
+  -j, --otp-map HJSON   input OTP controller memory map file
+  -l, --lifecycle SV    input lifecycle system verilog file
+  -m, --vmem VMEM       input VMEM file
+  -R, --raw RAW         input QEMU OTP raw image file
+  -r, --rom ROM         input ROM image file, may be repeated
+
+Parameters:
+  -e, --ecc BITS        ECC bit count (default: 6)
+  -z, --rom-size SIZE   ROM image size in bytes, may be repeated
+
+Extras:
+  -v, --verbose         increase verbosity
+  -d, --debug           enable debug mode
 ```
 
 ### Arguments
@@ -105,8 +120,16 @@ options:
    is automatically padded with zero bytes up to the maximum software binding size supported by the
    HW.
 
+* `-c` specify a QEMU [configuration file](otcfg.md) from which to read all the cryptographic
+  constants. See the [`cfggen.py`](cfggen.md) tool to generate such a file.
+
 * `-g` specify the kind of generation to perform. If not specified, it is inferred from the `-t`
   target option.
+
+* `-j` specify the path to the HJSON OTP controller map file, usually named `otp_ctrl_mmap.hjson`.
+
+* `-l` specify the life cycle system verilog file, usually named `lc_ctrl_state_pkg.sv`, that
+  defines the encoding of the life cycle states.
 
 * `-k` the version of the key to generate
 
@@ -212,9 +235,10 @@ options:
 ### Arguments
 
 * `-l` specify the execution log to verify. The execution log is expected to contain the output of
-  a test that has run on the OpenTitan platform. It should emit a syntax identitical to the format
-  described in the [Execute options](#execute-options) section, _i.e._ an INI-like syntax. To distinguish INI
-  syntax from any other log output, each line of interest should be prefixed with a `T> ` marker.
+  a test that has run on the OpenTitan platform. It should emit a syntax identical to the format
+  described in the [Execute options](#execute-options) section, _i.e._ an INI-like syntax. To
+  distinguish INI syntax from any other log output, each line of interest should be prefixed with a
+  `T> ` marker.
 
     [`pyot.py`](pyot.md) script may be used to generate the log file, see `--log-file` option or the
     `log_file` test parameter.

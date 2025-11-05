@@ -17,7 +17,7 @@ This mode is not yet supported.
 
 ### TPM
 
-This mode is partially supported, TPM commands handled by hw are not supported yet. The CharDev 
+This mode is partially supported, TPM commands handled by hw are not supported yet. The CharDev
 protocol doesn't support a distinct chip select for TPM, therefore it is sharing the same CS with
 the other modes. If CS is asserted and TPM is enabled, then it will have priority.
 
@@ -35,7 +35,7 @@ CharDev always output as many payload bytes as it receives, like a regular SPI b
 ### Creating QEMU SPI Device CharDev
 
 The most common/useful CharDev for SPI device is to use a TCP communication stream, which can be
-instanciated this way from the command line:
+instantiated this way from the command line:
 
 ````
 -chardev socket,id=spidev,host=localhost,port=8004,server=on,wait=off
@@ -129,5 +129,5 @@ should release the /CS line, i.e. <c> should be 0.
 
 Note that SPI device support bit reversing for both TX and RX, the bit configuration in the SPI
 device header is only used for debugging (tracking configuration mismatch between the host and the
-device). Polarity and Phase are not emulated however SPI stream is explitly corrupted
-(bit inversion) if CPOL/CPHA do not match between host and device.
+device). Polarity and Phase are not emulated however SPI stream is explicitly corrupted (bit
+inversion) if CPOL/CPHA do not match between host and device.

@@ -78,7 +78,8 @@ features are implemented.
 * AST
   * configurable clock sources
 * GPIO
-  * Connections with pinmux not implemented (need to be ported from [Darjeeling](darjeeling.md) version)
+  * Connections with pinmux not implemented (need to be ported from [Darjeeling](darjeeling.md)
+    version)
 * Lifecycle controller
   * only forwards LC state from OTP (need to be ported from [Darjeeling](darjeeling.md) version)
 * Power Manager
@@ -121,8 +122,8 @@ qemu-system-riscv32 -M ot-earlgrey -display none -serial mon:stdio \
   -drive if=mtd,bus=2,file=flash.raw,format=raw
 ````
 
-where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the signed binary file of the
-ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
+where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the signed binary file of
+the ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
 generate the `.raw` image files.
 
 See [`rom_ctrl.md`](rom_ctrl.md) for information on ROM option.
@@ -322,6 +323,6 @@ are loaded from a raw binary file (`.bin`, `.signed.bin`, ...). However the
 [`flashgen.py`](flashgen.md) script implements a workaround for this feature, please refer to this
 script for more details.
 
-Finally, a Rust demangler has been added to QEMU, which enables the QEMU integrated dissambler to
+Finally, a Rust demangler has been added to QEMU, which enables the QEMU integrated disassembler to
 emit the demangled names of the Rust symbols for Rust-written guest applications rather than their
 mangled versions as stored in the ELF file.

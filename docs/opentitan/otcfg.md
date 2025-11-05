@@ -35,7 +35,7 @@ instances of the selected device.
 
 The separator between the `<device>` and the `<ot_id>` parameter should be a single dot `.`.
 
-The remaning line of the section are (key, value) pairs, expressed as `<key> = <value>`. The `key`
+The remaining line of the section are (key, value) pairs, expressed as `<key> = <value>`. The `key`
 is always a string which is one of the device's supported properties. The value may either be a
 string, a unsigned 64-bit integer or boolean, which should match the type of the selected property.
 
@@ -95,7 +95,7 @@ Here, `digest_const` is expected to match the `--constant` argument of the [otpt
 tool, whereas `digest_iv` is expected to match its `--iv` argument. Should those values differ,
 OpenTitan OTP controller would fail to verify the OTP partition digests.
 
-### Life-Cycle controller [lifecyle]
+### Life-Cycle controller [lifecycle]
 
 ```ini
 [ot_device "ot-lc_ctrl"]

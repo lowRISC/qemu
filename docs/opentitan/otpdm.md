@@ -48,7 +48,7 @@ Extras:
 
 * `-b` specify the DMI base address for the RISC-V Debug Module.
 
-* `-D` show partition digest(s). If no parition is selected (see option `-p`), the digest of all
+* `-D` show partition digest(s). If no partition is selected (see option `-p`), the digest of all
        partitions are shown; otherwise the digest of the selected partition is shown. Requires
        option `-j`.
 
@@ -80,7 +80,7 @@ Extras:
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
 * `-w` store the value into the selected item. Requires options `-p` and `-i`. The value should be
-       specifed as an hexadecimal or decimal integer for item whose size is less or equal to 8
+       specified as an hexadecimal or decimal integer for item whose size is less or equal to 8
        bytes. For larger items the value should be specified as a sequence of hexa-encoded bytes.
 
 ### Examples
@@ -137,4 +137,3 @@ option:
 ### Troubleshooting
 
 See the [Troubleshooting](jtag-dm.md#troubleshooting) section for details.
-

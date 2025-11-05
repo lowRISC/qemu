@@ -155,7 +155,7 @@ index 2ab28deac..0e84418d9 100644
 @@ -1882,6 +1882,8 @@ static int examine(struct target *target)
  		return ERROR_FAIL;
  	}
- 
+
 +	target->state = TARGET_UNAVAILABLE;
 +	return ERROR_OK;
  	/* Reset the Debug Module. */
@@ -168,11 +168,11 @@ index 5bae01d5f..786f2520a 100644
 @@ -3167,6 +3167,8 @@ int riscv_openocd_poll(struct target *target)
  {
  	LOG_TARGET_DEBUG_IO(target, "Polling all harts.");
- 
+
 +	return ERROR_OK;
 +
  	struct list_head *targets;
- 
+
  	LIST_HEAD(single_target_list);
 ```
 
@@ -236,7 +236,7 @@ the JTAG mailbox.
 
 Note: `devproxy.py` needs to be found within the Python path, using for example
 ```sh
-exprot PYTHONPATH=${QEMU_SOURCE_PATH}/scripts/opentitan
+export PYTHONPATH=${QEMU_SOURCE_PATH}/scripts/opentitan
 ```
 
 ### Troubleshooting

@@ -35,7 +35,7 @@ stream the GPIO input and output pins.
 
 This CharDev device can be used to stimulate the GPIO and perform unit tests.
 
-To connect the GPIO to its optional characted device, use the following QEMU option
+To connect the GPIO to its optional character device, use the following QEMU option
 
 ```
 -chardev type,id=gpio -global ot-gpio-$OTMACHINE.chardev=gpio
@@ -68,8 +68,8 @@ where:
 3. `CR` is the carriage return character (0x0d)
 4. `LF` is the line feed character, or end-of-line (0x0a)
 
-Each frame is delimited with `LF` characters. `CR` are ignored and accepted to ease compatibity with
-some terminals but are useless.
+Each frame is delimited with `LF` characters. `CR` are ignored and accepted to ease compatibility
+with some terminals but are useless.
 
 The hex value represents the 32-bit GPIO values.
 
@@ -117,4 +117,3 @@ Note: the first serial port of the board is reserved to its debug console.
 ### Testing
 
 See the [gpiodev.py](gpiodev.md) script.
-

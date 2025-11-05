@@ -143,23 +143,22 @@ Fuse RAW images only use the v1 type.
   generate. See also the `--out-kind` option for output formats.
 
 * `-i` specify the initialization vector for the Present scrambler used for partition digests.
-  This value is "usually" found within the `hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv` OT file,
-  from the last entry of `RndCnstDigestIV` array, _i.e._ item 0. It is used along with option
-  `-D` to verify partition digests, and stored in the optional output OTP image file for use by
-  the virtual OTP controller when used along with the `-o` option. Override option `-C` if any.
+  This value is "usually" found in `otp_ctrl_part_pkg.sv` OT file, from the last entry of
+  `RndCnstDigestIV` array, _i.e._ item 0. It is used along with option `-D` to verify partition
+  digests, and stored in the optional output OTP image file for use by the virtual OTP controller
+  when used along with the `-o` option. Override option `-C` if any.
 
-* `-j` specify the path to the HJSON OTP controller map file, usually stored in OT
-  `hw/ip/otp_ctrl/data/otp_ctrl_mmap.hjson`. This file is required with many options when the OTP
-  image file needs to be interpreted, such as digest verification, content dump, C file generation,
-  ...
+* `-j` specify the path to the HJSON OTP controller map file, usually named `otp_ctrl_mmap.hjson`.
+  This file is required with many options when the OTP image file needs to be interpreted, such as
+  digest verification, content dump, C file generation, ...
 
 * `-k` specify the kind of input VMEM file, either OTP or Fuse kind. The script attempts to detect
   the kind of the input VMEM file from its content when this option is not specified or set to
   `auto`. It is fails to detect the file kind or if the kind needs to be enforced, use this option.
 
-* `-l` specify the life cycle system verilog file that defines the encoding of the life cycle
-  states. This option is not required to generate a RAW image file, but required when the `-L`
-  option switch is used.
+* `-l` specify the life cycle system verilog file, usually named `lc_ctrl_state_pkg.sv`, that
+  defines the encoding of the life cycle states. This option is not required to generate a RAW image
+  file, but required when the `-L` option switch is used.
 
 * `-m` specify the input VMEM file that contains the OTP fuse content. See also the `-k` option.
 
@@ -274,7 +273,7 @@ which enables to directly specify the half-word offset encoded in the input VMEM
 example, to write at @0006, either use `0xc` or `0h6` as the offset specifier.
 
 If the bit is larger than the data slot, it indicates the location with the ECC part, _e.g._ if OTP
-fuses are organized as 16-bit slots wtih 6-bit ECC, bit 0 to 15 indicates a bit into the data slot,
+fuses are organized as 16-bit slots with 6-bit ECC, bit 0 to 15 indicates a bit into the data slot,
 while bit 16 to 21 indicates an ECC bit.
 
 It is possible to tell the script to rebuild the ECC value for the modified bits, using `-F`.

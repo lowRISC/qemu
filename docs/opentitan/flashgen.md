@@ -31,7 +31,7 @@ Files:
   -t, --otdesc OTDESC   OpenTitan style file descriptor, may be repeated
   -T, --ignore-time     Discard time checking on ELF files
   -U, --unsafe-elf      Discard sanity checking on ELF files
-  -A, --accept-invalid  Blindy accept invalid input files
+  -A, --accept-invalid  Blindly accept invalid input files
 
 Extra:
   -v, --verbose         increase verbosity

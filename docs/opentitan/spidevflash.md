@@ -32,7 +32,7 @@ options:
 
 ### Arguments
 
-* `-a` specify an alernative start address'
+* `-a` specify an alternative start address'
 
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 
@@ -61,10 +61,15 @@ options:
 
 ### Examples
 
-With the following examples:
+In the following example
 
-`-chardev socket,id=spidev,host=localhost,port=8004,server=on,wait=off -global ot-spi_device.chardev=spidev` has been
-added to the QEMU command line to create a TCP chardev and connect it the SPI Device backend. See the [SPI Device](spi_device.md) documentation for details.
+````
+-chardev socket,id=spidev,host=localhost,port=8004,server=on,wait=off
+-global ot-spi_device.chardev=spidev`
+````
+
+should be added to the QEMU command line to create a TCP chardev and to connect it to the SPI Device
+backend. See the [SPI Device](spi_device.md) documentation for details.
 
 * Upload a bootstrap binary
   ````sh

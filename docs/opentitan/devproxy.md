@@ -771,7 +771,8 @@ Write a buffer to a memory device
 
 Resume execution if the VM is currently stopped.
 
-When VM is started in stod mode `-S`, proxy can be used to configure the VM before kicking off the vCPUs.
+When VM is started in stod mode `-S`, proxy can be used to configure the VM before kicking off the
+vCPUs.
 
 ##### Request
 ```

@@ -61,7 +61,7 @@ def main():
         files.add_argument('-U', '--unsafe-elf', action='store_true',
                            help='Discard sanity checking on ELF files')
         files.add_argument('-A', '--accept-invalid', action='store_true',
-                           help='Blindy accept invalid input files')
+                           help='Blindly accept invalid input files')
         extra = argparser.add_argument_group(title='Extra')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')

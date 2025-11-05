@@ -51,7 +51,7 @@ Extras:
 
 `OTDIR` is a required positional argument which should point to the root directory of the OpenTitan
 repository to analyze. It is used to generate the path towards the required files to parse, each of
-which can be overidden with options `-c`, `-l` and `-t`.
+which can be overridden with options `-c`, `-l` and `-t`.
 
 * `-a` specify one or more actions to execute. Default is to generate a configuration file. It is
   also possible to emit the list of module input clocks in a plain text format.
@@ -69,7 +69,7 @@ which can be overidden with options `-c`, `-l` and `-t`.
 
 * `-S` path to the generated file that contains all the "secret" constants of the _top_.
 
-* `-s` specify a SoC identifier for OT platforms with mulitple SoCs
+* `-s` specify a SoC identifier for OT platforms with multiple SoCs
 
 * `-T` specify the OpenTitan _top_ name, such as `darjeeling`, `earlgrey`, ... This option is
   mandatory if `-t` is not specified. An OTDIR root directory should be specified with this option.

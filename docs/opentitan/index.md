@@ -26,7 +26,7 @@ ninja qemu-img
     * `--enable-cocoa` should be used on macOS hosts
 
 * `--extra-cflags=-Wno-deprecated-declarations` and
-  `--extra-ldflags=-Wl,-no_warn_duplicate_libraries` may be required to build on recent relases of
+  `--extra-ldflags=-Wl,-no_warn_duplicate_libraries` may be required to build on recent releases of
    macOS (QEMU issues which are not related to the OpenTitan port)
 
 ### Useful build options

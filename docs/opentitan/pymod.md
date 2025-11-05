@@ -15,8 +15,8 @@ using a TCP socket).
   * `lc_ctrl`: [Life Cycle controller](lc_ctrl_dmi.md) over JTAG/DMI support,
   * `mailbox`: support for accessing the responder and the requester sides of the DOE mailbox. Also
     support the [JTAG mailbox](jtagmbx.md) for accessing the mailbox from a JTAG/DMI link,
-  * `otp`: support for parsing and verifing OTP VMEM images, as well as generating and decoding QEMU
-    RAW image files,
+  * `otp`: support for parsing and verifying OTP VMEM images, as well as generating and decoding
+     QEMU RAW image files,
   * `pyot`: implements the Python OpenTitan test orchestrator tool,
   * `rom`: support for parsing and verifying ROM images,
   * `socdbg`: support for communication with the SoC debug module of DMI,

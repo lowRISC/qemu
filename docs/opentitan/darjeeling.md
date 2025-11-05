@@ -125,8 +125,8 @@ qemu-system-riscv32 -M ot-darjeeling -display none -serial mon:stdio \
   -drive if=mtd,bus=1,file=flash.raw,format=raw
 ````
 
-where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the signed binary file of the
-ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
+where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the signed binary file of
+the ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
 generate the `.raw` image files.
 
 See [`rom_ctrl.md`](rom_ctrl.md) for information on ROM option.
@@ -144,7 +144,7 @@ See [`tools.md`](tools.md)
   is set to 10 MHz. This option is very useful/mandatory to run many OpenTitan tests that rely on
   time or CPU cycle to validate features. Using `-icount` option slows down execution speed though,
   so it is not recommended to use it when the main goal is to develop SW to run on the virtual
-  machine. An alternative is to use `-icount shift=auto`, which offers fatest emulation execution,
+  machine. An alternative is to use `-icount shift=auto`, which offers fastest emulation execution,
   while preserving an accurate ratio between the vCPU clock and the virtual devices.
 
 * `no_epmp_cfg=true` can be appended to the machine option switch, _i.e._
@@ -301,7 +301,7 @@ It is possible to limit the number of times the VM reboots the guest. This optio
 during the development process when an issue in the early FW stages - such as the ROM - causes an
 endless reboot cycles of the guest.
 
-To limit the reboot cyckes, use the `-global ot-rstmgr.fatal_reset=<N>` option, where `N` is an
+To limit the reboot cycles, use the `-global ot-rstmgr.fatal_reset=<N>` option, where `N` is an
 unsigned integer. This option forces the QEMU VM to exit the N^th^ time the reset manager receives
 a reset request, rather than rebooting the whole machine endlessly as the default behavior.
 
@@ -358,6 +358,6 @@ are loaded from a raw binary file (`.bin`, `.signed.bin`, ...). However the
 [`flashgen.py`](flashgen.md) script implements a workaround for this feature, please refer to this
 script for more details.
 
-Finally, a Rust demangler has been added to QEMU, which enables the QEMU integrated dissambler to
+Finally, a Rust demangler has been added to QEMU, which enables the QEMU integrated disassembler to
 emit the demangled names of the Rust symbols for Rust-written guest applications rather than their
 mangled versions as stored in the ELF file.

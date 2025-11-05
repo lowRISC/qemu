@@ -515,7 +515,8 @@ To change the default execution style for a command, add a suffix to the command
 
 #### Temporary directories
 
-It is possible to use the special `@{dir_id}/` syntax, where `dir_id` should be a regular identifier.
+It is possible to use the special `@{dir_id}/` syntax, where `dir_id` should be a regular
+identifier.
 
 Whenever such directory placeholder is detected, it is replaced with a temporary directory which is
 created the first time the identifier is encountered, and automatically removed along all its

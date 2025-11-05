@@ -1,6 +1,7 @@
 # `uartmux.py`
 
-`uartmux.py` is a tiny stream wrapper to help dealing with multiple QEMU output streams, typically multiple virtual UARTs.
+`uartmux.py` is a tiny stream wrapper to help dealing with multiple QEMU output streams, typically
+multiple virtual UARTs.
 
 ## Usage
 
@@ -35,15 +36,21 @@ It enables a coherent output log when multiple virtual UARTs are emitting at onc
 
 ### Arguments
 
-* `name` optional name(s) for prexifing each log message line with the known channel name
+* `name` optional name(s) for prefixing each log message line with the known channel name
+
 * `-c` / `--channel` how many input streams are expected, in order to assign the same ANSI color
   to the same input stream across subsequence QEMU sessions. Note that if not defined, default to
   the count of defined names
+
 * `-d` / `--debug` only useful to debug the script, reports any Python traceback to the standard
   error stream.
+
 * `-i` / `--iface` select an alternative interface for listening on, default to localhost
-* `-p` / `--port` select an altenative TCP port for listening on, default to 9000
+
+* `-p` / `--port` select an alternative TCP port for listening on, default to 9000
+
 * `-s` / `--separator` emit this separator between each detected QEMU session
+
 * `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
 ### Example
