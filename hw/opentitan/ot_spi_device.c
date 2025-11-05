@@ -1003,8 +1003,9 @@ static void ot_spi_device_flash_decode_read_jedec(OtSPIDeviceState *s)
      */
     f->buffer[f->len++] = (uint8_t)(jedec_device >> 0u);
     f->buffer[f->len++] = (uint8_t)(jedec_device >> 8u);
-    memset(&f->buffer[f->len], (int)SPI_DEFAULT_TX_VALUE,
-           SPI_FLASH_BUFFER_SIZE - f->len);
+    /* after the end of JEDEC ID is 0s on OpenTitan */
+    memset(&f->buffer[f->len], (int)0u, SPI_FLASH_BUFFER_SIZE - f->len);
+    f->len = SPI_FLASH_BUFFER_SIZE;
     f->src = f->buffer;
     FLASH_CHANGE_STATE(s, BUFFER);
 }
