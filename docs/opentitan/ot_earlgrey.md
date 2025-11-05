@@ -123,6 +123,17 @@ where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the sign
 the ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
 generate the `.raw` image files.
 
+## Buses
+
+EarlGrey emulation supports the following buses:
+
+| **Type** | **Num** | **Usage**                         |
+| -------- | ------- | ----------------------------------|
+| `mtd`    |    0    | [SPI host 0](ot_spi_host.md)      |
+| `mtd`    |    1    | [SPI host 1](ot_spi_host.md)      |
+| `mtd`    |    2    | [Embedded Flash](ot_flash.md)     |
+| `pflash` |    0    | [OTP](ot_otp.md)                  |
+
 ## Tools
 
 See [`tools.md`](tools.md)
