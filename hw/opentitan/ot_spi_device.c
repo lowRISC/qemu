@@ -455,12 +455,6 @@ typedef struct {
 } SpiDeviceTpm;
 
 typedef struct {
-    uint32_t *buf;
-    uint32_t *ptr;
-    uint32_t *addr;
-} SpiFifo;
-
-typedef struct {
     OtSpiBusState state;
     unsigned byte_count; /* Count of SPI payload to receive */
     Fifo8 chr_fifo; /* QEMU protocol input FIFO */
