@@ -10,12 +10,12 @@ Such configuration parameters are - but not limited to -:
 * Tokens
 * ...
 
-It is possible to load a selected list of configuration parameters from a QEMU configuration file
+It is required to load a selected list of configuration parameters from a QEMU configuration file
 that the QEMU executable loads at startup, which enables to store those sensitive parameters into
 a different location than the QEMU source code and executable.
 
-This configuration file, whose syntax is loosely based on the INI file format, can be read with the
-`-readconfig <file.cfg>` QEMU option.
+This configuration file, whose syntax is loosely based on the INI file format, should be specified
+with the `-readconfig <file.cfg>` QEMU option.
 
 Depending on the machine, the parameters may either override default constants defined in the source
 code - such as default cryptographic constants that are already exposed in the public OpenTitan
@@ -23,6 +23,11 @@ repository - or be required in the configuration file for the matching device to
 
 ⚠️ Beware **not** to store such a configuration file into a public repository if it contains
    production data!
+
+## Default configuration files
+
+Default configuration files with can be found in the `docs/config/opentitan` directory. Be sure to
+select the file whose filename matches the OpenTitan machine.
 
 ## Syntax
 

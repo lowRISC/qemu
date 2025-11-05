@@ -7,6 +7,22 @@ There are two variations of the GPIO device: one for EarlGrey, one for Darjeelin
 In the following document, `OTMACHINE` should be defined as `eg` for EarlGrey machine or as `dj`
 for Darjeeling one.
 
+## Options
+
+### Darjeeling machine
+
+When using multiple GPIO IPs, traces may become highly verbose, coming from multiple source.
+It is possible to limit the trace to a single GPIO IP, using the following option:
+
+`-global ot-gpio-dj.log_id=<ot_id>` where _ot_id_ is the OpenTitan identifier of the GPIO device.
+
+When no `log_id` option is specified, all GPIO IP may emit trace messages.
+
+#### Note
+
+This option is not supported on the [EarlGrey](earlgrey.md) machine, since only one GPIO device
+instance is available.
+
 ## Initial configuration
 
 It is possible to configure initial values of the GPIO pins:
@@ -50,12 +66,12 @@ where type is one of the supported QEMU chardev type, such as
 
 `id` is an arbitrary string that should always match the value defined with the `-global` option.
 
-### Protocol
+## Protocol
 
 The communication protocol is ASCII based and very simple.
 Each frame follows the following format:
 
-#### Format
+### Format
 
 ```
 <TYPE> : <HEXVALUE> <CR> <LF>

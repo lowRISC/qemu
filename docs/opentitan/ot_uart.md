@@ -1,4 +1,4 @@
-# OpenTitan UART Support
+# OpenTitan UART
 
 ## Connecting to the UART
 

@@ -1,44 +1,40 @@
-# EarlGrey CW310
+# EarlGrey
 
 ## Supported version
 
 [Earlgrey 1.0.0](https://github.com/lowRISC/opentitan/tree/earlgrey_1.0.0)
 
-## Supported features
-
-* ePMP
-* Zbr ISA extension (crc32 instructions)
-
 ## Supported devices
 
 ### Near feature-complete devices
 
-* Key manager
-  * Almost feature complete
-  * Missing entropy reseeding, and support for KMAC masking (when available)
-* AES
-  * missing side-loading
+* [AES](ot_aes.md)
 * Alert controller
   * ping mechanism is not supported
 * AON Timer
 * CSRNG
 * EDN
-* Flash controller
+* [Flash controller](ot_flash.md)
   * largely functional but without ECCs/ICVs, scrambling functionality & alerts
   * no modelling of erase suspend or RMA entry
   * lc_ctrl NVM debug signal not implemented, escalation partially implemented
 * HMAC
-* OTBN
-  * missing side-loading
-* OTP controller
+* [IBEX CPU](ibex_cpu.md)
+* [Key manager](ot_keymgr.md)
+  * Almost feature complete
+  * Missing entropy reseeding, and support for KMAC masking (when available)
+* [OTBN](ot_otbn.md)
+* [OTP controller](ot_otp.md)
   * read and write features are supported,
   * Present scrambling is supported with digest checks,
   * ECC (detection and correction) is supported
+* [ROM controller](ot_rom_ctrl.md)
 * SPI data flash (from QEMU upstream w/ fixes)
-* SPI Host controller
+* [SPI Host controller](ot_spi_host.md)
+  * HW bus config is ignored (SPI mode, speed, ...)
 * Timer
-* UART
-  * missing RX timeout, break support
+* [UART](ot_uart.md)
+  * missing RX timeout, TX break not supported
   * bitrate is not paced vs. selected baurate
 
 ### Partially implemented devices
@@ -52,39 +48,42 @@ Devices in this group implement subset(s) of the real HW.
   * Hint management and measurement are not implemented
 * Entropy Src
    * test/health features are not supported
-   * AES CTR not supported (uses xoroshiro128++ reseeded from entropy src)
-* [GPIO](ot_gpio.md)
-   * A CharDev backend can be used to get GPIO outputs and update GPIO inputs,
-* Ibex wrapper
-  * random source (connected to CSR), FPGA version, virtual remapper, fetch enable can be controlled
-    from Power Manager
-* KMAC
-  * Side loading is not supported
-  * Masking is not supported
-* [ROM controller](ot_rom_ctrl.md)
-* SRAM controller
-  * Initialization and scrambling with dummy key supported
-  * Wait for init completion (bus stall) emulated
-* I2C controller
+* [I2C controller](ot_i2c.md)
   * Supports only one target mode address - ADDRESS1 and MASK1 are not implemented
   * Timing features are not implemented
   * Loopback mode is not implemented
+* [Ibex wrapper](ot_ibex_wrapper.md)
+  * random source (connected to CSR), FPGA version, virtual remapper, fetch enable can be controlled
+    from Power Manager
+* KMAC
+  * Masking is not supported
+* Lifecycle controller
+* [ROM controller](ot_rom_ctrl.md)
+* [SPI device](ot_spi_device.md)
+  * Flash mode supported
+  * TPM mode supported, but shares a CS with flash/passthrough mode and so cannot be used together
+  * Passthrough mode not supported
+* SRAM controller
+  * Initialization and scrambling from OTP key supported
+  * Wait for init completion (bus stall) emulated
+* [USB Device](ot_usbdev.md)
 
 ### Sparsely implemented devices
 
 In this group, device CSRs are supported (w/ partial or full access control & masking) but only some
 features are implemented.
 
-* AST
+* Analog Sensor Top
+  * noise source only (from host source)
   * configurable clock sources
-* GPIO
+* [GPIO](ot_gpio.md)
   * Connections with pinmux not implemented (need to be ported from [Darjeeling](darjeeling.md)
     version)
-* Lifecycle controller
-  * only forwards LC state from OTP (need to be ported from [Darjeeling](darjeeling.md) version)
 * Power Manager
   * Fast FSM is partially supported, Slow FSM is bypassed
   * Interactions with other devices (such as the Reset Manager) are limited
+* [Reset Manager](ot_rstmgr.md)
+  * HW and SW reset requests are supported
 
 ### Dummy devices
 
@@ -92,25 +91,23 @@ Devices in this group are mostly implemented with a RAM backend or real CSRs but
 any useful feature (only allow guest test code to execute as expected).
 Some just use generic `UNIMP` devices to define a memory region.
 
-* Analog Sensor Top
 * Pattern Generator
 * Pinmux
 * PWM
 * Sensor Control
 * System Reset Controller
-* USB Device
 
 ## Running the virtual machine
+
+See [OpenTitan machine](ot_machine.md) documentation for options.
 
 ### Arbitrary application
 
 ````sh
 qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -display none -serial mon:stdio \
   -readconfig docs/config/opentitan/earlgrey.cfg \
-  -kernel hello.elf
+  -global ot-ibex_wrapper.lc-ignore=on  -kernel hello.elf
 ````
-
-See the section "Useful execution options" for documentation about the `no_epmp_cfg` option.
 
 ### Boot sequence ROM, ROM_EXT, BLO
 
@@ -126,203 +123,10 @@ where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the sign
 the ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
 generate the `.raw` image files.
 
-See [`rom_ctrl.md`](ot_rom_ctrl.md) for information on ROM option.
-
 ## Tools
 
 See [`tools.md`](tools.md)
 
-## Useful execution options
-
-### vCPU
-
-* `-icount 6` reduces the execution speed of the vCPU (Ibex core) to 1GHz >> 6, _i.e._ ~15MHz,
-  which should roughly match the expected speed of the Ibex core running on the CW310 FPGA, which
-  is set to 10 MHz. This option is very useful/mandatory to run many OpenTitan tests that rely on
-  time or CPU cycle to validate features. Using `-icount` option slows down execution speed though,
-  so it is not recommended to use it when the main goal is to develop SW to run on the virtual
-  machine.
-
-* `no_epmp_cfg=true` can be appended to the machine option switch, _i.e._
-  `-M ot-earlgrey,no_epmp_cfg=true` to disable the initial ePMP configuration, which can be very
-  useful to execute arbitrary code on the Ibex core without requiring an OT ROM image to boot up.
-
-* `ignore_elf_entry=true` can be appended to the machine option switch, _i.e._
-  `-M ot-earlgrey,ignore_elf_entry=true` to prevent the ELF entry point of a loaded application to
-  update the vCPU reset vector at startup. When this option is used, with `-kernel` option for
-  example, the application is loaded in memory but the default machine reset vector is used.
-
-* `verilator=true` can be appended to the machine option switch, to select Verilator lowered clocks:
-  _i.e._ `-M ot-earlgrey,verilator=true` to select Verilator reduced clock rates.
-
-* `-cpu lowrisc-ibex,x-zbr=false` can be used to force disable the Zbr experimental-and-deprecated
-  RISC-V bitmap extension for CRC32 extension.
-
-### AES
-
-* `-global ot-aes.fast-mode=false` can be used to better emulate AES HW IP, as some OT tests expect
-  the Ibex core to execute while the HW is performing AES rounds. Without this option, the virtual
-  HW may only give back execution to the vCPU once the AES operation is complete, which make those
-  OT tests to fail. Disabling fast mode better emulates the HW to the expense of higher AES latency
-  and throughput.
-
-### Display
-
- * `-display none` can be used to prevent QEMU to open a semi-graphical windows as the default
-   console, and use the current shell instead.
-
-### Embedded Flash
-
-* `-drive if=mtd,id=eflash,bus=2,file=<filename>,format=raw` should be used to specify a path to a
-  QEMU RAW image file used as the OpenTitan internal flash controller image. This _RAW_ file should
-  have been generated with the [`flashgen.py`](flashgen.md) tool.
-
-  Note: MTD bus 2 is assigned to the internal controller with the embedded flash storage. See also
-  the SPI Host section.
-
-### Ibex Wrapper
-
-The `FPGA_INFO` register of the Ibex Wrapper device is used to report that the HW platform is a QEMU
-virtual machine. It contains three ASCII chars `QMU` followed with a configurable _version_ field in
-the MSB, whose meaning is not defined. It can be any 8-byte value, and defaults to 0x0. To configure
-this version field, use the `qemu_version` property of the Ibex Wrapper device.
-
-The `DV_SIM_STATUS` register (address 0 of the `DV_SIM_WINDOW`) can be used to exit QEMU with a
-passing or failing status code. The lower half of the word is written either `900d` (good) or `baad`
-(bad). If an error code is written to the upper half of the word, QEMU will exit with that status
-code for failures. The `-global ot-ibex_wrapper.dv-sim-status-exit=[on|off]` can be used to control
-whether QEMU shuts down when this register is written.
-
-There are two modes to handle address remapping, with different limitations:
-
-- default mode: use an MMU-like implementation (via ot_vmapper) to remap addresses. This mode
-  enables to remap instruction accesses and data accesses independently, as the real HW. However,
-  due to QEMU limitations, addresses and mapped region sizes should be aligned and multiple of 4096
-  bytes, i.e. a standard MMU page size. This is the recommended mode.
-
-- legacy mode: This mode has no address nor size limitations, however it cannot distinguish
-  instruction accesses from data accesses, which means that both kind of accesses must be defined
-  for each active remapping slot for the remapping to be enabled. Moreover it relies on MemoryRegion
-  aliasing and may not be as robust as the default mode. It is recommended to use the default mode
-  whenever possible. To enable this legacy mode, set the `alias-mode` property to true:
-  `-global ot-ibex_wrapper.alias-mode=true`
-
-### Keymgr
-
-See documentation in [`keymgr.md`](ot_keymgr.md).
-
-### OTBN
-
-* `-global ot-otbn.logfile=<filename>` output OTBN execution message to the specified logfile. When
-  _logasm_ option (see below) is not enabled, only execution termination and error messages are
-  logged. `stderr` can be used to log the messages to the standard error stream instead of a file.
-
-* `-global ot-otbn.logasm=<true|false>` dumps executed instructions on OTBN core into the _logfile_
-  filename. Beware that this further slows down execution speed, which could likely result in the
-  guest application on the Ibex core to time out.
-
-### OTP
-
-* `-drive if=pflash,file=otp.raw,format=raw` should be used to specify a path to a QEMU RAW image
-  file used as the OpenTitan OTP image. This _RAW_ file should have been generated with the
-  [`otptool.py`](otptool.md) tool.
-
-### SPI Host
-
-* `-drive if=mtd,bus=0,file=<filename>,format=raw` should be used to specify a path to a QEMU RAW
-  image file used as the SPI data flash backend file. This _RAW_ file should have been created with
-  the qemu-img tool. There is no dedicated tool to populate this image file for now.
-
-  ````sh
-  qemu-img create -f raw spi.raw 16M
-  ````
-
-  MTD bus 0 is assigned to the SPI0 Host controller and MTD bus 1 is assigned to the SPI1 Host
-  controller. See also Embedded Flash controller section.
-
-* `-global ot-earlgrey-board.spiflash<bus>=<flash_type>` should be used to instanciate a SPI
-  dataflash device of the specified type to the first device (/CS0) of the specified bus.
-  Any SPI dataflash device supported by QEMU can be used. To list the supported devices, use
-  `grep -F 'INFO("' hw/block/m25p80.c | cut -d'"' -f2`
-
-* `-global ot-spi_host.start-delay=<time>` may be used to change the default SPI Host FSM start
-  delay. This delay is used to yield back the control to the vCPU before kicking of the execution
-  of a new SPI Host command, so that the guest code gets a chance to check the statuses of the SPI
-  Host right after pushing the command. Without this delay, the SPI Host state may change quickly
-  and report statuses that might be different than the real HW, _e.g._ a command may already be
-  completed when the guest code reads back the SPI Host status. Time should be specified in ns,
-  and defaults to 20000 (20 µs).
-
-* -`global ot-spi_host.completion-delay=<time>` may be forced to discard the experimental SPI Host
-  clock pacing, which helps to achieve the requested bandwidth on the SPI Host bus, which is always
-  caped with the performances of the QEMU host. Forcing a small value here can help achieving the
-  best SPI Host transfer performances, but decreases accuracy of the SPI Host clock settings. Time
-  should be specified in ns, and defaults to 0 that indicates automatic SPI bus clock management.
-
-### UART
-
-See documentation in [`uart.md`](ot_uart.md).
-
-### I2C
-
-* `-device <name>,bus=<bus>,address=<address>` can be used to attach devices at a specific address
-  to one of the three I2C buses. The buses are named `ot-i2c0`, `ot-i2c1`, and `ot-i2c2`.
-
-### USBDEV
-
-* `-chardev pty,id=usbdev-cmd` can be used to connect to the usbdev driver (commands).
-* `-chardev pty,id=usbdev-host` can be used to connect to the usbdev driver (host).
-
-See the [USBDEV documentation](ot_usbdev.md) for more details.
-
 ## Useful debugging options
 
-### Device log traces
-
-Most OpenTitan virtual devices can emit log traces. To select which traces should be logged, a plain
-text file can be used along with QEMU `-trace` option.
-
-To populate this file, the easiest way is to dump all available traces and filter them with a
-pattern, for example to get all OpenTitan trace messages:
-
-````sh
-qemu-system-riscv32 -trace help | grep -E '^ot_' > ot_trace.log
-qemu-system-riscv32 -trace events=ot_trace.log -D qemu.log ...
-````
-
-* It is *highly* recommended to use the `-D` option switch when any `-trace` or `-d` (see below) is
-selected, to avoid saturating the standard output stream with traces and redirect them into the
-specified log file.
-
-### QEMU log traces
-
-QEMU provides another way of logging execution of the virtual machine using the `-d` option. Those
-log messages are not tied to a specific device but rather to QEMU features. `-d help` can be used
-to enumerate these log features, however the most useful ones are enumerated here:
-
-   * `unimp` reports log messages for unimplemented features, _e.g._ when the vCPU attempts to
-     read from or write into a memory mapped device that has not been implemented.
-   * `guest_errors` reports log messages of invalid guest software requests, _e.g._ attempts to
-     perform an invalid configuration.
-   * `int` reports all interruptions *and* exceptions handled by the vCPU. It may be quite verbose
-     but also very useful to track down an invalid memory or I/O access for example. This is the
-     first option to use if the virtual machine seems to stall on start up.
-   * `in_asm` reports the decoded vCPU instructions that are translated by the QEMU TCG, _i.e._ here
-     the RISC-V instructions. Note that transcoded instructions are cached and handled by blocks,
-     so the flow of transcoded instruction do not exactly reflect the stream of the executed guest
-     instruction, e.g. may only appear once in a loop. Use the next log option, `exec`, to get
-     more detailed but also much more verbose log traces.
-   * `exec` reports the vCPU execution stream.
-
-Those options should be combined with a comma separator, _e.g._ `-d unimp,guest_errors,int`
-
-`in_asm` option may be able to report the name of the guest executed function, as long as the guest
-application symbols have been loaded. This is the case when the `-kernel` option is used to load
-an ELF non-stripped file. Unfortunately, this feature is not available for guest applications that
-are loaded from a raw binary file (`.bin`, `.signed.bin`, ...). However the
-[`flashgen.py`](flashgen.md) script implements a workaround for this feature, please refer to this
-script for more details.
-
-Finally, a Rust demangler has been added to QEMU, which enables the QEMU integrated disassembler to
-emit the demangled names of the Rust symbols for Rust-written guest applications rather than their
-mangled versions as stored in the ELF file.
+See [debug option](debug.md) for details.
