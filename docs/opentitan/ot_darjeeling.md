@@ -125,7 +125,7 @@ qemu-system-riscv32 -M ot-darjeeling -display none -serial mon:stdio \
   -readconfig docs/config/opentitan/darjeeling.cfg \
   -object ot-rom_img,id=rom,file=rom_with_fake_keys_fpga_cw310.elf \
   -drive if=pflash,file=otp-rma.raw,format=raw \
-  -drive if=mtd,bus=1,file=flash.raw,format=raw
+  -drive if=mtd,bus=0,file=flash.raw,format=raw
 ````
 
 where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the signed binary file of

@@ -20,7 +20,7 @@ When no `log_id` option is specified, all GPIO IP may emit trace messages.
 
 #### Note
 
-This option is not supported on the [EarlGrey](earlgrey.md) machine, since only one GPIO device
+This option is not supported on the [EarlGrey](ot_earlgrey.md) machine, since only one GPIO device
 instance is available.
 
 ## Initial configuration

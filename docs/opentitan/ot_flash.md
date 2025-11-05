@@ -13,7 +13,7 @@ line option should be written `-drive if=mtd,id=eflash,bus=2,file=<filename>,for
 
 ### Darjeeling Machine
 
-[Darjeeling](darjeeling.md) machine does not support an embedded flash device.
+[Darjeeling](ot_darjeeling.md) machine does not support an embedded flash device.
 
 ## Notes
 

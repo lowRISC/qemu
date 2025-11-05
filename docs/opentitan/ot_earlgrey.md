@@ -77,7 +77,7 @@ features are implemented.
   * noise source only (from host source)
   * configurable clock sources
 * [GPIO](ot_gpio.md)
-  * Connections with pinmux not implemented (need to be ported from [Darjeeling](darjeeling.md)
+  * Connections with pinmux not implemented (need to be ported from [Darjeeling](ot_darjeeling.md)
     version)
 * Power Manager
   * Fast FSM is partially supported, Slow FSM is bypassed

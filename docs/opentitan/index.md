@@ -37,5 +37,5 @@ ninja qemu-img
 ## Supported platforms
 
  * [IbexDemo](ibexdemo.md) built for Digilent Arty7 board
- * [Darjeeling](darjeeling.md) build for CW310 "Bergen" board
- * [EarlGrey](earlgrey.md) build for CW310 "Bergen" board
+ * [Darjeeling](ot_darjeeling.md) build for CW310 "Bergen" board
+ * [EarlGrey](ot_earlgrey.md) build for CW310 "Bergen" board

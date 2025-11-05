@@ -6,5 +6,5 @@
 
 * on LC escalate reception, it is possible to early abort VM execution. Specify
   `-global ot-otp-<top>.fatal_escalate=true` to enable this feature.
-  where `top` should be defined as `eg` for the [EarlGrey](earlgrey.md) machine, or `dj` for the
-  [Darjeeling](darjeeling.md) machine.
+  where `top` should be defined as `eg` for the [EarlGrey](ot_earlgrey.md) machine, or `dj` for the
+  [Darjeeling](ot_darjeeling.md) machine.
