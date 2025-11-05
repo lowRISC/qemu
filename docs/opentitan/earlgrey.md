@@ -53,7 +53,7 @@ Devices in this group implement subset(s) of the real HW.
 * Entropy Src
    * test/health features are not supported
    * AES CTR not supported (uses xoroshiro128++ reseeded from entropy src)
-* [GPIO](gpio.md)
+* [GPIO](ot_gpio.md)
    * A CharDev backend can be used to get GPIO outputs and update GPIO inputs,
 * Ibex wrapper
   * random source (connected to CSR), FPGA version, virtual remapper, fetch enable can be controlled
@@ -61,7 +61,7 @@ Devices in this group implement subset(s) of the real HW.
 * KMAC
   * Side loading is not supported
   * Masking is not supported
-* [ROM controller](rom_ctrl.md)
+* [ROM controller](ot_rom_ctrl.md)
 * SRAM controller
   * Initialization and scrambling with dummy key supported
   * Wait for init completion (bus stall) emulated
@@ -126,7 +126,7 @@ where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the sign
 the ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
 generate the `.raw` image files.
 
-See [`rom_ctrl.md`](rom_ctrl.md) for information on ROM option.
+See [`rom_ctrl.md`](ot_rom_ctrl.md) for information on ROM option.
 
 ## Tools
 
@@ -209,7 +209,7 @@ There are two modes to handle address remapping, with different limitations:
 
 ### Keymgr
 
-See documentation in [`keymgr.md`](./keymgr.md).
+See documentation in [`keymgr.md`](ot_keymgr.md).
 
 ### OTBN
 
@@ -261,7 +261,7 @@ See documentation in [`keymgr.md`](./keymgr.md).
 
 ### UART
 
-See documentation in [`uart.md`](./uart.md).
+See documentation in [`uart.md`](ot_uart.md).
 
 ### I2C
 
@@ -273,7 +273,7 @@ See documentation in [`uart.md`](./uart.md).
 * `-chardev pty,id=usbdev-cmd` can be used to connect to the usbdev driver (commands).
 * `-chardev pty,id=usbdev-host` can be used to connect to the usbdev driver (host).
 
-See the [USBDEV documentation](usbdev.md) for more details.
+See the [USBDEV documentation](ot_usbdev.md) for more details.
 
 ## Useful debugging options
 

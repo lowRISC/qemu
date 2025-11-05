@@ -69,7 +69,7 @@ In the following example
 ````
 
 should be added to the QEMU command line to create a TCP chardev and to connect it to the SPI Device
-backend. See the [SPI Device](spi_device.md) documentation for details.
+backend. See the [SPI Device](ot_spi_device.md) documentation for details.
 
 * Upload a bootstrap binary
   ````sh

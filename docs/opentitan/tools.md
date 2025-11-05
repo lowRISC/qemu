@@ -60,7 +60,7 @@ of options and the available features.
 * [`run-bazel-tests.sh`](regressions.md) is a script for running the OpenTitan test suite against
   a local build of QEMU.
 * [`spidevflash.py`](spidevflash.md) is a tiny script to upload a binary using the SPI device.
-* `treillis/` directory contains the test application to test the [GPIO](gpio.md) device.
+* `treillis/` directory contains the test application to test the [GPIO](ot_gpio.md) device.
 * [`uartmux.py`](uartmux.md) is a tiny stream wrapper to help dealing with multiple QEMU output
   streams, typically multiple virtual UARTs.
 * [`verilate.py`](verilate.md) is a Verilator wrapper tool to run unit tests on Verilator simulation

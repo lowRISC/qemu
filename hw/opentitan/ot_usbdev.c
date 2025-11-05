@@ -336,7 +336,7 @@ static_assert(USBDEV_PARAM_NUM_ALERTS == 1u,
 /*
  * USB server protocol
  *
- * The protocol is documented in docs/opentitan/usbdev.md
+ * The protocol is documented in docs/opentitan/ot_usbdev.md
  */
 
 typedef enum {

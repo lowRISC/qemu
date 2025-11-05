@@ -288,3 +288,7 @@ The rest of the sequence depends on the direction of the transfer:
 ### Bulk and interrupt transfers
 
 TODO
+
+## Note
+
+Note: There is no USB device on the [Darjeeling machine](ot_darjeeling.md)

@@ -63,7 +63,7 @@ With the following examples:
 
 `-chardev socket,id=gpio,host=localhost,port=8007 -global ot-gpio-$OTMACHINE.chardev=gpio` has been
 added to the QEMU command line to connect the GPIO backend to the incoming socket opened from the
-script. See the [GPIO documentation](gpio.md) for details and the role of the `OTMACHINE`
+script. See the [GPIO documentation](ot_gpio.md) for details and the role of the `OTMACHINE`
 environment variable.
 
 * Record a GPIO request sequence

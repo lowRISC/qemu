@@ -31,7 +31,7 @@ Please check out `hw/opentitan/ot_ref.log`
     ECC (detection and correction) is supported.
   * zero-ization is not yet supported
 * [RISC-V Debug Module](jtag-dm.md) and Pulp Debug Module
-* [ROM controller](rom_ctrl.md)
+* [ROM controller](ot_rom_ctrl.md)
 * SoC Debug controller
 * SPI data flash (from QEMU upstream w/ fixes)
 * SPI host controller
@@ -56,7 +56,7 @@ Devices in this group implement subset(s) of the real HW.
   * read-only features only
 * Entropy Src
    * test/health features are not supported
-* [GPIO](gpio.md)
+* [GPIO](ot_gpio.md)
    * A CharDev backend can be used to get GPIO outputs and update GPIO inputs,
 * KMAC
   * Side loading is not supported
@@ -129,7 +129,7 @@ where `otp-rma.raw` contains the RMA OTP image and `flash.raw` contains the sign
 the ROM_EXT and the BL0. See [`otptool.py`](otptool.md) and [`flashgen.py`](flashgen.md) tools to
 generate the `.raw` image files.
 
-See [`rom_ctrl.md`](rom_ctrl.md) for information on ROM option.
+See [`rom_ctrl.md`](ot_rom_ctrl.md) for information on ROM option.
 
 ## Tools
 
@@ -196,7 +196,7 @@ See [`tools.md`](tools.md)
 
 ### GPIO
 
-See [gpio](gpio.md) documentation for options.
+See [gpio](ot_gpio.md) documentation for options.
 
 When using multiple GPIO IPs, traces may become highly verbose, coming from multiple source.
 It is possible to limit the trace to a single GPIO IP, using the following option:
@@ -265,7 +265,7 @@ To force QEMU to execute an application despite this feature, bypassing the DFT 
 
 ### SPI Device
 
-* See [SPI device](spi_device.md) for options.
+* See [SPI device](ot_spi_device.md) for options.
 
 ### SPI Host
 
@@ -307,7 +307,7 @@ a reset request, rather than rebooting the whole machine endlessly as the defaul
 
 ### UART
 
-See documentation in [`uart.md`](./uart.md).
+See documentation in [`uart.md`](ot_uart.md).
 
 
 ## Useful debugging options
