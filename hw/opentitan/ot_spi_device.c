@@ -305,8 +305,8 @@ REG32(TPM_READ_FIFO, 0x34u)
 #define INGRESS_BUFFER_SIZE_WORDS PARAM_SRAM_INGRESS_DEPTH
 #define FLASH_READ_BUFFER_SIZE    (2u * SPI_SRAM_READ_SIZE)
 
-#define SPI_DEFAULT_TX_VALUE  ((uint8_t)0xffu)
-#define SPI_FLASH_BUFFER_SIZE 256u
+#define SPI_DEFAULT_TX_RX_VALUE ((uint8_t)0xffu)
+#define SPI_FLASH_BUFFER_SIZE   256u
 
 typedef enum {
     READ_STATUS1,
@@ -1177,7 +1177,7 @@ static uint8_t ot_spi_device_flash_exec_hw_cfg_command(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
-    uint8_t tx = SPI_DEFAULT_TX_VALUE;
+    uint8_t tx = SPI_DEFAULT_TX_RX_VALUE;
     unsigned cmdinfo = f->slot - (R_CMD_INFO_EN4B - R_CMD_INFO_0);
 
     switch (cmdinfo) {
@@ -1215,7 +1215,7 @@ static uint8_t ot_spi_device_flash_read_buffer(OtSPIDeviceState *s)
 
     g_assert(f->src);
 
-    uint8_t tx = (f->pos < f->len) ? f->src[f->pos] : SPI_DEFAULT_TX_VALUE;
+    uint8_t tx = (f->pos < f->len) ? f->src[f->pos] : SPI_DEFAULT_TX_RX_VALUE;
 
     f->pos++;
     if (f->pos >= f->len) {
@@ -1433,7 +1433,7 @@ static uint8_t ot_spi_device_flash_transfer(OtSPIDeviceState *s, uint8_t rx)
 
     (void)rx;
 
-    uint8_t tx = SPI_DEFAULT_TX_VALUE;
+    uint8_t tx = SPI_DEFAULT_TX_RX_VALUE;
 
     switch (f->state) {
     case SPI_FLASH_IDLE:
@@ -2033,7 +2033,7 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
 static void ot_spi_device_chr_send_discard(OtSPIDeviceState *s, unsigned count)
 {
-    const uint8_t buf[1u] = { SPI_DEFAULT_TX_VALUE };
+    const uint8_t buf[1u] = { SPI_DEFAULT_TX_RX_VALUE };
 
     while (count--) {
         if (qemu_chr_fe_backend_connected(&s->chr)) {
