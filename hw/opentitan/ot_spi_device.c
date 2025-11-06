@@ -481,7 +481,7 @@ struct OtSPIDeviceState {
 
     uint32_t *spi_regs; /* Registers */
     uint32_t *tpm_regs; /* Registers */
-    uint32_t *sram; /* SRAM (DPRAM on EG, E/I on DJ) */
+    uint32_t *sram;
 
     /* Properties */
     char *ot_id;
