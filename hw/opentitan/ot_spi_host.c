@@ -335,7 +335,7 @@ struct OtSPIHostState {
 
     MemoryRegion mmio;
 
-    qemu_irq *cs_lines; /* CS output lines */
+    IbexIRQ *cs_lines; /* CS output lines */
     SSIBus *ssi; /* SPI bus */
 
     uint32_t *regs; /* Registers (except. fifos) */
@@ -529,7 +529,7 @@ static void ot_spi_host_chip_select(OtSPIHostState *s, unsigned csid,
 {
     if (csid < s->num_cs) {
         trace_ot_spi_host_cs(s->ot_id, csid, activate ? "" : "de");
-        qemu_set_irq(s->cs_lines[csid], !activate);
+        ibex_irq_set(&s->cs_lines[csid], !activate);
     }
 }
 
@@ -1384,10 +1384,10 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->version < OT_SPI_HOST_VERSION_COUNT);
 
-    s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
+    s->cs_lines = g_new0(IbexIRQ, (size_t)s->num_cs);
 
-    qdev_init_gpio_out_named(DEVICE(s), s->cs_lines, SSI_GPIO_CS,
-                             (int)s->num_cs);
+    ibex_qdev_init_irqs(OBJECT(dev), &s->cs_lines[0], SSI_GPIO_CS, s->num_cs);
+
     qdev_init_gpio_in_named(DEVICE(s), &ot_spi_host_clock_input, "clock-in", 1);
 
     char busname[16u];
