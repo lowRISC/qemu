@@ -1,16 +1,14 @@
-"""Verilator wrapper."""
-
 # Copyright (c) 2025 Rivos, Inc.
 # Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
+"""Verilator wrapper."""
+
 from collections import deque
-from fcntl import fcntl, F_GETFL, F_SETFL
-from io import BufferedRandom, TextIOWrapper
-from os import O_NONBLOCK, close, getcwd, rename, symlink, unlink
+from io import TextIOWrapper
+from os import close, getcwd, rename, symlink, unlink
 from os.path import (abspath, basename, exists, isfile, islink,
                      join as joinpath, realpath, splitext)
-from select import POLLIN, POLLERR, POLLHUP, poll as sel_poll
 from shutil import copyfile
 from subprocess import Popen, PIPE, TimeoutExpired
 from sys import stderr
@@ -26,24 +24,11 @@ import re
 from ot.rom.image import ROMImage
 from ot.util.elf import ElfBlob
 from ot.util.file import guess_file_type, make_vmem_from_elf
-from ot.util.log import ColorLogFormatter
 from ot.util.misc import HexInt, split_map_join
 
 from . import DEFAULT_TIMEOUT
 from .filemgr import VtorFileManager
-
-
-class VtorVcpDescriptor(NamedTuple):
-    """ Virtual communication port."""
-
-    vcpid: str
-    """VCP identifier."""
-    pty: BufferedRandom
-    """Attached pseudo terminal."""
-    buffer: bytearray
-    """Data buffer."""
-    logger: logging.Logger
-    """Associated logger."""
+from .vcp import VtorVcpManager
 
 
 class VtorMemRange(NamedTuple):
@@ -60,9 +45,6 @@ class VtorExecuter:
 
     VMEM_OFFSET = 0
     """Offset when converting BM test to VMEM file."""
-
-    ANSI_CRE = re.compile(rb'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
-    """ANSI escape sequences."""
 
     DV_CRE = re.compile(r'^(\d+):\s\(../.*?\)\s(.*)$')
     """DV macro messages."""
@@ -90,10 +72,9 @@ class VtorExecuter:
         self._gen_wave = False
         # parsed communication ports from Verilator
         self._ports: dict[str, Union[int, str]] = {}
+        self._vcp = VtorVcpManager()
         # where Verilator stores the execution log file
         self._xlog_path: Optional[str] = None
-        self._vcps: dict[int, VtorVcpDescriptor] = {}
-        self._poller = sel_poll()
         self._resume = False
         self._threads: list[Thread] = []
         self._devices: dict[str, VtorMemRange[int, int]] = {}
@@ -282,7 +263,9 @@ class VtorExecuter:
                     if not err and not simulate:
                         if qline.startswith('Simulation running, '):
                             simulate = True
-                            self._connect_vcps(2.0)
+                            self._vcp.connect({
+                                k: v for k, v in self._ports.items()
+                                if k.startswith('uart')}, 2.0)
                             self._log.info('Simulation begins')
                         else:
                             self._parse_verilator_info(qline)
@@ -295,7 +278,7 @@ class VtorExecuter:
                     sleep(0.005)
                 xret = proc.poll()
                 if xret is None:
-                    xret = self._process_vcps()
+                    xret = self._vcp.process()
                 if xret is not None:
                     if xend is None:
                         xend = now()
@@ -311,7 +294,7 @@ class VtorExecuter:
                 else:
                     ret = self.DEADLOCK
         finally:
-            self._disconnect_vcps()
+            self._vcp.disconnect()
             if proc:
                 # leave some for Verilator to cleanly complete and flush its
                 # streams
@@ -570,99 +553,6 @@ class VtorExecuter:
                     rename(tmpslnk, log_path)
                 return ''
         return line
-
-    def _connect_vcps(self, delay: float):
-        connect_map = {k: v for k, v in self._ports.items()
-                       if k.startswith('uart')}
-        timeout = now() + delay
-        # ensure that QEMU starts and give some time for it to set up
-        # when multiple VCPs are set to 'wait', one VCP can be connected at
-        # a time, i.e. QEMU does not open all connections at once.
-        vcp_lognames = []
-        vcplogname = 'vtor'
-        vcplognames = []
-        while connect_map:
-            if now() > timeout:
-                minfo = ', '.join(f'{d} @ {r}'
-                                  for d, r in connect_map.items())
-                raise TimeoutError(f'Cannot connect to Verilator VCPs: {minfo}')
-            connected = []
-            for vcpid, ptyname in connect_map.items():
-                try:
-                    # pylint: disable=consider-using-with
-                    vcp = open(ptyname, 'rb+', buffering=0)
-                    flags = fcntl(vcp, F_GETFL)
-                    fcntl(vcp, F_SETFL, flags | O_NONBLOCK)
-                    connected.append(vcpid)
-                    vcp_lognames.append(vcpid)
-                    vcp_log = logging.getLogger(f'{vcplogname}.{vcpid}')
-                    vcplognames.append(vcpid)
-                    vcp_fno = vcp.fileno()
-                    assert vcp_fno not in self._vcps
-                    self._vcps[vcp_fno] = VtorVcpDescriptor(vcpid, vcp,
-                                                            bytearray(),
-                                                            vcp_log)
-                    self._log.debug('VCP %s connected to pty %s',
-                                    vcpid, ptyname)
-                    self._poller.register(vcp, POLLIN | POLLERR | POLLHUP)
-                except ConnectionRefusedError:
-                    continue
-                except OSError as exc:
-                    self._log.error('Cannot setup Verilator VCP connection %s: '
-                                    '%s', vcpid, exc)
-                    print(format_exc(chain=False), file=stderr)
-                    raise
-            # removal from dictionary cannot be done while iterating it
-            for vcpid in connected:
-                del connect_map[vcpid]
-        self._colorize_vcp_log(vcplogname, vcplognames)
-
-    def _disconnect_vcps(self):
-        for _, vcp, _, _ in self._vcps.values():
-            self._poller.unregister(vcp)
-            vcp.close()
-        self._vcps.clear()
-
-    def _process_vcps(self) -> Optional[int]:
-        ret = None
-        for vfd, event in self._poller.poll(0.01):
-            if event in (POLLERR, POLLHUP):
-                self._poller.modify(vfd, 0)
-                continue
-            _, vcp, vcp_buf, vcp_log = self._vcps[vfd]
-            try:
-                data = vcp.read(256)
-            except TimeoutError:
-                self._log.error('Unexpected timeout w/ poll on %s', vcp)
-                continue
-            if not data:
-                continue
-            vcp_buf += data
-            lines = vcp_buf.split(b'\n')
-            vcp_buf[:] = bytearray(lines[-1])
-            for line in lines[:-1]:
-                line = self.ANSI_CRE.sub(b'', line)
-                sline = line.decode('utf-8', errors='ignore').rstrip()
-                level = logging.INFO
-                vcp_log.log(level, sline)
-            if ret is not None:
-                # match for exit sequence on current VCP
-                break
-        return ret
-
-    def _colorize_vcp_log(self, logbase: str, lognames: list[str]) -> None:
-        vlog = logging.getLogger(logbase)
-        clr_fmt = None
-        while vlog:
-            for hdlr in vlog.handlers:
-                if isinstance(hdlr.formatter, ColorLogFormatter):
-                    clr_fmt = hdlr.formatter
-                    break
-            vlog = vlog.parent
-        if not clr_fmt:
-            return
-        for color, logname in enumerate(sorted(lognames)):
-            clr_fmt.add_logger_colors(f'{logbase}.{logname}', color)
 
     def _discard_exec_log(self) -> None:
         if not self._artifact_name:

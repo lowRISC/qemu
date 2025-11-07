@@ -1,7 +1,7 @@
-"""Verilator wrapper."""
-
 # Copyright (c) 2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
+
+"""Verilator wrapper."""
 
 from atexit import register
 from logging import getLogger
