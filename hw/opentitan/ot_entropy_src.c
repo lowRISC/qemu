@@ -1811,8 +1811,6 @@ static void ot_entropy_src_reset_enter(Object *obj, ResetType type)
 
     trace_ot_entropy_src_reset(s->ot_id, "enter");
 
-    qemu_log("%s VERSION %u\n", __func__, s->version);
-
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
