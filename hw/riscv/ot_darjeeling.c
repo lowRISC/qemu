@@ -1253,8 +1253,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             IBEX_DEV_UINT_PROP("silicon_creator_id", 0x4002u),
             IBEX_DEV_UINT_PROP("product_id", 0x4000u),
             IBEX_DEV_UINT_PROP("revision_id", 0x1u),
+            IBEX_DEV_UINT_PROP("kmac-app", 1u),
             IBEX_DEV_BOOL_PROP("volatile_raw_unlock", true),
-            IBEX_DEV_UINT_PROP("kmac-app", 1u)
+            IBEX_DEV_BOOL_PROP("decode_soc_dbg", true)
         )
     },
     [OT_DJ_SOC_DEV_ALERT_HANDLER] = {
@@ -1286,19 +1287,17 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_SOC_DBG_CTRL] = {
-        /* @todo: should be renamed TYPE_OT_SOC_DBG_CTRL */
         .type = TYPE_OT_SOC_DBG_CTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30170000u }
         ),
-        /*
-         * @todo: add alert signals once OT_SOC_DBG_CTRL supports them
-         *
-         * .gpio = IBEXGPIOCONNDEFS(
-         *     OT_DJ_SOC_GPIO_ALERT(0, 95),
-         *     OT_DJ_SOC_GPIO_ALERT(1, 96)
-         * ),
-         */
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_ALERT(0, 95),
+            OT_DJ_SOC_GPIO_ALERT(1, 96)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("lc-ctrl", LC_CTRL)
+        ),
     },
     [OT_DJ_SOC_DEV_SPI_HOST0] = {
         .type = TYPE_OT_SPI_HOST,
