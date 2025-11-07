@@ -43,11 +43,9 @@ typedef enum {
 
 /* input lines */
 #define OT_SOC_DBG_HALT_CPU_BOOT TYPE_OT_SOC_DBG_CTRL "-halt-cpu-boot"
-#define OT_SOC_DBG_LC_BCAST      TYPE_OT_SOC_DBG_CTRL "-lc-broacast"
+#define OT_SOC_DBG_LC_BCAST      TYPE_OT_SOC_DBG_CTRL "-lc-broadcast"
 #define OT_SOC_DBG_STATE         TYPE_OT_SOC_DBG_CTRL "-soc-dbg"
 #define OT_SOC_DBG_BOOT_STATUS   TYPE_OT_SOC_DBG_CTRL "-boot-status"
-#define OT_SOC_DBG_A0_DEBUG_EN   TYPE_OT_SOC_DBG_CTRL "-a0-debug-en"
-#define OT_SOC_DBG_A0_FORCE_RAW  TYPE_OT_SOC_DBG_CTRL "-a0-force-raw"
 
 /* output lines */
 #define OT_SOC_DBG_CPU_BOOT     TYPE_OT_SOC_DBG_CTRL "-cpu-boot"
