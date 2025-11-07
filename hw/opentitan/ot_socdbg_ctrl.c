@@ -502,15 +502,14 @@ static void ot_socdbg_ctrl_boot_status(void *opaque, int n, int level)
     g_assert(n == 0);
 
     OtPwrMgrBootStatus bs = { .i32 = level };
-    trace_ot_socdbg_ctrl_boot_status(s->ot_id, (bool)bs.main_ip_clk_en,
-                                     (bool)bs.io_ip_clk_en, (bool)bs.otp_done,
+    trace_ot_socdbg_ctrl_boot_status(s->ot_id, (bool)bs.main_clk_status,
+                                     (bool)bs.io_clk_status, (bool)bs.otp_done,
                                      (bool)bs.lc_done, (bool)bs.cpu_fetch_en,
                                      bs.rom_done & ROM_MASK,
                                      bs.rom_good & ROM_MASK);
     uint16_t bs_bm = 0;
-    bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, MAIN_CLK_STATUS, bs.main_ip_clk_en);
-    bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, IO_CLK_STATUS, bs.io_ip_clk_en);
-    bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, USB_CLK_STATUS, bs.usb_ip_clk_en);
+    bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, MAIN_CLK_STATUS, bs.main_clk_status);
+    bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, IO_CLK_STATUS, bs.io_clk_status);
     bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, OTP_DONE, bs.otp_done);
     bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, LC_DONE, bs.lc_done);
     bs_bm =

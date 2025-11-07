@@ -55,9 +55,8 @@ typedef enum {
 /* Boot status packed as an IRQ */
 typedef union {
     struct {
-        unsigned main_ip_clk_en:1;
-        unsigned io_ip_clk_en:1;
-        unsigned usb_ip_clk_en:1; /* ignored for now */
+        unsigned main_clk_status:1u; /* in pwr_clk_rsp_t */
+        unsigned io_clk_status:1u; /* in pwr_clk_rsp_t */
         unsigned otp_done:1;
         unsigned lc_done:1;
         unsigned cpu_fetch_en:1;

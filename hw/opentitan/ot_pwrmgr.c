@@ -644,8 +644,8 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         ot_pwrmgr_clock_enable_all(s, true);
         break;
     case OT_PWR_FAST_ST_ENABLE_CLOCKS:
-        s->boot_status.main_ip_clk_en = 1u;
-        s->boot_status.io_ip_clk_en = 1u;
+        s->boot_status.main_clk_status = 1u;
+        s->boot_status.io_clk_status = 1u;
         ibex_irq_set(&s->boot_st, s->boot_status.i32);
         PWR_CHANGE_FAST_STATE(s, RELEASE_LC_RST);
         /*
@@ -714,8 +714,8 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         }
         break;
     case OT_PWR_FAST_ST_DIS_CLKS:
-        s->boot_status.main_ip_clk_en = 0u;
-        s->boot_status.io_ip_clk_en = 0u;
+        s->boot_status.main_clk_status = 0u;
+        s->boot_status.io_clk_status = 0u;
         ibex_irq_set(&s->boot_st, s->boot_status.i32);
         PWR_CHANGE_FAST_STATE(s, RESET_PREP);
         break;
