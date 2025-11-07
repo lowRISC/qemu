@@ -30,30 +30,30 @@
 
 #include "qom/object.h"
 
-#define TYPE_OT_SOCDBG_CTRL "ot-socdbg_ctrl"
-OBJECT_DECLARE_TYPE(OtSoCDbgCtrlState, OtSoCDbgCtrlClass, OT_SOCDBG_CTRL)
+#define TYPE_OT_SOC_DBG_CTRL "ot-soc_dbg_ctrl"
+OBJECT_DECLARE_TYPE(OtSoCDbgCtrlState, OtSoCDbgCtrlClass, OT_SOC_DBG_CTRL)
 
 /* SocDbg controller states */
 typedef enum {
-    OT_SOCDBG_ST_RAW,
-    OT_SOCDBG_ST_PRE_PROD,
-    OT_SOCDBG_ST_PROD,
-    OT_SOCDBG_ST_COUNT,
+    OT_SOC_DBG_ST_RAW,
+    OT_SOC_DBG_ST_PRE_PROD,
+    OT_SOC_DBG_ST_PROD,
+    OT_SOC_DBG_ST_COUNT,
 } OtSoCDbgState;
 
 /* input lines */
-#define OT_SOCDBG_HALT_CPU_BOOT TYPE_OT_SOCDBG_CTRL "-halt-cpu-boot"
-#define OT_SOCDBG_LC_BCAST      TYPE_OT_SOCDBG_CTRL "-lc-broacast"
-#define OT_SOCDBG_STATE         TYPE_OT_SOCDBG_CTRL "-socdbg"
-#define OT_SOCDBG_BOOT_STATUS   TYPE_OT_SOCDBG_CTRL "-boot-status"
-#define OT_SOCDBG_A0_DEBUG_EN   TYPE_OT_SOCDBG_CTRL "-a0-debug-en"
-#define OT_SOCDBG_A0_FORCE_RAW  TYPE_OT_SOCDBG_CTRL "-a0-force-raw"
+#define OT_SOC_DBG_HALT_CPU_BOOT TYPE_OT_SOC_DBG_CTRL "-halt-cpu-boot"
+#define OT_SOC_DBG_LC_BCAST      TYPE_OT_SOC_DBG_CTRL "-lc-broacast"
+#define OT_SOC_DBG_STATE         TYPE_OT_SOC_DBG_CTRL "-soc-dbg"
+#define OT_SOC_DBG_BOOT_STATUS   TYPE_OT_SOC_DBG_CTRL "-boot-status"
+#define OT_SOC_DBG_A0_DEBUG_EN   TYPE_OT_SOC_DBG_CTRL "-a0-debug-en"
+#define OT_SOC_DBG_A0_FORCE_RAW  TYPE_OT_SOC_DBG_CTRL "-a0-force-raw"
 
 /* output lines */
-#define OT_SOCDBG_CPU_BOOT     TYPE_OT_SOCDBG_CTRL "-cpu-boot"
-#define OT_SOCDBG_DEBUG_POLICY TYPE_OT_SOCDBG_CTRL "-debug-policy"
+#define OT_SOC_DBG_CPU_BOOT     TYPE_OT_SOC_DBG_CTRL "-cpu-boot"
+#define OT_SOC_DBG_DEBUG_POLICY TYPE_OT_SOC_DBG_CTRL "-debug-policy"
 
-#define OT_SOCDBG_DEBUG_POLICY_MASK 0x0fu
-#define OT_SOCDBG_DEBUG_VALID_MASK  0x80u
+#define OT_SOC_DBG_DEBUG_POLICY_MASK 0x0fu
+#define OT_SOC_DBG_DEBUG_VALID_MASK  0x80u
 
 #endif /* HW_OPENTITAN_OT_SOC_DBG_CTRL_H */

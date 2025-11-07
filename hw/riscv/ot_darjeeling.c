@@ -1287,7 +1287,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_SOC_DBG_CTRL] = {
         /* @todo: should be renamed TYPE_OT_SOC_DBG_CTRL */
-        .type = TYPE_OT_SOCDBG_CTRL,
+        .type = TYPE_OT_SOC_DBG_CTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30170000u }
         ),

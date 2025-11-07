@@ -83,11 +83,11 @@ REG16(BOOT_STATUS, 0x0)
     FIELD(BOOT_STATUS, ROM_CTRL_GOOD, 8u, 3u)
     FIELD(BOOT_STATUS, CPU_FETCH_EN, 11u, 1u)
 
-/* socdbg_bm fields */
-REG16(SOCDBG, 0x0)
-    FIELD(SOCDBG, A0_DEBUG, 0u, 1u)
-    FIELD(SOCDBG, A0_FORCE_RAW, 1u, 1u)
-    FIELD(SOCDBG, HALT_CPU_BOOT, 2u, 1u)
+/* soc_dbg_bm fields */
+REG16(SOC_DBG, 0x0)
+    FIELD(SOC_DBG, A0_DEBUG, 0u, 1u)
+    FIELD(SOC_DBG, A0_FORCE_RAW, 1u, 1u)
+    FIELD(SOC_DBG, HALT_CPU_BOOT, 2u, 1u)
 
 /* debug_policy, dbg_locked, dbg_unlocked fields */
 SHARED_FIELD(POLICY_CAT, 0u, 2u)
@@ -144,11 +144,11 @@ struct OtSoCDbgCtrlState {
 
     uint32_t regs[REGS_CORE_COUNT];
     OtSoCDbgCtrlFsmState fsm_state;
-    OtSoCDbgState socdbg_state;
+    OtSoCDbgState soc_dbg_state;
     unsigned debug_policy;
     unsigned fsm_tick_count;
     uint16_t boot_status_bm; /* BOOT_STATUS fields */
-    uint16_t socdbg_bm; /* SOCDBG fields */
+    uint16_t soc_dbg_bm; /* SOC_DBG fields */
     uint16_t lc_broadcast_bm; /* OtLcCtrlBroadcast fields */
     bool boot_continue;
     bool debug_valid;
@@ -220,18 +220,19 @@ static const char *LC_BROADCAST_NAMES[] = {
          LC_BROADCAST_NAMES[(_bit_)] : \
          "?")
 
-#define SOCDBG_NAME_ENTRY(_st_) [OT_SOCDBG_ST_##_st_] = stringify(_st_)
-static const char *SOCDBG_NAMES[] = {
+#define SOC_DBG_NAME_ENTRY(_st_) [OT_SOC_DBG_ST_##_st_] = stringify(_st_)
+static const char *SOC_DBG_NAMES[] = {
     /* clang-format off */
-    SOCDBG_NAME_ENTRY(RAW),
-    SOCDBG_NAME_ENTRY(PRE_PROD),
-    SOCDBG_NAME_ENTRY(PROD),
+    SOC_DBG_NAME_ENTRY(RAW),
+    SOC_DBG_NAME_ENTRY(PRE_PROD),
+    SOC_DBG_NAME_ENTRY(PROD),
     /* clang-format on */
 };
-#undef SOCDBG_NAME_ENTRY
+#undef SOC_DBG_NAME_ENTRY
 
-#define SOCDBG_NAME(_st_) \
-    (((unsigned)(_st_)) < ARRAY_SIZE(SOCDBG_NAMES) ? SOCDBG_NAMES[(_st_)] : "?")
+#define SOC_DBG_NAME(_st_) \
+    (((unsigned)(_st_)) < ARRAY_SIZE(SOC_DBG_NAMES) ? SOC_DBG_NAMES[(_st_)] : \
+                                                      "?")
 
 #define STATE_NAME_ENTRY(_st_) [ST_##_st_] = stringify(_st_)
 static const char *STATE_NAMES[] = {
@@ -250,46 +251,46 @@ static const char *STATE_NAMES[] = {
     ((_st_) >= 0 && (_st_) < ARRAY_SIZE(STATE_NAMES) ? STATE_NAMES[(_st_)] : \
                                                        "?")
 #define CHANGE_STATE(_s_, _st_) \
-    ot_socdbg_ctrl_change_state_line(_s_, ST_##_st_, __LINE__)
-#define SCHEDULE_FSM(_s_) ot_socdbg_ctrl_schedule_fsm(_s_, __func__, __LINE__)
+    ot_soc_dbg_ctrl_change_state_line(_s_, ST_##_st_, __LINE__)
+#define SCHEDULE_FSM(_s_) ot_soc_dbg_ctrl_schedule_fsm(_s_, __func__, __LINE__)
 
-static void ot_socdbg_ctrl_core_update_irq(OtSoCDbgCtrlState *s)
+static void ot_soc_dbg_ctrl_core_update_irq(OtSoCDbgCtrlState *s)
 {
     uint32_t levels = s->regs[R_CORE_INTR_STATE] & s->regs[R_CORE_INTR_ENABLE];
 
     int level = (int)(bool)(levels & INTR_DEBUG_ATTENTION_MASK);
     if (level != ibex_irq_get_level(&s->irq)) {
-        trace_ot_socdbg_ctrl_core_update_irq(s->ot_id, level);
+        trace_ot_soc_dbg_ctrl_core_update_irq(s->ot_id, level);
     }
 
     ibex_irq_set(&s->irq, level);
 }
 
-static void ot_socdbg_ctrl_change_state_line(
+static void ot_soc_dbg_ctrl_change_state_line(
     OtSoCDbgCtrlState *s, OtSoCDbgCtrlFsmState state, int line)
 {
-    trace_ot_socdbg_ctrl_change_state(s->ot_id, line, STATE_NAME(s->fsm_state),
-                                      s->fsm_state, STATE_NAME(state), state);
+    trace_ot_soc_dbg_ctrl_change_state(s->ot_id, line, STATE_NAME(s->fsm_state),
+                                       s->fsm_state, STATE_NAME(state), state);
 
     s->fsm_state = state;
 }
 
 static void
-ot_socdbg_ctrl_schedule_fsm(OtSoCDbgCtrlState *s, const char *func, int line)
+ot_soc_dbg_ctrl_schedule_fsm(OtSoCDbgCtrlState *s, const char *func, int line)
 {
     s->fsm_tick_count += 1u;
-    trace_ot_socdbg_ctrl_schedule_fsm(s->ot_id, func, line, s->fsm_tick_count);
+    trace_ot_soc_dbg_ctrl_schedule_fsm(s->ot_id, func, line, s->fsm_tick_count);
     qemu_bh_schedule(s->fsm_tick_bh);
 }
 
-static void ot_socdbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
+static void ot_soc_dbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
 {
     bool cpu_boot_done = false;
 
-    trace_ot_socdbg_ctrl_tick_fsm(s->ot_id, STATE_NAME(s->fsm_state),
-                                  s->boot_status_bm, s->lc_broadcast_bm,
-                                  s->socdbg_bm, s->dft_ignore,
-                                  s->boot_continue);
+    trace_ot_soc_dbg_ctrl_tick_fsm(s->ot_id, STATE_NAME(s->fsm_state),
+                                   s->boot_status_bm, s->lc_broadcast_bm,
+                                   s->soc_dbg_bm, s->dft_ignore,
+                                   s->boot_continue);
 
     switch (s->fsm_state) {
     case ST_IDLE:
@@ -311,7 +312,7 @@ static void ot_socdbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
         }
         break;
     case ST_CHECK_HALT_PIN:
-        if (s->socdbg_bm & R_SOCDBG_HALT_CPU_BOOT_MASK) {
+        if (s->soc_dbg_bm & R_SOC_DBG_HALT_CPU_BOOT_MASK) {
             CHANGE_STATE(s, CHECK_JTAG_GO);
         } else {
             CHANGE_STATE(s, CONTINUE_BOOT);
@@ -337,36 +338,36 @@ static void ot_socdbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
     /* as with PwrMgr, use simple boolean value, not MuBi4 */
     int cpu_boot_done_i = (int)cpu_boot_done;
     if (ibex_irq_get_level(&s->cpu_boot[CPU_BOOT_DONE]) != cpu_boot_done_i) {
-        trace_ot_socdbg_ctrl_cpu_boot_done(s->ot_id, cpu_boot_done_i);
+        trace_ot_soc_dbg_ctrl_cpu_boot_done(s->ot_id, cpu_boot_done_i);
     }
     ibex_irq_set(&s->cpu_boot[CPU_BOOT_DONE], cpu_boot_done_i);
 }
 
-static void ot_socdbg_ctrl_update(OtSoCDbgCtrlState *s)
+static void ot_soc_dbg_ctrl_update(OtSoCDbgCtrlState *s)
 {
-    OtSoCDbgState socdbg_state =
-        ((s->socdbg_bm & R_SOCDBG_A0_DEBUG_MASK) &&
-         (s->socdbg_bm & R_SOCDBG_A0_FORCE_RAW_MASK)) ?
-            OT_SOCDBG_ST_RAW :
-            s->socdbg_state;
+    OtSoCDbgState soc_dbg_state =
+        ((s->soc_dbg_bm & R_SOC_DBG_A0_DEBUG_MASK) &&
+         (s->soc_dbg_bm & R_SOC_DBG_A0_FORCE_RAW_MASK)) ?
+            OT_SOC_DBG_ST_RAW :
+            s->soc_dbg_state;
 
-    switch (socdbg_state) {
-    case OT_SOCDBG_ST_RAW:
+    switch (soc_dbg_state) {
+    case OT_SOC_DBG_ST_RAW:
         s->debug_policy =
             s->lc_broadcast_bm & (1u << OT_LC_DFT_EN) ||
                     s->lc_broadcast_bm & (1u << OT_LC_HW_DEBUG_EN) ||
-                    (s->socdbg_bm & R_SOCDBG_A0_DEBUG_MASK) ?
+                    (s->soc_dbg_bm & R_SOC_DBG_A0_DEBUG_MASK) ?
                 s->dbg_unlocked :
                 s->dbg_locked;
         s->debug_valid =
             (bool)((s->boot_status_bm & R_BOOT_STATUS_LC_DONE_MASK) ||
-                   (s->socdbg_bm & R_SOCDBG_A0_DEBUG_MASK));
+                   (s->soc_dbg_bm & R_SOC_DBG_A0_DEBUG_MASK));
         break;
-    case OT_SOCDBG_ST_PRE_PROD:
+    case OT_SOC_DBG_ST_PRE_PROD:
         s->debug_policy = s->dbg_unlocked;
         s->debug_valid = (bool)(s->boot_status_bm & R_BOOT_STATUS_LC_DONE_MASK);
         break;
-    case OT_SOCDBG_ST_PROD:
+    case OT_SOC_DBG_ST_PROD:
         s->debug_policy = s->regs[R_CORE_DEBUG_POLICY_CTRL] &
                           (POLICY_CAT_MASK | POLICY_RELOCK_MASK);
         s->debug_valid = (bool)s->regs[R_CORE_DEBUG_POLICY_VALID];
@@ -376,28 +377,28 @@ static void ot_socdbg_ctrl_update(OtSoCDbgCtrlState *s)
         s->debug_valid = false;
     }
 
-    int policy = (int)((s->debug_policy & OT_SOCDBG_DEBUG_POLICY_MASK) |
-                       (s->debug_valid ? OT_SOCDBG_DEBUG_VALID_MASK : 0));
+    int policy = (int)((s->debug_policy & OT_SOC_DBG_DEBUG_POLICY_MASK) |
+                       (s->debug_valid ? OT_SOC_DBG_DEBUG_VALID_MASK : 0));
 
     int prev_policy = ibex_irq_get_level(&s->policy);
     if (prev_policy != policy) {
-        trace_ot_socdbg_ctrl_update(s->ot_id, SOCDBG_NAME(socdbg_state),
-                                    STATE_NAME(s->fsm_state), s->debug_policy,
-                                    s->debug_valid);
+        trace_ot_soc_dbg_ctrl_update(s->ot_id, SOC_DBG_NAME(soc_dbg_state),
+                                     STATE_NAME(s->fsm_state), s->debug_policy,
+                                     s->debug_valid);
     }
     ibex_irq_set(&s->policy, policy);
 }
 
-static void ot_socdbg_ctrl_fsm_tick(void *opaque)
+static void ot_soc_dbg_ctrl_fsm_tick(void *opaque)
 {
     OtSoCDbgCtrlState *s = opaque;
 
     OtSoCDbgCtrlFsmState fsm_state = s->fsm_state;
     g_assert(s->fsm_tick_count);
     while (s->fsm_tick_count) {
-        ot_socdbg_ctrl_update(s);
+        ot_soc_dbg_ctrl_update(s);
         s->fsm_tick_count--;
-        ot_socdbg_ctrl_tick_fsm(s);
+        ot_soc_dbg_ctrl_tick_fsm(s);
     }
     if (fsm_state != s->fsm_state) {
         /* schedule FSM update once more if its state has changed */
@@ -405,49 +406,49 @@ static void ot_socdbg_ctrl_fsm_tick(void *opaque)
     }
 }
 
-static void ot_socdbg_ctrl_a0_debug(void *opaque, int n, int level)
+static void ot_soc_dbg_ctrl_a0_debug(void *opaque, int n, int level)
 {
     OtSoCDbgCtrlState *s = opaque;
 
     g_assert(n == 0);
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "A0_DEBUG", 0, ibex_gpio_repr(level));
+    trace_ot_soc_dbg_ctrl_rcv(s->ot_id, "A0_DEBUG", 0, ibex_gpio_repr(level));
 
     /* expect an Ibex GPIO signal */
     g_assert(ibex_gpio_check(level));
 
     if (ibex_gpio_level(level)) {
-        s->socdbg_bm |= R_SOCDBG_A0_DEBUG_MASK;
+        s->soc_dbg_bm |= R_SOC_DBG_A0_DEBUG_MASK;
     } else {
-        s->socdbg_bm &= ~R_SOCDBG_A0_DEBUG_MASK;
+        s->soc_dbg_bm &= ~R_SOC_DBG_A0_DEBUG_MASK;
     }
 
     SCHEDULE_FSM(s);
 }
 
-static void ot_socdbg_ctrl_halt_cpu_boot(void *opaque, int n, int level)
+static void ot_soc_dbg_ctrl_halt_cpu_boot(void *opaque, int n, int level)
 {
     OtSoCDbgCtrlState *s = opaque;
 
     g_assert(n == 0);
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "HALT_CPU_BOOT", 0,
-                             ibex_gpio_repr(level));
+    trace_ot_soc_dbg_ctrl_rcv(s->ot_id, "HALT_CPU_BOOT", 0,
+                              ibex_gpio_repr(level));
 
     /* expect an Ibex GPIO signal */
     g_assert(ibex_gpio_check(level));
 
     /* active low */
     if (!ibex_gpio_level(level)) {
-        s->socdbg_bm |= R_SOCDBG_HALT_CPU_BOOT_MASK;
+        s->soc_dbg_bm |= R_SOC_DBG_HALT_CPU_BOOT_MASK;
     } else {
-        s->socdbg_bm &= ~R_SOCDBG_HALT_CPU_BOOT_MASK;
+        s->soc_dbg_bm &= ~R_SOC_DBG_HALT_CPU_BOOT_MASK;
     }
 
     SCHEDULE_FSM(s);
 }
 
-static void ot_socdbg_ctrl_lc_broadcast(void *opaque, int n, int level)
+static void ot_soc_dbg_ctrl_lc_broadcast(void *opaque, int n, int level)
 {
     OtSoCDbgCtrlState *s = opaque;
 
@@ -455,8 +456,8 @@ static void ot_socdbg_ctrl_lc_broadcast(void *opaque, int n, int level)
     g_assert(bcast < OT_LC_BROADCAST_COUNT);
     g_assert(!ibex_gpio_check(level));
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, LC_BCAST_NAME(bcast), bcast,
-                             level ? '1' : '0');
+    trace_ot_soc_dbg_ctrl_rcv(s->ot_id, LC_BCAST_NAME(bcast), bcast,
+                              level ? '1' : '0');
 
     switch (n) {
     case OT_LC_RAW_TEST_RMA:
@@ -493,18 +494,18 @@ static void ot_socdbg_ctrl_lc_broadcast(void *opaque, int n, int level)
     SCHEDULE_FSM(s);
 }
 
-static void ot_socdbg_ctrl_boot_status(void *opaque, int n, int level)
+static void ot_soc_dbg_ctrl_boot_status(void *opaque, int n, int level)
 {
     OtSoCDbgCtrlState *s = opaque;
 
     g_assert(n == 0);
 
     OtPwrMgrBootStatus bs = { .i32 = level };
-    trace_ot_socdbg_ctrl_boot_status(s->ot_id, (bool)bs.main_clk_status,
-                                     (bool)bs.io_clk_status, (bool)bs.otp_done,
-                                     (bool)bs.lc_done, (bool)bs.cpu_fetch_en,
-                                     bs.rom_done & ROM_MASK,
-                                     bs.rom_good & ROM_MASK);
+    trace_ot_soc_dbg_ctrl_boot_status(s->ot_id, (bool)bs.main_clk_status,
+                                      (bool)bs.io_clk_status, (bool)bs.otp_done,
+                                      (bool)bs.lc_done, (bool)bs.cpu_fetch_en,
+                                      bs.rom_done & ROM_MASK,
+                                      bs.rom_good & ROM_MASK);
     uint16_t bs_bm = 0;
     bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, MAIN_CLK_STATUS, bs.main_clk_status);
     bs_bm = FIELD_DP16(bs_bm, BOOT_STATUS, IO_CLK_STATUS, bs.io_clk_status);
@@ -520,25 +521,25 @@ static void ot_socdbg_ctrl_boot_status(void *opaque, int n, int level)
     SCHEDULE_FSM(s);
 }
 
-static void ot_socdbg_ctrl_a0_force_raw(void *opaque, int n, int level)
+static void ot_soc_dbg_ctrl_a0_force_raw(void *opaque, int n, int level)
 {
     OtSoCDbgCtrlState *s = opaque;
 
     g_assert(n == 0);
     g_assert(!ibex_gpio_check(level));
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "FORCE_RAW", 0, level ? '1' : '0');
+    trace_ot_soc_dbg_ctrl_rcv(s->ot_id, "FORCE_RAW", 0, level ? '1' : '0');
 
     if (level) {
-        s->socdbg_bm |= R_SOCDBG_A0_FORCE_RAW_MASK;
+        s->soc_dbg_bm |= R_SOC_DBG_A0_FORCE_RAW_MASK;
     } else {
-        s->socdbg_bm &= ~R_SOCDBG_A0_FORCE_RAW_MASK;
+        s->soc_dbg_bm &= ~R_SOC_DBG_A0_FORCE_RAW_MASK;
     }
 
     SCHEDULE_FSM(s);
 }
 
-static void ot_socdbg_ctrl_socdbg_state(void *opaque, int n, int level)
+static void ot_soc_dbg_ctrl_soc_dbg_state(void *opaque, int n, int level)
 {
     OtSoCDbgCtrlState *s = opaque;
 
@@ -547,27 +548,29 @@ static void ot_socdbg_ctrl_socdbg_state(void *opaque, int n, int level)
 
     switch (level) {
     case 0:
-        s->socdbg_state = OT_SOCDBG_ST_RAW;
+        s->soc_dbg_state = OT_SOC_DBG_ST_RAW;
         break;
     case 1:
-        s->socdbg_state = OT_SOCDBG_ST_PRE_PROD;
+        s->soc_dbg_state = OT_SOC_DBG_ST_PRE_PROD;
         break;
     case 2:
-        s->socdbg_state = OT_SOCDBG_ST_PROD;
+        s->soc_dbg_state = OT_SOC_DBG_ST_PROD;
         break;
     default:
         g_assert_not_reached();
     }
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "SOCDBG_STATE", 0, (char)('0' + level));
+    trace_ot_soc_dbg_ctrl_rcv(s->ot_id, "SOC_DBG_STATE", 0,
+                              (char)('0' + level));
 
-    trace_ot_socdbg_ctrl_socdbg_state(s->ot_id, SOCDBG_NAME(s->socdbg_state));
+    trace_ot_soc_dbg_ctrl_soc_dbg_state(s->ot_id,
+                                        SOC_DBG_NAME(s->soc_dbg_state));
 
     SCHEDULE_FSM(s);
 }
 
 static uint64_t
-ot_socdbg_ctrl_core_read(void *opaque, hwaddr addr, unsigned size)
+ot_soc_dbg_ctrl_core_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtSoCDbgCtrlState *s = opaque;
     (void)size;
@@ -599,14 +602,14 @@ ot_socdbg_ctrl_core_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_socdbg_ctrl_core_io_read_out(s->ot_id, (uint32_t)addr,
-                                          REG_NAME(CORE, reg), val32, pc);
+    trace_ot_soc_dbg_ctrl_core_io_read_out(s->ot_id, (uint32_t)addr,
+                                           REG_NAME(CORE, reg), val32, pc);
 
     return (uint32_t)val32;
 }
 
-static void ot_socdbg_ctrl_core_write(void *opaque, hwaddr addr, uint64_t value,
-                                      unsigned size)
+static void ot_soc_dbg_ctrl_core_write(void *opaque, hwaddr addr,
+                                       uint64_t value, unsigned size)
 {
     OtSoCDbgCtrlState *s = opaque;
     (void)size;
@@ -615,24 +618,24 @@ static void ot_socdbg_ctrl_core_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_socdbg_ctrl_core_io_write(s->ot_id, (uint32_t)addr,
-                                       REG_NAME(CORE, reg), val32, pc);
+    trace_ot_soc_dbg_ctrl_core_io_write(s->ot_id, (uint32_t)addr,
+                                        REG_NAME(CORE, reg), val32, pc);
 
     switch (reg) {
     case R_CORE_INTR_STATE:
         val32 &= INTR_DEBUG_ATTENTION_MASK;
         s->regs[reg] &= ~val32; /* RW1C */
-        ot_socdbg_ctrl_core_update_irq(s);
+        ot_soc_dbg_ctrl_core_update_irq(s);
         break;
     case R_CORE_INTR_ENABLE:
         val32 &= INTR_DEBUG_ATTENTION_MASK;
         s->regs[reg] = val32;
-        ot_socdbg_ctrl_core_update_irq(s);
+        ot_soc_dbg_ctrl_core_update_irq(s);
         break;
     case R_CORE_INTR_TEST:
         val32 &= INTR_DEBUG_ATTENTION_MASK;
         s->regs[reg] |= val32; /* RW1S */
-        ot_socdbg_ctrl_core_update_irq(s);
+        ot_soc_dbg_ctrl_core_update_irq(s);
         break;
     case R_CORE_ALERT_TEST:
         val32 &= CORE_ALERT_TEST_MASK;
@@ -660,7 +663,7 @@ static void ot_socdbg_ctrl_core_write(void *opaque, hwaddr addr, uint64_t value,
 }
 
 static uint64_t
-ot_socdbg_ctrl_dmi_read(void *opaque, hwaddr addr, unsigned size)
+ot_soc_dbg_ctrl_dmi_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtSoCDbgCtrlState *s = opaque;
     (void)size;
@@ -692,14 +695,14 @@ ot_socdbg_ctrl_dmi_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
 
-    trace_ot_socdbg_ctrl_dmi_io_read_out(s->ot_id, (uint32_t)addr,
-                                         REG_NAME(DMI, reg), val32);
+    trace_ot_soc_dbg_ctrl_dmi_io_read_out(s->ot_id, (uint32_t)addr,
+                                          REG_NAME(DMI, reg), val32);
 
     return (uint32_t)val32;
 }
 
-static void ot_socdbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
-                                     unsigned size)
+static void ot_soc_dbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
+                                      unsigned size)
 {
     OtSoCDbgCtrlState *s = opaque;
     (void)size;
@@ -707,8 +710,8 @@ static void ot_socdbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
 
     hwaddr reg = R32_OFF(addr);
 
-    trace_ot_socdbg_ctrl_dmi_io_write(s->ot_id, (uint32_t)addr,
-                                      REG_NAME(DMI, reg), val32);
+    trace_ot_soc_dbg_ctrl_dmi_io_write(s->ot_id, (uint32_t)addr,
+                                       REG_NAME(DMI, reg), val32);
 
     switch (reg) {
     case R_DMI_CONTROL:
@@ -728,7 +731,7 @@ static void ot_socdbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
-static Property ot_socdbg_ctrl_properties[] = {
+static Property ot_soc_dbg_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSoCDbgCtrlState, ot_id),
     DEFINE_PROP_UINT8("dbg_unlocked", OtSoCDbgCtrlState, dbg_unlocked,
                       DEFAULT_DBG_UNLOCKED),
@@ -739,26 +742,26 @@ static Property ot_socdbg_ctrl_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps ot_socdbg_ctrl_core_ops = {
-    .read = &ot_socdbg_ctrl_core_read,
-    .write = &ot_socdbg_ctrl_core_write,
+static const MemoryRegionOps ot_soc_dbg_ctrl_core_ops = {
+    .read = &ot_soc_dbg_ctrl_core_read,
+    .write = &ot_soc_dbg_ctrl_core_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
 
-static const MemoryRegionOps ot_socdbg_ctrl_dmi_ops = {
-    .read = &ot_socdbg_ctrl_dmi_read,
-    .write = &ot_socdbg_ctrl_dmi_write,
+static const MemoryRegionOps ot_soc_dbg_ctrl_dmi_ops = {
+    .read = &ot_soc_dbg_ctrl_dmi_read,
+    .write = &ot_soc_dbg_ctrl_dmi_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
 
-static void ot_socdbg_ctrl_reset_enter(Object *obj, ResetType type)
+static void ot_soc_dbg_ctrl_reset_enter(Object *obj, ResetType type)
 {
-    OtSoCDbgCtrlClass *c = OT_SOCDBG_CTRL_GET_CLASS(obj);
-    OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(obj);
+    OtSoCDbgCtrlClass *c = OT_SOC_DBG_CTRL_GET_CLASS(obj);
+    OtSoCDbgCtrlState *s = OT_SOC_DBG_CTRL(obj);
 
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
@@ -766,26 +769,26 @@ static void ot_socdbg_ctrl_reset_enter(Object *obj, ResetType type)
 
     memset(s->regs, 0, sizeof(s->regs));
 
-    ot_socdbg_ctrl_core_update_irq(s);
+    ot_soc_dbg_ctrl_core_update_irq(s);
     ibex_irq_set(&s->alert, 0);
     ibex_irq_set(&s->cpu_boot[CPU_BOOT_GOOD], (int)false);
     ibex_irq_set(&s->cpu_boot[CPU_BOOT_DONE], (int)false);
 
     CHANGE_STATE(s, IDLE);
     s->fsm_tick_count = 0u;
-    s->socdbg_bm = 0u;
+    s->soc_dbg_bm = 0u;
     s->boot_status_bm = 0u;
     s->lc_broadcast_bm = 0u;
-    s->socdbg_state = OT_SOCDBG_ST_PROD;
+    s->soc_dbg_state = OT_SOC_DBG_ST_PROD;
     s->debug_policy = s->dbg_locked;
     s->debug_valid = false;
     s->boot_continue = false;
 }
 
-static void ot_socdbg_ctrl_reset_exit(Object *obj, ResetType type)
+static void ot_soc_dbg_ctrl_reset_exit(Object *obj, ResetType type)
 {
-    OtSoCDbgCtrlClass *c = OT_SOCDBG_CTRL_GET_CLASS(obj);
-    OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(obj);
+    OtSoCDbgCtrlClass *c = OT_SOC_DBG_CTRL_GET_CLASS(obj);
+    OtSoCDbgCtrlState *s = OT_SOC_DBG_CTRL(obj);
 
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj, type);
@@ -805,9 +808,9 @@ static void ot_socdbg_ctrl_reset_exit(Object *obj, ResetType type)
     SCHEDULE_FSM(s);
 }
 
-static void ot_socdbg_ctrl_realize(DeviceState *dev, Error **errp)
+static void ot_soc_dbg_ctrl_realize(DeviceState *dev, Error **errp)
 {
-    OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(dev);
+    OtSoCDbgCtrlState *s = OT_SOC_DBG_CTRL(dev);
     (void)errp;
 
     g_assert(s->ot_id);
@@ -816,68 +819,68 @@ static void ot_socdbg_ctrl_realize(DeviceState *dev, Error **errp)
     s->dbg_unlocked &= POLICY_CAT_MASK | POLICY_RELOCK_MASK;
 }
 
-static void ot_socdbg_ctrl_init(Object *obj)
+static void ot_soc_dbg_ctrl_init(Object *obj)
 {
-    OtSoCDbgCtrlState *s = OT_SOCDBG_CTRL(obj);
+    OtSoCDbgCtrlState *s = OT_SOC_DBG_CTRL(obj);
 
-    memory_region_init_io(&s->core, obj, &ot_socdbg_ctrl_core_ops, s,
-                          TYPE_OT_SOCDBG_CTRL, REGS_CORE_SIZE);
+    memory_region_init_io(&s->core, obj, &ot_soc_dbg_ctrl_core_ops, s,
+                          TYPE_OT_SOC_DBG_CTRL, REGS_CORE_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->core);
 
-    memory_region_init_io(&s->dmi, obj, &ot_socdbg_ctrl_dmi_ops, s,
-                          TYPE_OT_SOCDBG_CTRL, REGS_DMI_SIZE);
+    memory_region_init_io(&s->dmi, obj, &ot_soc_dbg_ctrl_dmi_ops, s,
+                          TYPE_OT_SOC_DBG_CTRL, REGS_DMI_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->dmi);
 
     ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
-    ibex_qdev_init_irq(obj, &s->policy, OT_SOCDBG_DEBUG_POLICY);
-    ibex_qdev_init_irqs(obj, s->cpu_boot, OT_SOCDBG_CPU_BOOT,
+    ibex_qdev_init_irq(obj, &s->policy, OT_SOC_DBG_DEBUG_POLICY);
+    ibex_qdev_init_irqs(obj, s->cpu_boot, OT_SOC_DBG_CPU_BOOT,
                         ARRAY_SIZE(s->cpu_boot));
 
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_socdbg_ctrl_halt_cpu_boot,
-                            OT_SOCDBG_HALT_CPU_BOOT, 1);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_socdbg_ctrl_lc_broadcast,
-                            OT_SOCDBG_LC_BCAST, OT_LC_BROADCAST_COUNT);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_socdbg_ctrl_socdbg_state,
-                            OT_SOCDBG_STATE, 1);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_socdbg_ctrl_boot_status,
-                            OT_SOCDBG_BOOT_STATUS, 1u);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_socdbg_ctrl_a0_debug,
-                            OT_SOCDBG_A0_DEBUG_EN, 1);
-    qdev_init_gpio_in_named(DEVICE(obj), &ot_socdbg_ctrl_a0_force_raw,
-                            OT_SOCDBG_A0_FORCE_RAW, 1u);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_soc_dbg_ctrl_halt_cpu_boot,
+                            OT_SOC_DBG_HALT_CPU_BOOT, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_soc_dbg_ctrl_lc_broadcast,
+                            OT_SOC_DBG_LC_BCAST, OT_LC_BROADCAST_COUNT);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_soc_dbg_ctrl_soc_dbg_state,
+                            OT_SOC_DBG_STATE, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_soc_dbg_ctrl_boot_status,
+                            OT_SOC_DBG_BOOT_STATUS, 1u);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_soc_dbg_ctrl_a0_debug,
+                            OT_SOC_DBG_A0_DEBUG_EN, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_soc_dbg_ctrl_a0_force_raw,
+                            OT_SOC_DBG_A0_FORCE_RAW, 1u);
 
-    s->fsm_tick_bh = qemu_bh_new(&ot_socdbg_ctrl_fsm_tick, s);
+    s->fsm_tick_bh = qemu_bh_new(&ot_soc_dbg_ctrl_fsm_tick, s);
 }
 
-static void ot_socdbg_ctrl_class_init(ObjectClass *klass, void *data)
+static void ot_soc_dbg_ctrl_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    dc->realize = &ot_socdbg_ctrl_realize;
-    device_class_set_props(dc, ot_socdbg_ctrl_properties);
+    dc->realize = &ot_soc_dbg_ctrl_realize;
+    device_class_set_props(dc, ot_soc_dbg_ctrl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
-    OtSoCDbgCtrlClass *sc = OT_SOCDBG_CTRL_CLASS(klass);
-    resettable_class_set_parent_phases(rc, &ot_socdbg_ctrl_reset_enter, NULL,
-                                       &ot_socdbg_ctrl_reset_exit,
+    OtSoCDbgCtrlClass *sc = OT_SOC_DBG_CTRL_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &ot_soc_dbg_ctrl_reset_enter, NULL,
+                                       &ot_soc_dbg_ctrl_reset_exit,
                                        &sc->parent_phases);
 }
 
-static const TypeInfo ot_socdbg_ctrl_info = {
-    .name = TYPE_OT_SOCDBG_CTRL,
+static const TypeInfo ot_soc_dbg_ctrl_info = {
+    .name = TYPE_OT_SOC_DBG_CTRL,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(OtSoCDbgCtrlState),
-    .instance_init = &ot_socdbg_ctrl_init,
+    .instance_init = &ot_soc_dbg_ctrl_init,
     .class_size = sizeof(OtSoCDbgCtrlClass),
-    .class_init = &ot_socdbg_ctrl_class_init,
+    .class_init = &ot_soc_dbg_ctrl_class_init,
 };
 
-static void ot_socdbg_ctrl_register_types(void)
+static void ot_soc_dbg_ctrl_register_types(void)
 {
-    type_register_static(&ot_socdbg_ctrl_info);
+    type_register_static(&ot_soc_dbg_ctrl_info);
 }
 
-type_init(ot_socdbg_ctrl_register_types);
+type_init(ot_soc_dbg_ctrl_register_types);
