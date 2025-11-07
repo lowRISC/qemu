@@ -25,8 +25,8 @@
  * THE SOFTWARE.
  */
 
-#ifndef HW_OPENTITAN_OT_SOCDBG_CTRL_H
-#define HW_OPENTITAN_OT_SOCDBG_CTRL_H
+#ifndef HW_OPENTITAN_OT_SOC_DBG_CTRL_H
+#define HW_OPENTITAN_OT_SOC_DBG_CTRL_H
 
 #include "qom/object.h"
 
@@ -56,4 +56,4 @@ typedef enum {
 #define OT_SOCDBG_DEBUG_POLICY_MASK 0x0fu
 #define OT_SOCDBG_DEBUG_VALID_MASK  0x80u
 
-#endif /* HW_OPENTITAN_OT_SOCDBG_CTRL_H */
+#endif /* HW_OPENTITAN_OT_SOC_DBG_CTRL_H */

@@ -30,7 +30,7 @@ Please check out `hw/opentitan/ot_ref.log`
   * zero-ization is not yet supported
 * [RISC-V Debug Module](jtag-dm.md) and Pulp Debug Module
 * [ROM controller](ot_rom_ctrl.md)
-* [SoC debug controller documentation](ot_socdbg_ctrl.md)
+* [SoC debug controller documentation](ot_soc_dbg_ctrl.md)
 * SPI data flash (from QEMU upstream w/ fixes)
 * [SPI Host controller](ot_spi_host.md)
   * HW bus config is ignored (SPI mode, speed, ...)

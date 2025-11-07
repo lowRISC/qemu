@@ -33,15 +33,13 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_pwrmgr.h"
-#include "hw/opentitan/ot_socdbg_ctrl.h"
+#include "hw/opentitan/ot_soc_dbg_ctrl.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_gpio.h"
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
-#include "trace/trace-hw_opentitan.h"
-
 
 /* clang-format off */
 
