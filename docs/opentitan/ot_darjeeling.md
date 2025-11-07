@@ -34,6 +34,7 @@ Please check out `hw/opentitan/ot_ref.log`
 * SPI data flash (from QEMU upstream w/ fixes)
 * [SPI Host controller](ot_spi_host.md)
   * HW bus config is ignored (SPI mode, speed, ...)
+* [SPI Device](ot_spi_device.md)
 * Timer
 * [UART](ot_uart.md)
   * missing RX timeout, TX break not supported
@@ -67,10 +68,6 @@ Devices in this group implement subset(s) of the real HW.
   * [LC controller](lc_ctrl_dmi.md) can be accessed through JTAG using a DM-TL bridge
   * Escalation is not supported
 * [ROM controller](ot_rom_ctrl.md)
-* [SPI device](ot_spi_device.md)
-  * Flash mode supported
-  * TPM mode supported, but shares a CS with flash/passthrough mode and so cannot be used together
-  * Passthrough mode not supported
 * SRAM controller
   * Initialization and scrambling from OTP key supported
   * Wait for init completion (bus stall) emulated
@@ -136,10 +133,10 @@ generate the `.raw` image files.
 
 Darjeeling emulation supports the following buses:
 
-| **Type** | **Num** | **Usage**                         |
-| -------- | ------- | ----------------------------------|
-| `mtd`    |    0    | [SPI host](ot_spi_host.md)        |
-| `pflash` |    0    | [OTP](ot_otp.md)                  |
+| **Type** | **Num** | **Usage**                                                  |
+| -------- | ------- | -----------------------------------------------------------|
+| `mtd`    |    0    | [SPI host](ot_spi_host.md), [SPI device](ot_spi_device.md) |
+| `pflash` |    0    | [OTP](ot_otp.md)                                           |
 
 ## Tools
 

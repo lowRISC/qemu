@@ -2,24 +2,22 @@
 
 ## Supported modes
 
-### FW/Generic mode
-
-This mode is only partially supported, and is being deprecated in real HW, so no further work is
-expected for this mode.
-
 ### Flash mode
 
-This mode is fully supported (to the extend of the understanding of the HW...).
+This mode is fully supported (to the extent of the understanding of the HW...).
 
 ### Passthrough mode
 
-This mode is not yet supported.
+This mode is supported, with minor deficiencies: The two-stage read pipeline, and dummy cycle
+counts of 1 to 7 are not supported as SPI transfers are modelled with byte-granularity (see the
+[CharDev protocol](#spi-device-chardev-protocol)). For commands with 1 to 7 dummy cycles specified,
+the maximum 8 dummy cycles (1 dummy byte) will be used.
 
 ### TPM
 
 This mode is partially supported, TPM commands handled by hw are not supported yet. The CharDev
 protocol doesn't support a distinct chip select for TPM, therefore it is sharing the same CS with
-the other modes. If CS is asserted and TPM is enabled, then it will have priority.
+the other modes. If CS is asserted and TPM is enabled, the TPM will have priority.
 
 ## Connection with a SPI Host
 
@@ -61,7 +59,7 @@ Commands:
 IT is also possible to use [`spidevflash.py`](spidevflash.md) tool to upload a binary using the same
 protocol.
 
-### SPI device CharDev protocol
+### SPI Device CharDev protocol
 
 SPI clock is not emulated, but each byte exchanged over the communication channel represent 8-bit
 SPI data. Dual and Quad lines are not emulated, all communications happen over a regular byte
