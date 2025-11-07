@@ -56,7 +56,7 @@ REG32(CORE_DEBUG_POLICY_CTRL, 0x10u)
 REG32(CORE_DEBUG_POLICY_VALID, 0x14u)
     FIELD(CORE_DEBUG_POLICY_VALID, VALID, 0u, 1u)
 REG32(CORE_STATUS_MBX, 0x18u)
-    /* shared by CORE_STATUS_MBX and DMI_JTAG_STATUS */
+    /* shared by CORE_STATUS_MBX and JTAG_STATUS */
     SHARED_FIELD(AUTH_DEBUG_INTENT_SET, 0u, 1u)
     SHARED_FIELD(AUTH_WINDOW_OPEN, 4u, 1u)
     SHARED_FIELD(AUTH_WINDOW_CLOSED, 5u, 1u)
@@ -66,11 +66,11 @@ REG32(CORE_STATUS_MBX, 0x18u)
     SHARED_FIELD(CURRENT_POLICY, 8u, 4u)
     SHARED_FIELD(REQUESTED_POLICY, 12u, 4u)
 
-/* registers on DMI bus */
-REG32(DMI_CONTROL, 0x0)
-    FIELD(DMI_CONTROL, BOOT_CONTINUE, 0u, 1u)
-REG32(DMI_JTAG_STATUS, 0x4)
-REG32(DMI_JTAG_BOOT_STATUS, 0x8)
+/* registers reachable from JTAG */
+REG32(JTAG_CONTROL, 0x0)
+    FIELD(JTAG_CONTROL, BOOT_CONTINUE, 0u, 1u)
+    REG32(JTAG_STATUS, 0x4)
+    REG32(JTAG_BOOT_STATUS, 0x8)
 
 /* boot_status_bm fields */
 REG16(BOOT_STATUS, 0x0)
@@ -100,9 +100,9 @@ SHARED_FIELD(POLICY_UNUSED, 3u, 1u)
 #define REGS_CORE_COUNT (R_CORE_LAST_REG + 1u)
 #define REGS_CORE_SIZE  (REGS_CORE_COUNT * sizeof(uint32_t))
 
-#define R_DMI_LAST_REG (R_DMI_JTAG_BOOT_STATUS)
-#define REGS_DMI_COUNT (R_DMI_LAST_REG + 1u)
-#define REGS_DMI_SIZE  (REGS_DMI_COUNT * sizeof(uint32_t))
+#define R_JTAG_LAST_REG (R_JTAG_BOOT_STATUS)
+#define REGS_JTAG_COUNT (R_JTAG_LAST_REG + 1u)
+#define REGS_JTAG_SIZE  (REGS_JTAG_COUNT * sizeof(uint32_t))
 
 #define CORE_ALERT_TEST_MASK (R_CORE_ALERT_TEST_FATAL_FAULT_MASK)
 #define STATUS_MASK \
@@ -133,7 +133,7 @@ struct OtSoCDbgCtrlState {
     SysBusDevice parent_obj;
 
     MemoryRegion core;
-    MemoryRegion dmi;
+    MemoryRegion jtag;
     IbexIRQ irq;
     IbexIRQ alert;
     IbexIRQ policy;
@@ -182,11 +182,11 @@ static const char *REG_CORE_NAMES[REGS_CORE_COUNT] = {
     /* clang-format on */
 };
 
-static const char *REG_DMI_NAMES[REGS_DMI_COUNT] = {
+static const char *REG_JTAG_NAMES[REGS_JTAG_COUNT] = {
     /* clang-format off */
-    REG_NAME_ENTRY(DMI_CONTROL),
-    REG_NAME_ENTRY(DMI_JTAG_STATUS),
-    REG_NAME_ENTRY(DMI_JTAG_BOOT_STATUS),
+    REG_NAME_ENTRY(JTAG_CONTROL),
+    REG_NAME_ENTRY(JTAG_STATUS),
+    REG_NAME_ENTRY(JTAG_BOOT_STATUS),
     /* clang-format on */
 };
 #undef REG_NAME_ENTRY
@@ -614,7 +614,7 @@ static void ot_soc_dbg_ctrl_core_write(void *opaque, hwaddr addr,
 }
 
 static uint64_t
-ot_soc_dbg_ctrl_dmi_read(void *opaque, hwaddr addr, unsigned size)
+ot_soc_dbg_ctrl_jtag_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtSoCDbgCtrlState *s = opaque;
     (void)size;
@@ -622,13 +622,13 @@ ot_soc_dbg_ctrl_dmi_read(void *opaque, hwaddr addr, unsigned size)
 
     hwaddr reg = R32_OFF(addr);
     switch (reg) {
-    case R_DMI_CONTROL:
-        val32 = s->boot_continue ? R_DMI_CONTROL_BOOT_CONTINUE_MASK : 0u;
+    case R_JTAG_CONTROL:
+        val32 = s->boot_continue ? R_JTAG_CONTROL_BOOT_CONTINUE_MASK : 0u;
         break;
-    case R_DMI_JTAG_STATUS:
+    case R_JTAG_STATUS:
         val32 = s->regs[R_CORE_STATUS_MBX]; /* mirror of the core I/F */
         break;
-    case R_DMI_JTAG_BOOT_STATUS:
+    case R_JTAG_BOOT_STATUS:
         if (s->lc_broadcast_bm & (1u << OT_LC_DFT_EN)) {
             val32 = (uint32_t)s->boot_status_bm;
         } else {
@@ -646,14 +646,14 @@ ot_soc_dbg_ctrl_dmi_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
 
-    trace_ot_soc_dbg_ctrl_dmi_io_read_out(s->ot_id, (uint32_t)addr,
-                                          REG_NAME(DMI, reg), val32);
+    trace_ot_soc_dbg_ctrl_jtag_io_read_out(s->ot_id, (uint32_t)addr,
+                                           REG_NAME(JTAG, reg), val32);
 
     return (uint32_t)val32;
 }
 
-static void ot_soc_dbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
-                                      unsigned size)
+static void ot_soc_dbg_ctrl_jtag_write(void *opaque, hwaddr addr,
+                                       uint64_t value, unsigned size)
 {
     OtSoCDbgCtrlState *s = opaque;
     (void)size;
@@ -661,19 +661,19 @@ static void ot_soc_dbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
 
     hwaddr reg = R32_OFF(addr);
 
-    trace_ot_soc_dbg_ctrl_dmi_io_write(s->ot_id, (uint32_t)addr,
-                                       REG_NAME(DMI, reg), val32);
+    trace_ot_soc_dbg_ctrl_jtag_io_write(s->ot_id, (uint32_t)addr,
+                                        REG_NAME(JTAG, reg), val32);
 
     switch (reg) {
-    case R_DMI_CONTROL:
-        s->boot_continue = (bool)(val32 & R_DMI_CONTROL_BOOT_CONTINUE_MASK);
+    case R_JTAG_CONTROL:
+        s->boot_continue = (bool)(val32 & R_JTAG_CONTROL_BOOT_CONTINUE_MASK);
         SCHEDULE_FSM(s);
         break;
-    case R_DMI_JTAG_STATUS:
-    case R_DMI_JTAG_BOOT_STATUS:
+    case R_JTAG_STATUS:
+    case R_JTAG_BOOT_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(DMI, reg));
+                      __func__, s->ot_id, addr, REG_NAME(JTAG, reg));
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -697,9 +697,9 @@ static const MemoryRegionOps ot_soc_dbg_ctrl_core_ops = {
     .impl.max_access_size = 4u,
 };
 
-static const MemoryRegionOps ot_soc_dbg_ctrl_dmi_ops = {
-    .read = &ot_soc_dbg_ctrl_dmi_read,
-    .write = &ot_soc_dbg_ctrl_dmi_write,
+static const MemoryRegionOps ot_soc_dbg_ctrl_jtag_ops = {
+    .read = &ot_soc_dbg_ctrl_jtag_read,
+    .write = &ot_soc_dbg_ctrl_jtag_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
@@ -771,9 +771,9 @@ static void ot_soc_dbg_ctrl_init(Object *obj)
                           TYPE_OT_SOC_DBG_CTRL, REGS_CORE_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->core);
 
-    memory_region_init_io(&s->dmi, obj, &ot_soc_dbg_ctrl_dmi_ops, s,
-                          TYPE_OT_SOC_DBG_CTRL, REGS_DMI_SIZE);
-    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->dmi);
+    memory_region_init_io(&s->jtag, obj, &ot_soc_dbg_ctrl_jtag_ops, s,
+                          TYPE_OT_SOC_DBG_CTRL, REGS_JTAG_SIZE);
+    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->jtag);
 
     ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
