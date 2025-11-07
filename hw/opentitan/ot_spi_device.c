@@ -151,10 +151,13 @@ REG32(CMD_INFO_0, 0x7cu) /* ReadStatus1 */
     SHARED_FIELD(CMD_INFO_ADDR_MODE, 8u, 2u)
     SHARED_FIELD(CMD_INFO_ADDR_SWAP_EN, 10u, 1u) /* not used in Flash mode */
     SHARED_FIELD(CMD_INFO_MBYTE_EN, 11u, 1u)
-    SHARED_FIELD(CMD_INFO_DUMMY_SIZE, 12u, 3u) /* limited to bits, ignore in QEMU */
-    SHARED_FIELD(CMD_INFO_DUMMY_EN, 15u, 1u) /* only use this bit for dummy cfg */
+    /* limited to bits, ignore in QEMU */
+    SHARED_FIELD(CMD_INFO_DUMMY_SIZE, 12u, 3u)
+    /* only use this bit for dummy cfg */
+    SHARED_FIELD(CMD_INFO_DUMMY_EN, 15u, 1u)
     SHARED_FIELD(CMD_INFO_PAYLOAD_EN, 16u, 4u)
-    SHARED_FIELD(CMD_INFO_PAYLOAD_DIR, 20u, 1u) /* not used in Flash mode (guess) */
+    /* not used in Flash mode (guess) */
+    SHARED_FIELD(CMD_INFO_PAYLOAD_DIR, 20u, 1u)
     SHARED_FIELD(CMD_INFO_PAYLOAD_SWAP_EN, 21u, 1u) /* not used in Flash mode */
     SHARED_FIELD(CMD_INFO_READ_PIPELINE_MODE, 22u, 2u)
     SHARED_FIELD(CMD_INFO_UPLOAD, 24u, 1u)
@@ -252,7 +255,8 @@ REG32(TPM_READ_FIFO, 0x34u)
 
 /*
  * Memory layout extracted from the documentation:
- * opentitan.org/book/hw/ip/spi_device/doc/programmers_guide.html#dual-port-sram-layout
+ * opentitan.org/book/hw/ip/spi_device/doc/programmers_guide.html
+ * #dual-port-sram-layout
  *
  *          New scheme (Egress + Ingress)      Old Scheme (DPSRAM)
  *         +--------------------------------+    +-----------------------+
@@ -280,6 +284,7 @@ REG32(TPM_READ_FIFO, 0x34u)
  *  0xfc0 -+-------------------+------+-----+
  *
  */
+/* clang-format off */
 #define SPI_SRAM_READ0_OFFSET      0x0
 #define SPI_SRAM_READ_SIZE         0x400u
 #define SPI_SRAM_READ1_OFFSET      (SPI_SRAM_READ0_OFFSET + SPI_SRAM_READ_SIZE)
@@ -293,18 +298,21 @@ REG32(TPM_READ_FIFO, 0x34u)
 #define SPI_SRAM_INGRESS_OFFSET    0xE00u
 #define SPI_SRAM_PAYLOAD_OFFSET    SPI_SRAM_INGRESS_OFFSET
 #define SPI_SRAM_PAYLOAD_SIZE      0x100u
-#define SPI_SRAM_CMD_OFFSET        (SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_PAYLOAD_SIZE)
+#define SPI_SRAM_CMD_OFFSET \
+    (SPI_SRAM_PAYLOAD_OFFSET + SPI_SRAM_PAYLOAD_SIZE)
 #define SPI_SRAM_CMD_SIZE          0x40u
 #define SPI_SRAM_ADDR_OFFSET       (SPI_SRAM_CMD_OFFSET + SPI_SRAM_CMD_SIZE)
 #define SPI_SRAM_ADDR_SIZE         0x40u
 #define SPI_SRAM_TPM_WRITE_OFFSET  (SPI_SRAM_ADDR_OFFSET + SPI_SRAM_ADDR_SIZE)
 #define SPI_SRAM_TPM_WRITE_SIZE    0x40u
-#define SPI_SRAM_ADDR_END          (SPI_SRAM_TPM_WRITE_OFFSET + SPI_SRAM_TPM_WRITE_SIZE)
+#define SPI_SRAM_ADDR_END \
+    (SPI_SRAM_TPM_WRITE_OFFSET + SPI_SRAM_TPM_WRITE_SIZE)
 #define SPI_SRAM_END_OFFSET        (SPI_SRAM_ADDR_END)
 #define SPI_DEVICE_SIZE            0x2000u
 #define SPI_DEVICE_SPI_REGS_OFFSET 0u
 #define SPI_DEVICE_TPM_REGS_OFFSET 0x800u
 #define SPI_DEVICE_SRAM_OFFSET     0x1000u
+/* clang-format on */
 
 #define SRAM_SIZE                 (PARAM_SRAM_DEPTH * sizeof(uint32_t))
 #define EGRESS_BUFFER_SIZE_BYTES  (PARAM_SRAM_EGRESS_DEPTH * sizeof(uint32_t))
