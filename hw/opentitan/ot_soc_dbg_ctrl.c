@@ -221,7 +221,7 @@ static const char *LC_BROADCAST_NAMES[] = {
 #define SOC_DBG_NAME_ENTRY(_st_) [OT_SOC_DBG_ST_##_st_] = stringify(_st_)
 static const char *SOC_DBG_NAMES[] = {
     /* clang-format off */
-    SOC_DBG_NAME_ENTRY(RAW),
+    SOC_DBG_NAME_ENTRY(BLANK),
     SOC_DBG_NAME_ENTRY(PRE_PROD),
     SOC_DBG_NAME_ENTRY(PROD),
     /* clang-format on */
@@ -344,7 +344,7 @@ static void ot_soc_dbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
 static void ot_soc_dbg_ctrl_update(OtSoCDbgCtrlState *s)
 {
     switch (s->soc_dbg_state) {
-    case OT_SOC_DBG_ST_RAW:
+    case OT_SOC_DBG_ST_BLANK:
         s->debug_policy =
             s->lc_broadcast_bm & (1u << OT_LC_DFT_EN) ||
                     s->lc_broadcast_bm & (1u << OT_LC_HW_DEBUG_EN) ?
@@ -501,7 +501,7 @@ static void ot_soc_dbg_ctrl_soc_dbg_state(void *opaque, int n, int level)
 
     switch (level) {
     case 0:
-        s->soc_dbg_state = OT_SOC_DBG_ST_RAW;
+        s->soc_dbg_state = OT_SOC_DBG_ST_BLANK;
         break;
     case 1:
         s->soc_dbg_state = OT_SOC_DBG_ST_PRE_PROD;

@@ -35,7 +35,7 @@ OBJECT_DECLARE_TYPE(OtSoCDbgCtrlState, OtSoCDbgCtrlClass, OT_SOC_DBG_CTRL)
 
 /* SocDbg controller states */
 typedef enum {
-    OT_SOC_DBG_ST_RAW,
+    OT_SOC_DBG_ST_BLANK,
     OT_SOC_DBG_ST_PRE_PROD,
     OT_SOC_DBG_ST_PROD,
     OT_SOC_DBG_ST_COUNT,
