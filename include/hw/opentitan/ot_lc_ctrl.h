@@ -39,8 +39,8 @@ OBJECT_DECLARE_TYPE(OtLcCtrlState, OtLcCtrlClass, OT_LC_CTRL)
 #define OT_LC_A0_FORCE_RAW TYPE_OT_LC_CTRL "-a0-force-raw"
 
 /* output lines */
-#define OT_LC_BROADCAST   TYPE_OT_LC_CTRL "-broadcast"
-#define OT_LC_CTRL_SOCDBG TYPE_OT_LC_CTRL "-socdbg"
+#define OT_LC_BROADCAST TYPE_OT_LC_CTRL "-broadcast"
+#define OT_LC_SOC_DBG   TYPE_OT_LC_CTRL "-soc-dbg"
 
 /* Life cycle broadcast signals (booleans) */
 typedef enum {
@@ -62,6 +62,8 @@ typedef enum {
 } OtLcCtrlBroadcast;
 
 #define OT_LC_KEYMGR_DIV_BYTES 16u /* 128 bits */
+
+#define OT_LC_SOC_DBG_STATE_COUNT 3u
 
 typedef struct {
     uint8_t data[OT_LC_KEYMGR_DIV_BYTES];

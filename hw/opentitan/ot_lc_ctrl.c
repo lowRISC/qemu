@@ -39,7 +39,6 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_pwrmgr.h"
-#include "hw/opentitan/ot_socdbg_ctrl.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -194,18 +193,18 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define NUM_LC_STATE            (LC_STATE_VALID_COUNT)
 #define NUM_LC_TRANSITION_COUNT 25u
 #define NUM_OWNERSHIP           9u
-#define NUM_SOCDBG              3u
+#define NUM_SOC_DBG             3u
 
 #define LC_TRANSITION_COUNT_WORDS 24u
 #define LC_STATE_WORDS            20u
 #define OWNERSHIP_WORDS           8u
-#define SOCDBG_WORDS              2u
+#define SOC_DBG_WORDS             2u
 
 #define LC_TRANSITION_COUNT_BYTES \
     ((LC_TRANSITION_COUNT_WORDS) / sizeof(uint16_t))
 #define LC_STATE_BYTES ((LC_STATE_WORDS) / sizeof(uint16_t))
 #define OWNERSHIP_SIZE ((OWNERSHIP_WORDS) / sizeof(uint16_t))
-#define SOCDBG_SIZE    ((SOCDBG_WORDS) / sizeof(uint16_t))
+#define SOC_DBG_SIZE   ((SOC_DBG_WORDS) / sizeof(uint16_t))
 
 #define LC_STATE_BIT_WIDTH 5u
 #define LC_ENCODE_STATE(_x_) \
@@ -281,7 +280,7 @@ typedef enum {
 typedef uint16_t OtLcCtrlStateValue[LC_STATE_WORDS];
 typedef uint16_t OtLcCtrlTransitionCountValue[LC_TRANSITION_COUNT_WORDS];
 typedef uint16_t OtLcCtrlOwnershipValue[OWNERSHIP_WORDS];
-typedef uint16_t OtLcCtrlSocDbgValue[SOCDBG_WORDS];
+typedef uint16_t OtLcCtrlSocDbgValue[SOC_DBG_WORDS];
 
 typedef enum {
     LC_IF_NONE,
@@ -355,7 +354,7 @@ typedef enum {
     LC_CTRL_TRANS_LC_STATE,
     LC_CTRL_TRANS_LC_TCOUNT,
     LC_CTRL_TRANS_OWNERSHIP,
-    LC_CTRL_TRANS_SOCDBG,
+    LC_CTRL_TRANS_SOC_DBG,
     LC_CTRL_TRANS_COUNT
 } OtLcCtrlTransition;
 
@@ -380,7 +379,7 @@ struct OtLcCtrlState {
     IbexIRQ alerts[NUM_ALERTS];
     IbexIRQ broadcasts[OT_LC_BROADCAST_COUNT];
     IbexIRQ pwc_lc_rsp;
-    IbexIRQ socdbg_tx;
+    IbexIRQ soc_dbg_tx;
 
     uint32_t *regs; /* slots in xregs are not used in regs */
     uint32_t xregs[EXCLUSIVE_SLOTS_COUNT][EXCLUSIVE_REGS_COUNT];
@@ -394,7 +393,7 @@ struct OtLcCtrlState {
     OtLcCtrlStateValue *lc_states;
     OtLcCtrlTransitionCountValue *lc_transitions;
     OtLcCtrlOwnershipValue *ownerships;
-    OtLcCtrlSocDbgValue *socdbgs;
+    OtLcCtrlSocDbgValue *soc_dbgs;
     OtOTPTokenValue *hashed_tokens;
     uint8_t km_divs[LC_DIV_COUNT][OT_LC_KEYMGR_DIV_BYTES];
 
@@ -422,7 +421,7 @@ struct OtLcCtrlState {
     uint8_t revision_id;
     uint8_t kmac_app;
     bool volatile_raw_unlock;
-    bool socdbg; /* whether this instance use SoCDbg state */
+    bool soc_dbg; /* whether this instance use SoCDbg state */
 };
 
 /* try to cope with the many ways to encode a transition matrix */
@@ -556,11 +555,11 @@ static const OtLcCtrlTransitionDesc TRANSITION_DESC[LC_CTRL_TRANS_COUNT] = {
         .mode = LC_TR_MODE_FIRST_FULL,
         .name = "ownership",
     },
-    [LC_CTRL_TRANS_SOCDBG] = {
-        .word_count = SOCDBG_WORDS,
-        .step_count = NUM_SOCDBG,
+    [LC_CTRL_TRANS_SOC_DBG] = {
+        .word_count = SOC_DBG_WORDS,
+        .step_count = NUM_SOC_DBG,
         .mode = LC_TR_MODE_FULL_CHANGE,
-        .name = "socdbg",
+        .name = "soc_dbg",
     },
 };
 
@@ -1231,31 +1230,31 @@ static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
     memcpy(&s->regs[R_MANUF_STATE_0], &hw_cfg->manuf_state[0],
            LC_MANUF_STATE_WIDTH);
 
-    if (!s->socdbg) {
+    if (!s->soc_dbg) {
         return;
     }
 
     /* default to lowest capabilities */
-    int socdbg_ix = OT_SOCDBG_ST_PROD;
+    int soc_dbg_ix = OT_LC_SOC_DBG_STATE_COUNT - 1u;
 
     TRACE_LC_CTRL("soc_dbg_state: %s",
                   ot_lc_ctrl_hexdump(s, hw_cfg->soc_dbg_state,
                                      sizeof(OtLcCtrlSocDbgValue)));
 
-    for (unsigned six = 0; six < OT_SOCDBG_ST_COUNT; six++) {
-        bool match = !memcmp(hw_cfg->soc_dbg_state, s->socdbgs[six],
+    for (unsigned six = 0; six < OT_LC_SOC_DBG_STATE_COUNT; six++) {
+        bool match = !memcmp(hw_cfg->soc_dbg_state, s->soc_dbgs[six],
                              sizeof(OtLcCtrlSocDbgValue));
         TRACE_LC_CTRL("soc_dbg ref[%u]: %s, match: %u", six,
-                      ot_lc_ctrl_hexdump(s, s->socdbgs[six],
+                      ot_lc_ctrl_hexdump(s, s->soc_dbgs[six],
                                          sizeof(OtLcCtrlSocDbgValue)),
                       match);
         if (match) {
-            socdbg_ix = (int)six;
+            soc_dbg_ix = (int)six;
             break;
         }
     }
 
-    ibex_irq_set(&s->socdbg_tx, socdbg_ix);
+    ibex_irq_set(&s->soc_dbg_tx, soc_dbg_ix);
 }
 
 static void ot_lc_ctrl_handle_otp_ack(void *opaque, bool ack)
@@ -2182,11 +2181,11 @@ static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING("ownership_last", OtLcCtrlState,
                        trans_cfg[LC_CTRL_TRANS_OWNERSHIP]
                            .state[LC_CTRL_TSTATE_LAST]),
-    DEFINE_PROP_STRING("socdbg_first", OtLcCtrlState,
-                       trans_cfg[LC_CTRL_TRANS_SOCDBG]
+    DEFINE_PROP_STRING("soc_dbg_first", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_SOC_DBG]
                            .state[LC_CTRL_TSTATE_FIRST]),
-    DEFINE_PROP_STRING("socdbg_last", OtLcCtrlState,
-                       trans_cfg[LC_CTRL_TRANS_SOCDBG]
+    DEFINE_PROP_STRING("soc_dbg_last", OtLcCtrlState,
+                       trans_cfg[LC_CTRL_TRANS_SOC_DBG]
                            .state[LC_CTRL_TSTATE_LAST]),
     DEFINE_PROP_UINT16("silicon_creator_id", OtLcCtrlState, silicon_creator_id,
                        0),
@@ -2194,7 +2193,7 @@ static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_UINT8("revision_id", OtLcCtrlState, revision_id, 0),
     DEFINE_PROP_BOOL("volatile_raw_unlock", OtLcCtrlState, volatile_raw_unlock,
                      true),
-    DEFINE_PROP_BOOL("socdbg", OtLcCtrlState, socdbg, false),
+    DEFINE_PROP_BOOL("soc-dbg", OtLcCtrlState, soc_dbg, false),
     DEFINE_PROP_UINT8("kmac-app", OtLcCtrlState, kmac_app, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -2315,9 +2314,9 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
                                      (uint16_t *)s->lc_transitions);
     ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_OWNERSHIP,
                                      (uint16_t *)s->ownerships);
-    if (s->socdbg) {
-        ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_SOCDBG,
-                                         (uint16_t *)s->socdbgs);
+    if (s->soc_dbg) {
+        ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_SOC_DBG,
+                                         (uint16_t *)s->soc_dbgs);
     }
     ot_lc_ctrl_configure_km_div(s);
     ot_lc_ctrl_compute_predefined_tokens(s);
@@ -2340,7 +2339,7 @@ static void ot_lc_ctrl_init(Object *obj)
     s->lc_transitions =
         g_new0(OtLcCtrlTransitionCountValue, NUM_LC_TRANSITION_COUNT);
     s->ownerships = g_new0(OtLcCtrlOwnershipValue, NUM_OWNERSHIP);
-    s->socdbgs = g_new0(OtLcCtrlSocDbgValue, NUM_SOCDBG);
+    s->soc_dbgs = g_new0(OtLcCtrlSocDbgValue, NUM_SOC_DBG);
     s->hashed_tokens = g_new0(OtOTPTokenValue, LC_TK_COUNT);
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
@@ -2352,8 +2351,9 @@ static void ot_lc_ctrl_init(Object *obj)
     }
 
     ibex_qdev_init_irq(obj, &s->pwc_lc_rsp, OT_PWRMGR_LC_RSP);
-    ibex_qdev_init_irq_default(obj, &s->socdbg_tx, OT_LC_CTRL_SOCDBG,
-                               OT_SOCDBG_ST_COUNT);
+    ibex_qdev_init_irq_default(obj, &s->soc_dbg_tx, OT_LC_SOC_DBG,
+                               /* initialize with an invalid level */
+                               OT_LC_SOC_DBG_STATE_COUNT);
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_lc_ctrl_pwr_lc_req,
                             OT_PWRMGR_LC_REQ, 1);
