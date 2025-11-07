@@ -44,10 +44,6 @@
 /* clang-format off */
 
 /* registers on core bus */
-REG32(CORE_INTR_STATE, 0x00)
-    SHARED_FIELD(INTR_DEBUG_ATTENTION, 0u, 1u)
-REG32(CORE_INTR_ENABLE, 0x04u)
-REG32(CORE_INTR_TEST, 0x08u)
 REG32(CORE_ALERT_TEST, 0x0cu)
     FIELD(CORE_ALERT_TEST, FATAL_FAULT, 0u, 1u)
 REG32(CORE_DEBUG_POLICY_CTRL, 0x10u)
@@ -134,7 +130,6 @@ struct OtSoCDbgCtrlState {
 
     MemoryRegion core;
     MemoryRegion jtag;
-    IbexIRQ irq;
     IbexIRQ alert;
     IbexIRQ policy;
     IbexIRQ continue_cpu_boot[CONTINUE_CPU_BOOT_COUNT];
@@ -172,9 +167,6 @@ struct OtSoCDbgCtrlClass {
 
 static const char *REG_CORE_NAMES[REGS_CORE_COUNT] = {
     /* clang-format off */
-    REG_NAME_ENTRY(CORE_INTR_STATE),
-    REG_NAME_ENTRY(CORE_INTR_ENABLE),
-    REG_NAME_ENTRY(CORE_INTR_TEST),
     REG_NAME_ENTRY(CORE_ALERT_TEST),
     REG_NAME_ENTRY(CORE_DEBUG_POLICY_CTRL),
     REG_NAME_ENTRY(CORE_DEBUG_POLICY_VALID),
@@ -249,18 +241,6 @@ static const char *STATE_NAMES[] = {
 #define CHANGE_STATE(_s_, _st_) \
     ot_soc_dbg_ctrl_change_state_line(_s_, ST_##_st_, __LINE__)
 #define SCHEDULE_FSM(_s_) ot_soc_dbg_ctrl_schedule_fsm(_s_, __func__, __LINE__)
-
-static void ot_soc_dbg_ctrl_core_update_irq(OtSoCDbgCtrlState *s)
-{
-    uint32_t levels = s->regs[R_CORE_INTR_STATE] & s->regs[R_CORE_INTR_ENABLE];
-
-    int level = (int)(bool)(levels & INTR_DEBUG_ATTENTION_MASK);
-    if (level != ibex_irq_get_level(&s->irq)) {
-        trace_ot_soc_dbg_ctrl_core_update_irq(s->ot_id, level);
-    }
-
-    ibex_irq_set(&s->irq, level);
-}
 
 static void ot_soc_dbg_ctrl_change_state_line(
     OtSoCDbgCtrlState *s, OtSoCDbgCtrlFsmState state, int line)
@@ -532,14 +512,11 @@ ot_soc_dbg_ctrl_core_read(void *opaque, hwaddr addr, unsigned size)
     hwaddr reg = R32_OFF(addr);
     switch (reg) {
     /* note: interrupt usage is not specified */
-    case R_CORE_INTR_STATE:
-    case R_CORE_INTR_ENABLE:
     case R_CORE_DEBUG_POLICY_CTRL:
     case R_CORE_DEBUG_POLICY_VALID:
     case R_CORE_STATUS_MBX:
         val32 = s->regs[reg];
         break;
-    case R_CORE_INTR_TEST:
     case R_CORE_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
@@ -575,21 +552,6 @@ static void ot_soc_dbg_ctrl_core_write(void *opaque, hwaddr addr,
                                         REG_NAME(CORE, reg), val32, pc);
 
     switch (reg) {
-    case R_CORE_INTR_STATE:
-        val32 &= INTR_DEBUG_ATTENTION_MASK;
-        s->regs[reg] &= ~val32; /* RW1C */
-        ot_soc_dbg_ctrl_core_update_irq(s);
-        break;
-    case R_CORE_INTR_ENABLE:
-        val32 &= INTR_DEBUG_ATTENTION_MASK;
-        s->regs[reg] = val32;
-        ot_soc_dbg_ctrl_core_update_irq(s);
-        break;
-    case R_CORE_INTR_TEST:
-        val32 &= INTR_DEBUG_ATTENTION_MASK;
-        s->regs[reg] |= val32; /* RW1S */
-        ot_soc_dbg_ctrl_core_update_irq(s);
-        break;
     case R_CORE_ALERT_TEST:
         val32 &= CORE_ALERT_TEST_MASK;
         if (val32) {
@@ -718,7 +680,6 @@ static void ot_soc_dbg_ctrl_reset_enter(Object *obj, ResetType type)
 
     memset(s->regs, 0, sizeof(s->regs));
 
-    ot_soc_dbg_ctrl_core_update_irq(s);
     ibex_irq_set(&s->alert, 0);
     ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_GOOD], (int)false);
     ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_DONE], (int)false);
@@ -777,7 +738,6 @@ static void ot_soc_dbg_ctrl_init(Object *obj)
                           TYPE_OT_SOC_DBG_CTRL, REGS_JTAG_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->jtag);
 
-    ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
     ibex_qdev_init_irq(obj, &s->policy, OT_SOC_DBG_DEBUG_POLICY);
     ibex_qdev_init_irqs(obj, s->continue_cpu_boot, OT_SOC_DBG_CONTINUE_CPU_BOOT,
