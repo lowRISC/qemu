@@ -421,7 +421,7 @@ struct OtLcCtrlState {
     uint8_t revision_id;
     uint8_t kmac_app;
     bool volatile_raw_unlock;
-    bool soc_dbg; /* whether this instance use SoCDbg state */
+    bool decode_soc_dbg; /* whether to handle SoCDbg state */
 };
 
 /* try to cope with the many ways to encode a transition matrix */
@@ -1230,7 +1230,7 @@ static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
     memcpy(&s->regs[R_MANUF_STATE_0], &hw_cfg->manuf_state[0],
            LC_MANUF_STATE_WIDTH);
 
-    if (!s->soc_dbg) {
+    if (!s->decode_soc_dbg) {
         return;
     }
 
@@ -2193,7 +2193,7 @@ static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_UINT8("revision_id", OtLcCtrlState, revision_id, 0),
     DEFINE_PROP_BOOL("volatile_raw_unlock", OtLcCtrlState, volatile_raw_unlock,
                      true),
-    DEFINE_PROP_BOOL("soc-dbg", OtLcCtrlState, soc_dbg, false),
+    DEFINE_PROP_BOOL("decode_soc_dbg", OtLcCtrlState, decode_soc_dbg, false),
     DEFINE_PROP_UINT8("kmac-app", OtLcCtrlState, kmac_app, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -2314,7 +2314,7 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
                                      (uint16_t *)s->lc_transitions);
     ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_OWNERSHIP,
                                      (uint16_t *)s->ownerships);
-    if (s->soc_dbg) {
+    if (s->decode_soc_dbg) {
         ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_SOC_DBG,
                                          (uint16_t *)s->soc_dbgs);
     }
