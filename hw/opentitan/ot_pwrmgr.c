@@ -472,30 +472,30 @@ static void ot_pwrmgr_cdc_sync(void *opaque)
     s->regs[R_CFG_CDC_SYNC] &= ~R_CFG_CDC_SYNC_SYNC_MASK;
 }
 
-static void ot_pwrmgr_rom_good(void *opaque, int n, int level)
+static void ot_pwrmgr_rom_good(void *opaque, int irq, int level)
 {
     OtPwrMgrState *s = opaque;
 
-    g_assert((unsigned)n < s->num_rom);
+    g_assert((unsigned)irq < s->num_rom);
 
-    trace_ot_pwrmgr_rom(s->ot_id, n, "good", level);
+    trace_ot_pwrmgr_rom(s->ot_id, irq, "good", level);
 
     if (level) {
-        s->fsm_events.rom_good |= 1u << n;
+        s->fsm_events.rom_good |= 1u << irq;
         ot_pwrmgr_schedule_fsm(s);
     }
 }
 
-static void ot_pwrmgr_rom_done(void *opaque, int n, int level)
+static void ot_pwrmgr_rom_done(void *opaque, int irq, int level)
 {
     OtPwrMgrState *s = opaque;
 
-    g_assert((unsigned)n < s->num_rom);
+    g_assert((unsigned)irq < s->num_rom);
 
-    trace_ot_pwrmgr_rom(s->ot_id, n, "done", level);
+    trace_ot_pwrmgr_rom(s->ot_id, irq, "done", level);
 
     if (level) {
-        s->fsm_events.rom_done |= 1u << n;
+        s->fsm_events.rom_done |= 1u << irq;
         ot_pwrmgr_schedule_fsm(s);
     }
 }
