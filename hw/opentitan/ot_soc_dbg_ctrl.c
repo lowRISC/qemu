@@ -114,10 +114,10 @@ SHARED_FIELD(POLICY_UNUSED, 3u, 1u)
 #define DEFAULT_DBG_LOCKED   7u
 
 enum {
-    CPU_BOOT_GOOD,
-    CPU_BOOT_DONE,
-    CPU_BOOT_COUNT,
-} OtSoCDbgCpuBoot;
+    CONTINUE_CPU_BOOT_GOOD,
+    CONTINUE_CPU_BOOT_DONE,
+    CONTINUE_CPU_BOOT_COUNT,
+} OtSoCDbgContinueCpuBoot;
 
 typedef enum {
     ST_IDLE,
@@ -137,7 +137,7 @@ struct OtSoCDbgCtrlState {
     IbexIRQ irq;
     IbexIRQ alert;
     IbexIRQ policy;
-    IbexIRQ cpu_boot[CPU_BOOT_COUNT]; /* "continue_cpu_boot" */
+    IbexIRQ continue_cpu_boot[CONTINUE_CPU_BOOT_COUNT];
     QEMUBH *fsm_tick_bh;
 
     uint32_t regs[REGS_CORE_COUNT];
@@ -333,10 +333,12 @@ static void ot_soc_dbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
 
     /* as with PwrMgr, use simple boolean value, not MuBi4 */
     int cpu_boot_done_i = (int)cpu_boot_done;
-    if (ibex_irq_get_level(&s->cpu_boot[CPU_BOOT_DONE]) != cpu_boot_done_i) {
+    if (ibex_irq_get_level(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_DONE]) !=
+        cpu_boot_done_i) {
         trace_ot_soc_dbg_ctrl_cpu_boot_done(s->ot_id, cpu_boot_done_i);
     }
-    ibex_irq_set(&s->cpu_boot[CPU_BOOT_DONE], cpu_boot_done_i);
+    ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_DONE],
+                 cpu_boot_done_i);
 }
 
 static void ot_soc_dbg_ctrl_update(OtSoCDbgCtrlState *s)
@@ -718,8 +720,8 @@ static void ot_soc_dbg_ctrl_reset_enter(Object *obj, ResetType type)
 
     ot_soc_dbg_ctrl_core_update_irq(s);
     ibex_irq_set(&s->alert, 0);
-    ibex_irq_set(&s->cpu_boot[CPU_BOOT_GOOD], (int)false);
-    ibex_irq_set(&s->cpu_boot[CPU_BOOT_DONE], (int)false);
+    ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_GOOD], (int)false);
+    ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_DONE], (int)false);
 
     CHANGE_STATE(s, IDLE);
     s->fsm_tick_count = 0u;
@@ -750,7 +752,7 @@ static void ot_soc_dbg_ctrl_reset_exit(Object *obj, ResetType type)
      */
     s->boot_status_bm |= ROM_MASK << R_BOOT_STATUS_ROM_CTRL_GOOD_SHIFT;
 
-    ibex_irq_set(&s->cpu_boot[CPU_BOOT_GOOD], (int)true);
+    ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_GOOD], (int)true);
 
     SCHEDULE_FSM(s);
 }
@@ -778,8 +780,8 @@ static void ot_soc_dbg_ctrl_init(Object *obj)
     ibex_sysbus_init_irq(obj, &s->irq);
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
     ibex_qdev_init_irq(obj, &s->policy, OT_SOC_DBG_DEBUG_POLICY);
-    ibex_qdev_init_irqs(obj, s->cpu_boot, OT_SOC_DBG_CPU_BOOT,
-                        ARRAY_SIZE(s->cpu_boot));
+    ibex_qdev_init_irqs(obj, s->continue_cpu_boot, OT_SOC_DBG_CONTINUE_CPU_BOOT,
+                        ARRAY_SIZE(s->continue_cpu_boot));
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_soc_dbg_ctrl_halt_cpu_boot,
                             OT_SOC_DBG_HALT_CPU_BOOT, 1);

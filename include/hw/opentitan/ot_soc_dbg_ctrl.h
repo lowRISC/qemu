@@ -48,8 +48,8 @@ typedef enum {
 #define OT_SOC_DBG_BOOT_STATUS   TYPE_OT_SOC_DBG_CTRL "-boot-status"
 
 /* output lines */
-#define OT_SOC_DBG_CPU_BOOT     TYPE_OT_SOC_DBG_CTRL "-cpu-boot"
-#define OT_SOC_DBG_DEBUG_POLICY TYPE_OT_SOC_DBG_CTRL "-debug-policy"
+#define OT_SOC_DBG_CONTINUE_CPU_BOOT TYPE_OT_SOC_DBG_CTRL "-continue-cpu-boot"
+#define OT_SOC_DBG_DEBUG_POLICY      TYPE_OT_SOC_DBG_CTRL "-debug-policy"
 
 #define OT_SOC_DBG_DEBUG_POLICY_MASK 0x0fu
 #define OT_SOC_DBG_DEBUG_VALID_MASK  0x80u
