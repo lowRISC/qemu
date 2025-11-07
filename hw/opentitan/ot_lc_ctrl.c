@@ -2150,6 +2150,41 @@ static void ot_lc_ctrl_get_keymgr_div(const OtLcCtrlState *s,
     memcpy(&div->data[0], s->km_divs[s->km_div_type], OT_LC_KEYMGR_DIV_BYTES);
 }
 
+static uint32_t
+ot_lc_ctrl_get_soc_dbg_state(const OtLcCtrlState *s, unsigned state)
+{
+    g_assert(s->decode_soc_dbg);
+
+    /*
+     * SoC debug controller is signalled with the OT_LC_CTRL_SOC_DBG interrupt
+     * line, with the decoded SoC debug state (OtSoCDbgState). In C code, this
+     * is defined as an enumeration. Valid constant values are initialized with
+     * the "soc_dbg_first" and "soc_dbg_last" properties and generated in
+     * #ot_lc_ctrl_configure_transitions. The encoded OTP values are loaded in
+     * #ot_lc_ctrl_load_otp_hw_cfg and decoded, if valid, into a OtSoCDbgState
+     * enumerated value. This feature is not deeply related to LC controller
+     * which only handles the Top-dependent SoC debug state value matrix and
+     * forward them to the Soc Debug Controller.
+     * However, the Soc Debug Controller now needs to expose the actual OTP
+     * encoded values onbly for debug purposes.
+     * This function converts back a OtSoCDbgState value into its actual
+     * top-specific encoding.
+     */
+    uint32_t code;
+
+    if (state < OT_LC_SOC_DBG_STATE_COUNT) {
+        code = (uint32_t)s->soc_dbgs[state][0u] |
+               ((uint32_t)s->soc_dbgs[state][1u]) << 16u;
+    } else {
+        error_report("%s: %s: unsupported Soc Dbg state %u", __func__, s->ot_id,
+                     state);
+        code = UINT32_MAX;
+    }
+
+    return code;
+}
+
+
 static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtLcCtrlState, ot_id),
     DEFINE_PROP_LINK("otp-ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP_IF,
@@ -2385,6 +2420,7 @@ static void ot_lc_ctrl_class_init(ObjectClass *klass, void *data)
                                        &lc->parent_phases);
 
     lc->get_keymgr_div = &ot_lc_ctrl_get_keymgr_div;
+    lc->get_soc_dbg_state = &ot_lc_ctrl_get_soc_dbg_state;
 }
 
 static const TypeInfo ot_lc_ctrl_info = {

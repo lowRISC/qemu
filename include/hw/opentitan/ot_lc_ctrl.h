@@ -76,10 +76,21 @@ struct OtLcCtrlClass {
     /*
      * Retrieve key manager diversification value.
      *
+     * @s the LC controller instance
      * @div a pointer to a structure that will be filled with the key manager
      *      diversification data.
      */
     void (*get_keymgr_div)(const OtLcCtrlState *s, OtLcCtrlKeyMgrDiv *div);
+
+    /*
+     * Expose SoC debug state value
+     *
+     * @s the LC controller instance
+     * @state the soc debug state index to obtain the code for
+     * @return LC soc debug state value or UINT32_MAX if the value of the state
+     *         is unknown
+     */
+    uint32_t (*get_soc_dbg_state)(const OtLcCtrlState *s, unsigned state);
 };
 
 #endif /* HW_OPENTITAN_OT_LC_CTRL_H */
