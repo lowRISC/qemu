@@ -41,11 +41,14 @@
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
 
+#define NUM_ALERTS 2u
+
 /* clang-format off */
 
 /* registers on core bus */
 REG32(CORE_ALERT_TEST, 0x0cu)
     FIELD(CORE_ALERT_TEST, FATAL_FAULT, 0u, 1u)
+    FIELD(CORE_ALERT_TEST, RECOV_CTRL_UPDATE_ERR, 1u, 1u)
 REG32(CORE_DEBUG_POLICY_CTRL, 0x10u)
     /* 4 bits as it seems to be relock (1) + policy (3) */
     FIELD(CORE_DEBUG_POLICY_CTRL, LEVEL, 0u, 4u)
@@ -100,7 +103,9 @@ SHARED_FIELD(POLICY_UNUSED, 3u, 1u)
 #define REGS_JTAG_COUNT (R_JTAG_LAST_REG + 1u)
 #define REGS_JTAG_SIZE  (REGS_JTAG_COUNT * sizeof(uint32_t))
 
-#define CORE_ALERT_TEST_MASK (R_CORE_ALERT_TEST_FATAL_FAULT_MASK)
+#define CORE_ALERT_TEST_WMASK \
+    (R_CORE_ALERT_TEST_FATAL_FAULT_MASK | \
+     R_CORE_ALERT_TEST_RECOV_CTRL_UPDATE_ERR_MASK)
 #define STATUS_MASK \
     (AUTH_DEBUG_INTENT_SET_MASK | AUTH_WINDOW_OPEN_MASK | \
      AUTH_WINDOW_CLOSED_MASK | AUTH_UNLOCK_SUCCESS_MASK | \
@@ -125,12 +130,18 @@ typedef enum {
     ST_HALT_DONE,
 } OtSoCDbgCtrlFsmState;
 
+typedef enum {
+    ALERT_FATAL,
+    ALERT_RECOV,
+    ALERT_COUNT,
+} OtSoCDbgAlert;
+
 struct OtSoCDbgCtrlState {
     SysBusDevice parent_obj;
 
     MemoryRegion core;
     MemoryRegion jtag;
-    IbexIRQ alert;
+    IbexIRQ alerts[ALERT_COUNT];
     IbexIRQ policy;
     IbexIRQ continue_cpu_boot[CONTINUE_CPU_BOOT_COUNT];
     QEMUBH *fsm_tick_bh;
@@ -143,6 +154,8 @@ struct OtSoCDbgCtrlState {
     uint16_t boot_status_bm; /* BOOT_STATUS fields */
     uint16_t soc_dbg_bm; /* SOC_DBG fields */
     uint16_t lc_broadcast_bm; /* OtLcCtrlBroadcast fields */
+    uint8_t fatal_alert_bm;
+    uint8_t recov_alert_bm;
     bool boot_continue;
     bool debug_valid;
 
@@ -155,6 +168,7 @@ struct OtSoCDbgCtrlClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 };
+static_assert(ALERT_COUNT == NUM_ALERTS, "Invalid alert count");
 
 #define ROM_MASK ((1u << (R_BOOT_STATUS_ROM_CTRL_DONE_LENGTH - 1u)) - 1u)
 
@@ -252,6 +266,26 @@ static void ot_soc_dbg_ctrl_change_state_line(
 }
 
 static void
+ot_soc_dbg_ctrl_update_alerts(OtSoCDbgCtrlState *s, uint32_t test_bm)
+{
+    bool alert;
+
+    alert = (bool)s->fatal_alert_bm |
+            (bool)(test_bm & R_CORE_ALERT_TEST_FATAL_FAULT_MASK);
+    ibex_irq_set(&s->alerts[ALERT_FATAL], (int)alert);
+
+    alert = (bool)s->recov_alert_bm |
+            (bool)(test_bm & R_CORE_ALERT_TEST_RECOV_CTRL_UPDATE_ERR_MASK);
+    ibex_irq_set(&s->alerts[ALERT_RECOV], (int)alert);
+
+    if (test_bm) {
+        /* alert test is transient */
+        ibex_irq_set(&s->alerts[ALERT_FATAL], (int)(bool)s->fatal_alert_bm);
+        ibex_irq_set(&s->alerts[ALERT_RECOV], (int)(bool)s->recov_alert_bm);
+    }
+}
+
+static void
 ot_soc_dbg_ctrl_schedule_fsm(OtSoCDbgCtrlState *s, const char *func, int line)
 {
     s->fsm_tick_count += 1u;
@@ -306,8 +340,12 @@ static void ot_soc_dbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
         cpu_boot_done = true;
         break;
     default:
-        /* it does not seem there is a special state for this case */
-        ibex_irq_set(&s->alert, (int)true);
+        /*
+         * it does not seem there is a special state for this case, i.e.
+         * the FSM does not enter a special error state, it only raises
+         * an alert.
+         */
+        ibex_irq_set(&s->alerts[ALERT_FATAL], (int)true);
         return;
     }
 
@@ -553,10 +591,8 @@ static void ot_soc_dbg_ctrl_core_write(void *opaque, hwaddr addr,
 
     switch (reg) {
     case R_CORE_ALERT_TEST:
-        val32 &= CORE_ALERT_TEST_MASK;
-        if (val32) {
-            ibex_irq_set(&s->alert, 1);
-        }
+        val32 &= CORE_ALERT_TEST_WMASK;
+        ot_soc_dbg_ctrl_update_alerts(s, val32);
         break;
     case R_CORE_DEBUG_POLICY_CTRL:
         val32 &= R_CORE_DEBUG_POLICY_CTRL_LEVEL_MASK;
@@ -680,7 +716,6 @@ static void ot_soc_dbg_ctrl_reset_enter(Object *obj, ResetType type)
 
     memset(s->regs, 0, sizeof(s->regs));
 
-    ibex_irq_set(&s->alert, 0);
     ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_GOOD], (int)false);
     ibex_irq_set(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_DONE], (int)false);
 
@@ -693,6 +728,10 @@ static void ot_soc_dbg_ctrl_reset_enter(Object *obj, ResetType type)
     s->debug_policy = DEFAULT_DBG_LOCKED;
     s->debug_valid = false;
     s->boot_continue = false;
+    s->fatal_alert_bm = 0u;
+    s->recov_alert_bm = 0u;
+
+    ot_soc_dbg_ctrl_update_alerts(s, 0u);
 }
 
 static void ot_soc_dbg_ctrl_reset_exit(Object *obj, ResetType type)
@@ -738,7 +777,9 @@ static void ot_soc_dbg_ctrl_init(Object *obj)
                           TYPE_OT_SOC_DBG_CTRL, REGS_JTAG_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->jtag);
 
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    for (unsigned ix = 0; ix < NUM_ALERTS; ix++) {
+        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+    }
     ibex_qdev_init_irq(obj, &s->policy, OT_SOC_DBG_DEBUG_POLICY);
     ibex_qdev_init_irqs(obj, s->continue_cpu_boot, OT_SOC_DBG_CONTINUE_CPU_BOOT,
                         ARRAY_SIZE(s->continue_cpu_boot));
