@@ -1811,6 +1811,8 @@ static void ot_entropy_src_reset_enter(Object *obj, ResetType type)
 
     trace_ot_entropy_src_reset(s->ot_id, "enter");
 
+    qemu_log("%s VERSION %u\n", __func__, s->version);
+
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
@@ -1898,6 +1900,22 @@ static void ot_entropy_src_realize(DeviceState *dev, Error **errp)
     g_assert(s->version > 0);
     g_assert(s->noise_src);
 
+    memory_region_init_io(&s->mmio_lo, OBJECT(dev), &ot_entropy_src_lo_ops, s,
+                          TYPE_OT_ENTROPY_SRC "-regs-lo", REGS_LO_SIZE);
+    memory_region_add_subregion(&s->mmio, REGS_LO_BASE, &s->mmio_lo);
+
+    if (s->version < 3) {
+        memory_region_init_io(&s->mmio_rev, OBJECT(dev),
+                              &ot_entropy_src_rev_ops, s,
+                              TYPE_OT_ENTROPY_SRC "-regs-rev", REGS_REV_SIZE);
+        memory_region_add_subregion(&s->mmio, REGS_REV_BASE, &s->mmio_rev);
+    }
+
+    memory_region_init_io(&s->mmio_hi, OBJECT(dev), &ot_entropy_src_hi_ops, s,
+                          TYPE_OT_ENTROPY_SRC "-regs-hi", REGS_HI_SIZE);
+    memory_region_add_subregion(&s->mmio, ot_entropy_src_hi_reg_base(s),
+                                &s->mmio_hi);
+
     (void)OBJECT_CHECK(OtNoiseSrcIf, s->noise_src, TYPE_OT_NOISE_SRC_IF);
 }
 
@@ -1911,21 +1929,10 @@ static void ot_entropy_src_init(Object *obj)
                        OT_ENTROPY_SRC_APERTURE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
-    memory_region_init_io(&s->mmio_lo, obj, &ot_entropy_src_lo_ops, s,
-                          TYPE_OT_ENTROPY_SRC "-regs-lo", REGS_LO_SIZE);
-    memory_region_add_subregion(&s->mmio, REGS_LO_BASE, &s->mmio_lo);
-
-    if (s->version < 3) {
-        memory_region_init_io(&s->mmio_rev, obj, &ot_entropy_src_rev_ops, s,
-                              TYPE_OT_ENTROPY_SRC "-regs-rev", REGS_REV_SIZE);
-        memory_region_add_subregion(&s->mmio, REGS_REV_BASE, &s->mmio_rev);
-    }
-
-    memory_region_init_io(&s->mmio_hi, obj, &ot_entropy_src_hi_ops, s,
-                          TYPE_OT_ENTROPY_SRC "-regs-hi", REGS_HI_SIZE);
-    memory_region_add_subregion(&s->mmio, ot_entropy_src_hi_reg_base(s),
-                                &s->mmio_hi);
-
+    /*
+     * note: MMIO operations are defined when the device is realized, as the
+     * version needs to be known to map the registers at the proper addresses.
+     */
     s->regs_lo = g_new0(uint32_t, REGS_LO_COUNT);
     if (s->version < 3) {
         s->regs_rev = g_new0(uint32_t, REGS_REV_COUNT);
