@@ -211,13 +211,17 @@ typedef union {
         uint8_t lc_done:1;
         uint8_t escalate:1; /* escalation from alert handler */
         uint8_t holdon_fetch:1; /* custom extension */
-        uint8_t rom_good; /* up to 8 ROMs */
-        uint8_t rom_done; /* up to 8 ROMs */
+        /* clang-format off */
+        uint8_t rom_good:OT_PWRMGR_MAX_ROM_COUNT;
+        uint8_t rom_done:OT_PWRMGR_MAX_ROM_COUNT;
+        /* clang-format on */
     };
 } OtPwrMgrEvents;
 
 static_assert(sizeof(OtPwrMgrEvents) == sizeof(uint32_t),
               "Invalid OtPwrMgrEvents definition");
+static_assert(sizeof(OtPwrMgrBootStatus) == sizeof(int),
+              "Invalid OtPwrMgrBootStatus size");
 
 struct OtPwrMgrState {
     SysBusDevice parent_obj;
@@ -1028,6 +1032,7 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     s->fsm_events.bitmap = 0;
     s->fsm_events.holdon_fetch = s->fetch_ctrl;
     s->boot_status.i32 = 0;
+    s->boot_status.rom_mask = (1u << s->num_rom) - 1u;
     ot_pwrmgr_sync_slow_regs(s);
 
     PWR_CHANGE_FAST_STATE(s, LOW_POWER);
@@ -1073,7 +1078,7 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
                             (int)PWRMGR_CONFIG[s->version].reset_count);
 
     if (s->num_rom) {
-        if (s->num_rom > 8u * sizeof(uint8_t)) {
+        if (s->num_rom > OT_PWRMGR_MAX_ROM_COUNT) {
             error_setg(&error_fatal, "%s: %s: too many ROMs\n", __func__,
                        s->ot_id);
             g_assert_not_reached();

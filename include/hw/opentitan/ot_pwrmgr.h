@@ -52,18 +52,24 @@ typedef enum {
     OT_PWRMGR_WAKEUP_COUNT,
 } OtPwrMgrWakeup;
 
+#define OT_PWRMGR_MAX_ROM_CTRL_COUNT 3u
+#define OT_PWRMGR_MAX_ROM_COUNT      (OT_PWRMGR_MAX_ROM_CTRL_COUNT + 1u)
+
 /* Boot status packed as an IRQ */
 typedef union {
     struct {
         unsigned main_clk_status:1u; /* in pwr_clk_rsp_t */
         unsigned io_clk_status:1u; /* in pwr_clk_rsp_t */
-        unsigned otp_done:1;
-        unsigned lc_done:1;
-        unsigned cpu_fetch_en:1;
-        unsigned strap_sampled:1;
-        unsigned light_reset:1;
-        unsigned rom_done:4;
-        unsigned rom_good:4;
+        unsigned otp_done:1u;
+        unsigned lc_done:1u;
+        unsigned cpu_fetch_en:1u;
+        unsigned strap_sampled:1u;
+        unsigned light_reset:1u;
+        /* clang-format off */
+        unsigned rom_done:OT_PWRMGR_MAX_ROM_COUNT;
+        unsigned rom_good:OT_PWRMGR_MAX_ROM_COUNT;
+        unsigned rom_mask:OT_PWRMGR_MAX_ROM_COUNT;
+        /* clang-format on */
     };
     int i32;
 } OtPwrMgrBootStatus;
