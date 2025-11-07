@@ -447,6 +447,12 @@ typedef struct {
 } SpiDeviceTpm;
 
 typedef struct {
+    unsigned addr;
+    uint32_t offset;
+    unsigned nbytes;
+} SpiTpmHwAddrMap;
+
+typedef struct {
     OtSpiBusState state;
     unsigned byte_count; /* Count of SPI payload to receive */
     Fifo8 chr_fifo; /* QEMU protocol input FIFO */
@@ -2161,8 +2167,6 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
         /* fall through*/
     case R_TPM_STATUS:
     case R_TPM_CFG:
-        val32 = s->tpm_regs[reg];
-        break;
     case R_TPM_CAP:
     case R_TPM_ACCESS_0:
     case R_TPM_ACCESS_1:
@@ -2173,13 +2177,11 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_TPM_INT_STATUS:
     case R_TPM_DID_VID:
     case R_TPM_RID:
-        qemu_log_mask(LOG_UNIMP, "%s: %s: %s: not supported\n", __func__,
-                      s->ot_id, TPM_REG_NAME(reg));
         val32 = s->tpm_regs[reg];
         break;
     case R_TPM_READ_FIFO:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%02x (%s)\n",
-                      __func__, s->ot_id, (uint32_t)addr, SPI_REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, TPM_REG_NAME(reg));
         val32 = 0u;
         break;
     default:
@@ -2446,21 +2448,38 @@ static void ot_spi_device_chr_recv_flash(OtSPIDeviceState *s,
     }
 }
 
-static bool ot_spi_device_tpm_is_hw_register(uint32_t addr)
+static bool
+ot_spi_device_tpm_get_hw_register(OtSPIDeviceState *s, uint32_t *reg_val)
 {
-    static const uint32_t TPM_HW_ADDR[] = {
-        0x000u, /* 000     Access_x*/
-        0x008u, /* 00B:008 Interrupt Enable*/
-        0x00Cu, /* 00C     Interrupt Vector*/
-        0x010u, /* 013:010 Interrupt Status*/
-        0x014u, /* 017:014 Interface Capability*/
-        0x018u, /* 01B:018 Status_x*/
-        0x028u, /* 028     Hash Start*/
-        0xF00u, /* F03:F00 DID_VID*/
-        0xF04u /* F04:F04 RID*/
+    /* clang-format off */
+    static const SpiTpmHwAddrMap TPM_HW_ADDR[] = {
+      /*{ register_addr, tpm_register_offset, size }*/
+        { 0x000u,        R_TPM_ACCESS_0,        4u },
+        { 0x004u,        R_TPM_ACCESS_1,        4u },
+        { 0x008u,        R_TPM_INT_ENABLE,      4u },
+        { 0x00Cu,        R_TPM_INT_VECTOR,      1u },
+        { 0x010u,        R_TPM_INT_STATUS,      4u },
+        { 0x014u,        R_TPM_INTF_CAPABILITY, 4u },
+        { 0x018u,        R_TPM_STS,             4u },
+        { 0x028u,        0u,                    0u }, /* Hash Start */
+        { 0xF00u,        R_TPM_DID_VID,         4u },
+        { 0xF04u,        R_TPM_RID,             4u },
     };
+    /* clang-format on */
+
+    if (reg_val) {
+        *reg_val = UINT32_MAX;
+    }
     for (uint32_t idx = 0u; idx < ARRAY_SIZE(TPM_HW_ADDR); idx++) {
-        if (TPM_HW_ADDR[idx] == (addr & ~0x3)) {
+        if (TPM_HW_ADDR[idx].addr == (s->tpm.reg & ~0x3u)) {
+            unsigned nbytes = TPM_HW_ADDR[idx].nbytes;
+            g_assert(nbytes <= sizeof(uint32_t));
+            if (reg_val && nbytes != 0u) {
+                uint32_t mask =
+                    UINT32_MAX >> (8u * (sizeof(uint32_t) - nbytes));
+                *reg_val &= ~mask;
+                *reg_val |= s->tpm_regs[TPM_HW_ADDR[idx].offset];
+            }
             return true;
         }
     }
@@ -2498,10 +2517,12 @@ static void ot_spi_device_tpm_addr_state(OtSPIDeviceState *s,
     }
 
     tpm->can_receive = 1u;
-    tpm->should_sw_handle =
-        ot_spi_device_is_tpm_mode_crb(s) ||
-        ot_spi_device_tpm_disable_hw_regs(s) || buf[0u] != TPM_ADDR_HEADER ||
-        !ot_spi_device_tpm_is_hw_register(tpm->reg);
+    tpm->should_sw_handle = true;
+    if (!ot_spi_device_is_tpm_mode_crb(s) &&
+        !ot_spi_device_tpm_disable_hw_regs(s) && buf[0u] == TPM_ADDR_HEADER) {
+        bool is_hw_register = ot_spi_device_tpm_get_hw_register(s, NULL);
+        tpm->should_sw_handle = !is_hw_register;
+    }
 
     tpm->state = tpm->should_sw_handle ? SPI_TPM_WAIT : SPI_TPM_START_BYTE;
 }
@@ -2525,6 +2546,17 @@ static void ot_spi_device_tpm_read_state(OtSPIDeviceState *s, unsigned size,
 {
     SpiDeviceTpm *tpm = &s->tpm;
     g_assert(fifo8_pop_buf(&tpm->rdfifo, tx_buf, size) == size);
+    tpm->state = SPI_TPM_IDLE;
+}
+
+static void ot_spi_device_tpm_read_hw_state(OtSPIDeviceState *s, unsigned size,
+                                            uint8_t *tx_buf)
+{
+    SpiDeviceTpm *tpm = &s->tpm;
+    uint32_t val32;
+    ot_spi_device_tpm_get_hw_register(s, &val32);
+    g_assert(size == sizeof(uint32_t));
+    stl_le_p(tx_buf, val32);
     tpm->state = SPI_TPM_IDLE;
 }
 
@@ -2569,8 +2601,7 @@ static void ot_spi_device_tpm_state_machine(OtSPIDeviceState *s,
         ot_spi_device_tpm_read_state(s, size, tx_buf);
         break;
     case SPI_TPM_READ_HW_REG:
-        /* @todo: implement hw register.*/
-        tpm->state = SPI_TPM_IDLE;
+        ot_spi_device_tpm_read_hw_state(s, size, tx_buf);
         break;
     case SPI_TPM_WAIT:
         ot_spi_device_tpm_wait_state(s);
