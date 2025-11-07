@@ -31,6 +31,7 @@
 #define OT_OTP_COMPORTABLE_REGS
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qom/object.h"
 #include "hw/opentitan/ot_otp_eg.h"

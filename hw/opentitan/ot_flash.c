@@ -46,6 +46,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/memalign.h"
 #include "qemu/timer.h"

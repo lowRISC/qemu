@@ -26,7 +26,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/log.h"
+#include "qemu/error-report.h"
 #include "qemu/typedefs.h"
 #include "exec/exec-all.h"
 #include "exec/page-protection.h"

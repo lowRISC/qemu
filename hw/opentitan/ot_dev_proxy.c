@@ -26,7 +26,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qemu/fifo8.h"
+#include "qemu/log-for-trace.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-misc.h"

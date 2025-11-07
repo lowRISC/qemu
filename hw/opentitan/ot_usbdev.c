@@ -34,6 +34,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
 #include "chardev/char-fe.h"

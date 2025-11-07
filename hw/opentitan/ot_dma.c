@@ -30,6 +30,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
