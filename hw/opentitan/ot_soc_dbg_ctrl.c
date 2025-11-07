@@ -87,7 +87,7 @@ REG16(BOOT_STATUS, 0x0)
 REG16(SOC_DBG, 0x0)
     FIELD(SOC_DBG, HALT_CPU_BOOT, 2u, 1u)
 
-/* debug_policy, dbg_locked, dbg_unlocked fields */
+/* debug_policy fields */
 SHARED_FIELD(POLICY_CAT, 0u, 2u)
 SHARED_FIELD(POLICY_RELOCK, 2u, 1u)
 SHARED_FIELD(POLICY_UNUSED, 3u, 1u)
@@ -152,8 +152,6 @@ struct OtSoCDbgCtrlState {
     bool debug_valid;
 
     char *ot_id;
-    uint8_t dbg_locked;
-    uint8_t dbg_unlocked;
     bool halt_function;
     bool dft_ignore;
 };
@@ -348,12 +346,12 @@ static void ot_soc_dbg_ctrl_update(OtSoCDbgCtrlState *s)
         s->debug_policy =
             s->lc_broadcast_bm & (1u << OT_LC_DFT_EN) ||
                     s->lc_broadcast_bm & (1u << OT_LC_HW_DEBUG_EN) ?
-                s->dbg_unlocked :
-                s->dbg_locked;
+                DEFAULT_DBG_UNLOCKED :
+                DEFAULT_DBG_LOCKED;
         s->debug_valid = (bool)(s->boot_status_bm & R_BOOT_STATUS_LC_DONE_MASK);
         break;
     case OT_SOC_DBG_ST_PRE_PROD:
-        s->debug_policy = s->dbg_unlocked;
+        s->debug_policy = DEFAULT_DBG_UNLOCKED;
         s->debug_valid = (bool)(s->boot_status_bm & R_BOOT_STATUS_LC_DONE_MASK);
         break;
     case OT_SOC_DBG_ST_PROD:
@@ -362,7 +360,7 @@ static void ot_soc_dbg_ctrl_update(OtSoCDbgCtrlState *s)
         s->debug_valid = (bool)s->regs[R_CORE_DEBUG_POLICY_VALID];
         break;
     default:
-        s->debug_policy = s->dbg_locked;
+        s->debug_policy = DEFAULT_DBG_LOCKED;
         s->debug_valid = false;
     }
 
@@ -686,10 +684,6 @@ static void ot_soc_dbg_ctrl_dmi_write(void *opaque, hwaddr addr, uint64_t value,
 
 static Property ot_soc_dbg_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSoCDbgCtrlState, ot_id),
-    DEFINE_PROP_UINT8("dbg_unlocked", OtSoCDbgCtrlState, dbg_unlocked,
-                      DEFAULT_DBG_UNLOCKED),
-    DEFINE_PROP_UINT8("dbg_locked", OtSoCDbgCtrlState, dbg_locked,
-                      DEFAULT_DBG_LOCKED),
     DEFINE_PROP_BOOL("halt_function", OtSoCDbgCtrlState, halt_function, true),
     DEFINE_PROP_BOOL("dft-ignore", OtSoCDbgCtrlState, dft_ignore, false),
     DEFINE_PROP_END_OF_LIST(),
@@ -733,7 +727,7 @@ static void ot_soc_dbg_ctrl_reset_enter(Object *obj, ResetType type)
     s->boot_status_bm = 0u;
     s->lc_broadcast_bm = 0u;
     s->soc_dbg_state = OT_SOC_DBG_ST_PROD;
-    s->debug_policy = s->dbg_locked;
+    s->debug_policy = DEFAULT_DBG_LOCKED;
     s->debug_valid = false;
     s->boot_continue = false;
 }
@@ -767,9 +761,6 @@ static void ot_soc_dbg_ctrl_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
-
-    s->dbg_locked &= POLICY_CAT_MASK | POLICY_RELOCK_MASK;
-    s->dbg_unlocked &= POLICY_CAT_MASK | POLICY_RELOCK_MASK;
 }
 
 static void ot_soc_dbg_ctrl_init(Object *obj)
