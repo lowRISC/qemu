@@ -92,7 +92,7 @@ class OtpLifecycle:
             mkind, conv = {'lcst': ('LC_STATE', str),
                            'lccnt': ('LC_TRANSITION_CNT', int),
                            'ownershipst': ('OWNERSHIP', str),
-                           'socdbgst': ('SOCDBG', str)}[kind]
+                           'socdbgst': ('SOC_DBG', str)}[kind]
             self._tables[mkind] = {}
             for ref, seq in seqs.items():
                 seq = ''.join((f'{x:04x}'for x in map(codes.get, seq)))

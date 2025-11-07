@@ -21,7 +21,7 @@ class LcCtrlConstants:
         self._log = getLogger('lc.const')
         self._states: dict[str, tuple[str, str]] = {}
         self._tokens: dict[str, str] = {}
-        self._diversifiers: dict [str, str] = {}
+        self._diversifiers: dict[str, str] = {}
 
     def load_sv(self, svp: TextIO) -> None:
         """Decode LC information from a System Verilog file.
@@ -50,14 +50,14 @@ class LcCtrlConstants:
                        int(trans[otrans[0]]),
                        int(trans[otrans[1]]))
         self._tokens.update(lcext.get_tokens(False, False))
-        socdbg = lcext.get_configuration('SOCDBG')
-        if socdbg:
-            for raw in {s for s in socdbg if int(s, 16) == 0}:
-                del socdbg[raw]
-            osoc = list(socdbg)
-            self._states['socdbg'] = osoc[0], osoc[-1]
+        soc_dbg = lcext.get_configuration('SOC_DBG')
+        if soc_dbg:
+            for raw in {s for s in soc_dbg if int(s, 16) == 0}:
+                del soc_dbg[raw]
+            osoc = list(soc_dbg)
+            self._states['soc_dbg'] = osoc[0], osoc[-1]
             self._log.info("Socdbg first: '%s', last '%s'",
-                           socdbg[osoc[0]], socdbg[osoc[-1]])
+                           soc_dbg[osoc[0]], soc_dbg[osoc[-1]])
         ownership = lcext.get_configuration('OWNERSHIP')
         if ownership:
             for raw in {s for s in ownership if int(s, 16) == 0}:
