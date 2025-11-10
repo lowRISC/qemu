@@ -39,6 +39,7 @@ jobs:
         with:
           repository: ${{ inputs.opentitan_repo || 'lowRISC/opentitan' }}
           ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
+          fetch-depth: 0 # fetch all commits to avoid bug with bitstream rule
 
       - name: Prepare OpenTitan environment
         uses: ./.github/actions/prepare-env
