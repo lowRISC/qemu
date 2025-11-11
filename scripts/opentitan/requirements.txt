@@ -1,6 +1,7 @@
 # Python requirements
 pylint>=3.3.3, <4.0
+flake8>=7.3.0, <8.0
 pyyaml>=6
 hjson>=3.1
 pyelftools>=0.30
-pycryptodome >= 3.12
+pycryptodome>=3.12

@@ -3,6 +3,7 @@
 # QEMU OpenTitan CI
 #
 # Copyright (c) 2023-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache License 2.0
 #------------------------------------------------------------------------------
 
@@ -86,18 +87,20 @@ jobs:
   lint-python:
     runs-on: ubuntu-latest
     steps:
+      - name: Check out QEMU
+        uses: actions/checkout@v4
       - name: Install tools
         run: |
           sudo apt-get update &&
           sudo apt-get install -y python3-pip
           # ubuntu "latest" is too old to require --break-system-packages ...
-          pip3 install pylint==3.3.3
-      - name: Check out QEMU
-        uses: actions/checkout@v4
+          pip3 install -r scripts/opentitan/requirements.txt
       - name: Lint Python code
         run: |
+          flake8 --config scripts/opentitan/.flake8 scripts/opentitan/*.py \
+          python/qemu/jtagtools python/qemu/ot
           pylint --rcfile scripts/opentitan/.pylintrc -d 'duplicate-code' -d 'fixme' \
-            scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
+          scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
 
   lint-clang:
     runs-on: ubuntu-24.04
