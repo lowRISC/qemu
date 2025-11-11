@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """QEMU OT tool to generate Key Manager DPE keys.
@@ -56,8 +57,9 @@ def main():
         params = argparser.add_argument_group(title='Parameters')
         params.add_argument('-e', '--ecc', type=int,
                             default=OtpImage.DEFAULT_ECC_BITS,
-                            metavar='BITS', help=f'ECC bit count (default: '
-                                                 f'{OtpImage.DEFAULT_ECC_BITS})')
+                            metavar='BITS',
+                            help=f'ECC bit count (default: '
+                                 f'{OtpImage.DEFAULT_ECC_BITS})')
         params.add_argument('-z', '--rom-size', metavar='SIZE',
                             type=HexInt.xparse,
                             action='append', default=[],
@@ -74,23 +76,23 @@ def main():
 
         genparser = subparsers.add_parser('generate', help='generate a key')
         genparser.add_argument('-b', '--swbindings', action='append',
-                            default=[], metavar='HEXSTR',
-                            help='SW bindings, may be repeated')
+                               default=[], metavar='HEXSTR',
+                               help='SW bindings, may be repeated')
         genparser.add_argument('-g', '--gen-out', choices=KeyManagerDpe.OUTPUTS,
-                            help='generation output (default: auto)')
+                               help='generation output (default: auto)')
         genparser.add_argument('-k', '--key-version', metavar='HEXSTR',
-                            type=HexInt, required=True,
-                            help='Key version')
+                               type=HexInt, required=True,
+                               help='Key version')
         genparser.add_argument('-o', '--output',
-                           help='output file with generated key')
+                               help='output file with generated key')
         genparser.add_argument('-R', '--rust-const', metavar='NAME',
-                           help='Rust constant name for the generated key')
+                               help='Rust constant name for the generated key')
         genparser.add_argument('-s', '--salt', default=[], metavar='HEXSTR',
-                            required=True,
-                            help='Salt')
+                               required=True,
+                               help='Salt')
         genparser.add_argument('-t', '--target',
-                            choices=KeyManagerDpe.TARGETS, required=True,
-                            help='destination device')
+                               choices=KeyManagerDpe.TARGETS, required=True,
+                               help='destination device')
 
         exeparser = subparsers.add_parser('execute', help='execute sequence')
         exeparser.add_argument('-s', '--sequence', metavar='INI', required=True,

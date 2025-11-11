@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """LifeCycle Controller tiny token tools
@@ -23,10 +24,10 @@ sys.path.append(QEMU_PYPATH)
 # ruff: noqa: E402
 from ot.util.log import configure_loggers
 
-_IEXC: Optional[Exception] = None
+_IEXC: Optional[Exception] = None  # noqa: F841
 try:
     from ot.lc_ctrl.tools import LifeCycleTokenEngine
-except ImportError as _IEXC:
+except ImportError as _IEXC:  # noqa: F841
     pass
 
 
@@ -37,9 +38,9 @@ def main():
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
         argparser.add_argument('-s', '--hash', metavar='TOKEN',
-                           help='hash the submitted token')
+                               help='hash the submitted token')
         argparser.add_argument('-g', '--generate', metavar='TOKEN_NAME',
-                           help='generate a new token pair')
+                               help='generate a new token pair')
         argparser.add_argument('-r', '--parse-rust', metavar='FILE',
                                type=FileType('rt'),
                                help='parse token from a Rust file')

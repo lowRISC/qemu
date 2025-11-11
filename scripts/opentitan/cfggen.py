@@ -447,7 +447,7 @@ class OtConfiguration:
             cfg[f'ot_device "{kmname}"'] = kmdata
 
     def _generate_ast(self, cfg: ConfigParser, variant: str,
-                         socid: Optional[str] = None) -> None:
+                      socid: Optional[str] = None) -> None:
         nameargs = [f'ot-ast-{variant}']
         if socid:
             nameargs.append(socid)
@@ -493,9 +493,9 @@ class OtConfiguration:
         groupstr = ','.join(f'{g.name}:{"+".join(sorted(g.sources))}'
                             for g in self._clock_groups.values())
         swcgstr = ','.join(g.name for g in self._clock_groups.values()
-                            if g.sw_cg)
+                           if g.sw_cg)
         hintstr = ','.join(g.name for g in self._clock_groups.values()
-                            if g.hint)
+                           if g.hint)
         self.add_pair(clkname, clkdata, 'topclocks', topclockstr)
         if clkrefname:
             self.add_pair(clkname, clkdata, 'refclock', clkrefname)
@@ -513,7 +513,7 @@ class OtConfiguration:
         pwrname = '.'.join(nameargs)
         pwrdata = {}
         clockstr = ','.join(c.name for c in self._top_clocks.values()
-                               if not c.aon)
+                            if not c.aon)
         self.add_pair(pwrname, pwrdata, 'clocks', clockstr)
         cfg[f'ot_device "{pwrname}"'] = pwrdata
 

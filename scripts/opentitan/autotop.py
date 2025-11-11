@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Generate machine definitions for OpenTitan top.
@@ -154,7 +155,7 @@ class AutoTop:
                 continue
             for genfile in listdir(gendir):
                 if (not genfile.endswith('.gen.hjson') or
-                    not genfile.startswith('xbar_')):
+                   not genfile.startswith('xbar_')):
                     continue
                 xbarcfg = joinpath(gendir, genfile)
                 if not isfile(xbarcfg):
@@ -203,7 +204,7 @@ class AutoTop:
                 self._devices[uname][subname] = dev
 
     def _load_all_interrupts(self, hjson: dict[str, Any]) -> None:
-        interrupts = self._load_interrupts( hjson.get('interrupt', []))
+        interrupts = self._load_interrupts(hjson.get('interrupt', []))
         irq_num = 0
         for dev, name in interrupts:
             if dev not in self._interrupts:
@@ -347,7 +348,7 @@ class AutoTop:
             except KeyError:
                 # temporary
                 alert = QEMUSignal("missing", -1)
-            mbox_map = {'MBX_JTAG' : 'DEBUG'}
+            mbox_map = {'MBX_JTAG': 'DEBUG'}
             if mmo.group(1) not in mbox_map:
                 lines.append(f'    {uprefix}_DEV_MBX({mbxidx}, {addr}u, '
                              f'"ot-mbx.sram", {irq.index}, {alert.index}),')
@@ -497,9 +498,9 @@ def main():
         assert len(outkinds) > 0
         top = argparser.add_argument_group(title='Top')
         top.add_argument('opentitan', nargs='?', metavar='OTDIR',
-                           help='OpenTitan root directory')
+                         help='OpenTitan root directory')
         top.add_argument('-T', '--top', required=True,
-                           help='OpenTitan top name')
+                         help='OpenTitan top name')
         files = argparser.add_argument_group(title='Files')
         files.add_argument('-o', '--output', type=FileType('wt'),
                            metavar='FILE',
@@ -507,9 +508,9 @@ def main():
         files.add_argument('-p', '--prefix', default='ot_dj_soc',
                            help='constant prefix (default: ot_dj_soc)')
         files.add_argument('-k', '--out-kind', choices=outkinds,
-                            default=outkinds[0],
-                            help=f'output file format '
-                                 f'(default: {outkinds[0]})')
+                           default=outkinds[0],
+                           help=f'output file format '
+                                f'(default: {outkinds[0]})')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')

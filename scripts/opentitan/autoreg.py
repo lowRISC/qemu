@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Generate device definitions for OpenTitan device.
@@ -346,7 +347,7 @@ class AutoReg:
         registers.append(AutoRegister(**regargs))
         return registers
 
-    def _parse_alerts(self, hjson:dict[str, Any], address: int) \
+    def _parse_alerts(self, hjson: dict[str, Any], address: int) \
             -> list[AutoRegister]:
         fields: list[AutoField] = []
         if hjson.get('no_auto_alert_regs', False):
@@ -419,7 +420,7 @@ class AutoReg:
             bitfield |= bitmask
             try:
                 access = getattr(AutoAccess,
-                    field.get('swaccess', reg_swaccess).upper())
+                                 field.get('swaccess', reg_swaccess).upper())
             except KeyError as exc:
                 raise RuntimeError(f'Cannot find swaccess for {name}') from exc
             resval = field.get('resval')
@@ -439,7 +440,7 @@ class AutoReg:
             fieldargs = [fname, desc, offset, width, access, reset]
             fields.append(AutoField(*fieldargs))
         bitmask = (1 << self._regwidth) - 1
-        if bitfield &~ bitmask:
+        if bitfield & ~bitmask:
             raise ValueError(f'Bitfield {name} out of range: '
                              f'0x{bitfield:0{nibcount}x}, mask '
                              f'0x{bitmask:0{nibcount}x}')
@@ -554,7 +555,7 @@ class QEMUAutoReg(AutoReg):
         #include "hw/sysbus.h"
         #include "trace.h"
 
-        '''
+        '''  # noqa: E501
         print(redent(code), file=tfp)
 
     def generate_struct(self, tfp: TextIO) -> None:
@@ -828,7 +829,7 @@ class QEMUAutoReg(AutoReg):
             print(f'#define {name}_WMASK \\\n    ({maskstr})', file=tfp)
             # special cast for interrupt testing with mixed fields
             if (reg.name == 'INTR_STATE' and reg.shared_fields and
-                reg.access == AutoAccess.UNDEF):
+               reg.access == AutoAccess.UNDEF):
                 masks: list[str] = [
                     f'{name}_{field.name}_MASK' for field in reg.fields
                 ]
@@ -961,7 +962,7 @@ class QEMUAutoReg(AutoReg):
         lines.append(redent('''
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%" HWADDR_PRIx "\\n",
                       __func__, s->ot_id, addr);
-        ''', 4, True))
+        ''', 4, True))  # noqa: E501
         if not write:
             lines.append('    val32 = 0;')
         lines.append('    break;')
@@ -988,7 +989,8 @@ class QEMUAutoReg(AutoReg):
         sep = f'_{group}_' if group else '_'
         lines = []
         if last.count > 1:
-            lines.append(f'#define R_LAST{sep}REG (R_{last.name}_{last.count-1})')
+            lines.append(f'#define R_LAST{sep}REG '
+                         f'(R_{last.name}_{last.count-1})')
         else:
             lines.append(f'#define R_LAST{sep}REG (R_{last.name})')
         lines.append(f'#define REGS{sep}COUNT (R_LAST{sep}REG + 1u)')
@@ -1241,7 +1243,7 @@ class BmTestAutoReg(AutoReg):
         use tock_registers::interfaces::{{ReadWriteable, Readable, Writeable}};
         use tock_registers::registers::{{ReadOnly, ReadWrite, WriteOnly}};
         use tock_registers::{{register_bitfields, register_structs}};
-        '''
+        '''  # noqa: E501
         # @todo ideally RW/RO/WO use should depend on the actual register
         # definitions. This is not yet supported.
         print(redent(code), file=tfp)
@@ -1305,8 +1307,9 @@ class BmTestAutoReg(AutoReg):
         print('];\n', file=tfp)
 
     def _generate_register(self, reg: AutoRegister,
-            shfields: dict[str, tuple[list[AutoField], set[str]]],
-            nibcount: int, repcount:int, tfp: TextIO) -> None:
+                           shfields: dict[str, tuple[list[AutoField],
+                                                     set[str]]],
+                           nibcount: int, repcount: int, tfp: TextIO) -> None:
         regtype = {
             AutoAccess.RO: 'ReadOnly',
             AutoAccess.WO: 'WriteOnly',

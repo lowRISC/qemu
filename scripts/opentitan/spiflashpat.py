@@ -6,6 +6,7 @@
 """
 
 # Copyright (c) 2024 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 from argparse import ArgumentParser
@@ -147,7 +148,8 @@ def main():
         if bitwidth > length * 8:
             argparser.error('Pattern width larger than slot size')
 
-        flasher = SpiFlashPatternGenerator(args.size, args.file, args.big_endian)
+        flasher = SpiFlashPatternGenerator(args.size, args.file,
+                                           args.big_endian)
         flasher.resize(args.reset)
         flasher.generate(args.address, args.count, args.inc, length,
                          bitwidth)
