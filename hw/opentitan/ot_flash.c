@@ -2198,7 +2198,6 @@ static void ot_flash_init_complete(void *opaque)
     trace_ot_flash_op_complete(s->ot_id, OP_NAME(s->op.kind), s->op.hw, true);
 
     s->op.kind = OP_NONE;
-    ot_flash_process_control_op(s);
 }
 
 static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -2459,15 +2458,22 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
 
         /*
-         * SW protocol ops are not processed until the phy controller is init;
-         * immediately after the flash arbiter permits hw ops to read keymgr
-         * secrets. So, we cannot perform a sw op until the flash_ctrl is
-         * initialized. However, if `start` is true, the arbiter processes the
-         * sw request immediately after init in `ot_flash_init_complete`.
+         * SW protocol operations are not processed until the PHY controller is
+         * initialized, but the protocol controller is not required to be
+         * initialized (i.e. before the scrambling keys are read). In such a
+         * case we *can* interact with the flash - we just do not buffer
+         * outgoing reads, but they are still permitted.
+         *
+         * We emulate the PHY as always being initialized, so there is no need
+         * to check for initialization here.
+         *
+         * Note for future implementation of scrambling: there is a special
+         * case for scrambled pages: when reading from a scrambled page with
+         * the flash_ctrl uninitialized, default scrambling keys hardcoded in
+         * the RTL are used instead of the (not yet) loaded flash addr/data
+         * keys.
          */
-        if (ot_flash_is_initialized(s)) {
-            ot_flash_process_control_op(s);
-        }
+        ot_flash_process_control_op(s);
         break;
     case R_ADDR:
         val32 &= R_ADDR_START_MASK;

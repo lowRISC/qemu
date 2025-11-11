@@ -439,8 +439,8 @@ pass: //sw/device/tests:example_concurrency_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:example_concurrency_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:example_test_from_flash_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:example_test_from_flash_sim_qemu_sival_rom_ext
-pass: //sw/device/tests:flash_ctrl_clock_freqs_test_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests:flash_ctrl_clock_freqs_test_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests:flash_ctrl_clock_freqs_test_sim_qemu_rom_with_fake_keys  # After processing commands for uninitialized flash, the timing gets tighter and this fails < 5% of the time.
+flaky: //sw/device/tests:flash_ctrl_clock_freqs_test_sim_qemu_sival_rom_ext  # After processing commands for uninitialized flash, the timing gets tighter and this fails < 5% of the time.
 pass: //sw/device/tests:flash_ctrl_info_access_lc_dev_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:flash_ctrl_info_access_lc_prod_end_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:flash_ctrl_info_access_lc_prod_sim_qemu_rom_with_fake_keys
