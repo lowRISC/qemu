@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """QEMU OT tool to generate Key Manager DPE keys.
@@ -100,7 +101,7 @@ class KeyManagerDpe:
         if salt_len > cls.SALT_WIDTH:
             raise ArgError('Invalid salt length')
 
-        if not 0<= args.key_version < 1<<32:
+        if not 0 <= args.key_version < 1 << 32:
             raise ArgError('Invalid key version value')
 
         kmd = cls.create(args.otp_map, args.ecc, args.vmem, args.raw,

@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """QEMU executer wrapper for OpentTitan unit test sequencer.
@@ -9,6 +10,7 @@
 import re
 
 from ..wrapper import Wrapper
+
 
 class QEMUWrapper(Wrapper):
     """Test execution wrapper using a QEMU virtual machine

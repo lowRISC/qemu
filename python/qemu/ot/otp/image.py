@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """OTP QEMU image.
@@ -386,7 +387,7 @@ class OtpImage:
             for partname in partnames:
                 if not re.match(part_re, partname, re.IGNORECASE):
                     continue
-                if not partname in part_filters:
+                if partname not in part_filters:
                     part_filters[partname] = set()
                 if field == '*':
                     # any field would match, discard any existing one

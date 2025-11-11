@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """OTP descriptors.
@@ -228,7 +229,7 @@ class OtpRegisterDef:
                 slots.append(OtpSlotDescriptor(f'{part.name}_DIGEST', offset,
                                                OtpPartition.DIGEST_SIZE, True))
             if zeroizable:
-                offset = part.offset + part.size -  OtpPartition.DIGEST_SIZE
+                offset = part.offset + part.size - OtpPartition.DIGEST_SIZE
                 slots.append(OtpSlotDescriptor(f'{part.name}_ZER', offset,
                                                OtpPartition.ZER_SIZE, True))
 
@@ -264,7 +265,7 @@ class OtpRegisterDef:
         part_names.extend((
             'OTP_PART_COUNT',
             'OTP_ENTRY_DAI = OTP_PART_COUNT, '
-                '/* Fake partitions for error (...) */',
+            '/* Fake partitions for error (...) */',
             'OTP_ENTRY_KDI, /* Key derivation issue, not really OTP */',
             'OTP_ENTRY_COUNT'))
         print('typedef enum {', file=cfp)

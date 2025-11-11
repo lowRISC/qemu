@@ -1,4 +1,5 @@
 # Copyright (c) 2024 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Debug Module tools.
@@ -214,7 +215,7 @@ class DMI(DTMRegister):
             self._log.debug('DMI width: %d bits', self._abits)
         if address >= (1 << self._abits):
             raise ValueError(f'Address 0x{address:x} too large, '
-                             f'max 0x{(1 << self._abits) -1:x}')
+                             f'max 0x{(1 << self._abits) - 1:x}')
         return address << (32 + 2)
 
     def _check_error(self) -> None:

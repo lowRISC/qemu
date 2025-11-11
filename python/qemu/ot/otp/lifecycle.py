@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Lifecycle helpers.
@@ -82,8 +83,8 @@ class OtpLifecycle:
         self._sequences = sequences
         svp.seek(0)
         for tmo in re.finditer(r"\s+parameter\s+lc_token_t\s+(\w+)\s+="
-                            r"\s+\{\s+128'h([0-9A-F]+)\s+\};",
-                            svp.getvalue()):
+                               r"\s+\{\s+128'h([0-9A-F]+)\s+\};",
+                               svp.getvalue()):
             token, value = tmo.group(1), tmo.group(2)
             if token in self._tokens:
                 raise ValueError(f'Multiple definitions of token {token}')

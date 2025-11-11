@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """File utilities.
@@ -106,7 +107,8 @@ def make_vmem_from_elf(elf_file: Union[str, BinaryIO],
     is_path = isinstance(vmem_file, str)
     with open(vmem_file, 'wt') if is_path else vmem_file as vfp:
         print(f'// name:       {elfname}', file=vfp)
-        print(f'// built:      {strftime("%Y/%m/%d %H:%M:%S", elftime)}', file=vfp)
+        print(f'// built:      {strftime("%Y/%m/%d %H:%M:%S", elftime)}',
+              file=vfp)
         print(f'// size:       {elfstat.st_size}', file=vfp)
         print(f'// rawsize:    {elf.size}', file=vfp)
         print(f'// entrypoint: 0x{elf.entry_point:08x}', file=vfp)

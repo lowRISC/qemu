@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Lifecycle helpers.
@@ -141,17 +142,17 @@ class OtpConstants:
         self._consts['key'] = [
             hexlify(kv.to_bytes(sizes['key'], 'big')).decode()
             for kd in scrambling['keys']
-            for kn, kv in kd.items() if kn =='value'
+            for kn, kv in kd.items() if kn == 'value'
         ]
         self._consts['digest_const'] = [
             hexlify(kv.to_bytes(sizes['cnst'], 'big')).decode()
             for kd in scrambling['digests']
-            for kn, kv in kd.items() if kn =='cnst_value'
+            for kn, kv in kd.items() if kn == 'cnst_value'
         ]
         self._consts['digest_iv'] = [
             hexlify(kv.to_bytes(sizes['iv'], 'big')).decode()
             for kd in scrambling['digests']
-            for kn, kv in kd.items() if kn =='iv_value'
+            for kn, kv in kd.items() if kn == 'iv_value'
         ]
 
         offset = 0

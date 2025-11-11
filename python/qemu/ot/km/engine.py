@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """QEMU OT tool to verify Key Manager DPE test execution
@@ -165,7 +166,6 @@ class KeyManagerDpeEngine:
             return ivalue.to_bytes((ivalue.bit_length() + 7) // 8, 'big')
         raise ValueError(f'invalid bytes: {value}')
 
-
     def _build_steps_from_seq(self, seq: ConfigParser) -> \
             dict[str, KeyManagerDpeStep]:
         module = sys.modules[__name__]
@@ -279,7 +279,7 @@ class KeyManagerDpeEngine:
 
     def _enumerate_steps_from_log(self, itlog: Iterator[str]) -> \
             Iterator[tuple[str, dict[str, Union[str, int, bytes, bool]],
-                Optional[bytes]]]:
+                           Optional[bytes]]]:
         step = None
         values: dict[str, Union[str, int, bytes, bool]] = {}
         result: Optional[bytes] = None

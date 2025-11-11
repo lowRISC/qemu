@@ -1,6 +1,7 @@
 """Verilator wrapper."""
 
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 from collections import deque
@@ -714,7 +715,7 @@ class VtorExecuter:
         with open(hex_path, 'wb') as hfp:
             rom.save(hfp, 'svmem')
         self._log.debug('ROM#%d: using temp scrambled as ROM file %s, %d bytes',
-                         rom_idx, basename(hex_path), size)
+                        rom_idx, basename(hex_path), size)
         return hex_path
 
     def _convert_app_file(self, file_kind: str, file_path: str) -> str:

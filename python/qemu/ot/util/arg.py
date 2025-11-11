@@ -1,4 +1,5 @@
 # Copyright (c) 2024-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """ArgumentParser extension.
@@ -8,7 +9,7 @@
 
 # pylint: disable=unused-import
 # ruff: noqa: F401
-from argparse import ArgumentParser as _ArgumentParser, FileType
+from argparse import ArgumentParser as _ArgumentParser
 from sys import stderr
 
 

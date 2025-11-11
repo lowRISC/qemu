@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Lifecycle helpers.
@@ -21,7 +22,7 @@ class LcCtrlConstants:
         self._log = getLogger('lc.const')
         self._states: dict[str, tuple[str, str]] = {}
         self._tokens: dict[str, str] = {}
-        self._diversifiers: dict [str, str] = {}
+        self._diversifiers: dict[str, str] = {}
 
     def load_sv(self, svp: TextIO) -> None:
         """Decode LC information from a System Verilog file.

@@ -8,6 +8,7 @@ from functools import lru_cache
 
 # pylint: disable=missing-docstring
 
+
 class PrinceCipher:
 
     SBOX4 = [
@@ -120,8 +121,8 @@ class PrinceCipher:
 
     # Run the PRINCE cipher.
     # This uses the new keyschedule proposed by Dinur in "Cryptanalytic
-    # Time-Memory-Data Tradeoffs for FX-Constructions with Applications to PRINCE
-    # and PRIDE".
+    # Time-Memory-Data Tradeoffs for FX-Constructions with Applications to
+    # PRINCE and PRIDE".
     @classmethod
     def run(cls, data: int, khi: int, klo: int, num_rounds_half: int) -> int:
         khi_rot1 = ((khi & 1) << 63) | (khi >> 1)

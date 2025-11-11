@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Logging helpers.
@@ -218,7 +219,7 @@ class RemoteLogHandler(DatagramRequestHandler):
             if len(buffer) < self.HEADER_SIZE:
                 continue
             header, buffer = (buffer[:self.HEADER_SIZE],
-                buffer[self.HEADER_SIZE:])
+                              buffer[self.HEADER_SIZE:])
             record_len, = sunpack(self.HEADER_FMT, header)
             while len(buffer) < record_len:
                 data = self.rfile.read(4096)

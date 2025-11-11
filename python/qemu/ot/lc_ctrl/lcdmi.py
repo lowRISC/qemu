@@ -1,4 +1,5 @@
 # Copyright (c) 2024 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """LifeCycle DMI.
@@ -188,7 +189,8 @@ class LifeCycleController:
         return token
 
     @transition_token.setter
-    def transition_token(self, token: Union[bytes, bytearray, str, None]) -> None:
+    def transition_token(self,
+                         token: Union[bytes, bytearray, str, None]) -> None:
         """Define the transition token as a 16-byte token.
 
            :param token: if None, use an empty zeroed token,

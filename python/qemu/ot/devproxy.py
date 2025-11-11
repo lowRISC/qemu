@@ -1,4 +1,5 @@
 # Copyright (c) 2023-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
 # SPDX-License-Identifier: Apache2
 
 """Device proxy for OpenTitan devices and peripherals
@@ -1663,7 +1664,7 @@ class ProxyEngine:
                     continue
                 packet = bytes(buffer[:length])
                 self._log.debug('RX payload:%s%s', self.to_str(packet)[:80],
-                    '...' if len(packet) > 80 else '')
+                                '...' if len(packet) > 80 else '')
                 buffer = buffer[length:]
                 if resp:
                     if self._tx_uid != uid:
