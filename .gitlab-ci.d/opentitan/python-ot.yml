@@ -1,4 +1,4 @@
-pylint-ot:
+python-ot:
   tags:
     - qemu_ot
   stage: build
@@ -9,4 +9,6 @@ pylint-ot:
     - . .venv/bin/activate
     - pip3 install -r scripts/opentitan/requirements.txt
     - pylint --rcfile scripts/opentitan/.pylintrc -d 'duplicate-code' -d 'fixme'
-        scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
+      scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
+    - flake8 --config scripts/opentitan/.flake8
+      scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot

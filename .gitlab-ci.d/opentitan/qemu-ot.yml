@@ -4,6 +4,6 @@ variables:
 
 include:
   - local: '/.gitlab-ci.d/opentitan/build.yml'
-  - local: '/.gitlab-ci.d/opentitan/pylint-ot.yml'
+  - local: '/.gitlab-ci.d/opentitan/python-ot.yml'
   - local: '/.gitlab-ci.d/opentitan/ot-smoke.yml'
   - local: '/.gitlab-ci.d/opentitan/ot-bmtests.yml'
