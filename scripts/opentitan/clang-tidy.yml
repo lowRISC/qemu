@@ -37,7 +37,8 @@ Checks:          '*,
                   -readability-isolate-declaration,
                   -readability-math-missing-parentheses,
                   -readability-redundant-casting,
-                  -readability-redundant-declaration'
+                  -readability-redundant-declaration,
+                  -readability-use-concise-preprocessor-directives'
 
 UseColor: true
 SystemHeaders: false
