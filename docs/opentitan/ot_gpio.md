@@ -102,6 +102,7 @@ A type describes the meaning of the hex value. Supported types are:
 * `Q` query input (QEMU -> host). QEMU may emit this frame, so that the host replies with a new
   input `I` frame (hexvalue of `Q` is ignored)
 * `R` repeat (host -> QEMU). The host may ask QEMU to repeat the last `D` and `O` frames
+* `Y` forwards the GPIO input that QEMU has read to the host (QEMU -> host) for tracking purposes
 * `Z` output pull up/down GPIO HiZ values (QEMU -> host). 1 means HiZ, 0 means
   pull up/down values apply.
 
