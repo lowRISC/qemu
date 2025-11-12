@@ -493,7 +493,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_ENTRY
 #define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+    ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define OP_ENTRY(_op_) [KEYMGR_DPE_OP_##_op_] = stringify(_op_)
 static const char *OP_NAMES[] = {

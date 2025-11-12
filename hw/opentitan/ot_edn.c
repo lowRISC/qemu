@@ -110,7 +110,7 @@ REG32(MAIN_SM_STATE, 0x44u)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+    ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define INTR_MASK (INTR_EDN_CMD_REQ_DONE_MASK | INTR_EDN_FATAL_ERR_MASK)
 #define ALERT_TEST_MASK \

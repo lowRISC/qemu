@@ -218,7 +218,7 @@ static_assert(OT_SOC_DBG_ST_COUNT == OT_LC_SOC_DBG_STATE_COUNT,
 #define ROM_MASK ((1u << (R_BOOT_STATUS_ROM_CTRL_DONE_LENGTH - 1u)) - 1u)
 
 #define REG_NAME(_kind_, _reg_) \
-    ((((_reg_) <= REGS_##_kind_##_COUNT) && REG_##_kind_##_NAMES[_reg_]) ? \
+    ((((_reg_) < REGS_##_kind_##_COUNT) && REG_##_kind_##_NAMES[_reg_]) ? \
          REG_##_kind_##_NAMES[_reg_] : \
          "?")
 

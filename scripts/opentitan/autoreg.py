@@ -998,7 +998,7 @@ class QEMUAutoReg(AutoReg):
             base = self._group_offsets[group]
             lines.append(f'#define REGS{sep}BASE 0x{base:0{self._nibcount}x}u')
         lines.append(f'#define REG{sep}NAME(_reg_) \\')
-        lines.append(f'    ((((_reg_) <= REGS{sep}COUNT) && '
+        lines.append(f'    ((((_reg_) < REGS{sep}COUNT) && '
                      f'REG{sep}NAMES[_reg_]) ? REG{sep}NAMES[_reg_] : "?")')
         lines.append('')
         print('\n'.join(lines), file=tfp)

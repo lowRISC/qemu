@@ -120,7 +120,7 @@ REG32(ERR_CODE, 0x6cu)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+    ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 /* clang-format off */
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)

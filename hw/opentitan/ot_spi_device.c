@@ -506,7 +506,7 @@ struct OtSPIDeviceClass {
 #define SPI_REGS_COUNT (R_SPI_LAST_REG + 1u)
 #define SPI_REGS_SIZE  (SPI_REGS_COUNT * sizeof(uint32_t))
 #define SPI_REG_NAME(_reg_) \
-    ((((_reg_) <= SPI_REGS_COUNT) && SPI_REG_NAMES[_reg_]) ? \
+    ((((_reg_) < SPI_REGS_COUNT) && SPI_REG_NAMES[_reg_]) ? \
          SPI_REG_NAMES[_reg_] : \
          "?")
 
@@ -514,7 +514,7 @@ struct OtSPIDeviceClass {
 #define TPM_REGS_COUNT (R_TPM_LAST_REG + 1u)
 #define TPM_REGS_SIZE  (TPM_REGS_COUNT * sizeof(uint32_t))
 #define TPM_REG_NAME(_reg_) \
-    ((((_reg_) <= TPM_REGS_COUNT) && TPM_REG_NAMES[_reg_]) ? \
+    ((((_reg_) < TPM_REGS_COUNT) && TPM_REG_NAMES[_reg_]) ? \
          TPM_REG_NAMES[_reg_] : \
          "?")
 

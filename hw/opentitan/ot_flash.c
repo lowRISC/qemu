@@ -508,7 +508,7 @@ typedef enum {
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+    ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
@@ -629,7 +629,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define CSRS_COUNT (R_LAST_CSR + 1u)
 #define CSRS_SIZE  (CSRS_COUNT * sizeof(uint32_t))
 #define CSR_NAME(_reg_) \
-    ((((_reg_) <= CSRS_COUNT) && CSR_NAMES[_reg_]) ? CSR_NAMES[_reg_] : "?")
+    ((((_reg_) < CSRS_COUNT) && CSR_NAMES[_reg_]) ? CSR_NAMES[_reg_] : "?")
 
 #define CSR_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *CSR_NAMES[CSRS_COUNT] = {

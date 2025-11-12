@@ -136,7 +136,7 @@ REG32(MANUF_STATE_7, 0x88u)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+    ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define R_FIRST_EXCLUSIVE_REG (R_TRANSITION_TOKEN_0)
 #define R_LAST_EXCLUSIVE_REG  (R_TRANSITION_TARGET)

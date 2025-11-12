@@ -99,13 +99,13 @@ REG32(REGB4, 0x210u)
 #define REGSA_COUNT (RA_LAST_REG + 1u)
 #define REGSA_SIZE  (REGSA_COUNT * sizeof(uint32_t))
 #define REGA_NAME(_reg_) \
-    ((((_reg_) <= REGSA_COUNT) && REGA_NAMES[_reg_]) ? REGA_NAMES[_reg_] : "?")
+    ((((_reg_) < REGSA_COUNT) && REGA_NAMES[_reg_]) ? REGA_NAMES[_reg_] : "?")
 
 #define RB_LAST_REG (R_REGB4)
 #define REGSB_COUNT (RB_LAST_REG + 1u)
 #define REGSB_SIZE  (REGSB_COUNT * sizeof(uint32_t))
 #define REGB_NAME(_reg_) \
-    ((((_reg_) <= REGSB_COUNT) && REGB_NAMES[_reg_]) ? REGB_NAMES[_reg_] : "?")
+    ((((_reg_) < REGSB_COUNT) && REGB_NAMES[_reg_]) ? REGB_NAMES[_reg_] : "?")
 
 #define REGS_SIZE (A_REGB4 + sizeof(uint32_t))
 #define REG_NAME(_reg_) \

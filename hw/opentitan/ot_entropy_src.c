@@ -302,7 +302,7 @@ REG32(MAIN_SM_STATE, 0xc0u)
 #define REGS_LO_SIZE  (REGS_LO_COUNT * sizeof(uint32_t))
 #define REGS_LO_BASE  0x00u
 #define REG_LO_NAME(_reg_) \
-    ((((_reg_) <= REGS_LO_COUNT) && REG_LO_NAMES[_reg_]) ? \
+    ((((_reg_) < REGS_LO_COUNT) && REG_LO_NAMES[_reg_]) ? \
          REG_LO_NAMES[_reg_] : \
          "?")
 
@@ -312,7 +312,7 @@ REG32(MAIN_SM_STATE, 0xc0u)
 #define REGS_REV_SIZE  (REGS_REV_COUNT * sizeof(uint32_t))
 #define REGS_REV_BASE  0x1cu
 #define REG_REV_NAME(_reg_) \
-    ((((_reg_) <= REGS_REV_COUNT) && REG_REV_NAMES[_reg_]) ? \
+    ((((_reg_) < REGS_REV_COUNT) && REG_REV_NAMES[_reg_]) ? \
          REG_REV_NAMES[_reg_] : \
          "?")
 
@@ -322,7 +322,7 @@ REG32(MAIN_SM_STATE, 0xc0u)
 #define REGS_HI_V2_BASE 0x20u
 #define REGS_HI_V3_BASE 0x1cu
 #define REG_HI_NAME(_reg_) \
-    ((((_reg_) <= REGS_HI_COUNT) && REG_HI_NAMES[_reg_]) ? \
+    ((((_reg_) < REGS_HI_COUNT) && REG_HI_NAMES[_reg_]) ? \
          REG_HI_NAMES[_reg_] : \
          "?")
 

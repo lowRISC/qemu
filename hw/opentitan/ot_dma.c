@@ -289,7 +289,7 @@ struct OtDMAClass {
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
 #define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+    ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define INTR_MASK \
     (INTR_DMA_DONE_MASK | INTR_DMA_ERROR_MASK | INTR_DMA_MEM_BUF_LIMIT_MASK)

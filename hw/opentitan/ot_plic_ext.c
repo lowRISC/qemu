@@ -57,7 +57,7 @@ REG32(ALERT_TEST, 0x0u)
 #define MSIP_REGS_COUNT (R_LAST_MSIP_REG + 1u)
 #define MSIP_REGS_SIZE  (MSIP_REGS_COUNT * sizeof(uint32_t))
 #define MSIP_REG_NAME(_reg_) \
-    ((((_reg_) <= MSIP_REGS_COUNT) && MSIP_REG_NAMES[_reg_]) ? \
+    ((((_reg_) < MSIP_REGS_COUNT) && MSIP_REG_NAMES[_reg_]) ? \
          MSIP_REG_NAMES[_reg_] : \
          "?")
 
@@ -65,7 +65,7 @@ REG32(ALERT_TEST, 0x0u)
 #define ALERT_REGS_COUNT (R_LAST_ALERT_REG + 1u)
 #define ALERT_REGS_SIZE  (ALERT_REGS_COUNT * sizeof(uint32_t))
 #define ALERT_REG_NAME(_reg_) \
-    ((((_reg_) <= ALERT_REGS_COUNT) && ALERT_REG_NAMES[_reg_]) ? \
+    ((((_reg_) < ALERT_REGS_COUNT) && ALERT_REG_NAMES[_reg_]) ? \
          ALERT_REG_NAMES[_reg_] : \
          "?")
 

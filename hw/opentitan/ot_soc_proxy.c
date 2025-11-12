@@ -77,7 +77,7 @@ static_assert(1u + ALERT_TEST_FATAL_ALERT_EXTERNAL_COUNT +
 static_assert(OT_SOC_PROXY_REGS_COUNT == REGS_COUNT, "Invalid regs");
 
 #define REG_NAME(_reg_) \
-    ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
+    ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 

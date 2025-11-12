@@ -137,7 +137,7 @@ static_assert(OT_MBX_HOST_REGS_COUNT == REGS_HOST_COUNT, "Invalid HOST regs");
 static_assert(OT_MBX_SYS_REGS_COUNT == REGS_SYS_COUNT, "Invalid SYS regs");
 
 #define REG_NAME(_kind_, _reg_) \
-    ((((_reg_) <= REGS_##_kind_##_COUNT) && REG_##_kind_##_NAMES[_reg_]) ? \
+    ((((_reg_) < REGS_##_kind_##_COUNT) && REG_##_kind_##_NAMES[_reg_]) ? \
          REG_##_kind_##_NAMES[_reg_] : \
          "?")
 
