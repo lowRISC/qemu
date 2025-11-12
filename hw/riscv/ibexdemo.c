@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Board Compatible with Ibex Demo System FPGA platform
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -63,6 +63,7 @@ static void ibexdemo_soc_uart_configure(
 /* Constants */
 /* ------------------------------------------------------------------------ */
 
+/* clang-format off */
 static const uint32_t IBEXDEMO_BOOT[] = {
     /* Exception vectors */
     0x0840006fu, 0x0800006fu, 0x07c0006fu, 0x0780006fu, 0x0740006fu,
@@ -78,6 +79,7 @@ static const uint32_t IBEXDEMO_BOOT[] = {
     0x10500073u, /* wfi */
     0x0000bff5u, /* j blank_loop */
 };
+/* clang-format on */
 
 enum IbexDemoSocDevice {
     IBEXDEMO_SOC_DEV_DM,
