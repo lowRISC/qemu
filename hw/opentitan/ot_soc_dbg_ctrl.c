@@ -210,6 +210,8 @@ static const uint8_t OT_SOC_DBG_FSM_STATE[ST_COUNT] = {
 /* clang-format on */
 
 static_assert(ALERT_COUNT == NUM_ALERTS, "Invalid alert count");
+static_assert(sizeof(OtSocDbgDebugPolicy) == sizeof(int),
+              "Invalid OtSocDbgDebugPolicy size");
 static_assert(OT_SOC_DBG_ST_COUNT == OT_LC_SOC_DBG_STATE_COUNT,
               "Invalid SoC Debug state count");
 
@@ -415,6 +417,10 @@ static void ot_soc_dbg_ctrl_update_policy(OtSoCDbgCtrlState *s)
 {
     OtSocDbgPolicy policy;
 
+    ot_mb4_t relocked =
+        (ot_mb4_t)SHARED_FIELD_EX32(s->regs.debug_policy.relocked,
+                                    DEBUG_POLICY_RELOCKED);
+
     switch (s->soc_dbg_state) {
     case OT_SOC_DBG_ST_BLANK:
         policy.cat = ot_soc_dbg_ctrl_lc_test(s, OT_LC_DFT_EN) ||
@@ -437,7 +443,7 @@ static void ot_soc_dbg_ctrl_update_policy(OtSoCDbgCtrlState *s)
         } else if (ot_soc_dbg_ctrl_lc_test(s, OT_LC_CPU_EN)) {
             policy.cat = ot_shadow_reg_peek(&s->regs.debug_policy.category);
             policy.valid = true;
-            policy.relocked = s->regs.debug_policy.relocked;
+            policy.relocked = relocked;
         } else {
             policy.cat = OT_SOC_DBG_CATEGORY_LOCKED;
             policy.valid = (bool)s->pwr_boot_status.lc_done;
@@ -453,6 +459,35 @@ static void ot_soc_dbg_ctrl_update_policy(OtSoCDbgCtrlState *s)
 
     /* detect valid rising edge */
     if (policy.valid && !s->soc_dbg_policy.valid) {
+        /* decode the values into the combined output signal */
+        OtSocDbgDebugPolicy debug_policy = {
+            .cat_bm = 0u,
+            .relocked = policy.relocked == OT_MULTIBITBOOL4_TRUE,
+        };
+
+        if (policy.cat == OT_SOC_DBG_CATEGORY_4) {
+            debug_policy.cat_bm |= 1u << 4u;
+        }
+        if (!relocked) {
+            if (policy.cat == OT_SOC_DBG_CATEGORY_3 ||
+                (debug_policy.cat_bm & (1u << 4u))) {
+                debug_policy.cat_bm |= 1u << 3u;
+            }
+            if (policy.cat == OT_SOC_DBG_CATEGORY_2 ||
+                (debug_policy.cat_bm & ((1u << 4u) | (1u << 3u)))) {
+                debug_policy.cat_bm |= 1u << 2u;
+            }
+        }
+
+        int prev_policy = ibex_irq_get_level(&s->debug_policy);
+        if (prev_policy != debug_policy.i32) {
+            trace_ot_soc_dbg_ctrl_update_policy(s->ot_id,
+                                                SOC_DBG_NAME(s->soc_dbg_state),
+                                                STATE_NAME(s->fsm_state),
+                                                debug_policy.cat_bm, relocked);
+        }
+        ibex_irq_set(&s->debug_policy, debug_policy.i32);
+
         /* store current policy for edge detection and trace registers */
         s->soc_dbg_policy = policy;
     } else {

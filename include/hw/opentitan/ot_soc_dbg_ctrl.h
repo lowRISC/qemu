@@ -41,6 +41,23 @@ typedef enum {
     OT_SOC_DBG_ST_COUNT,
 } OtSoCDbgState;
 
+/* Signal carried over OT_SOC_DBG_DEBUG_POLICY */
+typedef union {
+    struct {
+        /*
+         * Active categories:
+         * b0..b1: unused
+         * b2: CAT2
+         * b3: CAT3
+         * b4: CAT4
+         * b5..b7: unused
+         */
+        uint8_t cat_bm;
+        bool relocked;
+    };
+    int i32;
+} OtSocDbgDebugPolicy;
+
 /* input lines */
 #define OT_SOC_DBG_HALT_CPU_BOOT TYPE_OT_SOC_DBG_CTRL "-halt-cpu-boot"
 #define OT_SOC_DBG_LC_BCAST      TYPE_OT_SOC_DBG_CTRL "-lc-broadcast"
