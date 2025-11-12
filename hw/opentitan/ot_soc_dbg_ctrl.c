@@ -405,7 +405,7 @@ static void ot_soc_dbg_ctrl_tick_fsm(OtSoCDbgCtrlState *s)
 
     /* as with PwrMgr, use simple boolean value, not MuBi4 */
     int cpu_boot_done_i = (int)cpu_boot_done;
-    if (ibex_irq_get_level(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_COUNT]) !=
+    if (ibex_irq_get_level(&s->continue_cpu_boot[CONTINUE_CPU_BOOT_DONE]) !=
         cpu_boot_done_i) {
         trace_ot_soc_dbg_ctrl_cpu_boot_done(s->ot_id, cpu_boot_done_i);
     }
