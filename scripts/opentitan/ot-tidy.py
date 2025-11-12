@@ -21,7 +21,7 @@ from os import execvp, scandir
 from os.path import abspath, dirname, isfile, join, normpath, relpath, splitext
 from traceback import format_exc
 
-LLVM_MAJOR = 20
+LLVM_MAJOR = 21
 """LLVM major version to check for"""
 
 OT_SCRIPTS = dirname(abspath(__file__))
