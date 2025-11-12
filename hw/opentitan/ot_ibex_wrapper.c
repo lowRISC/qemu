@@ -1252,6 +1252,7 @@ static void ot_ibex_wrapper_fill_tables(OtIbexWrapperState *s)
     regs = &s->regs.alert_test;
     unsigned rix;
     for (rix = 0; rix <= LAST_STATIC_REG_POS; rix++) {
+        /* NOLINTNEXTLINE */
         s->access_regs[rix] = &regs[rix];
     }
 
