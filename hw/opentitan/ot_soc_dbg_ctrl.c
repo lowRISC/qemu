@@ -189,6 +189,7 @@ struct OtSoCDbgCtrlState {
     bool boot_continue;
 
     char *ot_id;
+    OtLcCtrlState *lc_ctrl;
     bool dft_ignore;
 };
 
@@ -769,9 +770,16 @@ ot_soc_dbg_ctrl_jtag_read(void *opaque, hwaddr addr, unsigned size)
         }
         break;
     case R_JTAG_TRACE_SOC_DBG_STATE:
-        qemu_log_mask(LOG_UNIMP, "%s: %s: not implemented %s\n", __func__,
-                      s->ot_id, REG_NAME(JTAG, reg));
-        val32 = 0u;
+        if (ot_soc_dbg_ctrl_lc_test(s, OT_LC_DFT_EN)) {
+            OtLcCtrlClass *lc = OT_LC_CTRL_GET_CLASS(s->lc_ctrl);
+            val32 =
+                lc->get_soc_dbg_state(s->lc_ctrl, (unsigned)s->soc_dbg_state);
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: SocDbgState disabled (no DFT)\n", __func__,
+                          s->ot_id);
+            val32 = 0u;
+        }
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
@@ -820,6 +828,8 @@ static void ot_soc_dbg_ctrl_jtag_write(void *opaque, hwaddr addr,
 
 static Property ot_soc_dbg_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSoCDbgCtrlState, ot_id),
+    DEFINE_PROP_LINK("lc-ctrl", OtSoCDbgCtrlState, lc_ctrl, TYPE_OT_LC_CTRL,
+                     OtLcCtrlState *),
     DEFINE_PROP_BOOL("dft-ignore", OtSoCDbgCtrlState, dft_ignore, false),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -898,6 +908,7 @@ static void ot_soc_dbg_ctrl_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->lc_ctrl);
 }
 
 static void ot_soc_dbg_ctrl_init(Object *obj)
