@@ -773,9 +773,11 @@ static uint32_t ot_spi_device_get_status(const OtSPIDeviceState *s)
 {
     uint32_t status = 0u;
 
-    if (ot_spi_device_is_cs_active(s)) {
+    if (!ot_spi_device_is_cs_active(s)) {
         status |= R_STATUS_CSB_MASK;
     }
+
+    /* @todo: Add TPM CSB when the TPM CS is added to the SpiDev protocol */
 
     return status;
 }
