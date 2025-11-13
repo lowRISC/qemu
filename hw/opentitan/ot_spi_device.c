@@ -224,21 +224,24 @@ REG32(TPM_READ_FIFO, 0x34u)
 #define SPI_BUS_HEADER_SIZE (2u * sizeof(uint32_t))
 #define SPI_TPM_READ_FIFO_SIZE_BYTES \
     (PARAM_TPM_RD_FIFO_DEPTH * sizeof(uint32_t))
-/**
- * Delay for handling non-aligned generic data transfer and flush the FIFO.
- * Generic mode is deprecated anyway. Arbitrarily set to 1 ms.
- */
-#define SPI_BUS_TIMEOUT_NS 1000000u
 /*
  * Pacing time to give hand back to the vCPU when a readbuf event is triggered.
- * The scheduler timer tell the CharDev backend not to consume (nor push back)
- * any more bytes from/to the SPI bus. The timer can either exhausts on its own,
- * which should never happen, and much more likely when the readbuf interruption
- * is cleared by the guest SW, which should usually happen once the SW has
- * filled in the read buffer. As soon as the timer is cancelled/over, the
- * CharDev resumes its SPI bus bytestream management. Arbitrarily set to 100 ms.
+ * This is needed so guest SW can respond to the interrupt and fill the buffer.
+ *
+ * The scheduled timer tell the CharDev backend not to consume (nor push back)
+ * any more bytes from/to the SPI bus. The Chardev will resume its SPI bus
+ * bytestream management as soon as the timer is cancelled/expires. Ideally,
+ * guest SW will clear the readbuf interrupt causing the timer to expire,
+ * usually once SW has filled in the read buffer. If Guest SW does not use this
+ * (e.g. it writes across both buffers in advance and does not expect to handle
+ * a buffer flip event) then this will not happen, and the timer must exhaust
+ * on its own, thus we only set this delay to a small arbitrary value of 10 ms.
+ *
+ * @todo: A better approach might be to yield to the vCPU every few bytes/words
+ * to better emulate the concurrency of large SPI transactions with SW,
+ * potentially keeping a small additional delay on a buffer flip.
  */
-#define SPI_BUS_FLASH_READ_DELAY_NS 100000000u
+#define SPI_BUS_FLASH_READ_DELAY_NS 10000000
 
 /*
  * Memory layout extracted from the documentation:
@@ -965,10 +968,10 @@ static void ot_spi_device_flash_pace_spibus(OtSPIDeviceState *s)
     SpiDeviceFlash *f = &s->flash;
 
     timer_del(f->irq_timer);
-    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+    int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     trace_ot_spi_device_flash_pace(s->ot_id, "set",
                                    timer_pending(f->irq_timer));
-    timer_mod(f->irq_timer, (int64_t)(now + SPI_BUS_FLASH_READ_DELAY_NS));
+    timer_mod(f->irq_timer, now + SPI_BUS_FLASH_READ_DELAY_NS);
 }
 
 static bool
