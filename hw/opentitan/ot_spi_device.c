@@ -2085,7 +2085,6 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         val32 &= R_READ_THRESHOLD_THRESHOLD_MASK;
         s->spi_regs[reg] = val32;
         break;
-    case R_LAST_READ_ADDR:
     case R_MAILBOX_ADDR:
     case R_CMD_FILTER_0:
     case R_CMD_FILTER_1:
@@ -2135,6 +2134,7 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         val32 &= CMD_INFO_SPC_MASK;
         s->spi_regs[reg] = val32;
         break;
+    case R_LAST_READ_ADDR:
     case R_STATUS:
     case R_UPLOAD_STATUS:
     case R_UPLOAD_STATUS2:
