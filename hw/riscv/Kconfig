@@ -73,6 +73,7 @@ config OT_EARLGREY
     select IBEX
     select IBEX_CLOCK_SRC
     select IBEX_COMMON
+    select IBEX_GPIO
     select OT_AES
     select OT_ALERT
     select OT_AON_TIMER

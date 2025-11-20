@@ -176,6 +176,10 @@ ot_edn_schedule(unsigned appid, const char *cause) "a#%u %s"
 ot_edn_update_genbits_ready(unsigned appid, unsigned rem, unsigned fslot, bool accept) "a#%u rem packet %u, free slot %u, accept? %u"
 ot_edn_xinfo(unsigned appid, const char *func, int line, const char *msg, uint32_t value) "a#%u %s:%d %s 0x%08x"
 
+# ot_eg_pad_ring.c
+ot_eg_pad_ring_reset(const char *id, const char *stage) "%s: %s"
+ot_eg_pad_ring_reset_value(const char *id, const char *pad, char lvl) "%s: pad %s {%c}"
+
 # ot_entropy_src.c
 
 ot_entropy_src_available(const char *id, const char *state, int st) "%s: entropy source is ready in [%s:%u]"
