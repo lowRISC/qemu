@@ -46,6 +46,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_csrng.h"
 #include "hw/opentitan/ot_edn.h"
+#include "hw/opentitan/ot_eg_pad_ring.h"
 #include "hw/opentitan/ot_entropy_src.h"
 #include "hw/opentitan/ot_flash.h"
 #include "hw/opentitan/ot_gpio_eg.h"
@@ -138,6 +139,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_OTBN,
     OT_EG_SOC_DEV_OTP_CTRL,
     OT_EG_SOC_DEV_OTP_BACKEND,
+    OT_EG_SOC_DEV_PAD_RING,
     OT_EG_SOC_DEV_PATTGEN,
     OT_EG_SOC_DEV_PINMUX,
     OT_EG_SOC_DEV_PLIC,
@@ -667,6 +669,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
         )
+    },
+    [OT_EG_SOC_DEV_PAD_RING] = {
+        .type = TYPE_OT_EG_PAD_RING,
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_SIGNAL(OT_EG_PAD_RING_POR_REQ, 0, RSTMGR,
+                             OT_RSTMGR_RST_REQ, 0)
+        ),
     },
     [OT_EG_SOC_DEV_PATTGEN] = {
         .type = TYPE_OT_UNIMP,

@@ -81,6 +81,7 @@ config OT_EARLGREY
     select OT_CLKMGR
     select OT_CSRNG
     select OT_EDN
+    select OT_EG_PAD_RING
     select OT_ENTROPY_SRC
     select OT_FLASH
     select OT_GPIO_EG
