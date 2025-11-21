@@ -81,6 +81,7 @@ class SpiDevice:
         'RESET1': 0x66,
         'RESET2': 0x99,
         'CHECK_ANSWER': 0xca,
+        'CUSTOM_COMMAND': 0xed,  # reserved opcode for custom commands
     }
     """Supported *25 SPI data flash device commands."""
 
@@ -318,6 +319,26 @@ class SpiDevice:
            :param release: whether to release /CS line
         """
         return self.transmit(None, None, length, release)
+
+    def custom_command(self, address: Optional[int] = None,
+                       payload: Optional[bytes] = None) -> bytes:
+        """Execute a custom command.
+
+           :param address: optional address, sent as 3 or 4 bytes, depending on
+                           the current mode
+           :param payload: optional payload
+        """
+        if address is not None:
+            byte_count = 4 if self.is_4b_addr else 3
+            if address >= (1 << (byte_count * 8)):
+                raise ValueError('Cannot encode address')
+            addr = spack('>I', address)
+            if not self.is_4b_addr:
+                addr = addr[1:]
+        else:
+            addr = b''
+        payload = b''.join((addr, payload or b''))
+        return self.transmit(self.COMMANDS['CUSTOM_COMMAND'], addr)
 
     def release(self) -> None:
         """Release /CS line."""
