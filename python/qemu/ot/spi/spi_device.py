@@ -91,6 +91,7 @@ class SpiDevice:
         self._4ben = False
         self._rev_rx = False
         self._rev_tx = False
+        self._timeout = self.TIMEOUT
 
     def connect(self, host: str, port: Optional[int] = None) -> None:
         """Open a connection to the remote host.
@@ -120,7 +121,7 @@ class SpiDevice:
                     except ValueError as exc:
                         raise ValueError('TCP port not specified') from exc
                     self._socket = create_connection((host, port),
-                                                     timeout=self.TIMEOUT)
+                                                     timeout=self.CONN_TIMEOUT)
                     self._socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
                 elif sock_args[0] == 'unix':
                     self._socket = socket(AF_UNIX, SOCK_STREAM)
@@ -142,6 +143,22 @@ class SpiDevice:
             self._socket.shutdown(SHUT_RDWR)
             self._socket.close()
             self._socket = None
+
+    @property
+    def exchange_timeout(self) -> float:
+        """Get the maximum allowed time to perform a SPI round trip.
+
+           :return: the timeout in seconds
+        """
+        return self._timeout
+
+    @exchange_timeout.setter
+    def exchange_timeout(self, timeout: float) -> None:
+        """Set the maximum allowed time to perform a SPI round trip.
+
+           :param timeout: the timeout in seconds
+        """
+        self._timeout = timeout
 
     quit = disconnect
     """Old API."""
@@ -385,7 +402,7 @@ class SpiDevice:
     def _receive(self, size: int) -> bytes:
         buf = bytearray()
         rem = size
-        timeout = now() + self.TIMEOUT
+        timeout = now() + self._timeout
         poller = spoll()
         poller.register(self._socket, POLLIN)
         while rem:
