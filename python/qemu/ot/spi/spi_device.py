@@ -283,10 +283,9 @@ class SpiDevice:
             addr = addr[1:]
         self.transmit(self.COMMANDS['SECTOR_ERASE'], addr)
 
-    def reset(self):
+    def reset(self, alt: bool = False):
         """Reset the flash device."""
-        # self.transmit(self.COMMANDS['RESET1'])
-        self.transmit(self.COMMANDS['RESET2'])
+        self.transmit(self.COMMANDS['RESET2' if not alt else 'RESET1'])
 
     def read(self, address: int, length: int, fast: bool = False,
              release: bool = True) -> bytes:
