@@ -482,6 +482,8 @@ static void pulp_rv_dm_reset(DeviceState *dev)
 
     memset(memory_region_get_ram_ptr(&s->prog), 0, PULP_RV_DM_PROG_SIZE);
     memset(s->dmflag_regs, 0, sizeof(s->dmflag_regs));
+
+    s->idle_bm = 0;
 }
 
 static void pulp_rv_dm_init(Object *obj)
