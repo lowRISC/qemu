@@ -224,7 +224,9 @@ class SpiDevice:
 
     def read_sfdp(self, address: int = 0) -> bytes:
         """Read out the flash device SFTP descriptor."""
-        payload = spack('>I', address)
+        # SFTP command expects a dummy byte before the SFDP payload is actually
+        # streamed, address should be 3 byte long
+        payload = spack('>Ix', address)[1:]
         return self.transmit(self.COMMANDS['READ_SFDP'], payload, 256)
 
     def enable_write(self):
