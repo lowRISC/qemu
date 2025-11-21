@@ -6,14 +6,14 @@
 
 from collections import deque
 from io import TextIOWrapper
-from os import close, getcwd, rename, symlink, unlink
+from os import close, environ, getcwd, rename, symlink, unlink
 from os.path import (abspath, basename, exists, isfile, islink,
                      join as joinpath, realpath, splitext)
 from shutil import copyfile
 from subprocess import Popen, PIPE, TimeoutExpired
 from sys import stderr
 from tempfile import mkstemp
-from threading import Thread
+from threading import Event, Thread
 from time import sleep, time as now
 from traceback import format_exc
 from typing import NamedTuple, Optional, Union
@@ -28,6 +28,7 @@ from ot.util.misc import HexInt, split_map_join
 
 from . import DEFAULT_TIMEOUT
 from .filemgr import VtorFileManager
+from .spi import VtorSpiBridge
 from .vcp import VtorVcpManager
 
 
@@ -58,6 +59,9 @@ class VtorExecuter:
     START_TIMEOUT = 2.0
     """Initial timeout to load and query Verilator."""
 
+    TERMINATION_TIMEOUT = 2.0
+    """Delay for Verilator to quit on request, before being force-killed."""
+
     def __init__(self, vfm: VtorFileManager, verilator: str,
                  profile: Optional[str], debug: bool = False):
         self._log = logging.getLogger('vtor.exec')
@@ -67,12 +71,17 @@ class VtorExecuter:
         self._verilator = verilator
         self._fm = vfm
         self._artifact_name: Optional[str] = None
+        self._generate_spi_log = False
         self._save_xlog = False
         self._link_xlog = False
         self._gen_wave = False
         # parsed communication ports from Verilator
         self._ports: dict[str, Union[int, str]] = {}
         self._vcp = VtorVcpManager()
+        self._spi_event = Event()
+        self._spi = VtorSpiBridge(debug)
+        # where Verilator stores the SPI device log file
+        self._spilog_path: Optional[str] = None
         # where Verilator stores the execution log file
         self._xlog_path: Optional[str] = None
         self._resume = False
@@ -160,10 +169,19 @@ class VtorExecuter:
             raise FileNotFoundError(f'No such secret file {file_path}')
         self._secret_file = file_path
 
+    def create_spi_device_bridge(self, spi_port: int) -> None:
+        """Create a fake QEMU SPI device server to bridge Verilator SPI device.
+
+           :param spi_port: optional TCP port to create a SPI device bridge
+        """
+        self._spi.create(spi_port, self._spi_event)
+        self._generate_spi_log = True
+
     def verilate(self, rom_files: list[str], ram_files: list[str],
                  flash_files: list[str], app_files: list[str],
                  otp: Optional[str], timeout: float = None,
-                 cycles: Optional[int] = None) -> int:
+                 cycles: Optional[int] = None, ) \
+            -> int:
         """Execute a Verilator simulation.
 
            :param rom_files: optional list of files to load in ROMs
@@ -172,7 +190,7 @@ class VtorExecuter:
            :param app_files: optional list of application ELF files to execute
            :param otp: optional file to load as OTP image
            :param timeout: optional max execution delay in seconds
-           :paran cycles: optional max execution cycles
+           :param cycles: optional max execution cycles
         """
         workdir = self._fm.tmp_dir
         self._log.debug('Work dir: %s', workdir)
@@ -221,9 +239,13 @@ class VtorExecuter:
                 args.append(f'--trace={wave_name}')
             self._log.debug('Executing Verilator as %s',
                             self._simplifly_cli(args))
+            env = dict(environ)
+            if self._generate_spi_log:
+                # 'P': log SPI PTY protocol (do not use M': SPI "monitor")
+                env['VERILATOR_SPI_LOG'] = 'P'
             # pylint: disable=consider-using-with
             proc = Popen(args,
-                         bufsize=1, cwd=workdir,
+                         bufsize=1, cwd=workdir, env=env,
                          stdout=PIPE, stderr=PIPE,
                          encoding='utf-8', errors='ignore', text=True)
             try:
@@ -234,10 +256,10 @@ class VtorExecuter:
                 ret = proc.returncode
                 self._log.error('Verilator bailed out: %d', ret)
                 raise OSError()
-            # if execution starts and the execution log should be generated
-            # discards any previous file to avoid leaving a previous version of
-            # this file that would not match the current session
-            self._discard_exec_log()
+            # if execution starts and the log file should be generated, discards
+            # any previous file to avoid leaving a previous version of such file
+            # that would not match the current session
+            self._discard_logs()
             log_q = deque()
             self._resume = True
             for pos, stream in enumerate(('out', 'err')):
@@ -250,6 +272,23 @@ class VtorExecuter:
                 thread.start()
             abstimeout = float(timeout) + now()
             while now() < abstimeout:
+                if self._spi_event.is_set():
+                    match self._spi.exception:
+                        case TimeoutError():
+                            reason = 'no response from Verilator'
+                        case BrokenPipeError() | ConnectionResetError():
+                            reason = 'host disconnected'
+                        case Exception():
+                            reason = str(self._spi.exception)
+                        case _:
+                            reason = 'unknown'
+                    if not ret:
+                        ret = proc.poll()
+                    if not ret:
+                        ret = 1
+                    self._log.error('Exiting on %s SPI bridge event, code %d',
+                                    reason, ret)
+                    break
                 while log_q:
                     err, qline = log_q.popleft()
                     if err:
@@ -266,6 +305,13 @@ class VtorExecuter:
                             self._vcp.connect({
                                 k: v for k, v in self._ports.items()
                                 if k.startswith('uart')}, 2.0)
+                            spi_ptys = sorted([v for p, v in self._ports.items()
+                                               if p.startswith('spi')])
+                            if spi_ptys:
+                                self._spi.connect_pty(spi_ptys[0])
+                                # only support a single SPI device bridge
+                                if len(spi_ptys) > 1:
+                                    self._log.warning('Too many SPI devices')
                             self._log.info('Simulation begins')
                         else:
                             self._parse_verilator_info(qline)
@@ -280,6 +326,7 @@ class VtorExecuter:
                 if xret is None:
                     xret = self._vcp.process()
                 if xret is not None:
+                    self._log.debug('Verilator exited with code %d', xret)
                     if xend is None:
                         xend = now()
                     ret = xret
@@ -294,11 +341,12 @@ class VtorExecuter:
                 else:
                     ret = self.DEADLOCK
         finally:
+            self._spi.disconnect()
             self._vcp.disconnect()
             if proc:
                 # leave some for Verilator to cleanly complete and flush its
                 # streams
-                wait = 0.5
+                wait = self.TERMINATION_TIMEOUT
                 if xend is None:
                     xend = now()
                 waited_time = now()
@@ -348,11 +396,15 @@ class VtorExecuter:
                 if log_q:
                     # should never happen
                     self._vlog.error('Lost traces')
-                self._save_exec_log()
+                self._save_logs()
             tmp_profile = joinpath(workdir, 'profile.vlt')
             if isfile(tmp_profile) and profile_file:
                 self._log.info('Saving profile file as %s', profile_file)
                 copyfile(tmp_profile, profile_file)
+        if ret:
+            self._log.error("Verilator failed: %s", ret)
+        else:
+            self._log.info("Success")
         return abs(ret or 0)
 
     def _vtor_logger(self, stream: TextIOWrapper, queue: deque, err: bool) \
@@ -508,6 +560,11 @@ class VtorExecuter:
             parts = line.split('.')[0].split(' ')
             self._ports[parts[-1]] = parts[-3]
             return
+        spi_prefix = 'SPI: PTY output file created at '
+        if line.startswith(spi_prefix):
+            spi_log_line = line.removeprefix(spi_prefix)
+            self._spilog_path = spi_log_line.rsplit('.', 1)[0]
+            self._log.debug('SPI PTY log path: %s', self._spilog_path)
 
     def _parse_verilator_log(self, line: str) -> bool:
         """Parse verilator log mesage.
@@ -554,18 +611,24 @@ class VtorExecuter:
                 return ''
         return line
 
-    def _discard_exec_log(self) -> None:
+    def _discard_logs(self) -> None:
         if not self._artifact_name:
             return
-        log_path = f'{self._artifact_name}.log'
-        if log_path or not isfile(log_path):
-            return
-        try:
-            unlink(log_path)
-            self._log.debug('Old execution log file discarded')
-        except OSError as exc:
-            self._log.error('Cannot remove previous execution log file: %s',
-                            exc)
+        for log_suffix in ('', 'spi.'):
+            log_path = f'{self._artifact_name}.{log_suffix}log'
+            if not isfile(log_path):
+                continue
+            try:
+                unlink(log_path)
+                self._log.debug('Old execution log file discarded: %s',
+                                log_path)
+            except OSError as exc:
+                self._log.error('Cannot remove previous execution log file: %s',
+                                exc)
+
+    def _save_logs(self) -> None:
+        self._save_exec_log()
+        self._save_spi_log()
 
     def _save_exec_log(self) -> None:
         if not self._save_xlog:
@@ -583,6 +646,20 @@ class VtorExecuter:
             unlink(log_path)
         self._log.debug('Saving execution log as %s', log_path)
         copyfile(self._xlog_path, log_path)
+
+    def _save_spi_log(self) -> None:
+        if not self._generate_spi_log:
+            return
+        if not self._spilog_path:
+            self._log.error('No SPI log file found')
+            return
+        if not isfile(self._spilog_path):
+            self._log.error('Missing SPI log file')
+            return
+        assert self._artifact_name is not None
+        log_path = f'{self._artifact_name}.spi.log'
+        self._log.debug('Saving SPI log as %s', log_path)
+        copyfile(self._spilog_path, log_path)
 
     def _convert_rom_file(self, file_kind: str, file_path: str, size: int,
                           rom_idx: int) -> str:

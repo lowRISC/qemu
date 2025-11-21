@@ -8,8 +8,9 @@ binaries as QEMU and comparing the outcome of each simulation environment.
 
 ````text
 usage: verilate.py [-h] [-V VERILATOR] [-R FILE] [-M FILE] [-F FILE] [-O VMEM]
-                   [-K] [-D TMP_DIR] [-c CFG] [-a PREFIX] [-C CYCLES] [-I]
-                   [-k SECONDS] [-l] [-P FILE] [-w] [-x] [-v] [-d] [-G]
+                   [-K] [-D TMP_DIR] [-c CFG] [-a PREFIX] [-b TCP_PORT]
+                   [-C CYCLES] [-I] [-k SECONDS] [-l] [-P FILE] [-w] [-x] [-v]
+                   [-d] [-G]
                    [ELF ...]
 
 Verilator wrapper.
@@ -36,6 +37,8 @@ Verilator:
   -a, --artifact-name PREFIX
                         set an alternative artifact name (default is derived
                         from the application name)
+  -b, --spi-device-bridge TCP_PORT
+                        Create a SPI device bridge
   -C, --cycles CYCLES   exit after the specified cycles
   -I, --show-init       show initializable devices
   -k, --timeout SECONDS
@@ -61,6 +64,12 @@ Extras:
 
 * `-a` / `--artifact` all artifact files (see `-l`, `-x` and `-w`) are named after the application
   name. This option specifies an alternative file prefix for all those artifacts.
+
+* `-b` / `--spi-device-bridge` create a local server on the specified TCP port that accepts QEMU SPI
+  device CharDev compliant requests, translates and converts them into simplified Verilator SPI DPI
+  requests using its PTY SPI device channel. SDO output data received on the PTY channel are
+  converted back into QEMU CharDev compliant responses. This feature can be enabled to use SPI
+  device tests that have been designed for the QEMU VM.
 
 * `-C` / `--cycles` abort Verilator execution after the specified count of cycles. See also the `-k`
   option.

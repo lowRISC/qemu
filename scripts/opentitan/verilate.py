@@ -30,7 +30,7 @@ from ot.verilator.executer import VtorExecuter  # noqa: E402
 
 def main():
     """Main routine."""
-    debug = False
+    debug = True
     try:
         desc = modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
@@ -63,6 +63,9 @@ def main():
         veri.add_argument('-a', '--artifact-name', metavar='PREFIX',
                           help='set an alternative artifact name '
                                '(default is derived from the application name)')
+        veri.add_argument('-b', '--spi-device-bridge', metavar='TCP_PORT',
+                          type=int,
+                          help='Create a SPI device bridge')
         veri.add_argument('-C', '--cycles', type=int,
                           help='exit after the specified cycles')
         veri.add_argument('-I', '--show-init', action='store_true',
@@ -88,8 +91,9 @@ def main():
         args = argparser.parse_args()
         debug = args.debug
 
-        log = configure_loggers(args.verbose, 'vtor', -1, 'elf', -1, 'romimg',
-                                name_width=12, ms=args.log_time)[0]
+        log = configure_loggers(args.verbose, 'vtor',
+                                -1, 'vtor.spi.client', 'elf', -1, 'romimg',
+                                name_width=20, ms=args.log_time)[0]
 
         if args.tmp_dir and not isdir(args.tmp_dir):
             argparser.error('Invalid directory for temporary files')
@@ -135,6 +139,8 @@ def main():
             vtor.artifact_name = args.artifact_name
         vtor.enable_exec_log(args.save_exec_log, args.link_exec_log)
         vtor.generate_wave(args.wave_gen)
+        if args.spi_device_bridge:
+            vtor.create_spi_device_bridge(args.spi_device_bridge)
         ret = vtor.verilate(args.rom, args.ram, args.flash, args.app, args.otp,
                             timeout=args.timeout, cycles=args.cycles)
 
