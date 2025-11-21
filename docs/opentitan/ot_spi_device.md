@@ -119,7 +119,7 @@ should release the /CS line, i.e. <c> should be 0.
   - `p`: polarity, should match `CFG.CPOL` (not yet supported)
   - `a`: phase, should match `CFG.CPHA` (not yet supported)
   - `t`: tx order, see `CFG.TX_ORDER` (not yet supported)
-  - `r`: rx order, see `CFG.TX_ORDER` (not yet supported)
+  - `r`: rx order, see `CFG.RX_ORDER` (not yet supported)
   - `c`: whether to keep _/CS_ low (=1) or release _/CS_ (=0) when payload has been processed. Any
     SPI transaction should end with C=0 packet. However it is possible to use several SPI device
     CharDev packets to handle a single SPI transaction: example: JEDEC ID w/ continuation code,
