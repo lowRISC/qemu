@@ -728,6 +728,23 @@ static bool ot_spi_device_flash_command_is_upload(const SpiDeviceFlash *f)
            ((f->cmd_info & CMD_INFO_UPLOAD_MASK) != 0u);
 }
 
+static bool ot_spi_device_flash_command_is_payload_en(const SpiDeviceFlash *f)
+{
+    return (f->cmd_info & CMD_INFO_PAYLOAD_EN_MASK) != 0u;
+}
+
+static bool ot_spi_device_flash_command_has_payload(const SpiDeviceFlash *f)
+{
+    return ot_spi_device_is_sw_command(f->slot) &&
+           ot_spi_device_flash_command_is_payload_en(f);
+}
+
+static bool ot_spi_device_flash_command_is_rx_payload(const SpiDeviceFlash *f)
+{
+    return ot_spi_device_is_sw_command(f->slot) &&
+           ((f->cmd_info & CMD_INFO_PAYLOAD_DIR_MASK) == 0u);
+}
+
 static bool ot_spi_device_flash_is_readbuf_irq(const OtSPIDeviceState *s)
 {
     /*
@@ -879,17 +896,13 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
     bool update_irq = false;
 
     OtSpiDeviceMode mode = ot_spi_device_get_mode(s);
+
     switch (mode) {
     case CTRL_MODE_FLASH:
     case CTRL_MODE_PASSTHROUGH:
         /* new uploaded command */
         if (!fifo8_is_empty(&f->cmd_fifo) && f->new_cmd) {
             s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_CMDFIFO_NOT_EMPTY_MASK;
-            update_irq = true;
-        }
-        /* uploaded payload */
-        if (f->pos) {
-            s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_PAYLOAD_NOT_EMPTY_MASK;
             update_irq = true;
         }
         /* update upload status register with payload information */
@@ -915,9 +928,16 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
             trace_ot_spi_device_flash_payload(s->ot_id, f->pos, payload_start,
                                               payload_len);
         }
-        /* passthrough mode: release CS */
-        if (mode == CTRL_MODE_PASSTHROUGH) {
-            ibex_irq_raise(&s->passthrough_cs);
+        /*
+         * "shows the last address accessed by the host system."
+         * "does not show the commands falling into the mailbox region or
+         *  Read SFDP command’s address."
+         */
+        if (f->slot >= SLOT_HW_READ_NORMAL && f->slot <= SLOT_HW_READ_QUAD_IO &&
+            !ot_spi_device_is_mailbox_match(s, f->last_read_addr)) {
+            trace_ot_spi_device_update_last_read_addr(s->ot_id,
+                                                      f->last_read_addr);
+            s->spi_regs[R_LAST_READ_ADDR] = f->last_read_addr;
         }
         FLASH_CHANGE_STATE(s, IDLE);
         break;
@@ -925,26 +945,34 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
         break;
     }
 
-    /*
-     * "shows the last address accessed by the host system."
-     * "does not show the commands falling into the mailbox region or
-     *  Read SFDP command’s address."
-     */
+    bool upload_intr = false;
     switch (mode) {
     case CTRL_MODE_FLASH:
+        upload_intr = ot_spi_device_is_sw_command(f->slot);
+        break;
     case CTRL_MODE_PASSTHROUGH:
-        if (f->slot >= SLOT_HW_READ_NORMAL && f->slot <= SLOT_HW_READ_QUAD_IO &&
-            !ot_spi_device_is_mailbox_match(s, f->last_read_addr)) {
-            trace_ot_spi_device_update_last_read_addr(s->ot_id,
-                                                      f->last_read_addr);
-            s->spi_regs[R_LAST_READ_ADDR] = f->last_read_addr;
+        /*
+         * @todo add support for payload interrupt management in Passthrough
+         * mode.
+         */
+        if (f->pos) {
+            upload_intr = true;
         }
+        /* passthrough mode: release CS */
+        ibex_irq_raise(&s->passthrough_cs);
         break;
     default:
         break;
     }
 
     f->new_cmd = false;
+
+    if (upload_intr) {
+        if (f->pos) {
+            s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_PAYLOAD_NOT_EMPTY_MASK;
+            update_irq = true;
+        }
+    }
 
     if (update_irq) {
         ot_spi_device_update_irqs(s);
@@ -1264,7 +1292,7 @@ static uint8_t ot_spi_device_flash_read_buffer(OtSPIDeviceState *s)
     f->pos++;
     if (f->pos >= f->len) {
         if (f->loop) {
-            f->pos = 0;
+            f->pos = 0u;
         } else {
             FLASH_CHANGE_STATE(s, DONE);
         }
@@ -1349,12 +1377,13 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
     return tx;
 }
 
-static void ot_spi_device_flash_init_payload(OtSPIDeviceState *s)
+static void ot_spi_device_flash_init_upload(OtSPIDeviceState *s)
 {
     SpiDeviceFlash *f = &s->flash;
 
     f->pos = 0;
-    f->len = SPI_SRAM_PAYLOAD_SIZE;
+    f->len =
+        ot_spi_device_flash_command_has_payload(f) ? SPI_SRAM_PAYLOAD_SIZE : 0u;
     s->spi_regs[R_UPLOAD_STATUS2] = 0;
     g_assert(f->payload);
     FLASH_CHANGE_STATE(s, UP_PAYLOAD);
@@ -1373,7 +1402,7 @@ static void ot_spi_device_flash_decode_sw_command(OtSPIDeviceState *s)
         f->len = 1u;
         FLASH_CHANGE_STATE(s, UP_DUMMY);
     } else if (ot_spi_device_flash_command_is_upload(f)) {
-        ot_spi_device_flash_init_payload(s);
+        ot_spi_device_flash_init_upload(s);
     } else {
         /*
          * Any payload sent with a non-uploaded SW command is ignored. The
@@ -1409,7 +1438,7 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
                 f->len = 1u;
                 FLASH_CHANGE_STATE(s, UP_DUMMY);
             } else if (ot_spi_device_flash_command_is_upload(f)) {
-                ot_spi_device_flash_init_payload(s);
+                ot_spi_device_flash_init_upload(s);
             } else {
                 /*
                  * Any payload sent with a non-uploaded SW command is ignored.
@@ -1423,8 +1452,9 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
     case SPI_FLASH_UP_DUMMY:
         f->pos++;
         g_assert(f->pos == f->len);
+        f->pos = 0u;
         if (ot_spi_device_flash_command_is_upload(f)) {
-            ot_spi_device_flash_init_payload(s);
+            ot_spi_device_flash_init_upload(s);
         } else {
             /*
              * Any payload sent with a non-uploaded SW command is ignored. The
@@ -1435,7 +1465,9 @@ static void ot_spi_device_flash_exec_sw_command(OtSPIDeviceState *s, uint8_t rx)
         }
         break;
     case SPI_FLASH_UP_PAYLOAD:
-        f->payload[f->pos % SPI_SRAM_PAYLOAD_SIZE] = rx;
+        if (ot_spi_device_flash_command_is_rx_payload(f)) {
+            f->payload[f->pos % SPI_SRAM_PAYLOAD_SIZE] = rx;
+        }
         f->pos++;
         break;
     case SPI_FLASH_DONE:
