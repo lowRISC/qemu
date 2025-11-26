@@ -276,7 +276,8 @@ REG32(TPM_READ_FIFO, 0x34u)
  */
 /* clang-format off */
 #define SPI_SRAM_READ0_OFFSET      0x0
-#define SPI_SRAM_READ_SIZE         0x400u
+#define SPI_SRAM_READ_LOG2_SIZE    10u
+#define SPI_SRAM_READ_SIZE         (1u << SPI_SRAM_READ_LOG2_SIZE)
 #define SPI_SRAM_READ1_OFFSET      (SPI_SRAM_READ0_OFFSET + SPI_SRAM_READ_SIZE)
 #define SPI_SRAM_READ1_SIZE        0x400u
 #define SPI_SRAM_MBX_OFFSET        (SPI_SRAM_READ1_OFFSET + SPI_SRAM_READ_SIZE)
@@ -422,6 +423,7 @@ typedef struct {
     unsigned len; /* Meaning depends on command and current state */
     uint32_t address; /* Address tracking */
     uint32_t last_read_addr; /* Last address read before increment */
+    uint32_t next_buffer_addr; /* Next buffer boundary */
     uint32_t cmd_info; /* Selected command info slot */
     uint8_t *src; /* Selected read data source (alias) */
     uint8_t *payload; /* Selected write data sink (alias) */
@@ -430,7 +432,7 @@ typedef struct {
     OtFifo32 address_fifo; /* Address FIFO */
     QEMUTimer *irq_timer; /* Timer to resume processing after a READBUF_* IRQ */
     bool loop; /* Keep reading the buffer if end is reached */
-    bool watermark; /* Read watermark hit, used as flip-flop */
+    bool watermark_crossed; /* Read watermark hit, used as flip-flop */
     bool new_cmd; /* New command has been pushed in current SPI transaction */
 } SpiDeviceFlash;
 
@@ -752,8 +754,11 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     f->cmd_info = 0u;
     f->address = 0u;
     f->last_read_addr = 0u;
+    f->next_buffer_addr = SPI_SRAM_READ_SIZE;
     f->pos = 0u;
     f->len = 0u;
+    f->watermark_crossed = false;
+    f->new_cmd = false;
     g_assert(s->sram);
     f->payload = &((uint8_t *)s->sram)[SPI_SRAM_PAYLOAD_OFFSET];
     memset(f->buffer, 0u, SPI_FLASH_BUFFER_SIZE);
@@ -974,6 +979,14 @@ static void ot_spi_device_flash_pace_spibus(OtSPIDeviceState *s)
     timer_mod(f->irq_timer, now + SPI_BUS_FLASH_READ_DELAY_NS);
 }
 
+static void ot_spi_device_flash_clear_readbuffer(OtSPIDeviceState *s)
+{
+    SpiDeviceFlash *f = &s->flash;
+
+    f->next_buffer_addr = SPI_SRAM_READ_SIZE;
+    f->watermark_crossed = false;
+}
+
 static bool
 ot_spi_device_flash_match_command_slot(OtSPIDeviceState *s, uint8_t cmd)
 {
@@ -1143,7 +1156,6 @@ static void ot_spi_device_flash_decode_read_data(OtSPIDeviceState *s)
     }
 
     f->src = f->buffer;
-    f->watermark = false;
     FLASH_CHANGE_STATE(s, COLLECT);
     f->len = dummy + (ot_spi_device_is_addr4b_en(s) ? 4u : 3u);
 }
@@ -1207,6 +1219,17 @@ static void ot_spi_device_flash_exec_read_data(OtSPIDeviceState *s)
     }
 
     trace_ot_spi_device_flash_set_read_addr(s->ot_id, (uint32_t)address);
+
+    if ((address >> SPI_SRAM_READ_LOG2_SIZE) + 1u !=
+        (f->next_buffer_addr >> SPI_SRAM_READ_LOG2_SIZE)) {
+        /*
+         * either the FLASH_READ_BUFFER_CLR has not been triggered, or
+         * subsequent read commands do not cover a continuous address range
+         * (% buffer size)
+         */
+        trace_ot_spi_device_flash_read_config_error(s->ot_id, address,
+                                                    f->next_buffer_addr);
+    }
 
     f->address = address;
     FLASH_CHANGE_STATE(s, READ);
@@ -1287,7 +1310,7 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
          * Not sure this is how the HW actually works, and there is no SW
          * example that fully demontrates how the mailbox vs. regular pages are
          * supposed to work.
-         * The current implementation therefore only subsitutes the SPI MISO
+         * The current implementation therefore only substitutes the SPI MISO
          * value, but acts exactly as if the virtual flash pages where used.
          * This might be right or wrong.
          */
@@ -1306,7 +1329,7 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
 
         /* "when the host access above or equal to the threshold" */
         if (lowaddr >= threshold) {
-            if (!f->watermark) {
+            if (!f->watermark_crossed) {
                 trace_ot_spi_device_flash_read_threshold(s->ot_id, f->address,
                                                          threshold);
                 s->spi_regs[R_INTR_STATE] |= INTR_READBUF_WATERMARK_MASK;
@@ -1314,7 +1337,7 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
                 ot_spi_device_update_irqs(s);
             }
             /* should be reset on buffer switch */
-            f->watermark = true;
+            f->watermark_crossed = true;
         }
     }
 
@@ -1325,11 +1348,13 @@ static uint8_t ot_spi_device_flash_read_data(OtSPIDeviceState *s)
      * "If a new read command crosses the current buffer boundary, the SW clears
      *  the cross event for the HW to detect the address cross event again."
      */
-    bool flip = (f->address & (SPI_SRAM_READ_SIZE - 1u)) == 0;
+    bool flip = f->address == f->next_buffer_addr;
     if (flip) {
-        f->watermark = false;
+        f->watermark_crossed = false;
+        f->next_buffer_addr += SPI_SRAM_READ_SIZE;
         s->spi_regs[R_INTR_STATE] |= INTR_READBUF_FLIP_MASK;
-        trace_ot_spi_device_flash_cross_buffer(s->ot_id, "run", f->address);
+        trace_ot_spi_device_flash_cross_buffer(s->ot_id, f->address,
+                                               f->next_buffer_addr);
         pace_spibus = true;
         ot_spi_device_update_irqs(s);
     }
@@ -2028,9 +2053,36 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
         ot_spi_device_update_alerts(s);
         break;
     case R_CONTROL:
-        val32 &= CONTROL_MASK;
-        if ((val32 & R_CONTROL_MODE_MASK) !=
-            (s->spi_regs[reg] & R_CONTROL_MODE_MASK)) {
+        if (val32 & R_CONTROL_FLASH_STATUS_FIFO_CLR_MASK) {
+            if (s->bus.state != SPI_BUS_IDLE) {
+                /*
+                 * "The reset should only be used when the upstream SPI host is
+                 *  known to be inactive."
+                 */
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "%s: %s: Flash status FIFO cleared while SPI "
+                              "host not idle\n",
+                              __func__, s->ot_id);
+                /* clear it anyway, with undefined consequences */
+            }
+            s->spi_regs[R_FLASH_STATUS] = 0x0u; /* reset value */
+        }
+        if (val32 & R_CONTROL_FLASH_READ_BUFFER_CLR_MASK) {
+            if (s->bus.state != SPI_BUS_IDLE) {
+                /*
+                 * "The reset should only be used when the upstream SPI host is
+                 *  known to be inactive."
+                 */
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "%s: %s: Flash read buffer cleared while SPI "
+                              "host not idle",
+                              __func__, s->ot_id);
+                /* clear it anyway, with undefined consequences */
+            }
+            ot_spi_device_flash_clear_readbuffer(s);
+        }
+        val32 &= R_CONTROL_MODE_MASK;
+        if (val32 != (s->spi_regs[reg] & R_CONTROL_MODE_MASK)) {
             ot_spi_device_clear_modes(s);
             if (s->bus.state == SPI_BUS_FLASH) {
                 /*
@@ -2039,7 +2091,7 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
                  * We choose to cancel any ongoing SPI transfer until the next
                  * CS.
                  */
-                qemu_log_mask(LOG_TRACE,
+                qemu_log_mask(LOG_GUEST_ERROR,
                               "%s: %s: Flash mode changed during transfer, "
                               "discarding rest of transfer\n",
                               __func__, s->ot_id);
@@ -2817,8 +2869,6 @@ static void ot_spi_device_reset_enter(Object *obj, ResetType type)
     ot_fifo32_reset(&f->address_fifo);
 
     ot_spi_device_release(s);
-    f->watermark = false;
-    f->new_cmd = false;
     s->spi_regs[R_CONTROL] = 0x10u;
     s->spi_regs[R_STATUS] = 0x60u;
     s->spi_regs[R_JEDEC_CC] = 0x7fu;
