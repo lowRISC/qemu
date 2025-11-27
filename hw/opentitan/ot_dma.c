@@ -303,8 +303,8 @@ struct OtDMAClass {
 #define DMA_ERROR(_err_) (1u << (_err_))
 
 /* default values, can be overridden with properties */
-#define DMA_PACE_NS            10000u /* 10us: slow down DMA, handle aborts */
-#define DMA_TRANSFER_BLOCK_LG2 12u /* log2(size) of a single DMA block */
+#define DMA_PACE_NS             10000u /* 10us: slow down DMA, handle aborts */
+#define DMA_TRANSFER_BLOCK_LOG2 12u /* log2(size) of a single DMA block */
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
@@ -1371,7 +1371,7 @@ static Property ot_dma_properties[] = {
     DEFINE_PROP_STRING("sys_as_name", OtDMAState, sys_as_name),
     DEFINE_PROP_UINT32("pace_delay", OtDMAState, pace_delay, DMA_PACE_NS),
     DEFINE_PROP_UINT8("block_size_lg2", OtDMAState, block_size_lg2,
-                      DMA_TRANSFER_BLOCK_LG2),
+                      DMA_TRANSFER_BLOCK_LOG2),
 #ifdef OT_DMA_HAS_ROLE
     DEFINE_PROP_UINT8("role", OtDMAState, role, UINT8_MAX),
 #endif
