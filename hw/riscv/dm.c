@@ -335,6 +335,7 @@ struct RISCVDMState {
     uint64_t nonexistent_bm; /* Selected harts that are not existent */
     uint64_t unavailable_bm; /* Selected harts that are not available */
     uint64_t haltreq_bm; /* Selected harts that have a pending halt request */
+    uint64_t reset_bm; /* Selected harts that have an ongoing reset request */
     uint64_t to_go_bm; /* Harts that have been flagged for debug exec */
     uint32_t address; /* DM register addr: only bADDRESS_BITS..b0 are used */
     uint32_t *regs; /* Debug module register values */
@@ -1270,34 +1271,32 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
             if (value & R_DMCONTROL_HARTRESET_MASK) {
                 trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
                                           dm->hart->hartid, "assert");
-                if (!cs->disabled) {
-                    if (hart->unlock_reset) {
-                        /*
-                         * if hart is started in active reset, prevent from
-                         * resetting it since it should not be released from
-                         * reset (see below). Allowing reset w/ blocking reset
-                         * release would leave the Resettable API count with
-                         * a forever-locked reset count.
-                         */
-                        resettable_assert_reset(OBJECT(cs), RESET_TYPE_COLD);
-                        dm->unavailable_bm |= hbit;
-                    }
+                if (!cs->disabled && hart->unlock_reset) {
+                    /*
+                     * if hart is started in active reset, prevent from
+                     * resetting it since it should not be released from
+                     * reset (see below). Allowing reset w/ blocking reset
+                     * release would leave the Resettable API count with
+                     * a forever-locked reset count.
+                     */
+                    resettable_assert_reset(OBJECT(cs), RESET_TYPE_COLD);
+                    dm->unavailable_bm |= hbit;
+                    dm->reset_bm |= hbit;
                 }
-            } else {
-                if (cs->disabled) {
-                    if (hart->unlock_reset) {
-                        /*
-                         * if hart is started in active reset, prevent from
-                         * releasing it from reset, otherwise it may start
-                         * executing guest code not yet loaded, leading to an
-                         * exception. It is up to the guest code to manage the
-                         * initial out-of-reset sequence. Not sure how real HW
-                         * manages this corner case.
-                         */
-                        trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
-                                                  dm->hart->hartid, "release");
-                        resettable_release_reset(OBJECT(cs), RESET_TYPE_COLD);
-                    }
+            } else if (dm->reset_bm & hbit) {
+                if (cs->disabled && hart->unlock_reset) {
+                    /*
+                     * if hart is started in active reset, prevent from
+                     * releasing it from reset, otherwise it may start
+                     * executing guest code not yet loaded, leading to an
+                     * exception. It is up to the guest code to manage the
+                     * initial out-of-reset sequence. Not sure how real HW
+                     * manages this corner case.
+                     */
+                    trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
+                                              dm->hart->hartid, "release");
+                    resettable_release_reset(OBJECT(cs), RESET_TYPE_COLD);
+                    dm->reset_bm &= ~hbit;
                 }
             }
 
@@ -2599,6 +2598,7 @@ static void riscv_dm_reset_enter(Object *obj, ResetType type)
     dm->nonexistent_bm = 0;
     dm->unavailable_bm = 0;
     dm->haltreq_bm = 0;
+    dm->reset_bm = 0;
     dm->address = 0;
     dm->to_go_bm = 0;
     for (unsigned ix = 0; ix < dm->hart_count; ix++) {
