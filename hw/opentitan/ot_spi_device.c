@@ -695,12 +695,6 @@ static const char *IRQ_NAMES[] = {
 #define FLASH_CHANGE_STATE(_s_, _sst_) \
     ot_spi_device_flash_change_state_line(_s_, SPI_FLASH_##_sst_, __LINE__)
 
-static bool ot_spi_device_is_cs_active(const OtSPIDeviceState *s)
-{
-    const SpiDeviceBus *bus = &s->bus;
-    return bus->state != SPI_BUS_IDLE && bus->state != SPI_BUS_ERROR;
-}
-
 static void ot_spi_device_bus_change_state_line(OtSPIDeviceState *s,
                                                 OtSpiBusState state, int line)
 {
@@ -775,19 +769,6 @@ static void ot_spi_device_clear_modes(OtSPIDeviceState *s)
     fifo8_reset(&tpm->rdfifo);
 
     memset(s->sram, 0u, SRAM_SIZE);
-}
-
-static uint32_t ot_spi_device_get_status(const OtSPIDeviceState *s)
-{
-    uint32_t status = 0u;
-
-    if (!ot_spi_device_is_cs_active(s)) {
-        status |= R_STATUS_CSB_MASK;
-    }
-
-    /* @todo: Add TPM CSB when the TPM CS is added to the SpiDev protocol */
-
-    return status;
 }
 
 static void ot_spi_device_update_irqs(OtSPIDeviceState *s)
@@ -892,6 +873,8 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
     BUS_CHANGE_STATE(s, IDLE);
     bus->byte_count = 0u;
     bus->failed_transaction = false;
+
+    s->spi_regs[R_STATUS] = R_STATUS_CSB_MASK | R_STATUS_TPM_CSB_MASK;
 
     bool update_irq = false;
 
@@ -1951,10 +1934,8 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_CMD_INFO_EX4B:
     case R_CMD_INFO_WREN:
     case R_CMD_INFO_WRDI:
-        val32 = s->spi_regs[reg];
-        break;
     case R_STATUS:
-        val32 = ot_spi_device_get_status(s);
+        val32 = s->spi_regs[reg];
         break;
     case R_UPLOAD_STATUS:
         val32 = 0;
@@ -2395,6 +2376,7 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
     if (size != SPI_BUS_HEADER_SIZE) {
         trace_ot_spi_device_chr_error(s->ot_id, "invalid header size");
+        s->spi_regs[R_STATUS] |= R_STATUS_CSB_MASK;
         BUS_CHANGE_STATE(s, ERROR);
         return;
     }
@@ -2402,6 +2384,7 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
     if (hdr[0] != '/' || hdr[1u] != 'C' || hdr[2u] != 'S' ||
         hdr[3u] != SPI_BUS_PROTO_VER) {
         trace_ot_spi_device_chr_error(s->ot_id, "invalid header");
+        s->spi_regs[R_STATUS] |= R_STATUS_CSB_MASK;
         BUS_CHANGE_STATE(s, ERROR);
         return;
     }
@@ -2426,6 +2409,9 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
         /* no payload, stay in IDLE (handle_header is only called from IDLE) */
         return;
     }
+
+    /* @todo: also update the TPM CSB value when used in the protocol */
+    s->spi_regs[R_STATUS] &= ~R_STATUS_CSB_MASK;
 
     /* discard the packet if we're within a failed transaction */
     if (bus->failed_transaction) {
