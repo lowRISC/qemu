@@ -36,7 +36,7 @@ OBJECT_DECLARE_TYPE(OtRstMgrState, OtRstMgrClass, OT_RSTMGR)
 /* Supported ResetManager versions */
 typedef enum {
     OT_RSTMGR_VERSION_EG_1_0_0,
-    OT_RSTMGR_VERSION_DJ_PRE,
+    OT_RSTMGR_VERSION_DJ,
     OT_RSTMGR_VERSION_COUNT,
 } OtRstMgrVersion;
 

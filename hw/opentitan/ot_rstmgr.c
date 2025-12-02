@@ -226,7 +226,7 @@ static const OtRstMgrConfig RSTMGR_CONFIG[OT_RSTMGR_VERSION_COUNT] = {
              */
         }
     },
-    [OT_RSTMGR_VERSION_DJ_PRE] = {
+    [OT_RSTMGR_VERSION_DJ] = {
         .reset_request_codes = {
             [OT_RSTMGR_RESET_POR] = BIT(0),
             [OT_RSTMGR_RESET_LOW_POWER] = BIT(1),

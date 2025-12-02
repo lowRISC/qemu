@@ -1367,7 +1367,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("clocks", "main,io"),
             IBEX_DEV_UINT_PROP("num-rom", 2u),
-            IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_DJ_PRE)
+            IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_DJ)
         ),
     },
     [OT_DJ_SOC_DEV_RSTMGR] = {
@@ -1382,7 +1382,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
                              OT_PWRMGR_SW_RST, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("version", OT_RSTMGR_VERSION_DJ_PRE)
+            IBEX_DEV_UINT_PROP("version", OT_RSTMGR_VERSION_DJ)
         ),
     },
     [OT_DJ_SOC_DEV_CLKMGR] = {
@@ -1412,7 +1412,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
                 "timers:aon+io_div4"),
             IBEX_DEV_STRING_PROP("swcg", "peri"),
             IBEX_DEV_STRING_PROP("hint", "trans"),
-            IBEX_DEV_UINT_PROP("version", OT_CLKMGR_VERSION_DJ_PRE)
+            IBEX_DEV_UINT_PROP("version", OT_CLKMGR_VERSION_DJ)
         ),
     },
     [OT_DJ_SOC_DEV_PINMUX] = {

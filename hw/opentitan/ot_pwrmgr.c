@@ -337,7 +337,7 @@ static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWRMGR_VERSION_COUNT] = {
         .control_mask = 0x1f1u,
         .control_res_val = 0x180u, /* MAIN_PD_N | USB_CLK_EN_ACTIVE */
     },
-    [OT_PWRMGR_VERSION_DJ_PRE] = {
+    [OT_PWRMGR_VERSION_DJ] = {
         .wakeup_count = 4u,
         .reset_count = 2u,
         .reset_mask = 0x3u,
@@ -367,7 +367,7 @@ PWRMGR_RESET_DISPATCH[OT_PWRMGR_VERSION_COUNT][PWRMGR_RST_REQ_MAX] = {
         [0] = OT_RSTMGR_RESET_SYSCTRL,
         [1] = OT_RSTMGR_RESET_AON_TIMER,
     },
-    [OT_PWRMGR_VERSION_DJ_PRE] = {
+    [OT_PWRMGR_VERSION_DJ] = {
         [0] = OT_RSTMGR_RESET_AON_TIMER,
         [1] = OT_RSTMGR_RESET_SOC_PROXY,
     },
@@ -383,7 +383,7 @@ PWRMGR_WAKEUP_NAMES[OT_PWRMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
         [4] = "AON_TIMER",
         [5] = "SENSOR",
     },
-    [OT_PWRMGR_VERSION_DJ_PRE] = {
+    [OT_PWRMGR_VERSION_DJ] = {
         [0] = "PINMUX",
         [1] = "USBDEV",
         [2] = "AON_TIMER",
@@ -399,7 +399,7 @@ PWRMGR_RST_NAMES[OT_PWRMGR_VERSION_COUNT][PWRMGR_RST_REQ_MAX] = {
         [0] = "SYSRST",
         [1] = "AON_TIMER",
     },
-    [OT_PWRMGR_VERSION_DJ_PRE] = {
+    [OT_PWRMGR_VERSION_DJ] = {
         [0] = "AON_TIMER",
         [1] = "SOC_PROXY",
     }

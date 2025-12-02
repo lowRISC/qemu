@@ -37,7 +37,7 @@ OBJECT_DECLARE_TYPE(OtPwrMgrState, OtPwrMgrClass, OT_PWRMGR)
 /* Supported PowerManager versions */
 typedef enum {
     OT_PWRMGR_VERSION_EG_1_0_0,
-    OT_PWRMGR_VERSION_DJ_PRE,
+    OT_PWRMGR_VERSION_DJ,
     OT_PWRMGR_VERSION_COUNT,
 } OtPwrMgrVersion;
 
