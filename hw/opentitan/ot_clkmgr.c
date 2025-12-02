@@ -770,7 +770,7 @@ static unsigned ot_clkmgr_parse_hint(OtClkMgrState *s, Error **errp)
     unsigned hint_count = 0;
 
     if (!s->cfg_hint) {
-        error_setg(errp, "%s: hintabkle clocks not defined", __func__);
+        error_setg(errp, "%s: hintable clocks not defined", __func__);
         return hint_count;
     }
 
