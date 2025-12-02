@@ -4,7 +4,7 @@ All the OpenTitan tools and associated files are stored in the `scripts/opentita
 
 ## Installation
 
-Most tools are implemented in Python language. They require Python 3.9 or newer.
+Most tools are implemented in Python language. They require Python 3.10 or newer.
 
 It is recommended to install Python dependencies using a [virtual environment](https://virtualenv.pypa.io).
 
