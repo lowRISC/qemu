@@ -1016,20 +1016,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DEVLINK("clock-src", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("topclocks", "main:500,io:480,usb:240,aon:1"),
-            IBEX_DEV_STRING_PROP("refclock", "aon"),
-            IBEX_DEV_STRING_PROP("subclocks",
-                "io_div2:io:2,io_div4:io:4,"
-                "aes:main:1,hmac:main:1,kmac:main:1,otbn:main:1"),
-            IBEX_DEV_STRING_PROP("groups",
-                "powerup:aon+io+io_div2+io_div4+main+usb,"
-                "trans:aes+hmac+kmac+otbn,"
-                "infra:io+io_div2+io_div4+main+usb,"
-                "secure:aon+io_div4+main,"
-                "peri:aon+io+io_div2+io_div4+usb,"
-                "timers:aon+io_div4"),
-            IBEX_DEV_STRING_PROP("swcg", "peri"),
-            IBEX_DEV_STRING_PROP("hint", "trans"),
             IBEX_DEV_UINT_PROP("version", OT_CLKMGR_VERSION_EG_1_0_0)
         ),
     },
@@ -1119,9 +1105,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ot_eg_soc_ast_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40480000u }
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("aonclocks", "aon")
         ),
     },
     [OT_EG_SOC_DEV_SENSOR_CTRL] = {

@@ -1398,20 +1398,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_DEVLINK("clock-src", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("topclocks", "main:16,io:16,aon:1"),
-            IBEX_DEV_STRING_PROP("refclock", "aon"),
-            IBEX_DEV_STRING_PROP("subclocks",
-                "io_div2:io:2,io_div4:io:4,"
-                "aes:main:1,hmac:main:1,kmac:main:1,otbn:main:1"),
-            IBEX_DEV_STRING_PROP("groups",
-                "powerup:aon+io+io_div2+io_div4+main,"
-                "trans:aes+hmac+kmac+otbn,"
-                "infra:aon+io_div4+main,"
-                "secure:io_div4+main,"
-                "peri:aon+io_div2+io_div4,"
-                "timers:aon+io_div4"),
-            IBEX_DEV_STRING_PROP("swcg", "peri"),
-            IBEX_DEV_STRING_PROP("hint", "trans"),
             IBEX_DEV_UINT_PROP("version", OT_CLKMGR_VERSION_DJ)
         ),
     },
@@ -1483,9 +1469,6 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .cfg = &ot_dj_soc_ast_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30480000u }
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("aonclocks", "aon")
         ),
     },
     [OT_DJ_SOC_DEV_SRAM_CTRL_RET] = {
