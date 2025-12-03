@@ -8,9 +8,13 @@ smoke-tests-ot:
     - build/qemu-system-riscv32 -M help | grep ot-earlgrey
     - timeout -s KILL 4 build/qemu-system-riscv32 -M ibexdemo -nographic
         -device loader,addr=0x100080,file=build/exit_id.bin -d in_asm,int
-    - timeout -s KILL 4 build/qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -nographic
+    - timeout -s KILL 4 build/qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true
         -object ot-rom_img,id=rom,file=build/exit_eg.bin -d in_asm,int
         -nographic -global ot-ibex_wrapper.lc-ignore=on
+        -readconfig docs/config/opentitan/earlgrey.cfg
+        -trace ot_ibex_wrapper_exit
     - timeout -s KILL 4 build/qemu-system-riscv32 -M ot-darjeeling,no_epmp_cfg=true
         -object ot-rom_img,id=rom0,file=build/exit_dj.bin -d in_asm,int
-         -nographic -global ot-ibex_wrapper.lc-ignore=on
+        -nographic -global ot-ibex_wrapper.lc-ignore=on
+        -readconfig docs/config/opentitan/darjeeling.cfg
+        -trace ot_ibex_wrapper_exit
