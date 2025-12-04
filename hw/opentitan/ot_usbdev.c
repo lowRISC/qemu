@@ -1916,13 +1916,13 @@ static uint64_t ot_usbdev_read(void *opaque, hwaddr addr, unsigned size)
     case R_USBDEV_INTR_TEST:
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s Read to W/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+                      "%s: %s Read to W/O register 0x%02x (%s)\n", __func__,
+                      s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 = 0u;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0u;
         break;
     }
@@ -1986,9 +1986,9 @@ static void ot_usbdev_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_RXFIFO:
     case R_USBSTAT:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: write to R/O register 0x%02" HWADDR_PRIx
+                      "%s: %s: write to R/O register 0x%02x"
                       " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
     case R_PHY_CONFIG:
         /* @todo mask against actual fields? */
@@ -2075,8 +2075,8 @@ static void ot_usbdev_write(void *opaque, hwaddr addr, uint64_t val64,
                       s->ot_id, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 }

@@ -1199,9 +1199,8 @@ ot_ibex_wrapper_regs_read(void *opaque, hwaddr addr, unsigned size)
     hwaddr reg = R32_OFF(addr);
 
     if (reg >= s->reg_count) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Invalid register 0x%03" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid register 0x%03x\n",
+                      __func__, s->ot_id, (uint32_t)addr);
         return 0;
     }
 
@@ -1229,9 +1228,8 @@ static void ot_ibex_wrapper_regs_write(void *opaque, hwaddr addr,
                                    val32, pc);
 
     if (reg >= s->reg_count) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Invalid register 0x%03" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid register 0x%03x\n",
+                      __func__, s->ot_id, (uint32_t)addr);
         return;
     }
 

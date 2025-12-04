@@ -1177,15 +1177,13 @@ static uint64_t ot_dma_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_INTR_TEST:
     case R_ALERT_TEST:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -1260,9 +1258,9 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_DEST_ADDR_LIMIT_LO ... R_DEST_ADDR_LIMIT_HI:
     case R_DEST_ADDR_THRESHOLD_LO ... R_DEST_ADDR_THRESHOLD_HI:
         qemu_log_mask(LOG_UNIMP,
-                      "%s: %s: Limit reg 0x%02" HWADDR_PRIx " (%s) is not "
+                      "%s: %s: Limit reg 0x%02x (%s) is not "
                       "supported\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         s->regs[reg] = val32;
         break;
     case R_ENABLED_MEMORY_RANGE_BASE:
@@ -1270,9 +1268,8 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         if (!ot_dma_is_range_locked(s)) {
             s->regs[reg] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s: 0x%02" HWADDR_PRIx " (%s) is locked\n",
-                          __func__, s->ot_id, addr, REG_NAME(reg));
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: 0x%02x (%s) is locked\n",
+                          __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
             /* not sure what to do here, should we set an error? */
         }
         break;
@@ -1282,9 +1279,9 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_HANDSHAKE_INTR:
         qemu_log_mask(LOG_UNIMP,
-                      "%s: %s: Handshake reg 0x%02" HWADDR_PRIx " (%s) is not "
+                      "%s: %s: Handshake reg 0x%02x (%s) is not "
                       "supported\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 &= R_HANDSHAKE_INTR_ENABLE_MASK;
         s->regs[reg] = val32;
         break;
@@ -1297,9 +1294,8 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= R_RANGE_VALID_VALID_MASK;
             s->regs[reg] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s: 0x%02" HWADDR_PRIx " (%s) is locked\n",
-                          __func__, s->ot_id, addr, REG_NAME(reg));
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: 0x%02x (%s) is locked\n",
+                          __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         }
         break;
     case R_RANGE_REGWEN:
@@ -1353,13 +1349,12 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_CFG_REGWEN:
     case R_ERROR_CODE:
     case R_SHA2_DIGEST_0 ... R_SHA2_DIGEST_15:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 };

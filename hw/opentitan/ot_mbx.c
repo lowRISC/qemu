@@ -323,14 +323,13 @@ static uint64_t ot_mbx_host_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_HOST_INTR_TEST:
     case R_HOST_ALERT_TEST:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(HOST, reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(HOST, reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -395,9 +394,8 @@ static void ot_mbx_host_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_HOST_OUT_READ_PTR:
     case R_HOST_INTR_MSG_ADDR:
     case R_HOST_INTR_MSG_DATA:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s R/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(HOST, reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s R/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(HOST, reg));
         break;
     case R_HOST_ADDRESS_RANGE_REGWEN:
         val32 &= R_HOST_ADDRESS_RANGE_REGWEN_EN_MASK;
@@ -425,9 +423,8 @@ static void ot_mbx_host_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= ~0b11u; /*b1..b0 always 0 */
             hregs[reg] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s regwen protected 0x%02" HWADDR_PRIx "\n",
-                          __func__, s->ot_id, addr);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s regwen protected 0x%02x\n",
+                          __func__, s->ot_id, (uint32_t)addr);
         }
         break;
     case R_HOST_OUT_OBJECT_SIZE:
@@ -456,8 +453,8 @@ static void ot_mbx_host_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         xtrace_ot_mbx_status(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 }
@@ -530,9 +527,8 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
     switch (reg) {
     case R_DEPRECATED_MSG_ADDR:
     case R_DEPRECATED_MSG_DATA:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s deprecated reg %s 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, REG_NAME(SYS, reg), addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s deprecated reg %s 0x%x\n",
+                      __func__, s->ot_id, REG_NAME(SYS, reg), (uint32_t)addr);
         val32 = 0;
         break;
     case R_SYS_CONTROL:
@@ -572,9 +568,8 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
         mres = address_space_rw(sys->ram_as, raddr, attrs, &val32,
                                 sizeof(val32), false);
         if (mres != MEMTX_OK) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s Cannot read @ 0x%" HWADDR_PRIx ": %u\n",
-                          __func__, s->ot_id, raddr, mres);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Cannot read @ 0x%x: %u\n",
+                          __func__, s->ot_id, (uint32_t)raddr, mres);
             ibex_irq_set(&s->host.alerts[ALERT_RECOVERABLE], 1);
             val32 = 0u;
         }
@@ -590,8 +585,8 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
         val32 = host->regs[R_HOST_INTR_MSG_DATA];
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -623,9 +618,8 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
     switch (reg) {
     case R_DEPRECATED_MSG_ADDR:
     case R_DEPRECATED_MSG_DATA:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s deprecated reg %s 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, REG_NAME(SYS, reg), addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s deprecated reg %s 0x%x\n",
+                      __func__, s->ot_id, REG_NAME(SYS, reg), (uint32_t)addr);
         break;
     case R_SYS_CONTROL:
         if (ot_mbx_is_enabled(s)) {
@@ -681,9 +675,8 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
         mres = address_space_rw(sys->ram_as, waddr, attrs, &val32,
                                 sizeof(val32), true);
         if (mres != MEMTX_OK) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s Cannot write @ 0x%" HWADDR_PRIx ": %u\n",
-                          __func__, s->ot_id, waddr, mres);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Cannot write @ 0x%x: %u\n",
+                          __func__, s->ot_id, (uint32_t)waddr, mres);
             ot_mbx_set_error(s);
             xtrace_ot_mbx_status(s);
             ibex_irq_set(&s->host.alerts[ALERT_RECOVERABLE], 1);
@@ -721,8 +714,8 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
         host->regs[R_HOST_INTR_MSG_DATA] = val32;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 

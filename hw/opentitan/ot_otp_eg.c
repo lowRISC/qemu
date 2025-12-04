@@ -553,15 +553,13 @@ static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_INTR_TEST:
     case R_ALERT_TEST:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: W/O register 0x02%" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x02%x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -629,9 +627,8 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
     case R_DIRECT_ACCESS_RDATA_0:
     case R_DIRECT_ACCESS_RDATA_1:
     case R_VENDOR_TEST_DIGEST_0 ... R_SECRET2_DIGEST_1:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: R/O register 0x%03" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%03x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         return;
     default:
         break;
@@ -699,9 +696,8 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
                       s->ot_id, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 }

@@ -1326,15 +1326,13 @@ static uint64_t ot_kmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_KEY_SHARE1_14:
     case R_KEY_SHARE1_15:
     case R_KEY_LEN:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -1536,14 +1534,12 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     case R_STATUS:
     case R_ENTROPY_REFRESH_HASH_CNT:
     case R_ERR_CODE:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 }
@@ -1601,9 +1597,8 @@ static uint64_t ot_kmac_state_read(void *opaque, hwaddr addr, unsigned size)
             val32 = 0;
             break;
         default:
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                          s->ot_id, addr);
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%x\n",
+                          __func__, s->ot_id, (uint32_t)addr);
             val32 = 0;
             break;
         }

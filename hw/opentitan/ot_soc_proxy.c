@@ -170,14 +170,13 @@ static uint64_t ot_soc_proxy_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_INTR_TEST:
     case R_ALERT_TEST:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -221,8 +220,8 @@ static void ot_soc_proxy_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_soc_proxy_update_alerts(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         break;
     }
 }

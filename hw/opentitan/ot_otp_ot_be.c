@@ -158,8 +158,8 @@ static uint64_t ot_otp_ot_be_read(void *opaque, hwaddr addr, unsigned size)
         val32 = s->regs[reg];
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -194,13 +194,12 @@ static void ot_otp_ot_be_write(void *opaque, hwaddr addr, uint64_t value,
         s->regs[reg] = val32;
         break;
     case R_CSR7:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x02%x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         break;
     }
 }

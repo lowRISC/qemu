@@ -1059,9 +1059,8 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
     case R_ALERT_TEST:
     case R_COMMAND:
     case R_TXDATA:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 = 0u;
         break;
     case R_INTR_STATE:
@@ -1117,9 +1116,8 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
     }
     default:
         val32 = 0u;
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
     }
 
     uint32_t pc = ibex_get_current_pc();
@@ -1293,9 +1291,8 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     }
     case R_RXDATA:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%02x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
     case R_TXDATA: {
         if (txfifo_is_full(s->tx_fifo)) {
@@ -1339,9 +1336,8 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_spi_host_update_event(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 }

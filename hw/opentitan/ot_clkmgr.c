@@ -1032,9 +1032,8 @@ static uint64_t ot_clkmgr_read(void *opaque, hwaddr addr, unsigned size)
         val32 = ot_clkmgr_get_clock_hints(s);
         break;
     case R_ALERT_TEST:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
@@ -1096,8 +1095,8 @@ static uint64_t ot_clkmgr_read(void *opaque, hwaddr addr, unsigned size)
         break;
     default:
         val32 = 0;
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         break;
     }
 
@@ -1181,9 +1180,8 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_EXTCLK_STATUS:
     case R_CLK_HINTS_STATUS:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
         break;
@@ -1271,13 +1269,12 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg_err] &= ~val32; /* RW1C */
         break;
     case R_FATAL_ERR_CODE:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         break;
     }
 };

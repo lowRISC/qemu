@@ -250,14 +250,13 @@ static uint64_t ot_sensor_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_INTR_TEST:
     case R_ALERT_TEST:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -310,9 +309,8 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TRIG:
         val32 &= ALERT_SENSOR_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP,
-                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
+                      (uint32_t)addr, REG_NAME(reg));
         break;
     case R_ALERT_EN_0 ... R_ALERT_EN_10:
         if (!s->regs[R_CFG_REGWEN]) {
@@ -323,9 +321,8 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= ALERT_EN_VAL_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP,
-                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
+                      (uint32_t)addr, REG_NAME(reg));
         break;
     case R_FATAL_ALERT_EN:
         if (!s->regs[R_CFG_REGWEN]) {
@@ -336,28 +333,24 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= ALERT_SENSOR_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP,
-                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
+                      (uint32_t)addr, REG_NAME(reg));
         break;
     case R_RECOV_ALERT:
         val32 &= ALERT_SENSOR_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP,
-                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
+                      (uint32_t)addr, REG_NAME(reg));
         break;
     case R_FATAL_ALERT:
         val32 &= ALERT_SENSOR_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP,
-                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
+                      (uint32_t)addr, REG_NAME(reg));
         break;
     case R_STATUS:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     case R_MANUAL_PAD_ATTR_REGWEN_0 ... R_MANUAL_PAD_ATTR_REGWEN_3:
         val32 &= MANUAL_PAD_ATTR_REGWEN_EN_MASK;
@@ -372,13 +365,12 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         break;
         val32 &= MANUAL_PAD_ATTR_MASK;
-        qemu_log_mask(LOG_UNIMP,
-                      "Unimplemented register 0x%02" HWADDR_PRIx " (%s)\n",
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
+                      (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         break;
     }
 };

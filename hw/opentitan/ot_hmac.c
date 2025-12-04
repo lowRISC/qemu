@@ -798,14 +798,13 @@ static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_KEY_29:
     case R_KEY_30:
     case R_KEY_31:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -1058,9 +1057,8 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_STATUS:
     case R_ERR_CODE:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     case R_DIGEST_0:
     case R_DIGEST_1:
@@ -1081,15 +1079,15 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         /* ignore write and report error if engine is not idle */
         if (s->regs->cmd) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot W register 0x%02" HWADDR_PRIx
+                          "%s: Cannot W register 0x%02x"
                           " (%s) whilst non-idle\n",
-                          __func__, addr, REG_NAME(reg));
+                          __func__, (uint32_t)addr, REG_NAME(reg));
             break;
         } else if (s->regs->cfg & R_CFG_SHA_EN_MASK) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot W register 0x%02" HWADDR_PRIx
+                          "%s: Cannot W register 0x%02x"
                           " (%s) whilst SHA Engine is enabled\n",
-                          __func__, addr, REG_NAME(reg));
+                          __func__, (uint32_t)addr, REG_NAME(reg));
         }
 
         /*
@@ -1110,15 +1108,15 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         /* ignore write and report error if engine is not idle */
         if (s->regs->cmd) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot W register 0x%02" HWADDR_PRIx
+                          "%s: Cannot W register 0x%02x"
                           " (%s) whilst non-idle\n",
-                          __func__, addr, REG_NAME(reg));
+                          __func__, (uint32_t)addr, REG_NAME(reg));
             break;
         } else if (s->regs->cfg & R_CFG_SHA_EN_MASK) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot W register 0x%02" HWADDR_PRIx
+                          "%s: Cannot W register 0x%02x"
                           " (%s) whilst SHA Engine is enabled\n",
-                          __func__, addr, REG_NAME(reg));
+                          __func__, (uint32_t)addr, REG_NAME(reg));
         }
         s->regs->msg_length =
             (s->regs->msg_length & (0xFFFFFFFFull << 32u)) | val32;
@@ -1127,22 +1125,22 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         /* ignore write and report error if engine is not idle */
         if (s->regs->cmd) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot W register 0x%02" HWADDR_PRIx
+                          "%s: Cannot W register 0x%02x"
                           " (%s) whilst non-idle\n",
-                          __func__, addr, REG_NAME(reg));
+                          __func__, (uint32_t)addr, REG_NAME(reg));
             break;
         } else if (s->regs->cfg & R_CFG_SHA_EN_MASK) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot W register 0x%02" HWADDR_PRIx
+                          "%s: Cannot W register 0x%02x"
                           " (%s) whilst SHA Engine is enabled\n",
-                          __func__, addr, REG_NAME(reg));
+                          __func__, (uint32_t)addr, REG_NAME(reg));
         }
         s->regs->msg_length =
             ((uint64_t)val32 << 32u) | (s->regs->msg_length & 0xFFFFFFFFull);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         break;
     }
 }

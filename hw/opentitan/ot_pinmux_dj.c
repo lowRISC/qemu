@@ -286,14 +286,13 @@ static uint64_t ot_pinmux_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = regs->wkup_cause;
         break;
     case CASE_SCALAR(ALERT_TEST):
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%03" HWADDR_PRIx "\n", __func__,
-                      addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%03x\n", __func__,
+                      (uint32_t)addr);
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -482,8 +481,8 @@ static void ot_pinmux_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         regs->wkup_cause = val32;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+                      (uint32_t)addr);
         break;
     }
 };

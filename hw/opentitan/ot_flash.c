@@ -2364,15 +2364,13 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case R_ALERT_TEST:
     case R_PROG_FIFO:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: W/O register 0x%03" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%03x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -2400,11 +2398,10 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_INTR_STATE: {
         uint32_t rw1c_mask = INTR_CORR_ERR_MASK | INTR_OP_DONE_MASK;
         if (val32 & ~rw1c_mask) {
-            qemu_log_mask(
-                LOG_GUEST_ERROR,
-                "%s: %s: Write to R/O field in register 0x%03" HWADDR_PRIx
-                " (%s)\n",
-                __func__, s->ot_id, addr, REG_NAME(reg));
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: Write to R/O field in register 0x%03x"
+                          " (%s)\n",
+                          __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         }
         val32 &= rw1c_mask;
         s->regs[reg] &= ~val32;
@@ -2701,11 +2698,10 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         uint32_t rw0c_mask = (R_FAULT_STATUS_PHY_RELBL_ERR_MASK |
                               R_FAULT_STATUS_PHY_STORAGE_ERR_MASK);
         if (val32 & ~rw0c_mask) {
-            qemu_log_mask(
-                LOG_GUEST_ERROR,
-                "%s: %s: Write to R/O field in register 0x%03" HWADDR_PRIx
-                " (%s)\n",
-                __func__, s->ot_id, addr, REG_NAME(reg));
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: Write to R/O field in register 0x%03x"
+                          " (%s)\n",
+                          __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         }
         val32 &= rw0c_mask;
         val32 |= ~rw0c_mask;
@@ -2722,14 +2718,12 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ECC_SINGLE_ERR_ADDR_1:
     case R_PHY_STATUS:
     case R_CURR_FIFO_LVL:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: R/O register 0x%03" HWADDR_PRIx " (%s)\n",
-                      __func__, s->ot_id, addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%03x (%s)\n",
+                      __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 };
@@ -2767,9 +2761,8 @@ static uint64_t ot_flash_csrs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = s->csrs[csr];
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
     }
@@ -2863,9 +2856,8 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     default:
         enable = false;
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                      s->ot_id, addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+                      s->ot_id, (uint32_t)addr);
         break;
     }
 
@@ -3164,9 +3156,8 @@ static uint64_t ot_flash_mem_read(void *opaque, hwaddr addr, unsigned size)
         trace_ot_flash_mem_read_out((uint32_t)addr, size, val32, pc);
     } else {
         uint32_t pc = ibex_get_current_pc();
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Bad offset 0x%" HWADDR_PRIx ", pc=0x%x\n",
-                      __func__, s->ot_id, addr, pc);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x, pc=0x%x\n",
+                      __func__, s->ot_id, (uint32_t)addr, pc);
         val32 = 0;
     }
 
