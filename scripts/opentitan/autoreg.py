@@ -460,8 +460,8 @@ class AutoReg:
             -> dict[str, Union[int, bool]]:
         parameters: dict[str, Union[int, bool]] = {}
         converters = {
-            'int': int,
-            'int unsigned': int,
+            'int': HexInt.parse,
+            'int unsigned': HexInt.parse,
             'bit': bool
         }
         for param in params:
