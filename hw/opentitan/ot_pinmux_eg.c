@@ -292,7 +292,7 @@ static uint64_t ot_pinmux_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%03x\n", __func__,
                       (uint32_t)addr);
         val32 = 0;
         break;
@@ -333,7 +333,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case CASE_RANGE(MIO_PERIPH_INSEL, PARAM_N_MIO_PERIPH_IN):
         if (OT_PINMUX_EG_IS_REGWEN(reg, mio_periph_insel, MIO_PERIPH_INSEL)) {
             if (val32 >= PARAM_N_MIO_PERIPH_IN + 2u) {
-                qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x too large: %u\n",
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x too large: %u\n",
                               __func__, (unsigned)reg, val32);
                 uint32_t mask =
                     ot_pinmux_eg_sel_mask(PARAM_N_MIO_PERIPH_IN + 2u);
@@ -341,7 +341,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             }
             regs->mio_periph_insel[reg - R_MIO_PERIPH_INSEL] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
         }
         break;
@@ -352,7 +352,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case CASE_RANGE(MIO_OUTSEL, PARAM_N_MIO_PADS):
         if (OT_PINMUX_EG_IS_REGWEN(reg, mio_outsel, MIO_OUTSEL)) {
             if (val32 >= PARAM_N_MIO_PERIPH_OUT + 2u) {
-                qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x too large: %u\n",
+                qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x too large: %u\n",
                               __func__, (unsigned)reg, val32);
                 uint32_t mask =
                     ot_pinmux_eg_sel_mask(PARAM_N_MIO_PERIPH_OUT + 2u);
@@ -360,7 +360,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             }
             regs->mio_outsel[reg - R_MIO_OUTSEL] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
         }
         break;
@@ -376,7 +376,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             regs->mio_pad_attr[pad_no] = val32;
             ibex_irq_set(&s->mios[pad_no], PAD_ATTR_TO_IRQ(val32));
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
         }
         break;
@@ -392,7 +392,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             regs->dio_pad_attr[pad_no] = val32;
             ibex_irq_set(&s->dios[pad_no], PAD_ATTR_TO_IRQ(val32));
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
         }
         break;
@@ -414,7 +414,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= R_MIO_PAD_SLEEP_EN_MASK;
             regs->mio_pad_sleep[reg - R_MIO_PAD_SLEEP] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
         }
         break;
@@ -440,7 +440,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= R_DIO_PAD_SLEEP_EN_MASK;
             regs->dio_pad_sleep[reg - R_DIO_PAD_SLEEP] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
         }
         break;
@@ -457,7 +457,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= R_WKUP_DETECTOR_EN_MASK;
             regs->wkup_detector[reg - R_WKUP_DETECTOR] = val32;
         } else {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x access is disabled\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
         }
         break;
@@ -471,7 +471,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case CASE_RANGE(WKUP_DETECTOR_PADSEL, PARAM_N_WKUP_DETECT):
         if (val32 >= N_MAX_PADS) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%04x too large: %u\n",
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x too large: %u\n",
                           __func__, (unsigned)reg, val32);
             uint32_t mask = ot_pinmux_eg_sel_mask(N_MAX_PADS);
             val32 &= mask;

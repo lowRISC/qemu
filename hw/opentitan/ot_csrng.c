@@ -1755,7 +1755,7 @@ static uint64_t ot_csrng_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%02x\n", __func__,
                       (uint32_t)addr);
         val32 = 0;
         break;
@@ -1929,7 +1929,7 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     default:
         // JW: handle new registers.
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%02x\n", __func__,
                       (uint32_t)addr);
         break;
     }

@@ -408,7 +408,7 @@ static uint64_t ot_sram_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
@@ -508,7 +508,7 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                       __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }
@@ -565,7 +565,7 @@ static MemTxResult ot_sram_ctrl_mem_init_read_with_attrs(
             /* cell still flagged, i.e. not yet initialized */
             qemu_log_mask(
                 LOG_GUEST_ERROR,
-                "%s: %s: attempt to read from uninitialized cell @ 0x%08x\n",
+                "%s: %s: attempt to read from uninitialized cell @ 0x%06x\n",
                 __func__, s->ot_id, (uint32_t)addr);
 
             return MEMTX_ERROR;

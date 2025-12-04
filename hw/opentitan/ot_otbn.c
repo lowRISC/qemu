@@ -543,7 +543,7 @@ static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
                       s->ot_id, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
@@ -617,7 +617,7 @@ static void ot_otbn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                       s->ot_id, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }

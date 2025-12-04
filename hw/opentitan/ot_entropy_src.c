@@ -1250,7 +1250,7 @@ ot_entropy_src_lo_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
@@ -1279,7 +1279,7 @@ ot_entropy_src_rev_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = s->regs_rev[reg];
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr + REGS_REV_BASE);
         val32 = 0;
         break;
@@ -1496,7 +1496,7 @@ static void ot_entropy_src_lo_regs_write(void *opaque, hwaddr addr,
                       __func__, s->ot_id, (uint32_t)addr, REG_LO_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }
@@ -1522,7 +1522,7 @@ static void ot_entropy_src_rev_regs_write(void *opaque, hwaddr addr,
                       REG_REV_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr + REGS_REV_BASE);
         break;
     }

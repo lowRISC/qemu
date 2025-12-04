@@ -1116,7 +1116,7 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
     }
     default:
         val32 = 0u;
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
     }
 
@@ -1336,7 +1336,7 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_spi_host_update_event(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }

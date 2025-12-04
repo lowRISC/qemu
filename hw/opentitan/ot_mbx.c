@@ -328,7 +328,7 @@ static uint64_t ot_mbx_host_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
@@ -453,7 +453,7 @@ static void ot_mbx_host_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         xtrace_ot_mbx_status(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }
@@ -527,7 +527,7 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
     switch (reg) {
     case R_DEPRECATED_MSG_ADDR:
     case R_DEPRECATED_MSG_DATA:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s deprecated reg %s 0x%x\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s deprecated reg %s 0x%02x\n",
                       __func__, s->ot_id, REG_NAME(SYS, reg), (uint32_t)addr);
         val32 = 0;
         break;
@@ -585,7 +585,7 @@ static MemTxResult ot_mbx_sys_regs_read_with_attrs(
         val32 = host->regs[R_HOST_INTR_MSG_DATA];
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
@@ -618,7 +618,7 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
     switch (reg) {
     case R_DEPRECATED_MSG_ADDR:
     case R_DEPRECATED_MSG_DATA:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s deprecated reg %s 0x%x\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s deprecated reg %s 0x%02x\n",
                       __func__, s->ot_id, REG_NAME(SYS, reg), (uint32_t)addr);
         break;
     case R_SYS_CONTROL:
@@ -714,7 +714,7 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
         host->regs[R_HOST_INTR_MSG_DATA] = val32;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }

@@ -2005,7 +2005,7 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         val32 = 0;
         break;
@@ -2214,7 +2214,7 @@ static void ot_spi_device_spi_regs_write(void *opaque, hwaddr addr,
                       __func__, s->ot_id, (uint32_t)addr, SPI_REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }
@@ -2250,12 +2250,12 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = s->tpm_regs[reg];
         break;
     case R_TPM_READ_FIFO:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%x (%s)\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%02x (%s)\n",
                       __func__, s->ot_id, (uint32_t)addr, TPM_REG_NAME(reg));
         val32 = 0u;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         val32 = 0u;
         break;
@@ -2312,7 +2312,7 @@ static void ot_spi_device_tpm_regs_write(void *opaque, hwaddr addr,
                       __func__, s->ot_id, (uint32_t)addr, TPM_REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }
@@ -2329,7 +2329,7 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
 
     if (addr < SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: cannot read egress buffer 0x%x\n", __func__,
+                      "%s: %s: cannot read egress buffer 0x%03x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         return MEMTX_DECODE_ERROR;
     }
@@ -2350,7 +2350,8 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
         val32 = s->flash.address_fifo.data[addr >> 2u];
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: Invalid ingress buffer access to 0x%x-0x%x\n",
+                      "%s: %s: Invalid ingress buffer access to "
+                      "0x%03x-0x%03x\n",
                       __func__, s->ot_id, (uint32_t)addr, (uint32_t)last);
         val32 = 0;
     }
@@ -2362,7 +2363,8 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
     val32 >>= addr_offset << 3u;
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_buf_read_out(s->ot_id, (uint32_t)addr, size, val32, pc);
+    trace_ot_spi_device_io_buf_read_out(s->ot_id, (uint32_t)addr, size, val32,
+                                        pc);
 
     *val64 = (uint64_t)val32;
 
@@ -2377,13 +2379,14 @@ static MemTxResult ot_spi_device_buf_write_with_attrs(
 
     uint32_t val32 = (uint32_t)val64;
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_spi_device_buf_write_in(s->ot_id, (uint32_t)addr, size, val32, pc);
+    trace_ot_spi_device_io_buf_write_in(s->ot_id, (uint32_t)addr, size, val32,
+                                        pc);
 
     hwaddr last = addr + (hwaddr)(size - 1u);
 
     if (last >= SPI_SRAM_INGRESS_OFFSET) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: %s: cannot write ingress buffer 0x%x\n", __func__,
+                      "%s: %s: cannot write ingress buffer 0x%03x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         return MEMTX_DECODE_ERROR;
     }

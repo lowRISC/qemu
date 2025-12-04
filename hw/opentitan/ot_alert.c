@@ -814,8 +814,8 @@ static uint64_t ot_alert_regs_read(void *opaque, hwaddr addr, unsigned size)
     hwaddr reg = R32_OFF(addr);
 
     if (reg >= s->reg_count) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s:Invalid register 0x%03x\n", __func__,
-                      (uint32_t)addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid register 0x%03x\n",
+                      __func__, (uint32_t)addr);
         return 0;
     }
 
@@ -842,8 +842,8 @@ static void ot_alert_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                             pc);
 
     if (reg >= s->reg_count) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s:Invalid register 0x%03x\n", __func__,
-                      (uint32_t)addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid register 0x%03x\n",
+                      __func__, (uint32_t)addr);
         return;
     }
 

@@ -266,12 +266,12 @@ static uint64_t ot_timer_read(void *opaque, hwaddr addr, unsigned size)
     }
     case R_ALERT_TEST:
     case R_INTR_TEST0:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%02x (%s)\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: W/O register 0x%03x (%s)\n",
                       __func__, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%03x\n", __func__,
                       (uint32_t)addr);
         val32 = 0;
         break;
@@ -372,7 +372,7 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
         ot_timer_rearm(s, false);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%03x\n", __func__,
                       (uint32_t)addr);
     }
 }

@@ -1095,7 +1095,7 @@ static uint64_t ot_clkmgr_read(void *opaque, hwaddr addr, unsigned size)
         break;
     default:
         val32 = 0;
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%02x\n", __func__,
                       (uint32_t)addr);
         break;
     }
@@ -1273,7 +1273,7 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
                       __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: bad offset 0x%02x\n", __func__,
                       (uint32_t)addr);
         break;
     }

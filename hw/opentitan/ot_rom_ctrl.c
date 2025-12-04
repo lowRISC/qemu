@@ -989,7 +989,7 @@ static uint64_t ot_rom_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = 0u;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%02x\n", __func__,
                       (uint32_t)addr);
         val32 = 0u;
         break;
@@ -1042,7 +1042,7 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                       __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%x\n", __func__,
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%02x\n", __func__,
                       (uint32_t)addr);
         break;
     }
@@ -1070,7 +1070,7 @@ static void ot_rom_ctrl_mem_write(void *opaque, hwaddr addr, uint64_t value,
     if ((addr + size) <= s->size) {
         stn_le_p(&rom_ptr[addr], (int)size, value);
     } else {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%x, pc=0x%x\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x, pc=0x%x\n",
                       __func__, s->ot_id, (uint32_t)addr, pc);
     }
 }
