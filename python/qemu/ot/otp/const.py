@@ -162,6 +162,10 @@ class OtpConstants:
             part_size = 0
             part_inv_bytes: list[bytes] = []
             part_inv_sum = 0
+            # there is not a 'buffered' boolean in the HJSON file
+            # the variant is either "unbuffered", "buffered" or "lifecyle";
+            # however lifeycle partition is actually a buffered partition.
+            part_buffered = part.get('variant', '').lower() != 'unbuffered'
             for item in part['items']:
                 size = item['size']
                 name = item['name']
@@ -183,10 +187,16 @@ class OtpConstants:
             if part_size != part['size']:
                 raise ValueError(f'Invalid byte count for part {part_name}: '
                                  f"{part_size} != {part['size']}")
-            if part_inv_sum:
+            # invalid default values are defined in RTL and HJSON for all
+            # partitions, whereas they can only be used for buffered partitions;
+            # discard values for non-buffered partitions
+            if part_buffered and part_inv_sum:
                 part_inv_str = hexlify(b''.join(part_inv_bytes)).decode()
                 self._inv_defaults.append(part_inv_str)
             else:
+                if part_inv_sum:
+                    self._log.debug('Discard inv default values for unbuffered '
+                                    'part %s', part_name)
                 self._inv_defaults.append(None)
             total_size += part_size
         if total_size != otp_size:
