@@ -88,7 +88,7 @@ REG32(READBACK, 0x20u)
 #define REG_NAME(_reg_) \
     ((((_reg_) < REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
-#define INIT_TIMER_CHUNK_NS    100000 /* 100 us */
+#define INIT_TIMER_CHUNK_US    10u
 #define INIT_TIMER_CHUNK_WORDS (4096u / sizeof(uint32_t)) /* 4 KB */
 
 /* clang-format off */
@@ -140,6 +140,7 @@ struct OtSramCtrlState {
     OtVMapperState *vmapper; /* optional */
     uint32_t size; /* in bytes */
     uint32_t init_chunk_words; /* init chunk size in words */
+    uint32_t init_pace_us; /* init delay pacing, in us */
     bool ifetch; /* only used when no otp_ctrl is defined */
     bool noinit; /* discard initialization emulation feature */
     bool noswitch; /* do not switch to performance/host RAM after init */
@@ -253,8 +254,8 @@ static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count,
     trace_ot_sram_ctrl_schedule_init(s->ot_id);
 
     /* schedule a new initialization chunk */
-    uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-    timer_mod(s->init_timer, (int64_t)(now + INIT_TIMER_CHUNK_NS));
+    int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+    timer_mod(s->init_timer, now + ((int64_t)s->init_pace_us) * 1000u);
 
     return false;
 }
@@ -675,6 +676,8 @@ static const Property ot_sram_ctrl_properties[] = {
                      OtVMapperState *),
     DEFINE_PROP_UINT32("size", OtSramCtrlState, size, 0u),
     DEFINE_PROP_UINT32("wci_size", OtSramCtrlState, init_chunk_words, 0u),
+    DEFINE_PROP_UINT32("init-pace-us", OtSramCtrlState, init_pace_us,
+                       INIT_TIMER_CHUNK_US),
     DEFINE_PROP_BOOL("ifetch", OtSramCtrlState, ifetch, false),
     DEFINE_PROP_BOOL("noinit", OtSramCtrlState, noinit, false),
     DEFINE_PROP_BOOL("noswitch", OtSramCtrlState, noswitch, false),
