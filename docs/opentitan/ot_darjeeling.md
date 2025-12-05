@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Please check out `hw/opentitan/ot_ref.log`
+Please check out the `ot_darjeeling.c` file header.
 
 ## Supported devices
 
