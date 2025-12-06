@@ -33,4 +33,7 @@
 #define TYPE_OT_SRAM_CTRL "ot-sram_ctrl"
 OBJECT_DECLARE_TYPE(OtSramCtrlState, OtSramCtrlClass, OT_SRAM_CTRL)
 
+/* Input HW_DEBUG_EN signal for SRAM ifetch (from lifecycle controller) */
+#define OT_SRAM_CTRL_HW_DEBUG_EN TYPE_OT_SRAM_CTRL "-hw_debug_en"
+
 #endif /* HW_OPENTITAN_OT_SRAM_CTRL */

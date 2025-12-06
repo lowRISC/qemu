@@ -133,6 +133,7 @@ struct OtSramCtrlState {
     bool initializing; /* CTRL.INIT has been requested */
     bool otp_ifetch; /* whether OTP enable execution from this RAM */
     bool csr_ifetch; /* whether CSR enable execution from this RAM */
+    bool lc_hw_debug_ifetch; /* HW_DEBUG_EN signal from the lc_ctrl */
     char *hexstr;
 
     char *ot_id;
@@ -350,6 +351,17 @@ static void ot_sram_ctrl_start_initialization(OtSramCtrlState *s)
     ot_sram_ctrl_initialize(s, count, false);
 }
 
+static void ot_sram_ctrl_lc_signal(void *opaque, int irq, int level)
+{
+    OtSramCtrlState *s = opaque;
+
+    g_assert(irq == 0);
+
+    trace_ot_sram_ctrl_lc_signal(s->ot_id, level);
+
+    s->lc_hw_debug_ifetch = (bool)level;
+}
+
 static void ot_sram_ctrl_update_exec(OtSramCtrlState *s)
 {
     /*
@@ -363,10 +375,12 @@ static void ot_sram_ctrl_update_exec(OtSramCtrlState *s)
             oc->get_hw_cfg(oi)->en_sram_ifetch_mb8 == OT_MULTIBITBOOL8_TRUE;
     }
 
-    bool ifetch = s->ifetch && s->csr_ifetch && s->otp_ifetch;
+    bool ifetch = s->otp_ifetch ? s->csr_ifetch : s->lc_hw_debug_ifetch;
+    ifetch = ifetch && s->ifetch; /* ifetch config disable */
 
     trace_ot_sram_ctrl_update_exec(s->ot_id, s->ifetch, s->csr_ifetch,
-                                   s->otp_ifetch, ifetch);
+                                   s->otp_ifetch, s->lc_hw_debug_ifetch,
+                                   ifetch);
 
     if (!s->vmapper) {
         if (!ifetch) {
@@ -851,6 +865,9 @@ static void ot_sram_ctrl_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_sram_ctrl_lc_signal,
+                            OT_SRAM_CTRL_HW_DEBUG_EN, 1);
 
     s->mem = g_new0(OtSramCtrlMem, 1u);
     s->init_timer =
