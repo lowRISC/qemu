@@ -165,7 +165,7 @@ typedef struct {
 
 typedef struct OtOTPDAIController {
     QEMUTimer *delay; /* simulate delayed access completion */
-    QEMUBH *digest_bh; /* write computed digest to OTP cell */
+    QEMUTimer *digest_write; /* write computed digest to OTP cell */
     OtOTPDAIState state;
     int partition; /* current partition being worked on or -1 */
 } OtOTPDAIController;

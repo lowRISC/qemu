@@ -57,8 +57,11 @@
 #define OT_OTP_HW_CLOCK QEMU_CLOCK_VIRTUAL_RT
 
 /* the following delays are arbitrary for now */
-#define DAI_DIGEST_DELAY_NS 50000u /* 50us */
-#define LCI_PROG_SCHED_NS   1000u /* 1us*/
+#define DAI_DIGEST_DELAY_NS 50000 /* 50us */
+#define LCI_PROG_SCHED_NS   1000 /* 1us */
+
+/* Use a timer with a small delay instead of a BH for reliability */
+#define DIGEST_DECOUPLE_DELAY_NS 100 /* 100 ns */
 
 /* The size of keys used for OTP scrambling */
 #define OTP_SCRAMBLING_KEY_WIDTH 128u
@@ -1622,7 +1625,8 @@ static void ot_otp_engine_dai_complete(void *opaque)
         break;
     case OT_OTP_DAI_DIG_WAIT:
         g_assert(s->dai->partition >= 0);
-        qemu_bh_schedule(s->dai->digest_bh);
+        int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+        timer_mod(s->dai->digest_write, now + DIGEST_DECOUPLE_DELAY_NS);
         break;
     case OT_OTP_DAI_ERROR:
         break;
@@ -2746,11 +2750,11 @@ static void ot_otp_engine_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
-    qemu_bh_cancel(s->dai->digest_bh);
     qemu_bh_cancel(s->lc_broadcast.bh);
     qemu_bh_cancel(s->pwr_otp_bh);
 
     timer_del(s->dai->delay);
+    timer_del(s->dai->digest_write);
     timer_del(s->lci->prog_delay);
     qemu_bh_cancel(s->keygen->entropy_bh);
     s->keygen->edn_sched = false;
@@ -2900,7 +2904,8 @@ static void ot_otp_engine_init(Object *obj)
 
     s->dai->delay =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_engine_dai_complete, s);
-    s->dai->digest_bh = qemu_bh_new(&ot_otp_engine_dai_write_digest, s);
+    s->dai->digest_write =
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_engine_dai_write_digest, s);
     s->lci->prog_delay =
         timer_new_ns(OT_OTP_HW_CLOCK, &ot_otp_engine_lci_write_word, s);
     s->pwr_otp_bh = qemu_bh_new(&ot_otp_engine_pwr_otp_bh, s);
