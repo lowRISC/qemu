@@ -1500,8 +1500,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     /* IRQ splitters */
     [OT_DJ_SOC_SPLITTER_LC_HW_DEBUG] = {
         .type = TYPE_SPLIT_IRQ,
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_S2D(0, SRAM_CTRL_MAIN, OT_SRAM_CTRL_HW_DEBUG_EN, 0),
+            OT_DJ_SOC_S2D(1, SRAM_CTRL_MBOX, OT_SRAM_CTRL_HW_DEBUG_EN, 0),
+            OT_DJ_SOC_S2D(2, SRAM_CTRL_RET, OT_SRAM_CTRL_HW_DEBUG_EN, 0)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
+            IBEX_DEV_UINT_PROP("num-lines", 3u) /* @todo: to be changed */
         )
     },
     [OT_DJ_SOC_SPLITTER_LC_ESCALATE] = {
@@ -1511,7 +1516,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
                                   OT_OTP_LC_ESCALATE_EN)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
+            IBEX_DEV_UINT_PROP("num-lines", 1u) /* @todo to be changed */
         )
     }
     /* clang-format on */

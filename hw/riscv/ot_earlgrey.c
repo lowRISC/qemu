@@ -1470,8 +1470,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     /* IRQ splitters */
     [OT_EG_SOC_SPLITTER_LC_HW_DEBUG] = {
         .type = TYPE_SPLIT_IRQ,
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_S2D(0, SRAM_MAIN_CTRL, OT_SRAM_CTRL_HW_DEBUG_EN, 0),
+            OT_EG_SOC_S2D(1, SRAM_RET_CTRL, OT_SRAM_CTRL_HW_DEBUG_EN, 0)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 1u) /* @todo to be changed */
+            IBEX_DEV_UINT_PROP("num-lines", 2u) /* @todo to be changed */
         )
     },
     [OT_EG_SOC_SPLITTER_LC_ESCALATE] = {
