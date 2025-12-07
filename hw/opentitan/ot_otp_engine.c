@@ -61,7 +61,8 @@
 #define LCI_PROG_SCHED_NS   1000 /* 1us */
 
 /* Use a timer with a small delay instead of a BH for reliability */
-#define DIGEST_DECOUPLE_DELAY_NS 100 /* 100 ns */
+#define DIGEST_DECOUPLE_DELAY_NS    100 /* 100 ns */
+#define ENTROPY_RESCHEDULE_DELAY_NS 100 /* 100 ns */
 
 /* The size of keys used for OTP scrambling */
 #define OTP_SCRAMBLING_KEY_WIDTH 128u
@@ -206,7 +207,7 @@ struct OtOTPScrmblKeyInit_ {
 };
 
 struct OtOTPKeyGen_ {
-    QEMUBH *entropy_bh;
+    QEMUTimer *request_entropy;
     OtPresentState *present;
     OtPrngState *prng;
     OtFifo32 entropy_buf;
@@ -1648,7 +1649,7 @@ static const OtOTPHWCfg *ot_otp_engine_get_hw_cfg(const OtOTPIf *dev)
     return (const OtOTPHWCfg *)s->hw_cfg;
 }
 
-static void ot_otp_engine_request_entropy_bh(void *opaque)
+static void ot_otp_engine_request_entropy(void *opaque)
 {
     OtOTPEngineState *s = opaque;
 
@@ -1683,7 +1684,9 @@ ot_otp_engine_keygen_push_entropy(void *opaque, uint32_t bits, bool fips)
                                 resched);
 
     if (resched && !s->keygen->edn_sched) {
-        qemu_bh_schedule(s->keygen->entropy_bh);
+        int64_t now = qemu_clock_get_ns(OT_OTP_HW_CLOCK);
+        timer_mod(s->keygen->request_entropy,
+                  now + ENTROPY_RESCHEDULE_DELAY_NS);
     }
 }
 
@@ -1817,7 +1820,9 @@ static void ot_otp_engine_generate_scrambling_key(
 
     if (needed_entropy) {
         /* some entropy bits have been used, refill the buffer */
-        qemu_bh_schedule(s->keygen->entropy_bh);
+        int64_t now = qemu_clock_get_ns(OT_OTP_HW_CLOCK);
+        timer_mod(s->keygen->request_entropy,
+                  now + ENTROPY_RESCHEDULE_DELAY_NS);
     }
 }
 
@@ -2756,7 +2761,7 @@ static void ot_otp_engine_reset_enter(Object *obj, ResetType type)
     timer_del(s->dai->delay);
     timer_del(s->dai->digest_write);
     timer_del(s->lci->prog_delay);
-    qemu_bh_cancel(s->keygen->entropy_bh);
+    timer_del(s->keygen->request_entropy);
     s->keygen->edn_sched = false;
 
     memset(s->hw_cfg, 0, sizeof(*s->hw_cfg));
@@ -2815,7 +2820,8 @@ static void ot_otp_engine_reset_exit(Object *obj, ResetType type)
     ot_edn_connect_endpoint(s->edn, s->edn_ep,
                             &ot_otp_engine_keygen_push_entropy, s);
 
-    qemu_bh_schedule(s->keygen->entropy_bh);
+    int64_t now = qemu_clock_get_ns(OT_OTP_HW_CLOCK);
+    timer_mod(s->keygen->request_entropy, now + ENTROPY_RESCHEDULE_DELAY_NS);
 }
 
 static void ot_otp_engine_realize(DeviceState *dev, Error **errp)
@@ -2908,9 +2914,10 @@ static void ot_otp_engine_init(Object *obj)
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_engine_dai_write_digest, s);
     s->lci->prog_delay =
         timer_new_ns(OT_OTP_HW_CLOCK, &ot_otp_engine_lci_write_word, s);
+    s->keygen->request_entropy =
+        timer_new_ns(OT_OTP_HW_CLOCK, &ot_otp_engine_request_entropy, s);
     s->pwr_otp_bh = qemu_bh_new(&ot_otp_engine_pwr_otp_bh, s);
     s->lc_broadcast.bh = qemu_bh_new(&ot_otp_engine_lc_broadcast_bh, s);
-    s->keygen->entropy_bh = qemu_bh_new(&ot_otp_engine_request_entropy_bh, s);
 
     for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
         if (!s->part_descs[part_ix].buffered) {
