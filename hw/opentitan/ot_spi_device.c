@@ -428,7 +428,7 @@ typedef struct {
     uint8_t *src; /* Selected read data source (alias) */
     uint8_t *payload; /* Selected write data sink (alias) */
     uint8_t *buffer; /* Temporary buffer to handle transfer */
-    Fifo8 cmd_fifo; /* Command FIFO (HW uses 32-bit FIFO w/ 24-bit padding) */
+    OtFifo32 cmd_fifo; /* Command FIFO */
     OtFifo32 address_fifo; /* Address FIFO */
     QEMUTimer *irq_timer; /* Timer to resume processing after a READBUF_* IRQ */
     bool loop; /* Keep reading the buffer if end is reached */
@@ -901,7 +901,7 @@ static void ot_spi_device_release(OtSPIDeviceState *s)
     case CTRL_MODE_FLASH:
     case CTRL_MODE_PASSTHROUGH:
         /* new uploaded command */
-        if (!fifo8_is_empty(&f->cmd_fifo) && f->new_cmd) {
+        if (!ot_fifo32_is_empty(&f->cmd_fifo) && f->new_cmd) {
             s->spi_regs[R_INTR_STATE] |= INTR_UPLOAD_CMDFIFO_NOT_EMPTY_MASK;
             update_irq = true;
         }
@@ -1045,11 +1045,20 @@ static void ot_spi_device_flash_try_upload(OtSPIDeviceState *s)
         if (busy) {
             s->spi_regs[R_FLASH_STATUS] |= R_FLASH_STATUS_BUSY_MASK;
         }
-        if (fifo8_is_full(&f->cmd_fifo)) {
+        if (ot_fifo32_is_full(&f->cmd_fifo)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: cmd fifo overflow",
                           __func__, s->ot_id);
         } else {
-            fifo8_push(&f->cmd_fifo, COMMAND_OPCODE(f->cmd_info));
+            uint32_t data = COMMAND_OPCODE(f->cmd_info);
+            data = FIELD_DP32(data, UPLOAD_CMDFIFO, BUSY,
+                              FIELD_EX32(s->spi_regs[R_FLASH_STATUS],
+                                         FLASH_STATUS, BUSY));
+            data = FIELD_DP32(data, UPLOAD_CMDFIFO, WEL,
+                              FIELD_EX32(s->spi_regs[R_FLASH_STATUS],
+                                         FLASH_STATUS, WEL));
+            data = FIELD_DP32(data, UPLOAD_CMDFIFO, ADDR4B_MODE,
+                              ot_spi_device_is_addr4b_en(s));
+            ot_fifo32_push(&f->cmd_fifo, data);
         }
         f->new_cmd = true;
         trace_ot_spi_device_flash_upload(s->ot_id, f->slot, f->cmd_info, busy);
@@ -1803,7 +1812,6 @@ ot_spi_device_flash_passthrough_payload_phase(OtSPIDeviceState *s, uint8_t rx)
     return SPI_DEFAULT_TX_RX_VALUE;
 }
 
-
 static uint8_t
 ot_spi_device_flash_transfer_passthrough(OtSPIDeviceState *s, uint8_t rx)
 {
@@ -1972,17 +1980,17 @@ ot_spi_device_spi_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_UPLOAD_STATUS:
         val32 = 0;
         val32 = FIELD_DP32(val32, UPLOAD_STATUS, CMDFIFO_DEPTH,
-                           fifo8_num_used(&f->cmd_fifo));
+                           ot_fifo32_num_used(&f->cmd_fifo));
         val32 = FIELD_DP32(val32, UPLOAD_STATUS, CMDFIFO_NOTEMPTY,
-                           !fifo8_is_empty(&f->cmd_fifo));
+                           !ot_fifo32_is_empty(&f->cmd_fifo));
         val32 = FIELD_DP32(val32, UPLOAD_STATUS, ADDRFIFO_DEPTH,
                            ot_fifo32_num_used(&f->address_fifo));
         val32 = FIELD_DP32(val32, UPLOAD_STATUS, ADDRFIFO_NOTEMPTY,
                            !ot_fifo32_is_empty(&f->address_fifo));
         break;
     case R_UPLOAD_CMDFIFO:
-        if (!fifo8_is_empty(&f->cmd_fifo)) {
-            val32 = (uint32_t)fifo8_pop(&f->cmd_fifo);
+        if (!ot_fifo32_is_empty(&f->cmd_fifo)) {
+            val32 = ot_fifo32_pop(&f->cmd_fifo);
         } else {
             qemu_log_mask(LOG_UNIMP, "%s: %s: CMD_FIFO is empty\n", __func__,
                           s->ot_id);
@@ -2261,7 +2269,6 @@ ot_spi_device_tpm_regs_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
 
-
     uint32_t pc = ibex_get_current_pc();
     trace_ot_spi_device_io_tpm_read_out(s->ot_id, (uint32_t)addr,
                                         TPM_REG_NAME(reg), val32, pc);
@@ -2343,7 +2350,7 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
     } else if (addr >= SPI_SRAM_CMD_OFFSET &&
                last < (SPI_SRAM_CMD_OFFSET + SPI_SRAM_CMD_SIZE)) {
         /* flash command FIFO */
-        val32 = ((const uint32_t *)s->flash.cmd_fifo.data)[addr >> 2u];
+        val32 = s->flash.cmd_fifo.data[addr >> 2u];
     } else if (addr >= SPI_SRAM_ADDR_OFFSET &&
                last < (SPI_SRAM_ADDR_OFFSET + SPI_SRAM_ADDR_SIZE)) {
         /* flash address FIFO */
@@ -2819,7 +2826,6 @@ static int ot_spi_device_chr_be_change(void *opaque)
                              &ot_spi_device_chr_event_hander,
                              &ot_spi_device_chr_be_change, s, NULL, true);
 
-
     fifo8_reset(&bus->chr_fifo);
 
     ot_spi_device_release(s);
@@ -2885,7 +2891,7 @@ static void ot_spi_device_reset_enter(Object *obj, ResetType type)
 
     fifo8_reset(&bus->chr_fifo);
     /* not sure if the following FIFOs should be reset on clear_modes instead */
-    fifo8_reset(&f->cmd_fifo);
+    ot_fifo32_reset(&f->cmd_fifo);
     ot_fifo32_reset(&f->address_fifo);
 
     ot_spi_device_release(s);
@@ -2949,7 +2955,7 @@ static void ot_spi_device_init(Object *obj)
     s->sram = g_new(uint32_t, SRAM_SIZE / sizeof(uint32_t));
 
     fifo8_create(&bus->chr_fifo, SPI_BUS_HEADER_SIZE);
-    fifo8_create(&f->cmd_fifo, SPI_SRAM_CMD_SIZE / sizeof(uint32_t));
+    ot_fifo32_create(&f->cmd_fifo, SPI_SRAM_CMD_SIZE / sizeof(uint32_t));
     fifo8_create(&s->tpm.rdfifo, SPI_TPM_READ_FIFO_SIZE_BYTES);
     ot_fifo32_create(&f->address_fifo, SPI_SRAM_ADDR_SIZE / sizeof(uint32_t));
     f->buffer =
