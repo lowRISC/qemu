@@ -23,6 +23,7 @@ subdir('xtensa')
 
 subdir('ibexdemo')
 subdir('jtag')
+subdir('opentitan')
 
 subdir('9pfs')
 subdir('acpi')

@@ -1,0 +1,593 @@
+# `pyot.py`
+
+`pyot.py` is a tool to run OpenTitan tests on QEMU and report results.
+
+## Usage
+
+````text
+usage: pyot.py [-h] [-A] [-D DELAY] [-i ICOUNT] [-L FILE] [-M VARIANT]
+               [-N LOG] [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
+               [-S SOC] [-s] [-t TRACE|FILE] [-U] [-b file] [-c HJSON]
+               [-e BUS] [-f RAW] [-g CFGFILE] [-H] [-K] [-l file] [-O RAW]
+               [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
+               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-d] [-G] [-V] [-v]
+               [--log-file FILE] [--log-udp UDP_PORT] [--quiet]
+               [--debug LOGGER] [--info LOGGER] [--warn LOGGER]
+
+OpenTitan QEMU unit test sequencer.
+
+options:
+  -h, --help            show this help message and exit
+
+Virtual machine:
+  -A, --asan            redirect address sanitizer error log stream
+  -D, --start-delay DELAY
+                        QEMU start up delay before initial comm
+  -i, --icount ICOUNT   virtual instruction counter with 2^ICOUNT clock ticks
+                        per inst. or 'auto'
+  -L, --qemu-log FILE   log file for trace and log messages
+  -M, --variant VARIANT
+                        machine variant (machine specific)
+  -N, --log LOG         log message types
+  -m, --machine MACHINE
+                        virtual machine (default to ot-earlgrey)
+  -Q, --opts OPTS       QEMU verbatim option (may be repeated)
+  -q, --qemu QEMU       path to qemu application (default: build/qemu-system-
+                        riscv32-unsigned)
+  -P, --vcp VCP         serial port devices (default: use serial0)
+  -p, --device DEVICE   serial port device name / template name (default to
+                        localhost:8000)
+  -S, --first-soc SOC   Identifier of the first SoC, if any
+  -s, --singlestep      enable "single stepping" QEMU execution mode
+  -t, --trace TRACE|FILE
+                        enable trace (may be repeated)
+  -U, --muxserial       enable multiple virtual UARTs to be muxed into same
+                        host output channel
+
+Files:
+  -b, --boot file       bootloader 0 file
+  -c, --config HJSON    path to HJSON configuration file
+  -e, --embedded-flash BUS
+                        generate an eflash image file for MTD bus
+  -f, --flash RAW       SPI flash image file
+  -g, --otcfg CFGFILE   configuration option file for OT devices
+  -H, --no-flash-header
+                        application and/or bootloader files contain no OT
+                        header
+  -K, --keep-tmp        Do not automatically remove temporary files and dirs
+                        on exit
+  -l, --loader file     ROM trampoline to execute, if any
+  -O, --otp-raw RAW     OTP image file
+  -o, --otp VMEM        OTP VMEM file
+  -r, --rom ELF         ROM file (may be repeated, in load order)
+  -w, --result CSV      path to output result file
+  -x, --exec file       application to load
+  -X, --rom-exec        load application as ROM image (default: as kernel)
+
+Execution:
+  -F, --filter TEST     run tests with matching filter, prefix with "!" to
+                        exclude matching tests
+  -k, --timeout SECONDS
+                        exit after the specified seconds (default: 60 secs)
+  -z, --list            show a list of tests to execute and exit
+  -R, --summary         show a result summary
+  -T, --timeout-factor FACTOR
+                        timeout factor
+  -Z, --zero            do not error if no test can be executed
+
+Extras:
+  -d                    enable debug mode
+  -G, --log-time        show local time in log messages
+  -V, --vcp-verbose     increase verbosity of QEMU virtual comm ports
+  -v, --verbose         increase verbosity
+  --log-file FILE       copy log messages to a file
+  --log-udp UDP_PORT    change UDP port for log messages, use 0 to disable
+  --quiet               quiet logging: only be verbose on errors
+  --debug LOGGER        assign debug level to logger(s)
+  --info LOGGER         assign info level to logger(s)
+  --warn LOGGER         assign warning level to logger(s)
+````
+
+This tool may be used in two ways, which can be combined:
+
+* From the command line, it is possible to run a QEMU test session for one application.
+* Using a HJSON configuration file, it is possible to run several QEMU test sessions for each
+  specified test in the configuration file. This mode is enabled when a HJSON config file is
+  specified.
+
+### Virtual machine
+
+* `-A` / `--asan` filter address sanitizer traces and report them as log traces
+* `-D` / `--start-delay` VM start up delay. Grace period to wait for the VM to start up before
+  attempting to communicate with its char devices.
+* `-i` / `--icount` to specify virtual instruction counter with 2^N clock ticks per instruction.
+  Use 'auto' to enable QEMU adaptive icount counter. Note that this option slows down the execution
+  of guest applications.
+* `-L` / `--log_file` specify the log file for trace and log messages from QEMU.
+* `-N` / `--log` specify which log message types should be logged; most useful types are:
+  * `in_asm`/`A` for guest instruction disassembly,
+  * `unimp`/`U` for uimplemented guest features,
+  * `int`/`I` for guest interrupts and exceptions,
+  * `guest_errors`/`G` for unexpected guest behavior,
+  * `exec`/`E` for guest execution stream (caution: highly verbose).
+  These definitions may be abbreviated using their upper case, single char variants, _e.g._
+  `-N GIU` would enable _guest_errors_, _interruptions_ and _unimplemented features_ logs.
+* `-M` / `--variant` specify a variant of the selected machine. The accepted values depend on the
+  machine, see `-m` option.
+* `-m` / `--machine` specify the kind of virtual machine to run.
+* `-q` / `--qemu` specify an alternative path to the QEMU application.
+* `-Q` / `--opts` add a single QEMU option forwarded verbatim to QEMU (no check is performed)
+   * Note that it is easier to use the special option marker `--` to append many options to QEMU:
+     any argument after this marker is forwarded verbatim to QEMU.
+* `-p` / `--device` specify an alternative TCP communication channel. This option should only be
+  used if the default channel is already in use.
+* `-S` / `--first-soc` define the name of the first SoC to boot, if any. This flag is only used to
+  prefix property names
+* `-s` / `--singlestep` enable QEMU "single stepping" mode.
+* `-t` / `--trace` add trace message. May be repeaded. Either specified an event definition file,
+  or a trace event name. To obtain a list of available traces, invoke with `-trace help`.
+* `-T` / `--timeout-factor` apply a multiplier factor to all timeouts. Specified as a real number,
+  it can be greater to increase timeouts or lower than 1 to decrease timeouts.
+* `-U` / `--muxserial` enable muxing QEMU VCP. This option is required when several virtual UARTs
+  are routed to the same host output channel.
+
+### Files
+
+* `-b` / ` --boot`  specify a bootloader 0 file that can be added to the flash image file when
+  a ROM extension file is specified with the `-x` option. This option is mutually exclusive with
+  the `-f` option.
+* `-c` / `--config` specify a HJSON configuration file, see the [Configuration](#Configurationfile)
+  section for details.
+* `-e` / `embedded-flash` generate an embedded flash image file for the specified MTD bus. The
+  default is to provide ROM and application files as device options.
+* `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
+   generated with the [`flashgen.py`](flashgen.md) tool. Alternatively, see the `-x` option.
+* `-g` / `--otcfg` specify a configuration file with OpenTitan configuration options, such as
+   clock definitions, cryptographic constants (seeds, keys, nonces, ...). May be repeated.
+* `-H` / `--no-flash-header` executable files should be considered as raw files with no OpenTitan
+  flash headers.
+* `-K` / `--keep-tmp` do not automatically remove temporary files and directories on exit. The user
+  is in charge of discarding any generated files and directories after execution. The paths to the
+  generated items are emitted as warning messages.
+* `-l` / `--loader` ROM trampoline to execute, if any
+* `-O` / `--otp-raw` specify a RAW image file for OTP fuses, which can be generated with the
+  [`otptool.py`](otpconf.md) tool. Alternatively, see the `-o` option.
+* `-o` / ` --otp` specify an OTP VMEM file. This option is mutually exclusive with the `-O` option.
+  This script takes care of calling [`otptool.py`](otpconf.md) to generate a temporary OTP file
+  that is discarded when this script exits.
+* `-r` / `--rom` specify a ROM ELF file. Without a ROM file, it is unlikely to start up any regular
+  application since the emulated lowRISC vCPU is preconfigured with a locked PMP, as the real HW.
+  When no ROM is specified, test applications are executed immediately, as a replacement of the ROM
+  executable. This option may be repeated, to load several ROMs, in the same order as specified
+* `-w` / `--result` specify an output CSV report file where the result of all the QEMU sessions,
+  one per test, are reported.
+* `-x` / ` --exec` specify a ROM extension, an application or a test to execute. This option is
+  mutually exclusive with the `-f` option. This script takes care of calling
+  [`flashgen.py`](flashgen.md) to generate a temporary flash file that is discarded when the
+  application has been run.
+* `-X` / `--rom-exec` load application as ROM image (default: as kernel)
+
+### Execution
+
+* `-F` / `--filter` when used, only tests whose filenames match one of the selected filter are
+  considered. This option only applies to tests enumerated from the configuration file. If a filter
+  starts with '!', any matching test is excluded.
+* `-k` / `--timeout` define the maximal duration of each QEMU session. QEMU is terminated or killed
+  after this delay if the executed test has not completed in time.
+* `-R` / `--summary` show a execution result summary on exit
+* `-Z`, `--zero` do not report an error if no test can be executed with the specified filters and
+   detected test applications. Default behavior is to report an error should such a condition arise,
+   as it likely comes from a misconfiguration or build issue.
+* `-z` / `--list` list all tests to be executed and exit
+
+### Extras
+
+* `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
+* `-G` / `--log-time` show local time before each logged message
+* `-V` / `--vcp-verbose` can be repeated to increase verbosity of the QEMU virtual comm ports
+* `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
+* `--quiet` only emit verbose log traces if an error is detected
+* `--log-file` copy log messages to the specified file (previous content if any is overwritten)
+* `--log-udp` change the port of the UDP log service on specified UDP port. Use `0` to disable the
+  service.
+* `--debug` enable the debug level for the selected logger, may be repeated
+* `--info` enable the info level for the selected logger, may be repeated
+* `--warn` enable the warning level for the selected logger, may be repeated
+
+## Configuration file
+
+This script accepts HJSON configuration file to define how to run a test session.
+To install the dependency-less HJSON module, use a command such as `pip3 install hjson`.
+
+Sample config for running OpenTitan tests:
+````hjson
+{
+    aliases:
+    {
+        BASEDIR: ${OT_DIR}/bazel-out/k8-fastbuild/bin
+    }
+    testdir:  ${BASEDIR}/sw
+    default:
+    {
+        rom: ${BASEDIR}/sw/device/lib/testing/test_rom/test_rom_fpga_cw310.elf
+        otp: ${BASEDIR}/hw/ip/otp_ctrl/data/img_rma.24.vmem
+        timeout: 3
+        icount: 6
+    }
+    include:
+    [
+        **/*.fake_rsa_test_key_0.signed.bin
+    ]
+    #include_from:
+    #[
+    #    ${BASEDIR}/../test_list.txt
+    #]
+    exclude:
+    [
+        alert_handler_*
+        ast_clk_out_*
+        clkmgr_off_*
+        i2c_*
+        manuf_cp_*
+        sensor_ctrl_*
+        spi_device_*
+        spi_passthru_*
+        usbdev_*
+    ]
+    suffixes:
+    [
+        _prog_fpga_cw310
+    ]
+    tests:
+    {
+        aes_idle_test:
+        {
+            opts:
+            [
+                -global
+                ot-aes.fast-mode=false
+            ]
+        }
+        alert_handler_lpg_reset_toggle_test:
+        {
+            timeout: 10
+        }
+        boot_data_functest:
+        {
+            icount: 1
+        }
+        otbn_rsa_test:
+        {
+            timeout: 5
+        }
+        ecdsa_p256_functest:
+        {
+            timeout: 5
+        }
+        ecdh_p256_functest:
+        {
+            timeout: 5
+        }
+        entropy_src_csrng_test:
+        {
+            icount: ""
+        }
+        csrng_edn_concurrency_test:
+        {
+            timeout: 15
+        }
+        csrng_smoketest:
+        {
+            timeout: 5
+        }
+    }
+}
+````
+
+Sample config for running some non-OpenTitan tests:
+````hjson
+{
+    aliases:
+    {
+        basedir: ${TEST_DIR}
+    }
+    testdir: ${BASEDIR}/target/riscv32imc-unknown-none-elf/debug
+    default:
+    {
+        timeout:  3
+        machine:  ot-earlgrey,no_epmp_cfg=true
+    }
+    virtual:
+    {
+        ot-flash: ${BASEDIR}/flash.raw
+    }
+    # It would be nice if ELF files could have an .elf extension w/ Cargo
+    # Let's include everything and exclude non-ELF files
+    include:
+    [
+        *
+    ]
+    exclude:
+    [
+        *.d
+        *.rlib
+        # void dummy app never completes
+        void
+    ]
+    tests:
+    {
+        edn-lim-test:
+        {
+            timeout:  6
+        }
+        mbxhost-test:
+        {
+            env:
+            {
+                PYTHONPATH: ${QEMU_SRC_DIR}/scripts/opentitan
+            }
+            opts:
+            [
+                -chardev socket,id=devproxy,host=localhost,port=8003,server=on,wait=off
+                -global ot-dev_proxy.chardev=devproxy
+            ]
+            with:
+            [
+                ${BASEDIR}/tools/mbxhost_test.py -vv -I 3 -P 3 -t
+            ]
+            timeout: 20
+        }
+        spihost-test:
+        {
+            # This test needs a specific SPI flash image
+            pre:
+            [
+                qemu-img create -f raw @{}/spiflash.raw 16M
+                dd if=${BASEDIR}/data/spihost/content.txt of=@{}/spiflash.raw conv=notrunc
+            ]
+            opts:
+            [
+                -drive if=mtd,format=raw,file=spiflash.raw
+            ]
+            post:
+            [
+                rm -r @{}/spiflash.raw
+            ]
+            timeout: 10
+        }
+        timer-test:
+        {
+            timeout:  15
+        }
+        aes-kat-test:
+        {
+            # This test needs to be driven by a host script
+            opts:
+            [
+                -chardev socket,id=serial1,host=localhost,port=8001,server=on,wait=off
+                -serial chardev:serial1
+            ]
+            with:
+            [
+                ${BASEDIR}/tools/katcomm.py -t ${BASEDIR}/data/aes/nist/kat/*.rsp
+            ]
+            timeout: 30
+        }
+    }
+}
+````
+
+### Configuration file sections
+
+* `aliases`
+  This section may be used to define string aliases to simplify further definitions.
+
+  Note that the resulting aliases are always uppercased. To use an alias, use the `${ALIAS}` syntax.
+  Environment variables may also be used as aliases.
+
+  Several special variables are automatically defined:
+  * `${CONFIG}` refers to the path of the configuration file itself,
+  * `${TESTDIR}` refers to the default test path (see `testdir` below).
+  * `${QEMU_SRC_DIR}` refers to the path to the QEMU source directory
+  * `${QEMU_BIN_DIR}` refers to the directory than contains the QEMU executable.
+
+  Moreover, the following special variables are defined for each executed test:
+  * `${UTPATH}` absolute path to the executed OT test
+  * `${UTDIR}` absolute path to the directory containing the executed OT test
+  * `${UTFILE}` file name of the executed OT test (without directory specifier)
+  * `${UDPLOG}` UDP log service, if UDP log service has been enabled, see `--log-udp` option.
+
+* `testdir`
+  This section may be used to define the default path where to look for tests to run.
+
+* `default`
+  This section defines the default options to use with all the tests.
+
+  In the `tests` section, it is possible to add or remove options for specific tests.
+
+  The option names are the same ones as the script option switches, please refer to the Usage
+  section for details.
+
+* `virtual`
+  This section defines virtual tests, as a mapping.
+  Each entry defines the name of the virtual test to create and the actual test binary to execute.
+
+  This enables testing the same binary in multiple configurations, using different options and
+  settings.
+
+  Virtual tests can be filtered and configured as any regular tests.
+
+* `include`
+  This section contains the list of tests to be run.
+
+  Globalisation patterns (`*` and `?`) may be used to match multiple files. Use `**/` to define a
+  recursive path.
+
+  It is possible to exclude some tests from this list with the `exclude` and `exclude_from`
+  sections.
+
+  It is possible to define sub-sections as items of the list. Each subsection should be a map, where
+  the sub-section is only evaluated if an environment variable exists and evaluates to true. This
+  enables configuring lists based on environment variables, such as running is some specific
+  contexts such as a CI environment.
+
+* `include_from`
+  This section contains a list of files defining the tests to be run.
+
+  Each file should be a plain text file with one test application per line.
+
+  `#` can be used to prefix any comments that are therefore ignored. Empty lines are also ignored.
+
+  Aliases can be used in the file paths. If, after resolution of aliases, a test file does not
+  start with a leading directory separator, the test filename is assumed to be relative to the path
+  of the current include file.
+
+  Note that `include_from` (and `exclude_from`) do not support globalization patterns (`*` and `?`).
+
+  Virtual tests cannot be specified in `include_from`, nor `exclude_from` files.
+
+* `exclude`
+  This section contains the list of tests not to be run.
+
+  Globalisation characters (`*` and `?`) may be used to select files with glob patterns. Use `**/`
+  to define a recursive path.
+
+  This section enables the removal of specific tests from the lists that have been built using the
+  `include` and `include_from` sections.
+
+* `exclude_from`
+  This section contains a list of files defining the tests to exclude.
+
+  The syntax is identical to the `include_from` section.
+
+* `suffixes`
+  This section defines shortcut to further reduce the definition and report of test filenames.
+
+  Any test filename ending up with one of the suffixes is automatically stripped. Further test
+  configuration in the `tests` section should omit this suffix. The generated test report also
+  omit these suffixes.
+
+* `tests`
+  This section enables option customization for each test entry.
+
+  * To add a new option, specify it as in the `default` section.
+  * To remove a default option, use an empty value (`""`)
+
+### Special test sections
+
+Each test section may have special subsections that may be used to execute arbitrary commands:
+
+* `pre` subsection contains commands to execute before QEMU is executed.
+
+  * This subsection may be useful to create some test files, or to start up a server.
+
+* `with` section contains commands to execute as soon as QEMU is started.
+
+  * This subsection may be useful to inject some test patterns over a communication channel into
+    the guest program running on the VM
+
+* `post` section contains commands to execute once the QEMU session has completed.
+
+  * This section may be useful to perform some cleanup or post processing analysis once the QEMU
+    session is over
+
+It is also possible to define an `env` section to define special environment variables that would be
+required by the commands defined in the previous subsections.
+
+Regular or 'synchronous' commands are only executed if all the previous commands have been
+successful. Moreover, commands in the `post` subsection are only executed if the QEMU session has
+completed successfully.
+
+Background commands are commands that run in the background till they complete on their own, or
+automatically once the QEMU session has completed.
+
+1. `pre` and `post` commands default to synchronous execution; `post` commands cannot be defined as
+background commands.
+2. `with` commands default to background execution.
+
+To change the default execution style for a command, add a suffix to the command definition:
+
+1. append a `&` character to select background execution, useful with `pre` commands
+2. append a `!` character to select synchronous execution, useful with `with` commands; it is
+   possible to append `@T` with `T` is defined as an integral value, _e.g._ the `sleep 5!@6`
+   statement executes the sleep command which waits for 5 seconds. This command does not time out
+   since its timeout is set to 6 seconds.
+
+#### Temporary directories
+
+It is possible to use the special `@{dir_id}/` syntax, where `dir_id` should be a regular
+identifier.
+
+Whenever such directory placeholder is detected, it is replaced with a temporary directory which is
+created the first time the identifier is encountered, and automatically removed along all its
+contents when `pyot.py` exits. It is also possible to remove a temporary directory at any time with
+a regular `rm -r` command. The temporary directories are not removed between tests, so that content
+of temporary directories may be shared/reused across tests.
+
+As a special syntax, the `@{}/` (empty directory identifier) can be used to create a temporary
+directory which is automatically removed once the test completes, whatever its completion status
+(success or failure).
+
+## Result file sample
+
+````csv
+Name,Result,Time,Icount,Error
+aes_entropy_test,pass,0.050,6,
+aes_functest,pass,0.052,6,
+aes_gcm_functest,pass,0.068,6,
+aes_gcm_timing_test,fail,0.054,6,CHECK-fail: AES-GCM decryption was not constant-time for different invalid tags
+aes_idle_test,pass,0.046,6,
+aes_masking_off_test,fail,0.042,6,"CHECK-STATUS-fail: Internal:[""CSR"";22]"
+aes_smoketest,pass,0.045,6,
+aes_test,pass,0.044,6,
+...
+````
+
+## Return value
+
+The script returns the error code of the most occurring error, or success (0)
+
+## Examples
+
+* The most typical usage requires a HJSON configuration file and produces an output CSV file. `-vv`,
+  that is the information log level, should be enough to track execution without getting too many
+  log messages.
+
+  ````sh
+  ./scripts/opentitan/pyot.py -vv -c pyot.hjson -w pyot.csv
+  ````
+
+  Note that results can be live-tracked from another terminal using a command like the following:
+
+  ````sh
+  tail -f pyot.csv
+  ````
+
+* Running at single test can be done without any configuration file:
+
+  ````sh
+  export BASEDIR=$OT_DIR/bazel-out/k8-fastbuild/bin
+  ./scripts/opentitan/pyot.py -vv \
+    --rom $BASEDIR/sw/device/lib/testing/test_rom/test_rom_fpga_cw310.elf \
+    --otp $BASEDIR/hw/ip/otp_ctrl/data/img_rma.24.vmem \
+    --exec $BASEDIR/sw/device/tests/uart_smoketest_prog_fpga_cw310.fake_rsa_test_key_0.signed.bin
+  ````
+
+* The full OpenTitan boot flow with production ROM can also be run:
+
+  ````sh
+  export BASEDIR=$OT_DIR/bazel-out/k8-fastbuild/bin
+  ./scripts/opentitan/pyot.py -vv \
+    --rom $BASEDIR/sw/device/silicon_creator/rom/rom_with_fake_keys_fpga_cw310.elf \
+    --otp $BASEDIR/hw/ip/otp_ctrl/data/img_rma.24.vmem \
+    --exec $BASEDIR/sw/device/silicon_creator/rom_ext/rom_ext_slot_virtual_fpga_cw310.fake_rsa_test_key_0.signed.bin \
+    --boot $BASEDIR/sw/device/silicon_owner/bare_metal/bare_metal_slot_virtual_fpga_cw310.fake_rsa_rom_ext_test_key_0.signed.bin
+  ````
+
+## Tips
+
+* `-N I` option is quite useful to debug application startup issues.
+
+* `-N A` option only displays the first time that a RISC-V instruction block is translated to
+  host code, not each time the instructions are executed. Use `-N E` to display the actual
+  executed instructions. Enabling single stepping is also helpful in this case (with `-s`).

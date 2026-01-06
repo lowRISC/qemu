@@ -75,6 +75,9 @@ source ibexdemo/Kconfig
 # JTAG devices
 source jtag/Kconfig
 
+# OpenTitan devices
+source opentitan/Kconfig
+
 # Symbols used by multiple targets
 config TEST_DEVICES
     bool

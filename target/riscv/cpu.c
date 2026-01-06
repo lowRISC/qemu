@@ -3161,6 +3161,17 @@ static const TypeInfo riscv_cpu_type_infos[] = {
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_LOWRISC_IBEXDEMO, TYPE_RISCV_CPU_LOWRISC_IBEX,
     ),
 
+    DEFINE_RISCV_CPU(TYPE_RISCV_CPU_LOWRISC_OPENTITAN, TYPE_RISCV_CPU_LOWRISC_IBEX,
+        .cfg.pmp = true,
+        .cfg.ext_smepmp = true,
+
+        .cfg.ext_zba = true,
+        .cfg.ext_zbb = true,
+        .cfg.ext_zbc = true,
+        .cfg.ext_zbr = true,
+        .cfg.ext_zbs = true,
+    ),
+
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_SIFIVE_E31, TYPE_RISCV_CPU_SIFIVE_E,
         .misa_mxl_max = MXL_RV32
     ),

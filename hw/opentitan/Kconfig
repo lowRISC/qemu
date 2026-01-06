@@ -1,0 +1,228 @@
+# OpenTitan devices
+
+config OT_ADDRESS_SPACE
+    bool
+
+config OT_AES
+    select OT_KEY_SINK
+    select OT_PRNG
+    bool
+
+config OT_ALERT
+    bool
+
+config OT_AON_TIMER
+    bool
+
+config OT_AST_DJ
+    select IBEX_CLOCK_SRC
+    select OT_CLOCK_CTRL
+    select OT_NOISE_SRC
+    bool
+
+config OT_AST_EG
+    select IBEX_CLOCK_SRC
+    select OT_CLOCK_CTRL
+    select OT_NOISE_SRC
+    bool
+
+config OT_CLKMGR
+    select IBEX_CLOCK_SRC
+    bool
+
+config OT_CLOCK_CTRL
+    bool
+
+config OT_COMMON
+    bool
+
+config OT_CSRNG
+    bool
+
+config OT_DEV_PROXY
+    bool
+
+config OT_DM_TL
+    select RISCV_DEBUG
+    bool
+
+config OT_DMA
+    select OT_ADDRESS_SPACE
+    bool
+
+config OT_EDN
+    bool
+
+config OT_EG_PAD_RING
+    bool
+
+config OT_ENTROPY_SRC
+    select OT_NOISE_SRC
+    select OT_OTP_IF
+    bool
+
+config OT_FLASH
+    bool
+
+config OT_GPIO_DJ
+    bool
+
+config OT_GPIO_EG
+    bool
+
+config OT_HMAC
+    bool
+
+config OT_I2C
+    imply I2C_ECHO
+    imply DS1338
+    select I2C
+    bool
+
+config OT_I2C_HOST_PROXY
+    select I2C
+    bool
+
+config OT_IBEX_WRAPPER
+    select OT_VMAPPER
+    bool
+
+config OT_KEY_SINK
+    bool
+
+config OT_KEYMGR
+    select OT_KEY_SINK
+    select OT_LC_CTRL
+    select OT_OTP_IF
+    select OT_ROM_CTRL
+    bool
+
+config OT_KEYMGR_DPE
+    select OT_KEY_SINK
+    select OT_LC_CTRL
+    select OT_ROM_CTRL
+    bool
+
+config OT_KMAC
+    select OT_KEY_SINK
+    bool
+
+config OT_LC_CTRL
+    select OT_OTP_IF
+    bool
+
+config OT_MBX
+    select OT_COMMON
+    bool
+
+config OT_NOISE_SRC
+    bool
+
+config OT_OTBN
+    select OT_KEY_SINK
+    select OT_BIGNUMBER
+    bool
+
+config OT_OTP_BE_IF
+    bool
+
+config OT_OTP_DJ
+    select OT_OTP_ENGINE
+    select OT_OTP_IF
+    select OT_OTP_IMPL_IF
+    select OT_PRESENT
+    bool
+
+config OT_OTP_EG
+    select OT_OTP_ENGINE
+    select OT_OTP_IF
+    select OT_OTP_IMPL_IF
+    select OT_PRESENT
+    bool
+
+config OT_OTP_ENGINE
+    select OT_EDN
+    select OT_OTP_IF
+    select OT_OTP_IMPL_IF
+    select OT_PRESENT
+    bool
+
+config OT_OTP_IF
+    bool
+
+config OT_OTP_IMPL_IF
+    bool
+
+config OT_OTP_OT_BE
+    select OT_OTP_BE_IF
+    select OT_OTP_IF
+    bool
+
+config OT_PINMUX_DJ
+    bool
+
+config OT_PINMUX_EG
+    bool
+
+config OT_PLIC_EXT
+    bool
+
+config OT_PRESENT
+    bool
+
+config OT_PRINCE
+    bool
+
+config OT_PRNG
+    bool
+
+config OT_PWRMGR
+    select OT_CLOCK_CTRL
+    bool
+
+config OT_ROM_CTRL
+    bool
+    select OT_COMMON
+    select OT_PRINCE
+
+config OT_RSTMGR
+    bool
+
+config OT_SENSOR_EG
+    bool
+
+config OT_SOC_PROXY
+    bool
+
+config OT_SOC_DBG_CTRL
+    bool
+
+config OT_SPI_DEVICE
+    bool
+    select OT_SPI_HOST
+
+config OT_SPI_HOST
+    bool
+    select SSI
+
+config OT_SRAM_CTRL
+    select OT_PRESENT
+    select OT_OTP_IF
+    bool
+
+config OT_TIMER
+    bool
+
+config OT_UART
+    bool
+
+config OT_USBDEV
+    bool
+
+config OT_UNIMP
+    bool
+
+config OT_VMAPPER
+    bool
+
+source otbn/Kconfig

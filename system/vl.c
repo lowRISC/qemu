@@ -513,6 +513,15 @@ static QemuOptsList qemu_action_opts = {
     },
 };
 
+static QemuOptsList qemu_ot_device_opts = {
+    .name = "ot_device",
+    .implied_opt_name = "ot_id",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_ot_device_opts.head),
+    .desc = {
+         { /* end of list */ }
+    },
+};
+
 const char *qemu_get_vm_name(void)
 {
     return qemu_name;
@@ -2882,6 +2891,7 @@ void qemu_init(int argc, char **argv)
     qemu_add_opts(&qemu_semihosting_config_opts);
     qemu_add_opts(&qemu_fw_cfg_opts);
     qemu_add_opts(&qemu_action_opts);
+    qemu_add_opts(&qemu_ot_device_opts);
     qemu_add_run_with_opts();
     module_call_init(MODULE_INIT_OPTS);
 

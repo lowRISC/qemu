@@ -1,0 +1,130 @@
+/*
+ * QEMU OpenTitan KMAC device
+ *
+ * Copyright (c) 2023-2025 Rivos, Inc.
+ *
+ * Author(s):
+ *  Loïc Lefort <loic@rivosinc.com>
+ *
+ * For details check the documentation here:
+ *    https://opentitan.org/book/hw/ip/kmac
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+#ifndef HW_OPENTITAN_OT_KMAC_H
+#define HW_OPENTITAN_OT_KMAC_H
+
+#include "qom/object.h"
+
+#define TYPE_OT_KMAC "ot-kmac"
+OBJECT_DECLARE_TYPE(OtKMACState, OtKMACClass, OT_KMAC)
+
+enum OtKMACMode {
+    OT_KMAC_MODE_NONE,
+    OT_KMAC_MODE_SHA3,
+    OT_KMAC_MODE_SHAKE,
+    OT_KMAC_MODE_CSHAKE,
+    OT_KMAC_MODE_KMAC,
+};
+
+/* Max size of cSHAKE prefix function name */
+#define OT_KMAC_PREFIX_FUNCNAME_LEN 32u
+
+/* Max size of cSHAKE prefix custom string */
+#define OT_KMAC_PREFIX_CUSTOMSTR_LEN 32u
+
+typedef struct {
+    uint8_t funcname[OT_KMAC_PREFIX_FUNCNAME_LEN];
+    size_t funcname_len;
+    uint8_t customstr[OT_KMAC_PREFIX_CUSTOMSTR_LEN];
+    size_t customstr_len;
+} OtKMACPrefix;
+
+typedef struct {
+    enum OtKMACMode mode;
+    size_t strength;
+    OtKMACPrefix prefix;
+} OtKMACAppCfg;
+
+#define OT_KMAC_APP_MSG_BYTES    (64u / 8u)
+#define OT_KMAC_APP_DIGEST_BYTES (384u / 8u)
+#define OT_KMAC_KEY_SIZE         (256u / 8u)
+
+typedef struct {
+    uint8_t msg_data[OT_KMAC_APP_MSG_BYTES];
+    size_t msg_len; /* meaningful count of bytes in msg_data */
+    bool last;
+} OtKMACAppReq;
+
+typedef struct {
+    uint8_t digest_share0[OT_KMAC_APP_DIGEST_BYTES];
+    uint8_t digest_share1[OT_KMAC_APP_DIGEST_BYTES];
+    bool done; /* digest_share updated (on last request) */
+} OtKMACAppRsp;
+
+/* KMAC application configuration helper */
+#define OT_KMAC_CONFIG(_mode_, _strength_, _fname_, _cust_) \
+    { \
+        .mode = (OT_KMAC_MODE_##_mode_), .strength = (_strength_), \
+        .prefix = { \
+            .funcname = (_fname_), \
+            .funcname_len = ARRAY_SIZE(_fname_) - 1u, \
+            .customstr = (_cust_), \
+            .customstr_len = ARRAY_SIZE(_cust_) - 1u, \
+        }, \
+    }
+
+/*
+ * Function called by the KMAC instance whenever an application request has been
+ * processed.
+ *
+ * @opaque the opaque pointer as registered with the ot_kmac_connect_app
+ *         function. This is usually the requester device instance.
+ * @rsp the KMAC response.
+ */
+typedef void (*OtKmacResponse)(void *opaque, const OtKMACAppRsp *rsp);
+
+struct OtKMACClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+
+    /*
+     * Connect a application to the KMAC device.
+     *
+     * @app_idx the application index.
+     * @cfg pointer to the KMAC configuration for this application.
+     * @fn the function to call when an request has been processed.
+     * @opaque a opaque pointer to forward to the response function.
+     */
+    void (*connect_app)(OtKMACState *s, unsigned app_idx,
+                        const OtKMACAppCfg *cfg, OtKmacResponse fn,
+                        void *opaque);
+
+    /*
+     * Send a new application request to the KMAC device.
+     *
+     * @app_idx the application index.
+     * @req the KMAC request to process.
+     */
+    void (*app_request)(OtKMACState *s, unsigned app_idx,
+                        const OtKMACAppReq *req);
+};
+
+#endif /* HW_OPENTITAN_OT_KMAC_H */

@@ -18,6 +18,106 @@ config IBEX_GPIO
 
 # RISC-V machines in alphabetical order
 
+config OT_DARJEELING
+    bool
+    default y
+    select IBEX
+    select IBEX_CLOCK_SRC
+    select IBEX_COMMON
+    select OT_ADDRESS_SPACE
+    select OT_AES
+    select OT_ALERT
+    select OT_AON_TIMER
+    select OT_AST_DJ
+    select OT_CLKMGR
+    select OT_CSRNG
+    select OT_DEV_PROXY
+    select OT_DM_TL
+    select OT_DMA
+    select OT_ENTROPY_SRC
+    select OT_EDN
+    select OT_GPIO_DJ
+    select OT_HMAC
+    select OT_I2C
+    select OT_I2C_HOST_PROXY
+    select OT_IBEX_WRAPPER
+    select OT_KEYMGR_DPE
+    select OT_KMAC
+    select OT_LC_CTRL
+    select OT_MBX
+    select OT_OTBN
+    select OT_OTP_IF
+    select OT_OTP_DJ
+    select OT_OTP_OT_BE
+    select OT_PINMUX_DJ
+    select OT_PLIC_EXT
+    select OT_PWRMGR
+    select OT_RSTMGR
+    select OT_ROM_CTRL
+    select OT_SOC_DBG_CTRL
+    select OT_SOC_PROXY
+    select OT_SPI_DEVICE
+    select OT_SPI_HOST
+    select OT_SRAM_CTRL
+    select OT_TIMER
+    select OT_UART
+    select OT_UNIMP
+    select PULP_RV_DM
+    select RISCV_DM
+    select RISCV_DTM
+    select SIFIVE_PLIC
+    select SPLIT_IRQ
+    select TAP_CTRL_RBB
+
+config OT_EARLGREY
+    bool
+    default y
+    select IBEX
+    select IBEX_CLOCK_SRC
+    select IBEX_COMMON
+    select IBEX_GPIO
+    select OT_AES
+    select OT_ALERT
+    select OT_AON_TIMER
+    select OT_AST_EG
+    select OT_CLKMGR
+    select OT_CSRNG
+    select OT_EDN
+    select OT_EG_PAD_RING
+    select OT_ENTROPY_SRC
+    select OT_FLASH
+    select OT_GPIO_EG
+    select OT_HMAC
+    select OT_I2C
+    select OT_I2C_HOST_PROXY
+    select OT_IBEX_WRAPPER
+    select OT_KEYMGR
+    select OT_KMAC
+    select OT_LC_CTRL
+    select OT_OTBN
+    select OT_OTP_EG
+    select OT_OTP_IF
+    select OT_OTP_OT_BE
+    select OT_PINMUX_EG
+    select OT_PLIC_EXT
+    select OT_PWRMGR
+    select OT_ROM_CTRL
+    select OT_RSTMGR
+    select OT_SENSOR_EG
+    select OT_SPI_DEVICE
+    select OT_SPI_HOST
+    select OT_SRAM_CTRL
+    select OT_TIMER
+    select OT_UART
+    select OT_USBDEV
+    select OT_UNIMP
+    select PULP_RV_DM
+    select RISCV_DM
+    select RISCV_DTM
+    select SIFIVE_PLIC
+    select SPLIT_IRQ
+    select TAP_CTRL_RBB
+
 config IBEXDEMO
     bool
     default y

@@ -1415,6 +1415,11 @@ int rom_check_and_register_reset(void)
     return 0;
 }
 
+void rom_load(void)
+{
+    rom_reset(NULL);
+}
+
 void rom_set_fw(FWCfgState *f)
 {
     fw_cfg = f;
