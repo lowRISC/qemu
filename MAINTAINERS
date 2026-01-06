@@ -1680,14 +1680,41 @@ F: pc-bios/vof*
 
 RISC-V Machines
 ---------------
+
+EarlGrey and Darjeeling OpenTitan platforms
+M: Emmanuel Blot <eblot@rivosinc.com>
+M: Loïc Lefort <loic@rivosinc.com>
+S: Supported
+F: hw/opentitan/*
+F: include/hw/opentitan/*
+F: scripts/opentitan/*
+F: hw/riscv/ot_darjeeling.c
+F: hw/riscv/ot_earlgrey.c
+F: include/hw/riscv/ot_darjeeling.h
+F: include/hw/riscv/ot_earlgrey.h
+
+Ibex platforms and utilities
+M: Emmanuel Blot <eblot@rivosinc.com>
+M: Loïc Lefort <loic@rivosinc.com>
+S: Supported
+F: hw/riscv/ibex_common.c
+F: include/hw/riscv/ibex_common.h
+F: include/hw/riscv/ibex_irq.h
+F: hw/ibexdemo/*
+F: include/hw/ibexdemo/*
+
 OpenTitan
 M: Alistair Francis <Alistair.Francis@wdc.com>
 L: qemu-riscv@nongnu.org
 S: Supported
 F: hw/riscv/opentitan.c
-F: hw/*/ibex_*.c
+F: hw/ssi/ibex_spi_host.c
+F: hw/timer/ibex_timer.c
+F: hw/char/ibex_uart.c
 F: include/hw/riscv/opentitan.h
-F: include/hw/*/ibex_*.h
+F: include/hw/ssi/ibex_spi_host.h
+F: include/hw/timer/ibex_timer.h
+F: include/hw/char/ibex_uart.h
 
 Microchip PolarFire SoC Icicle Kit
 L: qemu-riscv@nongnu.org

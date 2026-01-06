@@ -6,7 +6,6 @@
 .sdk
 .stgit-*
 .git-submodule-status
-.clang-format
 .gdb_history
 cscope.*
 tags
@@ -20,3 +19,8 @@ GTAGS
 *.swp
 *.patch
 *.gcov
+subprojects/*-*/
+subprojects/packagecache/
+!subprojects/packagefiles/**/*.patch
+.clangd
+.zed
