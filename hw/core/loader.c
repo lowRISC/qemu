@@ -448,7 +448,6 @@ ssize_t load_elf_as(const char *filename,
                             true, NULL);
 }
 
-/* return < 0 if error, otherwise the number of bytes loaded in memory */
 ssize_t load_elf_ram_sym(const char *filename,
                          uint64_t (*elf_note_fn)(void *, void *, bool),
                          uint64_t (*translate_fn)(void *, uint64_t),
@@ -457,6 +456,23 @@ ssize_t load_elf_ram_sym(const char *filename,
                          uint32_t *pflags, int elf_data_order, int elf_machine,
                          int clear_lsb, int data_swab,
                          AddressSpace *as, bool load_rom, symbol_fn_t sym_cb)
+{
+    return load_elf_ram_sym_nosz(filename, elf_note_fn, translate_fn,
+                                 translate_opaque, pentry, lowaddr, highaddr,
+                                 pflags, elf_data_order, elf_machine, clear_lsb,
+                                 data_swab, as, load_rom, sym_cb, true);
+}
+
+/* return < 0 if error, otherwise the number of bytes loaded in memory */
+ssize_t load_elf_ram_sym_nosz(const char *filename,
+                              uint64_t (*elf_note_fn)(void *, void *, bool),
+                              uint64_t (*translate_fn)(void *, uint64_t),
+                              void *translate_opaque, uint64_t *pentry,
+                              uint64_t *lowaddr, uint64_t *highaddr,
+                              uint32_t *pflags, int elf_data_order,
+                              int elf_machine, int clear_lsb, int data_swab,
+                              AddressSpace *as, bool load_rom,
+                              symbol_fn_t sym_cb, bool skip_nosz)
 {
     const int host_data_order = HOST_BIG_ENDIAN ? ELFDATA2MSB : ELFDATA2LSB;
     int fd, must_swab;
@@ -490,12 +506,14 @@ ssize_t load_elf_ram_sym(const char *filename,
         ret = load_elf64(filename, fd, elf_note_fn,
                          translate_fn, translate_opaque, must_swab,
                          pentry, lowaddr, highaddr, pflags, elf_machine,
-                         clear_lsb, data_swab, as, load_rom, sym_cb);
+                         clear_lsb, data_swab, as, load_rom, sym_cb,
+                         skip_nosz);
     } else {
         ret = load_elf32(filename, fd, elf_note_fn,
                          translate_fn, translate_opaque, must_swab,
                          pentry, lowaddr, highaddr, pflags, elf_machine,
-                         clear_lsb, data_swab, as, load_rom, sym_cb);
+                         clear_lsb, data_swab, as, load_rom, sym_cb,
+                         skip_nosz);
     }
 
     if (ret > 0) {
@@ -506,6 +524,61 @@ ssize_t load_elf_ram_sym(const char *filename,
     close(fd);
     return ret;
 }
+
+/* return < 0 if error, otherwise 0 */
+int load_elf_sym(const char *filename, int big_endian, int elf_machine,
+                 int clear_lsb)
+{
+    int fd, data_order, target_data_order, must_swab;
+    ssize_t ret = ELF_LOAD_FAILED;
+    uint8_t e_ident[EI_NIDENT];
+
+    fd = open(filename, O_RDONLY | O_BINARY);
+    if (fd < 0) {
+        perror(filename);
+        return -1;
+    }
+    if (read(fd, e_ident, sizeof(e_ident)) != sizeof(e_ident)) {
+        goto fail;
+    }
+    if (e_ident[0] != ELFMAG0 ||
+        e_ident[1] != ELFMAG1 ||
+        e_ident[2] != ELFMAG2 ||
+        e_ident[3] != ELFMAG3) {
+        ret = ELF_LOAD_NOT_ELF;
+        goto fail;
+    }
+#if HOST_BIG_ENDIAN
+    data_order = ELFDATA2MSB;
+#else
+    data_order = ELFDATA2LSB;
+#endif
+    must_swab = data_order != e_ident[EI_DATA];
+    if (big_endian) {
+        target_data_order = ELFDATA2MSB;
+    } else {
+        target_data_order = ELFDATA2LSB;
+    }
+
+    if (target_data_order != e_ident[EI_DATA]) {
+        ret = ELF_LOAD_WRONG_ENDIAN;
+        goto fail;
+    }
+
+    lseek(fd, 0, SEEK_SET);
+    if (e_ident[EI_CLASS] == ELFCLASS64) {
+        ret = load_elf_symbols64(filename, fd, must_swab, elf_machine,
+                                 clear_lsb);
+    } else {
+        ret = load_elf_symbols32(filename, fd, must_swab, elf_machine,
+                                 clear_lsb);
+    }
+
+ fail:
+    close(fd);
+    return ret;
+}
+
 
 static void bswap_uboot_header(uboot_image_header_t *hdr)
 {
