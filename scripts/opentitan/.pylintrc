@@ -1,0 +1,20 @@
+[MESSAGES CONTROL]
+
+disable=
+    unknown-option-value,
+    import-error,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-branches,
+    too-many-function-args,
+    too-many-instance-attributes,
+    too-many-lines,
+    too-many-locals,
+    too-many-nested-blocks,
+    too-many-positional-arguments,
+    too-many-public-methods,
+    too-many-return-statements,
+    too-many-statements,
+    unspecified-encoding,
+    wrong-import-order,
+    wrong-import-position
