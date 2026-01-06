@@ -1,0 +1,198 @@
+---
+#------------------------------------------------------------------------------
+# QEMU OpenTitan CI
+#
+# Copyright (c) 2023-2025 Rivos, Inc.
+# Copyright (c) 2025 lowRISC contributors.
+# SPDX-License-Identifier: Apache License 2.0
+#------------------------------------------------------------------------------
+
+name: Build & Test QEMU OT
+on:
+  - pull_request
+  - workflow_dispatch
+jobs:
+  build-clang:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install deps
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y git make pkg-config clang-21 cmake ninja-build python3 rust-all \
+            libpixman-1-dev libglib2.0-dev
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          rm -rf build-clang
+          git clean -dffx subprojects
+          mkdir build-clang
+          (cd build-clang &&
+           ../configure --cc=clang-21 --disable-werror --disable-install-blobs \
+             --target-list=riscv32-softmmu,riscv64-softmmu)
+      - name: Build
+        run: |
+          ninja -C build-clang &&
+          ninja -C build-clang qemu-img &&
+          strip build-clang/qemu-system-riscv32
+      - name: Create minimal test binaries
+        run: |
+          scripts/opentitan/swexit.py -t ibexdemo -b 0x0 -o build-clang/exit_id.bin
+          scripts/opentitan/swexit.py -t earlgrey -b 0x80 -o build-clang/exit_eg.bin
+          scripts/opentitan/swexit.py -t darjeeling -b 0x80 -o build-clang/exit_dj.bin
+      - name: Upload QEMU binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-bin
+          path: |
+            build-clang/qemu-system-riscv32
+            build-clang/exit_*.bin
+            docs/config/opentitan/*.cfg
+          retention-days: 1
+      - name: Pack source artifacts
+        # GitHub takes ages to retrieve each source file, so pack them
+        run: |
+          tar czf qemu-src-artifact.tar.gz \
+            subprojects/libtomcrypt/src/headers/*.h \
+            build-clang/*.h \
+            build-clang/qapi/*.h \
+            build-clang/trace/*.h \
+            build-clang/config.status \
+            build-clang/compile_commands.json
+      - name: Upload QEMU source artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-src
+          path: qemu-src-artifact.tar.gz
+          retention-days: 1
+
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install tools
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y clang-format-21
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Check C code format
+        run: |
+          scripts/opentitan/ot-format.sh --ci --Werror --dry-run
+
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update &&
+          sudo apt-get install -y python3-pip
+          # ubuntu "latest" is too old to require --break-system-packages ...
+          pip3 install -r scripts/opentitan/requirements.txt
+      - name: Lint Python code
+        run: |
+          flake8 --config scripts/opentitan/.flake8 scripts/opentitan/*.py \
+          python/qemu/jtagtools python/qemu/ot
+          pylint --rcfile scripts/opentitan/.pylintrc -d 'duplicate-code' -d 'fixme' \
+          scripts/opentitan/*.py python/qemu/jtagtools python/qemu/ot
+
+  lint-clang:
+    runs-on: ubuntu-24.04
+    needs: build-clang
+    steps:
+      - name: Install tools
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y clang-tidy-21 libglib2.0-dev
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Download QEMU source artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-src
+      - name: Unpack source artifacts
+        run: |
+          tar xzf qemu-src-artifact.tar.gz
+      - name: Clang tidy
+        # Expect many warnings/errors (accounted but not reported) from included QEMU files
+        run: |
+          scripts/opentitan/ot-tidy.py --build-dir build-clang --ci-files -j
+
+  lint-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Don't shallow clone, we need to see all commits.
+      - name: Lint commits
+        run: ./scripts/opentitan/lint-commits.sh "origin/${{ github.base_ref }}"
+
+  test-clang:
+    runs-on: ubuntu-24.04
+    needs: build-clang
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update &&
+          sudo apt-get install -y libpixman-1-0 libglib2.0-dev
+      - name: Download QEMU binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-bin
+      - name: Check machine availability
+        run: |
+          chmod +x build-clang/qemu-system-riscv32 &&
+          build-clang/qemu-system-riscv32 -M help | grep ibexdemo &&
+          build-clang/qemu-system-riscv32 -M help | grep ot-earlgrey &&
+          build-clang/qemu-system-riscv32 -M help | grep ot-darjeeling
+      - name: Check IbexDemo VM execution
+        run: |
+          timeout -s KILL 4 build-clang/qemu-system-riscv32 -M ibexdemo -nographic \
+            -device loader,addr=0x100080,file=build-clang/exit_id.bin -d in_asm,int
+      - name: Check EarlGrey VM execution
+        run: |
+          timeout -s KILL 4 build-clang/qemu-system-riscv32 -M ot-earlgrey,no_epmp_cfg=true -nographic \
+            -object ot-rom_img,id=rom,file=build-clang/exit_eg.bin -global ot-ibex_wrapper.lc-ignore=on \
+            -readconfig docs/config/opentitan/earlgrey.cfg -d in_asm,int \
+            -trace ot_ibex_wrapper_exit
+      - name: Check Darjeeling VM execution
+        run: |
+          timeout -s KILL 4 build-clang/qemu-system-riscv32 -M ot-darjeeling,no_epmp_cfg=true -nographic \
+            -object ot-rom_img,id=rom0,file=build-clang/exit_dj.bin -global ot-ibex_wrapper.lc-ignore=on \
+            -readconfig docs/config/opentitan/darjeeling.cfg -d in_asm,int \
+            -trace ot_ibex_wrapper_exit
+
+  build-gcc:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install tools
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+          sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc &&
+          sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" &&
+          sudo apt-get update &&
+          sudo apt-get install -y git make pkg-config gcc cmake ninja-build python3 rust-all \
+            libpixman-1-dev libglib2.0-dev
+      - name: Check out QEMU
+        uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          rm -rf build-gcc
+          git clean -dffx subprojects
+          mkdir build-gcc
+          (cd build-gcc &&
+           ../configure --cc=gcc --enable-werror --disable-install-blobs \
+             --target-list=riscv32-softmmu,riscv64-softmmu)
+      - name: Build
+        run: |
+          ninja -C build-gcc

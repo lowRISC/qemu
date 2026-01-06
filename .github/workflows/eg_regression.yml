@@ -1,0 +1,78 @@
+#------------------------------------------------------------------------------
+# OpenTitan regression run definition
+#
+# Copyright (c) 2025 lowRISC CIC
+# SPDX-License-Identifier: Apache License 2.0
+#------------------------------------------------------------------------------
+
+name: OpenTitan Regression
+on:
+  workflow_call:
+    inputs:
+      exec_env:
+        description: OpenTitan QEMU execution environment to test
+        required: true
+        default: qemu  # Default tag, captures all QEMU exec envs in OpenTitan
+        type: string
+      test_timeout:
+        description: The maximum timeout in seconds to use per executed test
+        required: false
+        type: string
+      opentitan_repo:
+        description: OpenTitan repository to be checked out
+        required: true
+        default: lowRISC/opentitan
+        type: string
+      opentitan_ref:
+        description: Branch, tag, or commit ref from OpenTitan to test
+        required: true
+        default: earlgrey_1.0.0
+        type: string
+
+jobs:
+  regression:
+    name: EG Regression
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout OpenTitan
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.opentitan_repo || 'lowRISC/opentitan' }}
+          ref: ${{ inputs.opentitan_ref || 'earlgrey_1.0.0' }}
+          fetch-depth: 0 # fetch all commits to avoid bug with bitstream rule
+
+      - name: Prepare OpenTitan environment
+        uses: ./.github/actions/prepare-env
+
+      - name: Checkout QEMU
+        uses: actions/checkout@v5
+        with:
+          path: qemu
+
+      - name: Build QEMU
+        working-directory: qemu
+        run: |
+          ./configure \
+            --target-list=riscv32-softmmu \
+            --without-default-features \
+            --enable-tcg \
+            --disable-tools \
+            --enable-trace-backends=log
+
+          ninja -C build qemu-system-riscv32
+
+      - name: Run OpenTitan regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          ./qemu/scripts/opentitan/run-bazel-tests.sh ./ qemu \
+            ${{ inputs.exec_env }} \
+            ${{ inputs.test_timeout }} \
+            | tee ${{ inputs.exec_env }}_test_results.txt
+
+      - name: Upload Bazel test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.exec_env }}-bazel-test-results
+          path: ${{ inputs.exec_env }}_test_results.txt
