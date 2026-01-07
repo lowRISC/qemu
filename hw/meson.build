@@ -21,6 +21,8 @@ subdir('sparc64')
 subdir('tricore')
 subdir('xtensa')
 
+subdir('jtag')
+
 subdir('9pfs')
 subdir('acpi')
 subdir('adc')

@@ -1,0 +1,13 @@
+# tap_ctrl_rbb.c
+
+tap_ctrl_rbb_change(const char *msg, const char *value) "%s %s"
+tap_ctrl_rbb_change_state(const char *prev, const char *new) "%s -> %s"
+tap_ctrl_rbb_dump_register(const char *msg, uint64_t val, size_t len, const char *buf) "%s: 0x%" PRIx64 "/%zu [b%s]"
+tap_ctrl_rbb_idump_register(const char *msg, const char *iname, uint64_t val, size_t len, const char *buf) "%s (%s): 0x%" PRIx64 "/%zu [b%s]"
+tap_ctrl_rbb_read(bool tdo) "tdo %u"
+tap_ctrl_rbb_realize(size_t irlen, uint32_t ircode) "irlength %zu, idcode 0x%08x"
+tap_ctrl_rbb_register(unsigned code, const char *name) "register 0x%x: %s"
+tap_ctrl_rbb_reset(bool tap, bool sys) "tap: %u, system: %u"
+tap_ctrl_rbb_select_dr(const char *name, uint64_t value) "Select DR %s 0x%02" PRIx64
+tap_ctrl_rbb_step(bool tck, bool tms, bool tdi) "tck:%u tms:%u tdi:%u"
+tap_ctrl_rbb_system_reset(void) "SYSTEM RESET"
