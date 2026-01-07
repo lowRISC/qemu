@@ -5436,6 +5436,58 @@ static RISCVException write_mcontext(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+static RISCVException read_dcsr(CPURISCVState *env, int csrno,
+                                target_ulong *val)
+{
+    *val = env->dcsr;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dcsr(CPURISCVState *env, int csrno,
+                                 target_ulong val, uintptr_t ra)
+{
+    /* STEPIE feature is not supported */
+    target_ulong wmask = DCSR_PRV | DCSR_STEP | DCSR_STOPCOUNT | DCSR_STOPTIME |
+                         DCSR_EBREAKM;
+    if (riscv_has_ext(env, RVS)) {
+        wmask |= DCSR_EBREAKS;
+    }
+    if (riscv_has_ext(env, RVU)) {
+        wmask |= DCSR_EBREAKU;
+    }
+    env->dcsr &= ~wmask;
+    env->dcsr |= val & wmask;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_dpc(CPURISCVState *env, int csrno,
+                               target_ulong *val)
+{
+    *val = env->dpc;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dpc(CPURISCVState *env, int csrno,
+                                target_ulong val, uintptr_t ra)
+{
+    env->dpc = val;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_dscratch(CPURISCVState *env, int csrno,
+                                    target_ulong *val)
+{
+    *val = env->dscratch[csrno - CSR_DSCRATCH0];
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dscratch(CPURISCVState *env, int csrno,
+                                    target_ulong val, uintptr_t ra)
+{
+    env->dscratch[csrno - CSR_DSCRATCH0] = val;
+    return RISCV_EXCP_NONE;
+}
+
 static RISCVException read_mnscratch(CPURISCVState *env, int csrno,
                                      target_ulong *val)
 {
@@ -5800,7 +5852,7 @@ RISCVException riscv_csrrw_i128(CPURISCVState *env, int csrno,
 
 /*
  * Debugger support.  If not in user mode, set env->debugger before the
- * riscv_csrrw call and clear it after the call.
+ * riscv_csrrw call and restore it after the call.
  */
 RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
                                  target_ulong *ret_value,
@@ -5809,6 +5861,7 @@ RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
 {
     RISCVException ret;
 #if !defined(CONFIG_USER_ONLY)
+    bool debugger = env->debugger;
     env->debugger = true;
 #endif
     if (!write_mask) {
@@ -5817,7 +5870,7 @@ RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
         ret = riscv_csrrw(env, csrno, ret_value, new_value, write_mask, 0);
     }
 #if !defined(CONFIG_USER_ONLY)
-    env->debugger = false;
+    env->debugger = debugger;
 #endif
     return ret;
 }
@@ -6343,7 +6396,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_PMPADDR63]  = { "pmpaddr63", pmp, read_pmpaddr, write_pmpaddr,
                          .min_priv_ver = PRIV_VERSION_1_12_0           },
 
-    /* Debug CSRs */
+    /* Trigger CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },
     [CSR_TDATA1]    =  { "tdata1",   debug, read_tdata,    write_tdata    },
     [CSR_TDATA2]    =  { "tdata2",   debug, read_tdata,    write_tdata    },
@@ -6351,6 +6404,13 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_TINFO]     =  { "tinfo",    debug, read_tinfo,    write_ignore   },
     [CSR_MCONTEXT]  =  { "mcontext", debug, read_mcontext, write_mcontext },
 
+    /* Debug CSRs */
+    [CSR_DCSR]      =  { "dcsr",      debug, read_dcsr,     write_dcsr     },
+    [CSR_DPC]       =  { "dpc",       debug, read_dpc,      write_dpc      },
+    [CSR_DSCRATCH0] =  { "dscratch0", debug, read_dscratch, write_dscratch },
+    [CSR_DSCRATCH1] =  { "dscratch1", debug, read_dscratch, write_dscratch },
+
+    /* Control Transfer Records */
     [CSR_MCTRCTL]    = { "mctrctl",    ctr_mmode,  NULL, NULL, rmw_xctrctl    },
     [CSR_SCTRCTL]    = { "sctrctl",    ctr_smode,  NULL, NULL, rmw_xctrctl    },
     [CSR_VSCTRCTL]   = { "vsctrctl",   ctr_smode,  NULL, NULL, rmw_xctrctl    },

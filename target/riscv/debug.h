@@ -24,7 +24,8 @@
 
 #include "exec/breakpoint.h"
 
-#define RV_MAX_TRIGGERS         2
+#define RV_MAX_TRIGGERS         4
+#define RV_MAX_DSCRATCH         2
 
 /* register index of tdata CSRs */
 enum {
@@ -81,6 +82,8 @@ typedef enum {
 #define TYPE2_MATCH     (0xf << 7)
 #define TYPE2_CHAIN     BIT(11)
 #define TYPE2_ACTION    (0xf << 12)
+#define TYPE2_ACT_DEBUG (0x1 << 12)
+#define TYPE2_ACT_TRACE (0xe << 12)
 #define TYPE2_SIZELO    (0x3 << 16)
 #define TYPE2_TIMING    BIT(18)
 #define TYPE2_SELECT    BIT(19)

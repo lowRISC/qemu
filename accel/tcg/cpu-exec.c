@@ -707,6 +707,10 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
         *ret = cpu->exception_index;
         if (*ret == EXCP_DEBUG) {
             cpu_handle_debug_exception(cpu);
+            if (cpu->exception_index < 0) {
+                /* the handler has cleared the exception */
+                return false;
+            }
         }
         cpu->exception_index = -1;
         return true;
@@ -1000,6 +1004,13 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
             /* See if we can patch the calling TB. */
             if (last_tb) {
                 tb_add_jump(last_tb, tb_exit, tb);
+            }
+
+            if (unlikely((s.cflags != -1) && (s.cflags & CF_SINGLE_STEP))) {
+                CPUClass *cc = cpu->cc;
+                if (cc->debug_enable_singlestep) {
+                    cc->debug_enable_singlestep(cpu, s.pc);
+                }
             }
 
             cpu_loop_exec_tb(cpu, tb, s.pc, &last_tb, &tb_exit);

@@ -464,6 +464,11 @@ struct CPUArchState {
     int64_t last_icount;
     bool itrigger_enabled;
 
+    /* debug module */
+    uint32_t dcsr;
+    target_ulong dpc;
+    target_ulong dscratch[RV_MAX_DSCRATCH];
+
     /* machine specific rdtime callback */
     uint64_t (*rdtime_fn)(void *);
     void *rdtime_fn_arg;
@@ -484,8 +489,15 @@ struct CPUArchState {
         target_ulong *val, target_ulong new_val, target_ulong write_mask);
     void *aia_ireg_rmw_fn_arg[4];
 
-    /* True if in debugger mode.  */
-    bool debugger;
+    /*
+     * Debug support
+     */
+    bool debugger; /* True if in debugger mode.  */
+    bool debug_cs; /* Debugger critical section w/o HW IRQ nor WFI */
+    bool debug_dm; /* Debug module is available */
+    unsigned debug_cause; /* Reason for entering debug */
+    uint64_t dmhaltvec; /* Address of halt handler */
+    uint64_t dmexcpvec; /* Address of exception handler */
 
     uint64_t mstateen[SMSTATEEN_MAX_COUNT];
     uint64_t hstateen[SMSTATEEN_MAX_COUNT];
@@ -657,6 +669,7 @@ void riscv_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr,
                                      MMUAccessType access_type,
                                      int mmu_idx, MemTxAttrs attrs,
                                      MemTxResult response, uintptr_t retaddr);
+void riscv_cpu_store_debug_cause(CPUState *cs, unsigned cause);
 hwaddr riscv_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 bool riscv_cpu_exec_interrupt(CPUState *cs, int interrupt_request);
 void riscv_cpu_swap_hypervisor_regs(CPURISCVState *env);

@@ -676,7 +676,8 @@ bool riscv_cpu_has_work(CPUState *cs)
      */
     return riscv_cpu_all_pending(env) != 0 ||
         riscv_cpu_sirq_pending(env) != RISCV_EXCP_NONE ||
-        riscv_cpu_vsirq_pending(env) != RISCV_EXCP_NONE;
+        riscv_cpu_vsirq_pending(env) != RISCV_EXCP_NONE ||
+        env->debug_cs;
 }
 #endif /* !CONFIG_USER_ONLY */
 
@@ -959,6 +960,56 @@ void riscv_cpu_finalize_features(RISCVCPU *cpu, Error **errp)
             return;
         }
     }
+}
+
+static bool riscv_cpu_debug_request(CPUState *cs)
+{
+#ifndef CONFIG_USER_ONLY
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    if (!env->debug_dm) {
+        return false;
+    }
+
+    if (!get_field(env->dcsr, DCSR_STEP)) {
+        return false;
+    }
+
+    if (!env->debugger) {
+        env->dcsr = set_field(env->dcsr, DCSR_CAUSE, DCSR_CAUSE_STEP);
+        env->dcsr = set_field(env->dcsr, DCSR_PRV, env->priv);
+        env->dpc = env->pc;
+        env->debugger = true;
+        env->priv = PRV_M;
+        env->pc = env->dmhaltvec;
+        cs->singlestep_enabled = 0;
+        cs->exception_index = -1;
+    }
+
+    return true;
+#else
+    return false;
+#endif
+}
+
+static void riscv_cpu_debug_enable_singlestep(CPUState *s, vaddr pc)
+{
+    (void)pc;
+
+#ifndef CONFIG_USER_ONLY
+    RISCVCPU *cpu = RISCV_CPU(s);
+    CPURISCVState *env = &cpu->env;
+    if (!env->debug_dm) {
+        return;
+    }
+    s->singlestep_enabled = SSTEP_ENABLE | SSTEP_NOIRQ;
+    if (get_field(env->dcsr, DCSR_STOPTIME)) {
+        s->singlestep_enabled |= SSTEP_NOTIMER;
+    }
+#else
+    s->singlestep_enabled = SSTEP_ENABLE;
+#endif
 }
 
 static void riscv_cpu_realize(DeviceState *dev, Error **errp)
@@ -2706,6 +2757,8 @@ static const Property riscv_cpu_properties[] = {
                       qdev_prop_uint8, uint8_t),
     DEFINE_PROP_ARRAY("pmp_addr", RISCVCPU, cfg.pmp_addr_count, cfg.pmp_addr,
                       qdev_prop_uint64, uint64_t),
+    DEFINE_PROP_UINT64("dmhaltvec", RISCVCPU, env.dmhaltvec, 0),
+    DEFINE_PROP_UINT64("dmexcpvec", RISCVCPU, env.dmexcpvec, 0),
     DEFINE_PROP_UINT64("rnmi-interrupt-vector", RISCVCPU, env.rnmi_irqvec,
                        DEFAULT_RNMI_IRQVEC),
     DEFINE_PROP_UINT64("rnmi-exception-vector", RISCVCPU, env.rnmi_excpvec,
@@ -2782,6 +2835,8 @@ static void riscv_cpu_common_class_init(ObjectClass *c, const void *data)
     cc->gdb_read_register = riscv_cpu_gdb_read_register;
     cc->gdb_write_register = riscv_cpu_gdb_write_register;
     cc->gdb_stop_before_watchpoint = true;
+    cc->debug_request = riscv_cpu_debug_request;
+    cc->debug_enable_singlestep = riscv_cpu_debug_enable_singlestep;
     cc->disas_set_info = riscv_cpu_disas_set_info;
 #ifndef CONFIG_USER_ONLY
     cc->sysemu_ops = &riscv_sysemu_ops;

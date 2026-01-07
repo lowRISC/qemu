@@ -455,7 +455,7 @@
 #define CSR_MNCAUSE         0x742
 #define CSR_MNSTATUS        0x744
 
-/* Debug/Trace Registers (shared with Debug Mode) */
+/* Trace Registers (shared with Debug Mode) */
 #define CSR_TSELECT         0x7a0
 #define CSR_TDATA1          0x7a1
 #define CSR_TDATA2          0x7a2
@@ -466,7 +466,8 @@
 /* Debug Mode Registers */
 #define CSR_DCSR            0x7b0
 #define CSR_DPC             0x7b1
-#define CSR_DSCRATCH        0x7b2
+#define CSR_DSCRATCH0       0x7b2
+#define CSR_DSCRATCH1       0x7b3
 
 /* Performance Counters */
 #define CSR_MHPMCOUNTER3    0xb03
@@ -692,6 +693,29 @@ typedef enum {
 
 /* vsstatus CSR bits */
 #define VSSTATUS64_UXL       0x0000000300000000ULL
+
+/* DCSR CSR bits */
+#define DCSR_PRV             0x00000003
+#define DCSR_STEP            0x00000004
+#define DCSR_NMIP            0x00000008
+#define DCSR_MPRVEN          0x00000010
+#define DCSR_CAUSE           0x000001C0
+#define DCSR_STOPTIME        0x00000200
+#define DCSR_STOPCOUNT       0x00000400
+#define DCSR_STEPIE          0x00000800
+#define DCSR_EBREAKU         0x00001000
+#define DCSR_EBREAKS         0x00002000
+#define DCSR_EBREAKH         0x00004000
+#define DCSR_EBREAKM         0x00008000
+#define DCSR_XDEBUGVER       0xF0000000
+#define DCSR_EBREAK_MASK     0x0000F000
+
+#define DCSR_CAUSE_NONE          0
+#define DCSR_CAUSE_EBREAK        1
+#define DCSR_CAUSE_BREAKPOINT    2
+#define DCSR_CAUSE_HALTREQ       3
+#define DCSR_CAUSE_STEP          4
+#define DCSR_CAUSE_RESETHALTREQ  5
 
 /* Privilege modes */
 #define PRV_U 0

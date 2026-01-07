@@ -51,7 +51,9 @@ int riscv_env_mmu_index(CPURISCVState *env, bool ifetch)
         uint64_t status = env->mstatus;
 
         if (mode == PRV_M && get_field(status, MSTATUS_MPRV)) {
-            mode = get_field(env->mstatus, MSTATUS_MPP);
+            if (!env->debugger || get_field(env->dcsr, DCSR_MPRVEN)) {
+                mode = get_field(env->mstatus, MSTATUS_MPP);
+            }
             virt = get_field(env->mstatus, MSTATUS_MPV) &&
                    (mode != PRV_M);
             if (virt) {
@@ -551,6 +553,10 @@ bool riscv_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     if (interrupt_request & mask) {
         RISCVCPU *cpu = RISCV_CPU(cs);
         CPURISCVState *env = &cpu->env;
+        if (unlikely(env->debug_dm &&
+                     (env->debugger || get_field(env->dcsr, DCSR_STEP)))) {
+            return false;
+        }
         int interruptno = riscv_cpu_local_irq_pending(env);
         if (interruptno >= 0) {
             cs->exception_index = RISCV_EXCP_INT_FLAG | interruptno;
@@ -1658,6 +1664,94 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     env->two_stage_indirect_lookup = two_stage_indirect;
 }
 
+static bool riscv_cpu_handle_breakpoint(CPUState *cs)
+{
+    /*
+     * EBREAK/C.BREAK causes the receiving privilege mode’s epc register to be
+     * set to the address of the EBREAK instruction itself, not the address of
+     * the following instruction. As ECALL and EBREAK cause synchronous
+     * exceptions, they are not considered to retire, and should not increment
+     * the minstret CSR.
+
+     * Instruction address breakpoints have the same cause value as, but
+     * different priority than, data address breakpoints (a.k.a. watchpoints)
+     * and environment break exceptions (which are raised by the EBREAK
+     * instruction).
+
+     * DCSR ebreakX fields:
+     * 0: ebreak instructions in X-mode behave as described in the Priv. Spec.
+     *   a. the core enters the exception handler routine located at mtvec
+     *      (Debug Mode is not entered)
+     *   b. mepc and mcause are updated
+     * 1: ebreak instructions in X-mode enter Debug Mode.
+     *   a. the core enters Debug Mode and starts executing debug code located
+     *      at dmhaltvec (exception routine not called)
+     *   b. dpc and dcsr are updated
+     */
+    CPURISCVState *env = &RISCV_CPU(cs)->env;
+    target_ulong ebreak = get_field(env->dcsr, DCSR_EBREAK_MASK);
+    if (!(ebreak & (1u << env->priv)) && !env->debugger) {
+        /* breakpoint not handled, fall back to default exception handling */
+        return false;
+    }
+
+    /* clear current exception */
+    cs->exception_index = -1;
+    cs->interrupt_request |= CPU_INTERRUPT_DEBUG;
+    /* the current exception has been handled */
+    return true;
+}
+
+static bool riscv_cpu_handle_debug_exception(CPUState *cs, target_ulong cause)
+{
+    /*
+     * Note: RISCV_EXCP_BREAKPOINT && RISCV_EXCP_SEMIHOST already handled
+     *
+     * Exceptions don’t update any registers. That includes cause, epc, tval,
+     * dpc, and mstatus.
+     * To resume execution, the debug module sets a flag which causes the hart
+     * to execute a dret. When dret is executed, pc is restored from dpc and
+     * normal execution resumes at the privilege set by prv.
+     */
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    if (env->debug_dm) {
+        env->pc = env->dmexcpvec;
+        /* clear current exception */
+        cs->exception_index = -1;
+        return true;
+    }
+
+    return false;
+}
+
+void riscv_cpu_store_debug_cause(CPUState *cs, unsigned cause)
+{
+    /*
+     * Priorities from debug spec 0.13.2
+     * "4.8.1 Debug Control and Status (dcsr, at 0x7b0)"
+     */
+    static const uint8_t debug_cause_priority[] = {
+        [DCSR_CAUSE_NONE] = 0,
+        [DCSR_CAUSE_EBREAK] =  3,
+        [DCSR_CAUSE_BREAKPOINT] = 4,
+        [DCSR_CAUSE_HALTREQ] = 1,
+        [DCSR_CAUSE_STEP] = 0,
+        [DCSR_CAUSE_RESETHALTREQ] = 2,
+    };
+
+    CPURISCVState *env = &RISCV_CPU((cs))->env;
+
+    uint8_t new_prio = cause < ARRAY_SIZE(debug_cause_priority) ?
+        debug_cause_priority[cause] : 0u;
+    uint8_t cur_prio = debug_cause_priority[env->debug_cause];
+
+    if ((env->debug_cause == DCSR_CAUSE_NONE) || (new_prio > cur_prio)) {
+        env->debug_cause = cause;
+    }
+}
+
 hwaddr riscv_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);
@@ -2259,6 +2353,11 @@ void riscv_cpu_do_interrupt(CPUState *cs)
             tval = env->bins;
             break;
         case RISCV_EXCP_BREAKPOINT:
+            if (env->debug_dm) {
+                if (riscv_cpu_handle_breakpoint(cs)) {
+                    return;
+                }
+            }
             tval = env->badaddr;
             if (cs->watchpoint_hit) {
                 tval = cs->watchpoint_hit->hitaddr;
@@ -2283,6 +2382,12 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                 cause = RISCV_EXCP_S_ECALL;
             } else if (env->priv == PRV_U) {
                 cause = RISCV_EXCP_U_ECALL;
+            }
+        }
+
+        if (env->debug_dm && env->debugger) {
+            if (riscv_cpu_handle_debug_exception(cs, cause)) {
+                return;
             }
         }
     }

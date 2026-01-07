@@ -26,6 +26,7 @@
 #include "accel/tcg/probe.h"
 #include "exec/helper-proto.h"
 #include "exec/tlb-flags.h"
+#include "exec/translation-block.h"
 #include "trace.h"
 
 #ifndef CONFIG_USER_ONLY
@@ -502,6 +503,43 @@ target_ulong helper_mnret(CPURISCVState *env)
     return retpc;
 }
 
+/* need access to internal TCG API */
+extern uint32_t curr_cflags(CPUState *cpu);
+
+target_ulong helper_dret(CPURISCVState *env)
+{
+    if (!(env->priv >= PRV_M) || !(env->debugger)) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    target_ulong retpc = env->dpc;
+    if (!riscv_has_ext(env, RVC) && (retpc & 0x3)) {
+        riscv_raise_exception(env, RISCV_EXCP_INST_ADDR_MIS, GETPC());
+    }
+
+    /* there is likely more to do here */
+    target_ulong prev_priv = get_field(env->dcsr, DCSR_PRV);
+    target_ulong prev_virt = env->virt_enabled;
+
+    if (riscv_has_ext(env, RVH) && prev_virt) {
+        riscv_cpu_swap_hypervisor_regs(env);
+    }
+    riscv_cpu_set_mode(env, prev_priv, prev_virt);
+
+    CPUState *cs = env_cpu(env);
+    if (get_field(env->dcsr, DCSR_STEP)) {
+        cs->cflags_next_tb = curr_cflags(cs) | CF_NO_GOTO_TB |
+                             CF_NO_GOTO_PTR | CF_SINGLE_STEP | 1;
+    } else {
+        cs->singlestep_enabled = 0;
+    }
+
+    env->debugger = false;
+    env->debug_cause = DCSR_CAUSE_NONE;
+
+    return retpc;
+}
+
 void helper_ctr_add_entry(CPURISCVState *env, target_ulong src,
                           target_ulong dest, target_ulong type)
 {
@@ -552,9 +590,11 @@ void helper_wfi(CPURISCVState *env)
                (prv_u || (prv_s && get_field(env->hstatus, HSTATUS_VTW)))) {
         riscv_raise_exception(env, RISCV_EXCP_VIRT_INSTRUCTION_FAULT, GETPC());
     } else {
-        cs->halted = 1;
-        cs->exception_index = EXCP_HLT;
-        cpu_loop_exit(cs);
+        if (!unlikely(env->debugger || env->debug_cs)) {
+            cs->halted = 1;
+            cs->exception_index = EXCP_HLT;
+            cpu_loop_exit(cs);
+        }
     }
 }
 

@@ -240,4 +240,8 @@ config IOSB
 config XLNX_VERSAL_TRNG
     bool
 
+config PULP_RV_DM
+    select RISCV_DM
+    bool
+
 source macio/Kconfig

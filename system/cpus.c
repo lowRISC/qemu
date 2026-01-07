@@ -330,7 +330,7 @@ int vm_shutdown(void)
 
 bool cpu_can_run(CPUState *cpu)
 {
-    if (cpu->stop) {
+    if (cpu->stop || unlikely(cpu->disabled)) {
         return false;
     }
     if (cpu_is_stopped(cpu)) {
@@ -353,9 +353,12 @@ void cpu_handle_guest_debug(CPUState *cpu)
             cpu_single_step(cpu, 0);
         }
     } else {
-        gdb_set_stop_cpu(cpu);
-        qemu_system_debug_request();
-        cpu->stopped = true;
+        CPUClass *cc = CPU_GET_CLASS(cpu);
+        if (!cc->debug_request || !cc->debug_request(cpu)) {
+            gdb_set_stop_cpu(cpu);
+            qemu_system_debug_request();
+            cpu->stopped = true;
+        }
     }
 }
 
@@ -916,4 +919,3 @@ void qmp_inject_nmi(Error **errp)
 {
     nmi_monitor_handle(monitor_get_cpu_index(monitor_cur()), errp);
 }
-

@@ -81,6 +81,17 @@ config RISCV_VIRT
     select ACPI
     select ACPI_PCI
 
+config RISCV_DEBUG
+    bool
+
+config RISCV_DM
+    select RISCV_DEBUG
+    bool
+
+config RISCV_DTM
+    select TAP_CTRL
+    bool
+
 config SHAKTI_C
     bool
     default y
