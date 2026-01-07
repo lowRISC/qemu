@@ -842,7 +842,8 @@ static void sifive_u_soc_realize(DeviceState *dev, Error **errp)
         SIFIVE_U_PLIC_ENABLE_STRIDE,
         SIFIVE_U_PLIC_CONTEXT_BASE,
         SIFIVE_U_PLIC_CONTEXT_STRIDE,
-        memmap[SIFIVE_U_DEV_PLIC].size);
+        memmap[SIFIVE_U_DEV_PLIC].size,
+        false);
     g_free(plic_hart_config);
     sifive_uart_create(system_memory, memmap[SIFIVE_U_DEV_UART0].base,
         serial_hd(0), qdev_get_gpio_in(DEVICE(s->plic), SIFIVE_U_UART0_IRQ));

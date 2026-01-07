@@ -287,7 +287,8 @@ static void microchip_pfsoc_soc_realize(DeviceState *dev, Error **errp)
         MICROCHIP_PFSOC_PLIC_ENABLE_STRIDE,
         MICROCHIP_PFSOC_PLIC_CONTEXT_BASE,
         MICROCHIP_PFSOC_PLIC_CONTEXT_STRIDE,
-        memmap[MICROCHIP_PFSOC_PLIC].size);
+        memmap[MICROCHIP_PFSOC_PLIC].size,
+        false);
     g_free(plic_hart_config);
 
     /* DMA */

@@ -118,7 +118,8 @@ static void shakti_c_soc_state_realize(DeviceState *dev, Error **errp)
         SHAKTI_C_PLIC_ENABLE_STRIDE,
         SHAKTI_C_PLIC_CONTEXT_BASE,
         SHAKTI_C_PLIC_CONTEXT_STRIDE,
-        shakti_c_memmap[SHAKTI_C_PLIC].size);
+        shakti_c_memmap[SHAKTI_C_PLIC].size,
+        false);
 
     riscv_aclint_swi_create(shakti_c_memmap[SHAKTI_C_CLINT].base,
         0, 1, false);

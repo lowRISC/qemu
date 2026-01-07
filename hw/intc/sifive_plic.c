@@ -31,6 +31,7 @@
 #include "migration/vmstate.h"
 #include "hw/irq.h"
 #include "system/kvm.h"
+#include "trace.h"
 
 static bool addr_between(uint32_t addr, uint32_t base, uint32_t num)
 {
@@ -62,14 +63,32 @@ static uint32_t atomic_set_masked(uint32_t *a, uint32_t mask, uint32_t value)
     return old;
 }
 
+static void sifive_plic_set_level(SiFivePLICState *plic, int irq, bool level)
+{
+    atomic_set_masked(&plic->level[irq >> 5], 1 << (irq & 31), -!!level);
+}
+
+static bool sifive_plic_get_level(SiFivePLICState *plic, int irq)
+{
+    return (plic->level[irq >> 5] & (1 << (irq & 31))) != 0;
+}
+
 static void sifive_plic_set_pending(SiFivePLICState *plic, int irq, bool level)
 {
-    atomic_set_masked(&plic->pending[irq >> 5], 1 << (irq & 31), -!!level);
+    uint32_t old;
+    old = atomic_set_masked(&plic->pending[irq >> 5], 1 << (irq & 31), -level);
+    if ((old >> (irq & 31)) ^ level) {
+        trace_sifive_plic_set_pending(irq, level);
+    }
 }
 
 static void sifive_plic_set_claimed(SiFivePLICState *plic, int irq, bool level)
 {
-    atomic_set_masked(&plic->claimed[irq >> 5], 1 << (irq & 31), -!!level);
+    uint32_t old;
+    old = atomic_set_masked(&plic->claimed[irq >> 5], 1 << (irq & 31), -level);
+    if ((old >> (irq & 31)) ^ level) {
+        trace_sifive_plic_set_claimed(irq, level);
+    }
 }
 
 static uint32_t sifive_plic_claimed(SiFivePLICState *plic, uint32_t addrid)
@@ -124,9 +143,11 @@ static void sifive_plic_update(SiFivePLICState *plic)
 
         switch (mode) {
         case PLICMode_M:
+            trace_sifive_plic_update(hartid, 'M', level);
             qemu_set_irq(plic->m_external_irqs[hartid - plic->hartid_base], level);
             break;
         case PLICMode_S:
+            trace_sifive_plic_update(hartid, 'S', level);
             qemu_set_irq(plic->s_external_irqs[hartid - plic->hartid_base], level);
             break;
         default:
@@ -202,9 +223,11 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
              * out the access to unsupported priority bits.
              */
             plic->source_priority[irq] = value % (plic->num_priorities + 1);
+            trace_sifive_plic_set_priority(irq, plic->source_priority[irq]);
             sifive_plic_update(plic);
         } else if (value <= plic->num_priorities) {
             plic->source_priority[irq] = value;
+            trace_sifive_plic_set_priority(irq, plic->source_priority[irq]);
             sifive_plic_update(plic);
         }
     } else if (addr_between(addr, plic->pending_base,
@@ -219,6 +242,7 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
 
         if (wordid < plic->bitfield_words) {
             plic->enable[addrid * plic->bitfield_words + wordid] = value;
+            sifive_plic_update(plic);
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: Invalid enable write 0x%" HWADDR_PRIx "\n",
@@ -280,6 +304,7 @@ static void sifive_plic_reset(DeviceState *dev)
     memset(s->pending, 0, sizeof(uint32_t) * s->bitfield_words);
     memset(s->claimed, 0, sizeof(uint32_t) * s->bitfield_words);
     memset(s->enable, 0, sizeof(uint32_t) * s->num_enables);
+    memset(s->level, 0, sizeof(uint32_t) * s->bitfield_words);
 
     for (i = 0; i < s->num_harts; i++) {
         qemu_set_irq(s->m_external_irqs[i], 0);
@@ -354,10 +379,19 @@ static void sifive_plic_irq_request(void *opaque, int irq, int level)
 {
     SiFivePLICState *s = opaque;
 
-    if (level > 0) {
-        sifive_plic_set_pending(s, irq, true);
-        sifive_plic_update(s);
+    assert(irq < s->num_sources);
+
+    if (s->edge_triggered) {
+        if (level && !sifive_plic_get_level(s, irq)) {
+            sifive_plic_set_pending(s, irq, true);
+        }
+        sifive_plic_set_level(s, irq, !!level);
+    } else {
+        if (level > 0) {
+            sifive_plic_set_pending(s, irq, true);
+        }
     }
+    sifive_plic_update(s);
 }
 
 static void sifive_plic_realize(DeviceState *dev, Error **errp)
@@ -383,6 +417,7 @@ static void sifive_plic_realize(DeviceState *dev, Error **errp)
     s->pending = g_new0(uint32_t, s->bitfield_words);
     s->claimed = g_new0(uint32_t, s->bitfield_words);
     s->enable = g_new0(uint32_t, s->num_enables);
+    s->level = g_new0(uint32_t, s->bitfield_words);
 
     qdev_init_gpio_in(dev, sifive_plic_irq_request, s->num_sources);
 
@@ -444,6 +479,7 @@ static const Property sifive_plic_properties[] = {
     DEFINE_PROP_UINT32("context-base", SiFivePLICState, context_base, 0),
     DEFINE_PROP_UINT32("context-stride", SiFivePLICState, context_stride, 0),
     DEFINE_PROP_UINT32("aperture-size", SiFivePLICState, aperture_size, 0),
+    DEFINE_PROP_BOOL("edge-triggered", SiFivePLICState, edge_triggered, false),
 };
 
 static void sifive_plic_class_init(ObjectClass *klass, const void *data)
@@ -479,7 +515,8 @@ DeviceState *sifive_plic_create(hwaddr addr, char *hart_config,
     uint32_t num_priorities, uint32_t priority_base,
     uint32_t pending_base, uint32_t enable_base,
     uint32_t enable_stride, uint32_t context_base,
-    uint32_t context_stride, uint32_t aperture_size)
+    uint32_t context_stride, uint32_t aperture_size,
+    bool edge_triggered)
 {
     DeviceState *dev = qdev_new(TYPE_SIFIVE_PLIC);
     int i;
@@ -498,6 +535,7 @@ DeviceState *sifive_plic_create(hwaddr addr, char *hart_config,
     qdev_prop_set_uint32(dev, "context-base", context_base);
     qdev_prop_set_uint32(dev, "context-stride", context_stride);
     qdev_prop_set_uint32(dev, "aperture-size", aperture_size);
+    qdev_prop_set_bit(dev, "edge-triggered", edge_triggered);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, addr);
 
