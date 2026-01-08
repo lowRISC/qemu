@@ -653,6 +653,10 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
 static inline bool cpu_handle_halt(CPUState *cpu)
 {
 #ifndef CONFIG_USER_ONLY
+    if (unlikely(cpu->disabled)) {
+        return true;
+    }
+
     if (cpu->halted) {
         const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
         bool leave_halt = tcg_ops->cpu_exec_halt(cpu);

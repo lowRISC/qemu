@@ -104,6 +104,16 @@ void cpu_reset(CPUState *cpu)
     trace_cpu_reset(cpu->cpu_index);
 }
 
+static void cpu_common_reset_enter(Object *obj, ResetType type)
+{
+    CPUState *cpu = CPU(obj);
+
+    if (qemu_loglevel_mask(CPU_LOG_RESET)) {
+        qemu_log("CPU Reset Enter (CPU %d)\n", cpu->cpu_index);
+        log_cpu_state(cpu, cpu->cc->reset_dump_flags);
+    }
+}
+
 static void cpu_common_reset_hold(Object *obj, ResetType type)
 {
     CPUState *cpu = CPU(obj);
@@ -379,6 +389,7 @@ static void cpu_common_class_init(ObjectClass *klass, const void *data)
     set_bit(DEVICE_CATEGORY_CPU, dc->categories);
     dc->realize = cpu_common_realizefn;
     dc->unrealize = cpu_common_unrealizefn;
+    rc->phases.enter = cpu_common_reset_enter;
     rc->phases.hold = cpu_common_reset_hold;
     rc->phases.exit = cpu_common_reset_exit;
     cpu_class_init_props(dc);
