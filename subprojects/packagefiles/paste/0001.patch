@@ -1,0 +1,13 @@
+diff --git a/meson.build b/meson.build
+new file mode 100644
+index 0000000000..f6c6338b22
+--- /dev/null
++++ b/meson.build
+@@ -0,0 +1,7 @@
++project('paste', 'rust', version: '1.0.49')
++
++paste_lib = shared_library('paste',
++                           'src/lib.rs',
++                            rust_crate_type: 'proc-macro')
++
++paste_dep = declare_dependency(link_with: paste_lib)

@@ -1,0 +1,8 @@
+[wrap-file]
+directory = bitflags-1.3.2
+
+source_url = https://github.com/bitflags/bitflags/archive/refs/tags/1.3.2.tar.gz
+source_filename = bitflags-1.3.2.tar.gz
+source_hash = 52ab9ccde868e856b38d4033a6bca0340422cb6460fd587fb26bf46659eb6e34
+
+diff_files = bitflags/0001.patch

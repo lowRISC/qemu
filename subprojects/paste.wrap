@@ -1,0 +1,8 @@
+[wrap-file]
+directory = paste-1.0.9
+
+source_url = https://github.com/dtolnay/paste/archive/refs/tags/1.0.9.tar.gz
+source_filename = paste-1.0.9.tar.gz
+source_hash = 37e94fb1b322b938159cf84361a479484d4eed1cec5346eaa0b9d3fe4be5fb8f
+
+diff_files = paste/0001.patch

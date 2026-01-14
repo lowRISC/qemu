@@ -1,0 +1,2 @@
+config OT_BIGNUMBER
+    bool
