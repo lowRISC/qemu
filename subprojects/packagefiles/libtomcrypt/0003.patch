@@ -1,0 +1,141 @@
+diff --git a/src/hashes/sha3.c b/src/hashes/sha3.c
+index c6faa0b..d596bd0 100644
+--- a/src/hashes/sha3.c
++++ b/src/hashes/sha3.c
+@@ -174,6 +174,102 @@ int sha3_shake_init(hash_state *md, int num)
+    if (num != 128 && num != 256) return CRYPT_INVALID_ARG;
+    XMEMSET(&md->sha3, 0, sizeof(md->sha3));
+    md->sha3.capacity_words = (unsigned short)(2 * num / (8 * sizeof(ulong64)));
++   md->sha3.suffix = 0x1F;
++   return CRYPT_OK;
++}
++
++static unsigned long cshake_left_encode(unsigned long num, unsigned char *buf)
++{
++   unsigned int n, i;
++   size_t v;
++
++   for (v = num, n = 0; v && (n < sizeof(unsigned long)); n++, v >>= 8) {
++       /* empty */
++   }
++   if (n == 0)
++      n = 1;
++
++   for (i = 1; i <= n; i++)
++   {
++      buf[i] = (unsigned char)(num >> (8 * (n - i)));
++   }
++   buf[0] = (unsigned char)n;
++
++   return n + 1;
++}
++
++static unsigned long cshake_left_encode_and_process_str(hash_state *md,
++        const unsigned char *data, unsigned long datalen)
++{
++   unsigned char buf[sizeof(unsigned long) + 1];
++   unsigned long len = 0;
++
++   len = cshake_left_encode(datalen * 8, buf);
++   sha3_process(md, buf, len);
++   if (datalen)
++      sha3_process(md, data, datalen);
++   len += datalen;
++
++   return len;
++}
++
++int sha3_cshake_init(hash_state *md, int num,
++        const unsigned char *func, unsigned long funclen,
++        const unsigned char *custom, unsigned long customlen)
++{
++   unsigned char buf[168];
++   unsigned long len, total = 0;
++   unsigned long rate;
++   LTC_ARGCHK(md != NULL);
++   if (num != 128 && num != 256) return CRYPT_INVALID_ARG;
++   rate = (num == 128) ? 168 : 136;
++   XMEMSET(&md->sha3, 0, sizeof(md->sha3));
++   md->sha3.capacity_words = (unsigned short)(2 * num / (8 * sizeof(ulong64)));
++
++   if (funclen == 0 && customlen == 0) {
++      /* no function, no customization => regular SHAKE */
++      md->sha3.suffix = 0x1F;
++   } else {
++      md->sha3.suffix = 0x04;
++
++      /* start bytepad */
++      len = cshake_left_encode(rate, buf);
++      sha3_process(md, buf, len);
++      total += len;
++
++      /* process function name */
++      total += cshake_left_encode_and_process_str(md, func, funclen);
++
++      /* process customization string */
++      total += cshake_left_encode_and_process_str(md, custom, customlen);
++
++      /* finish bytepad */
++      XMEMSET(buf, 0, sizeof(buf));
++      sha3_process(md, buf, rate - (total % rate));
++   }
++   return CRYPT_OK;
++}
++
++int sha3_process_kmac_key(hash_state * md, const unsigned char *key, unsigned long keylen)
++{
++   unsigned char buf[168];
++   unsigned long len, total = 0;
++   unsigned long rate;
++
++   rate = (md->sha3.capacity_words == 4) ? 168 : 136;
++
++   /* start bytepad */
++   len = cshake_left_encode(rate, buf);
++   sha3_process(md, buf, len);
++   total += len;
++
++   /* process key */
++   total += cshake_left_encode_and_process_str(md, key, keylen);
++
++   /* finish bytepad */
++   XMEMSET(buf, 0, sizeof(buf));
++   sha3_process(md, buf, rate - (total % rate));
++
+    return CRYPT_OK;
+ }
+ 
+@@ -261,7 +357,7 @@ int sha3_shake_done(hash_state *md, unsigned char *out, unsigned long outlen)
+ 
+    if (!md->sha3.xof_flag) {
+       /* shake_xof operation must be done only once */
+-      md->sha3.s[md->sha3.word_index] ^= (md->sha3.saved ^ (CONST64(0x1F) << (md->sha3.byte_index * 8)));
++      md->sha3.s[md->sha3.word_index] ^= (md->sha3.saved ^ ((ulong64)md->sha3.suffix << (md->sha3.byte_index * 8)));
+       md->sha3.s[SHA3_KECCAK_SPONGE_WORDS - md->sha3.capacity_words - 1] ^= CONST64(0x8000000000000000);
+       keccakf(md->sha3.s);
+       /* store sha3.s[] as little-endian bytes into sha3.sb */
+diff --git a/src/headers/tomcrypt_hash.h b/src/headers/tomcrypt_hash.h
+index ef494f7..b0565d8 100644
+--- a/src/headers/tomcrypt_hash.h
++++ b/src/headers/tomcrypt_hash.h
+@@ -17,6 +17,7 @@ struct sha3_state {
+     unsigned short word_index;      /* 0..24--the next word to integrate input (starts from 0) */
+     unsigned short capacity_words;  /* the double size of the hash output in words (e.g. 16 for Keccak 512) */
+     unsigned short xof_flag;
++    unsigned char suffix;           /* suffix for SHAKE/cSHAKE */
+ };
+ #endif
+ 
+@@ -285,6 +286,12 @@ int sha3_shake_init(hash_state *md, int num);
+ int sha3_shake_done(hash_state *md, unsigned char *out, unsigned long outlen);
+ int sha3_shake_test(void);
+ int sha3_shake_memory(int num, const unsigned char *in, unsigned long inlen, unsigned char *out, unsigned long *outlen);
++int sha3_cshake_init(hash_state *md, int num,
++        const unsigned char *func, unsigned long funclen,
++        const unsigned char *custom, unsigned long customlen);
++#define sha3_cshake_process(a,b,c) sha3_process(a,b,c)
++#define sha3_cshake_done(a,b,c) sha3_shake_done(a,b,c)
++int sha3_process_kmac_key(hash_state * md, const unsigned char *key, unsigned long keylen);
+ #endif
+ 
+ #ifdef LTC_SHA512
