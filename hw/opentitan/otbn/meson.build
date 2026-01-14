@@ -1,6 +1,5 @@
 bitflags_dep = subproject('bitflags').get_variable('bitflags_dep')
 paste_dep = subproject('paste').get_variable('paste_dep')
-oorandom_dep = subproject('oorandom').get_variable('oorandom_dep')
 ethnum_dep = subproject('ethnum-rs').get_variable('ethnum_dep')
 
 if build_machine.system() == 'linux'
@@ -20,7 +19,6 @@ otbn_lib = static_library('otbn',
                           dependencies: [
                             bitflags_dep,
                             paste_dep,
-                            oorandom_dep,
                             ethnum_dep,
                             dl_dep],
                           rust_crate_type: 'staticlib')
