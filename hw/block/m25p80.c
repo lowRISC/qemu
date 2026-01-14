@@ -224,7 +224,8 @@ static const FlashPartInfo known_devices[] = {
     { INFO("is25lp256",   0x9d6019,      0,  64 << 10, 512, ER_4K) },
     { INFO("is25wp032",   0x9d7016,      0,  64 << 10,  64, ER_4K) },
     { INFO("is25wp064",   0x9d7017,      0,  64 << 10, 128, ER_4K) },
-    { INFO("is25wp128",   0x9d7018,      0,  64 << 10, 256, ER_4K) },
+    { INFO("is25wp128",   0x9d7018,      0,  64 << 10, 256, ER_4K),
+      .sfdp_read = m25p80_sfdp_is25wp128 },
     { INFO("is25wp256",   0x9d7019,      0,  64 << 10, 512, ER_4K),
       .sfdp_read = m25p80_sfdp_is25wp256 },
 
@@ -364,6 +365,8 @@ static const FlashPartInfo known_devices[] = {
       .sfdp_read = m25p80_sfdp_w25q512jv },
     { INFO("w25q01jvq",   0xef4021,      0,  64 << 10, 2048, ER_4K),
       .sfdp_read = m25p80_sfdp_w25q01jvq },
+    { INFO("w25q512nw",   0xef6020,      0,  64 << 10, 1024, ER_4K | ER_32K),
+      .sfdp_read = m25p80_sfdp_w25q512nw },
 
     /* Microchip */
     { INFO("25csm04",      0x29cc00,      0x100,  64 << 10,  8, 0) },
@@ -403,6 +406,7 @@ typedef enum {
     DPP = 0xa2,
     QPP = 0x32,
     QPP_4 = 0x34,
+    PP_4 = 0x38,
     RDID_90 = 0x90,
     RDID_AB = 0xab,
     AAI_WP = 0xad,
@@ -456,6 +460,7 @@ typedef enum {
     STATE_COLLECTING_VAR_LEN_DATA,
     STATE_READING_DATA,
     STATE_READING_SFDP,
+    STATE_RESET,
 } CMDState;
 
 typedef enum {
@@ -518,6 +523,7 @@ struct Flash {
     bool block_protect3;
     bool top_bottom_bit;
     bool status_register_write_disabled;
+    bool hw_reset; /* HW reset status */
     uint8_t ear;
 
     int64_t dirty_page;
@@ -528,6 +534,7 @@ struct Flash {
 
 struct M25P80Class {
     SSIPeripheralClass parent_class;
+    ResettablePhases parent_phases;
     const FlashPartInfo *pi;
 };
 
@@ -646,6 +653,7 @@ static void flash_erase(Flash *s, int offset, FlashCMD cmd)
         return;
     }
     memset(s->storage + offset, 0xff, len);
+    s->write_enable = false;
     flash_sync_area(s, offset, len);
 }
 
@@ -759,6 +767,7 @@ static void complete_collecting_data(Flash *s)
     case PP:
     case PP4:
     case PP4_4:
+    case PP_4:
         s->state = STATE_PAGE_PROGRAM;
         break;
     case AAI_WP:
@@ -953,8 +962,6 @@ static void reset_memory(Flash *s)
     default:
         break;
     }
-
-    trace_m25p80_reset_done(s);
 }
 
 static uint8_t numonyx_mode(Flash *s)
@@ -1001,17 +1008,13 @@ static void decode_fast_read_cmd(Flash *s)
         s->needed_bytes += 1;
         break;
     case MAN_WINBOND:
-        s->needed_bytes += 8;
+        s->needed_bytes += 1;
         break;
     case MAN_NUMONYX:
         s->needed_bytes += numonyx_extract_cfg_num_dummies(s);
         break;
     case MAN_MACRONIX:
-        if (extract32(s->volatile_cfg, 6, 2) == 1) {
-            s->needed_bytes += 6;
-        } else {
-            s->needed_bytes += 8;
-        }
+        s->needed_bytes += 1;
         break;
     case MAN_SPANSION:
         s->needed_bytes += extract32(s->spansion_cr2v,
@@ -1173,6 +1176,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case ERASE4_SECTOR:
     case PP:
     case PP4:
+    case PP_4:
     case DIE_ERASE:
     case RDID_90:
     case RDID_AB:
@@ -1546,6 +1550,10 @@ static int m25p80_cs(SSIPeripheral *ss, bool select)
 {
     Flash *s = M25P80(ss);
 
+    if (s->state == STATE_RESET) {
+        return 0;
+    }
+
     if (select) {
         if (s->state == STATE_COLLECTING_VAR_LEN_DATA) {
             complete_collecting_data(s);
@@ -1571,6 +1579,9 @@ static uint32_t m25p80_transfer8(SSIPeripheral *ss, uint32_t tx)
                           s->cur_addr, (uint8_t)tx);
 
     switch (s->state) {
+
+    case STATE_RESET:
+        break;
 
     case STATE_PAGE_PROGRAM:
         trace_m25p80_page_program(s, s->cur_addr, (uint8_t)tx);
@@ -1662,6 +1673,32 @@ static void m25p80_write_protect_pin_irq_handler(void *opaque, int n, int level)
     s->wp_level = !!level;
 }
 
+static void m25p80_hw_reset(void *opaque, int n, int level)
+{
+    Flash *s = opaque;
+
+    g_assert(n == 0);
+
+    bool nreset = (bool)level; /* RESET# */
+
+    if (nreset == !s->hw_reset) {
+        /*
+         * ignore IRQ request without change, as Resettable API tracks count of
+         * reset calls. HW signal is only a level.
+         */
+        return;
+    }
+
+    s->hw_reset = !nreset;
+
+    if (s->hw_reset) {
+        resettable_assert_reset(OBJECT(s), RESET_TYPE_COLD);
+    } else {
+        resettable_release_reset(OBJECT(s), RESET_TYPE_COLD);
+    }
+}
+
+
 static void m25p80_realize(SSIPeripheral *ss, Error **errp)
 {
     Flash *s = M25P80(ss);
@@ -1694,13 +1731,22 @@ static void m25p80_realize(SSIPeripheral *ss, Error **errp)
         memset(s->storage, 0xFF, s->size);
     }
 
+    qdev_init_gpio_in_named(DEVICE(s), &m25p80_hw_reset, "RESET#", 1);
+
     qdev_init_gpio_in_named(DEVICE(s),
                             m25p80_write_protect_pin_irq_handler, "WP#", 1);
 }
 
-static void m25p80_reset(DeviceState *d)
+static void m25p80_reset_enter(Object *obj, ResetType type)
 {
-    Flash *s = M25P80(d);
+    M25P80Class *c = M25P80_GET_CLASS(obj);
+    Flash *s = M25P80(obj);
+
+    trace_m25p80_reset(s, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     s->wp_level = true;
     s->status_register_write_disabled = false;
@@ -1711,6 +1757,22 @@ static void m25p80_reset(DeviceState *d)
     s->top_bottom_bit = false;
 
     reset_memory(s);
+
+    s->state = STATE_RESET;
+}
+
+static void m25p80_reset_exit(Object *obj, ResetType type)
+{
+    M25P80Class *c = M25P80_GET_CLASS(obj);
+    Flash *s = M25P80(obj);
+
+    trace_m25p80_reset(s, "exit");
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    s->state = STATE_IDLE;
 }
 
 static int m25p80_pre_save(void *opaque)
@@ -1869,10 +1931,14 @@ static void m25p80_class_init(ObjectClass *klass, const void *data)
     k->cs_polarity = SSI_CS_LOW;
     dc->vmsd = &vmstate_m25p80;
     device_class_set_props(dc, m25p80_properties);
-    device_class_set_legacy_reset(dc, m25p80_reset);
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
     mc->pi = data;
     dc->desc = "Serial Flash";
+    ResettableClass *rc = RESETTABLE_CLASS(dc);
+    M25P80Class *fc = M25P80_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &m25p80_reset_enter, NULL,
+                                       &m25p80_reset_exit,
+                                       &fc->parent_phases);
 }
 
 static const TypeInfo m25p80_info = {
