@@ -18,6 +18,23 @@ config IBEX_GPIO
 
 # RISC-V machines in alphabetical order
 
+config IBEXDEMO
+    bool
+    default y
+    select IBEX
+    select IBEX_CLOCK_SRC
+    select IBEX_COMMON
+    select IBEXDEMO_GPIO
+    select IBEXDEMO_SIMCTRL
+    select IBEXDEMO_SPI
+    select IBEXDEMO_TIMER
+    select IBEXDEMO_UART
+    select RISCV_DM
+    select RISCV_DTM
+    select ST7735
+    select TAP_CTRL_RBB
+    select UNIMP
+
 config MICROCHIP_PFSOC
     bool
     default y

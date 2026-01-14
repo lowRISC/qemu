@@ -226,3 +226,8 @@ apple_gfx_iosfc_unmap_memory(void *a, void *b, void *c, void *d, void *e, void *
 apple_gfx_iosfc_unmap_memory_region(void* mem, void *region) "unmapping @ %p from memory region %p"
 apple_gfx_iosfc_raise_irq(uint32_t vector) "vector=0x%x"
 
+# st7735
+st7735_reset(const char *msg) "%s"
+st7735_set(const char *msg, bool enable) "%s: %u"
+st7735_gpio(const char *line, bool enable) "%s: %u"
+st7735_cursor(const char *axis, uint16_t start, uint16_t end) "%s: %hu..%hu"
