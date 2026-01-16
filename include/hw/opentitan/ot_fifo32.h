@@ -96,14 +96,6 @@ ot_fifo32_peek_buf(const OtFifo32 *fifo, uint32_t max, uint32_t *num)
     return ret;
 }
 
-static inline void ot_fifo32_consume_all(OtFifo32 *fifo, uint32_t num)
-{
-    num = MIN(fifo->capacity - fifo->head, num);
-    fifo->head += num;
-    fifo->head %= fifo->capacity;
-    fifo->num -= num;
-}
-
 static inline void ot_fifo32_reset(OtFifo32 *fifo)
 {
     fifo->num = 0u;

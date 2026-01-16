@@ -101,14 +101,6 @@ static const uint8_t *fifo8_peekpop_bufptr(Fifo8 *fifo, uint32_t max,
     return ret;
 }
 
-void fifo8_consume_all(Fifo8 *fifo, uint32_t num)
-{
-    num = MIN(fifo->capacity - fifo->head, num);
-    fifo->head += num;
-    fifo->head %= fifo->capacity;
-    fifo->num -= num;
-}
-
 const uint8_t *fifo8_peek_bufptr(Fifo8 *fifo, uint32_t max, uint32_t *numptr)
 {
     return fifo8_peekpop_bufptr(fifo, max, 0, numptr, false);

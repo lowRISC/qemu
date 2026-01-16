@@ -108,7 +108,7 @@ static void ibexdemo_uart_xmit(IbexDemoUARTState *s)
     ret = qemu_chr_fe_write(&s->chr, buf, size);
 
     if (ret > 0) {
-        fifo8_consume_all(&s->tx_fifo, ret);
+        fifo8_drop(&s->tx_fifo, ret);
     }
 }
 

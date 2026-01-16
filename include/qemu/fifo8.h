@@ -166,18 +166,6 @@ const uint8_t *fifo8_peek_bufptr(Fifo8 *fifo, uint32_t max, uint32_t *numptr);
 void fifo8_drop(Fifo8 *fifo, uint32_t len);
 
 /**
- * fifo8_consume_all:
- * @fifo: fifo to consume from
- * @num: number of bytes to consume
- *
- * Remove data bytes from the FIFO. Behaviour is undefined if the FIFO is empty.
- * Clients are responsible for checking for emptyness using fifo8_is_empty().
- *
- */
-
-void fifo8_consume_all(Fifo8 *fifo, uint32_t num);
-
-/**
  * fifo8_reset:
  * @fifo: FIFO to reset
  *

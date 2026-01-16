@@ -369,7 +369,7 @@ static void ot_uart_xmit(OtUARTState *s)
         ret = qemu_chr_fe_write(&s->chr, buf, (int)size);
         /* if some characters where sent, remove them from the FIFO */
         if (ret >= 0) {
-            fifo8_consume_all(&s->tx_fifo, ret);
+            fifo8_drop(&s->tx_fifo, ret);
         }
     }
 
