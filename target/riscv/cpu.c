@@ -41,7 +41,7 @@
 /* RISC-V CPU definitions */
 static const char riscv_single_letter_exts[] = "IEMAFDQCBPVH";
 const uint32_t misa_bits[] = {RVI, RVE, RVM, RVA, RVF, RVD, RVV,
-                              RVC, RVS, RVU, RVH, RVG, RVB, 0};
+                              RVC, RVS, RVU, RVH, RVG, RVB, RVX, 0};
 
 /*
  * From vector_helper.c
@@ -1260,7 +1260,8 @@ static const MISAExtInfo misa_ext_info_arr[] = {
     MISA_EXT_INFO(RVH, "h", "Hypervisor"),
     MISA_EXT_INFO(RVV, "v", "Vector operations"),
     MISA_EXT_INFO(RVG, "g", "General purpose (IMAFD_Zicsr_Zifencei)"),
-    MISA_EXT_INFO(RVB, "b", "Bit manipulation (Zba_Zbb_Zbs)")
+    MISA_EXT_INFO(RVB, "b", "Bit manipulation (Zba_Zbb_Zbs)"),
+    MISA_EXT_INFO(RVX, "x", "Non-standard extensions")
 };
 
 static void riscv_cpu_validate_misa_mxl(RISCVCPUClass *mcc)
@@ -1462,6 +1463,7 @@ const RISCVCPUMultiExtConfig riscv_cpu_vendor_exts[] = {
 /* These are experimental so mark with 'x-' */
 const RISCVCPUMultiExtConfig riscv_cpu_experimental_exts[] = {
     MULTI_EXT_CFG_BOOL("x-svukte", ext_svukte, false),
+    MULTI_EXT_CFG_BOOL("x-zbr", ext_zbr, false),
 
     { },
 };
@@ -3142,7 +3144,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
 
     DEFINE_ABSTRACT_RISCV_CPU(TYPE_RISCV_CPU_LOWRISC_IBEX, TYPE_RISCV_VENDOR_CPU,
         .misa_mxl_max = MXL_RV32,
-        .misa_ext = RVI | RVM | RVC | RVU,
+        .misa_ext = RVI | RVM | RVC | RVU | RVX,
         .priv_spec = PRIV_VERSION_1_12_0,
         .cfg.max_satp_mode = VM_1_10_MBARE,
         .cfg.ext_zifencei = true,
