@@ -775,6 +775,15 @@ static RISCVException have_mseccfg(CPURISCVState *env, int csrno)
     return RISCV_EXCP_ILLEGAL_INST;
 }
 
+static RISCVException have_mseccfg32(CPURISCVState *env, int csrno)
+{
+    if (riscv_cpu_mxl(env) != MXL_RV32) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return have_mseccfg(env, csrno);
+}
+
 static RISCVException debug(CPURISCVState *env, int csrno)
 {
     if (riscv_cpu_cfg(env)->debug) {
@@ -5296,6 +5305,20 @@ static RISCVException write_mseccfg(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+static RISCVException read_mseccfgh(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    *val = 0u;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_mseccfgh(CPURISCVState *env, int csrno,
+                                    target_ulong val, uintptr_t ra)
+{
+    /* WARL: ignore all bits */
+    return RISCV_EXCP_NONE;
+}
+
 static RISCVException read_pmpcfg(CPURISCVState *env, int csrno,
                                   target_ulong *val)
 {
@@ -6164,7 +6187,9 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_VSIPH]       = { "vsiph",       aia_hmode32, NULL, NULL, rmw_vsiph },
 
     /* Physical Memory Protection */
-    [CSR_MSECCFG]    = { "mseccfg",   have_mseccfg, read_mseccfg, write_mseccfg,
+    [CSR_MSECCFG]    = { "mseccfg", have_mseccfg, read_mseccfg, write_mseccfg,
+                         .min_priv_ver = PRIV_VERSION_1_11_0           },
+    [CSR_MSECCFGH]   = { "mseccfgh", have_mseccfg32, read_mseccfgh, write_mseccfgh,
                          .min_priv_ver = PRIV_VERSION_1_11_0           },
     [CSR_PMPCFG0]    = { "pmpcfg0",   pmp, read_pmpcfg,  write_pmpcfg  },
     [CSR_PMPCFG1]    = { "pmpcfg1",   pmp, read_pmpcfg,  write_pmpcfg  },
