@@ -491,6 +491,10 @@ struct CPUArchState {
     uint64_t hstateen[SMSTATEEN_MAX_COUNT];
     uint64_t sstateen[SMSTATEEN_MAX_COUNT];
     uint64_t henvcfg;
+
+    /* Ibex custom CSRs */
+    target_ulong cpuctrlsts;
+    target_ulong secureseed;
 #endif
 
     /* Fields from here on are preserved across CPU reset. */
@@ -999,6 +1003,9 @@ target_ulong riscv_new_csr_seed(target_ulong new_value,
                                 target_ulong write_mask);
 
 const char *satp_mode_str(uint8_t satp_mode, bool is_32_bit);
+
+/* In ibex_csr.c */
+extern const RISCVCSR ibex_csr_list[];
 
 /* In th_csr.c */
 extern const RISCVCSR th_csr_list[];

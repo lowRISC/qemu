@@ -155,6 +155,8 @@ BOOL_FIELD(misa_w)
 
 BOOL_FIELD(short_isa_string)
 
+TYPED_FIELD(uint64_t, mtvec, 0)
+
 TYPED_FIELD(uint32_t, mvendorid, 0)
 TYPED_FIELD(uint64_t, marchid, 0)
 TYPED_FIELD(uint64_t, mimpid, 0)

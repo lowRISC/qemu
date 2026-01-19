@@ -19,13 +19,13 @@
 #ifndef HW_OPENTITAN_H
 #define HW_OPENTITAN_H
 
-#include "hw/riscv/riscv_hart.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/char/ibex_uart.h"
 #include "hw/timer/ibex_timer.h"
 #include "hw/ssi/ibex_spi_host.h"
 #include "hw/boards.h"
 #include "qom/object.h"
+#include "include/hw/riscv/riscv_hart.h"
 
 #define TYPE_RISCV_IBEX_SOC "riscv.lowrisc.ibex.soc"
 OBJECT_DECLARE_SIMPLE_TYPE(LowRISCIbexSoCState, RISCV_IBEX_SOC)

@@ -1031,7 +1031,18 @@ static RISCVException write_vcsr(CPURISCVState *env, int csrno,
 /* User Timers and Counters */
 static target_ulong get_ticks(bool shift)
 {
-    int64_t val = cpu_get_host_ticks();
+    int64_t val;
+
+#if !defined(CONFIG_USER_ONLY)
+    if (icount_enabled()) {
+        val = icount_get_raw();
+    } else {
+        val = cpu_get_host_ticks();
+    }
+#else
+    val = cpu_get_host_ticks();
+#endif
+
     target_ulong result = shift ? val >> 32 : val;
 
     return result;

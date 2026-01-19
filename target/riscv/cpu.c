@@ -1066,7 +1066,8 @@ static void riscv_cpu_set_irq(void *opaque, int irq, int level)
             }
             break;
         default:
-            g_assert_not_reached();
+            /* Handle platform / custom local interrupts */
+            riscv_cpu_update_mip(env, 1ULL << irq, BOOL_TO_MASK(level));
         }
     } else if (irq < (IRQ_LOCAL_MAX + IRQ_LOCAL_GUEST_MAX)) {
         /* Require H-extension for handling guest local interrupts */
@@ -2681,6 +2682,7 @@ static const Property riscv_cpu_properties[] = {
 
 #ifndef CONFIG_USER_ONLY
     DEFINE_PROP_UINT64("resetvec", RISCVCPU, env.resetvec, DEFAULT_RSTVEC),
+    DEFINE_PROP_UINT64("mtvec", RISCVCPU, cfg.mtvec, 0u),
     DEFINE_PROP_UINT64("mseccfg", RISCVCPU, cfg.mseccfg, 0u),
     DEFINE_PROP_ARRAY("pmp_cfg", RISCVCPU, cfg.pmp_cfg_count, cfg.pmp_cfg,
                       qdev_prop_uint8, uint8_t),
@@ -3064,20 +3066,20 @@ static const TypeInfo riscv_cpu_type_infos[] = {
         .misa_mxl_max = MXL_RV32,
     ),
 
-    DEFINE_RISCV_CPU(TYPE_RISCV_CPU_IBEX, TYPE_RISCV_VENDOR_CPU,
+    DEFINE_ABSTRACT_RISCV_CPU(TYPE_RISCV_CPU_LOWRISC_IBEX, TYPE_RISCV_VENDOR_CPU,
         .misa_mxl_max = MXL_RV32,
         .misa_ext = RVI | RVM | RVC | RVU,
         .priv_spec = PRIV_VERSION_1_12_0,
         .cfg.max_satp_mode = VM_1_10_MBARE,
         .cfg.ext_zifencei = true,
         .cfg.ext_zicsr = true,
-        .cfg.pmp = true,
-        .cfg.ext_smepmp = true,
 
-        .cfg.ext_zba = true,
-        .cfg.ext_zbb = true,
-        .cfg.ext_zbc = true,
-        .cfg.ext_zbs = true
+        .cfg.marchid = 0x16u,
+        .cfg.mtvec = 0x00000001u,
+
+#ifndef CONFIG_USER_ONLY
+        .custom_csrs = ibex_csr_list,
+#endif
     ),
 
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_SIFIVE_E31, TYPE_RISCV_CPU_SIFIVE_E,

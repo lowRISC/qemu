@@ -24,9 +24,6 @@ struct SSIBus {
     BusState parent_obj;
 };
 
-#define TYPE_SSI_BUS "SSI"
-OBJECT_DECLARE_SIMPLE_TYPE(SSIBus, SSI_BUS)
-
 DeviceState *ssi_get_cs(SSIBus *bus, uint8_t cs_index)
 {
     BusState *b = BUS(bus);

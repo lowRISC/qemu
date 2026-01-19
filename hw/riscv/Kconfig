@@ -7,6 +7,15 @@ config RISCV_NUMA
 config IBEX
     bool
 
+config IBEX_CLOCK_SRC
+    bool
+
+config IBEX_COMMON
+    bool
+
+config IBEX_GPIO
+    bool
+
 # RISC-V machines in alphabetical order
 
 config MICROCHIP_PFSOC
@@ -38,6 +47,9 @@ config OPENTITAN
     default y
     depends on RISCV32
     select IBEX
+    select IBEX_SPI_HOST
+    select IBEX_TIMER
+    select IBEX_UART
     select SIFIVE_PLIC
     select UNIMP
 
