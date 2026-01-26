@@ -20,6 +20,7 @@ config IBEX_GPIO
 
 config OT_DARJEELING
     bool
+    default y
     select IBEX
     select IBEX_CLOCK_SRC
     select IBEX_COMMON
@@ -70,6 +71,7 @@ config OT_DARJEELING
 
 config OT_EARLGREY
     bool
+    default y
     select IBEX
     select IBEX_CLOCK_SRC
     select IBEX_COMMON
@@ -118,6 +120,7 @@ config OT_EARLGREY
 
 config IBEXDEMO
     bool
+    default y
     select IBEX
     select IBEX_CLOCK_SRC
     select IBEX_COMMON
