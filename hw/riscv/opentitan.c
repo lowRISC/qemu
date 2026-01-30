@@ -128,7 +128,7 @@ static void lowrisc_ibex_soc_init(Object *obj)
 {
     LowRISCIbexSoCState *s = RISCV_IBEX_SOC(obj);
 
-    object_initialize_child(obj, "cpu", &s->cpu, TYPE_RISCV_CPU_LOWRISC_IBEX);
+    object_initialize_child(obj, "cpus", &s->cpus, TYPE_RISCV_HART_ARRAY);
 
     object_initialize_child(obj, "plic", &s->plic, TYPE_SIFIVE_PLIC);
 
@@ -152,7 +152,7 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
     MemoryRegion *sys_mem = get_system_memory();
     int i;
 
-    Object *cpu = OBJECT(&s->cpu);
+    Object *cpu = OBJECT(&s->cpus.harts[0]);
     object_property_set_int(cpu, "resetvec", s->resetvec,
                             &error_fatal);
     object_property_set_bool(cpu, "m", true, &error_fatal);
@@ -162,7 +162,7 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
     object_property_set_bool(cpu, "zbc", true, &error_fatal);
     object_property_set_bool(cpu, "zbs", true, &error_fatal);
     object_property_set_bool(cpu, "smepmp", true, &error_fatal);
-    qdev_realize(DEVICE(&s->cpu), NULL, &error_fatal);
+    qdev_realize(DEVICE(&s->cpus), NULL, &error_fatal);
 
     /* Boot ROM */
     memory_region_init_rom(&s->rom, OBJECT(dev_soc), "riscv.lowrisc.ibex.rom",
@@ -198,10 +198,10 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->plic), 0, memmap[IBEX_DEV_PLIC].base);
 
     for (i = 0; i < ms->smp.cpus; i++) {
-        CPUState *cpu = qemu_get_cpu(i);
+        CPUState *cpu_state = qemu_get_cpu(i);
 
         qdev_connect_gpio_out(DEVICE(&s->plic), ms->smp.cpus + i,
-                              qdev_get_gpio_in(DEVICE(cpu), IRQ_M_EXT));
+                              qdev_get_gpio_in(DEVICE(cpu_state), IRQ_M_EXT));
     }
 
     /* UART */
