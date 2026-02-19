@@ -792,6 +792,25 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     if (kvm_enabled()) {
         kvm_riscv_reset_vcpu(cpu);
     }
+
+    /* default physical memory protection configuration */
+    const RISCVCPUConfig *cfg = &cpu->cfg;
+    g_assert(cfg->pmp_cfg_count <= MAX_RISCV_PMPS);
+    g_assert(cfg->pmp_addr_count <= MAX_RISCV_PMPS);
+    for (i = 0; i < MAX_RISCV_PMPS; i++) {
+        env->pmp_state.pmp[i].cfg_reg =
+            i < cfg->pmp_cfg_count ? cfg->pmp_cfg[i] : 0;
+    }
+    for (i = 0; i < MAX_RISCV_PMPS; i++) {
+        env->pmp_state.pmp[i].addr_reg =
+            i < cfg->pmp_addr_count ? (target_ulong)cfg->pmp_addr[i] : 0;
+    }
+    for (i = 0; i < MAX_RISCV_PMPS; i++) {
+        pmp_update_rule_addr(env, i);
+    }
+    pmp_update_rule_nums(env);
+
+    env->mseccfg = (target_ulong)cfg->mseccfg;
 #endif
 }
 
@@ -2670,6 +2689,11 @@ static const Property riscv_cpu_properties[] = {
                        DEFAULT_RNMI_IRQVEC),
     DEFINE_PROP_UINT64("rnmi-exception-vector", RISCVCPU, env.rnmi_excpvec,
                        DEFAULT_RNMI_EXCPVEC),
+    DEFINE_PROP_UINT64("mseccfg", RISCVCPU, cfg.mseccfg, 0u),
+    DEFINE_PROP_ARRAY("pmp_cfg", RISCVCPU, cfg.pmp_cfg_count, cfg.pmp_cfg,
+                      qdev_prop_uint8, uint8_t),
+    DEFINE_PROP_ARRAY("pmp_addr", RISCVCPU, cfg.pmp_addr_count, cfg.pmp_addr,
+                      qdev_prop_uint64, uint64_t),
 #endif
 
     DEFINE_PROP_BOOL("short-isa-string", RISCVCPU, cfg.short_isa_string, false),
@@ -3043,20 +3067,32 @@ static const TypeInfo riscv_cpu_type_infos[] = {
         .misa_mxl_max = MXL_RV32,
     ),
 
-    DEFINE_RISCV_CPU(TYPE_RISCV_CPU_IBEX, TYPE_RISCV_VENDOR_CPU,
+
+    DEFINE_ABSTRACT_RISCV_CPU(TYPE_RISCV_CPU_LOWRISC_IBEX,
+        TYPE_RISCV_VENDOR_CPU,
         .misa_mxl_max = MXL_RV32,
         .misa_ext = RVI | RVM | RVC | RVU,
         .priv_spec = PRIV_VERSION_1_12_0,
         .cfg.max_satp_mode = VM_1_10_MBARE,
         .cfg.ext_zifencei = true,
         .cfg.ext_zicsr = true,
+
+        .cfg.marchid = 0x16u,
+
+#ifndef CONFIG_USER_ONLY
+        .custom_csrs = ibex_csr_list,
+#endif
+    ),
+
+    DEFINE_RISCV_CPU(TYPE_RISCV_CPU_LOWRISC_OPENTITAN,
+        TYPE_RISCV_CPU_LOWRISC_IBEX,
         .cfg.pmp = true,
         .cfg.ext_smepmp = true,
 
         .cfg.ext_zba = true,
         .cfg.ext_zbb = true,
         .cfg.ext_zbc = true,
-        .cfg.ext_zbs = true
+        .cfg.ext_zbs = true,
     ),
 
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_SIFIVE_E31, TYPE_RISCV_CPU_SIFIVE_E,
