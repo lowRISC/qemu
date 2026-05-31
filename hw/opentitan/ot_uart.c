@@ -106,6 +106,16 @@ REG32(TIMEOUT_CTRL, 0x30u)
      INTR_RX_OVERFLOW_MASK | INTR_RX_FRAME_ERR_MASK | INTR_RX_BREAK_ERR_MASK | \
      INTR_RX_TIMEOUT_MASK | INTR_RX_PARITY_ERR_MASK | INTR_TX_EMPTY_MASK)
 
+/*
+ * Status-type interrupts (tx_watermark, rx_watermark, tx_empty per uart.hjson).
+ * Unlike event-type interrupts, their INTR_STATE bits are read-only (ro): the
+ * hardware drives them from the live FIFO condition every cycle rather than
+ * latching, so INTR_STATE writes do not affect them and they de-assert
+ * automatically once the condition clears (prim_intr_hw.sv, IntrT="Status").
+ */
+#define INTR_STATUS_MASK \
+    (INTR_TX_WATERMARK_MASK | INTR_RX_WATERMARK_MASK | INTR_TX_EMPTY_MASK)
+
 #define CTRL_MASK \
     (R_CTRL_TX_MASK | R_CTRL_RX_MASK | R_CTRL_NF_MASK | R_CTRL_SLPBK_MASK | \
      R_CTRL_LLPBK_MASK | R_CTRL_PARITY_EN_MASK | R_CTRL_PARITY_ODD_MASK | \
@@ -114,9 +124,10 @@ REG32(TIMEOUT_CTRL, 0x30u)
 #define CTRL_SUP_MASK \
     (R_CTRL_RX_MASK | R_CTRL_TX_MASK | R_CTRL_SLPBK_MASK | R_CTRL_NCO_MASK)
 
+/* FIFO depths match uart_reg_pkg.sv (TxFifoDepth=32, RxFifoDepth=64). */
 #define OT_UART_NCO_BITS     16u
-#define OT_UART_TX_FIFO_SIZE 128u
-#define OT_UART_RX_FIFO_SIZE 128u
+#define OT_UART_TX_FIFO_SIZE 32u
+#define OT_UART_RX_FIFO_SIZE 64u
 #define OT_UART_IRQ_NUM      9u
 
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
@@ -157,7 +168,6 @@ struct OtUARTState {
 
     Fifo8 tx_fifo;
     Fifo8 rx_fifo;
-    uint32_t tx_watermark_level;
     bool in_break;
     guint watch_tag;
     unsigned pclk; /* Current input clock */
@@ -181,7 +191,15 @@ static uint32_t ot_uart_get_tx_watermark_level(const OtUARTState *s)
     uint32_t tx_ilvl = (s->regs[R_FIFO_CTRL] & R_FIFO_CTRL_TXILVL_MASK) >>
                        R_FIFO_CTRL_TXILVL_SHIFT;
 
-    return tx_ilvl < 7u ? (1u << tx_ilvl) : 64u;
+    /*
+     * Power-of-two thresholds, matching uart_core.sv. TxFifoDepthW == 6 for a
+     * 32-entry FIFO, so the threshold saturates at half the FIFO depth (16)
+     * once txilvl >= TxFifoDepthW - 2 == 4.
+     */
+    if (tx_ilvl >= 4u) {
+        return OT_UART_TX_FIFO_SIZE / 2u;
+    }
+    return 1u << tx_ilvl;
 }
 
 static uint32_t ot_uart_get_rx_watermark_level(const OtUARTState *s)
@@ -189,15 +207,65 @@ static uint32_t ot_uart_get_rx_watermark_level(const OtUARTState *s)
     uint32_t rx_ilvl = (s->regs[R_FIFO_CTRL] & R_FIFO_CTRL_RXILVL_MASK) >>
                        R_FIFO_CTRL_RXILVL_SHIFT;
 
-    return rx_ilvl < 7u ? (1u << rx_ilvl) : 126u;
+    /*
+     * Power-of-two thresholds, matching uart_core.sv. RxFifoDepthW == 7 for a
+     * 64-entry FIFO: rxilvl 6 saturates at RxFifoDepth - 2 (62), and rxilvl 7
+     * selects a threshold the FIFO can never reach (2*RxFifoDepth - 1), which
+     * disables the interrupt.
+     */
+    if (rx_ilvl > 6u) {
+        return OT_UART_RX_FIFO_SIZE * 2u - 1u;
+    }
+    if (rx_ilvl == 6u) {
+        return OT_UART_RX_FIFO_SIZE - 2u;
+    }
+    return 1u << rx_ilvl;
+}
+
+/*
+ * Compute the live values of the status-type interrupt conditions from the
+ * current FIFO state. These bits are not stored in regs[R_INTR_STATE]; they are
+ * recomputed on every INTR_STATE read and IRQ update so that the interrupt
+ * tracks the hardware condition (matching prim_intr_hw IntrT="Status").
+ */
+static uint32_t ot_uart_status_intr_bits(OtUARTState *s)
+{
+    uint32_t bits = 0;
+
+    /* rx_watermark: asserted while RX FIFO fill level >= threshold. */
+    if ((uint32_t)fifo8_num_used(&s->rx_fifo) >=
+        ot_uart_get_rx_watermark_level(s)) {
+        bits |= INTR_RX_WATERMARK_MASK;
+    }
+    /* tx_watermark: asserted while TX FIFO has drained below the threshold. */
+    if ((uint32_t)fifo8_num_used(&s->tx_fifo) <
+        ot_uart_get_tx_watermark_level(s)) {
+        bits |= INTR_TX_WATERMARK_MASK;
+    }
+    /* tx_empty: asserted while the TX FIFO is empty. */
+    if (fifo8_is_empty(&s->tx_fifo)) {
+        bits |= INTR_TX_EMPTY_MASK;
+    }
+
+    return bits;
+}
+
+/*
+ * The architectural INTR_STATE value: latched event-type bits (held in
+ * regs[R_INTR_STATE]) combined with the live status-type bits.
+ */
+static uint32_t ot_uart_intr_state(OtUARTState *s)
+{
+    return (s->regs[R_INTR_STATE] & ~INTR_STATUS_MASK) |
+           ot_uart_status_intr_bits(s);
 }
 
 static void ot_uart_update_irqs(OtUARTState *s)
 {
-    uint32_t state_masked = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
+    uint32_t state = ot_uart_intr_state(s);
+    uint32_t state_masked = state & s->regs[R_INTR_ENABLE];
 
-    trace_ot_uart_irqs(s->ot_id, s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
-                       state_masked);
+    trace_ot_uart_irqs(s->ot_id, state, s->regs[R_INTR_ENABLE], state_masked);
 
     for (int index = 0; index < OT_UART_IRQ_NUM; index++) {
         bool level = (state_masked & (1U << index)) != 0;
@@ -256,7 +324,6 @@ static int ot_uart_can_receive(void *opaque)
 static void ot_uart_receive(void *opaque, const uint8_t *buf, int size)
 {
     OtUARTState *s = opaque;
-    uint32_t rx_watermark_level;
     size_t count = MIN(fifo8_num_free(&s->rx_fifo), (size_t)size);
 
     if (size && !s->toggle_break) {
@@ -264,19 +331,16 @@ static void ot_uart_receive(void *opaque, const uint8_t *buf, int size)
         s->in_break = false;
     }
 
-    for (int index = 0; index < size; index++) {
+    for (size_t index = 0; index < count; index++) {
         fifo8_push(&s->rx_fifo, buf[index]);
     }
 
-    /* update INTR_STATE */
-    if (count != size) {
+    /* rx_overflow is event-type: latch it if the FIFO could not absorb all. */
+    if (count != (size_t)size) {
         s->regs[R_INTR_STATE] |= INTR_RX_OVERFLOW_MASK;
     }
-    rx_watermark_level = ot_uart_get_rx_watermark_level(s);
-    if (rx_watermark_level && size >= rx_watermark_level) {
-        s->regs[R_INTR_STATE] |= INTR_RX_WATERMARK_MASK;
-    }
 
+    /* rx_watermark is status-type: computed live in ot_uart_update_irqs(). */
     ot_uart_update_irqs(s);
 }
 
@@ -312,6 +376,12 @@ static uint8_t ot_uart_read_rx_fifo(OtUARTState *s)
 
     val = fifo8_pop(&s->rx_fifo);
 
+    /*
+     * rx_watermark is status-type: draining the FIFO may drop it below the
+     * threshold, which must de-assert the interrupt line immediately.
+     */
+    ot_uart_update_irqs(s);
+
     if (ot_uart_is_rx_enabled(s) && !ot_uart_is_sys_loopack_enabled(s)) {
         qemu_chr_fe_accept_input(&s->chr);
     }
@@ -322,12 +392,11 @@ static uint8_t ot_uart_read_rx_fifo(OtUARTState *s)
 static void ot_uart_reset_tx_fifo(OtUARTState *s)
 {
     fifo8_reset(&s->tx_fifo);
-    s->regs[R_INTR_STATE] |= INTR_TX_EMPTY_MASK;
+    /*
+     * tx_done is event-type and latched here; tx_empty and tx_watermark are
+     * status-type and follow the (now empty) FIFO live via ot_uart_update_irqs.
+     */
     s->regs[R_INTR_STATE] |= INTR_TX_DONE_MASK;
-    if (s->tx_watermark_level) {
-        s->regs[R_INTR_STATE] |= INTR_TX_WATERMARK_MASK;
-        s->tx_watermark_level = 0;
-    }
 }
 
 static void ot_uart_xmit(OtUARTState *s)
@@ -373,15 +442,10 @@ static void ot_uart_xmit(OtUARTState *s)
         }
     }
 
-    /* update INTR_STATE */
+    /* update INTR_STATE: tx_done is event-type and latched on drain.
+     * tx_empty/tx_watermark are status-type and tracked live in update_irqs. */
     if (fifo8_is_empty(&s->tx_fifo)) {
-        s->regs[R_INTR_STATE] |= INTR_TX_EMPTY_MASK;
         s->regs[R_INTR_STATE] |= INTR_TX_DONE_MASK;
-    }
-    if (s->tx_watermark_level &&
-        fifo8_num_used(&s->tx_fifo) < s->tx_watermark_level) {
-        s->regs[R_INTR_STATE] |= INTR_TX_WATERMARK_MASK;
-        s->tx_watermark_level = 0;
     }
 
     ot_uart_update_irqs(s);
@@ -409,18 +473,11 @@ static void uart_write_tx_fifo(OtUARTState *s, uint8_t val)
 
     fifo8_push(&s->tx_fifo, val);
 
-    s->tx_watermark_level = ot_uart_get_tx_watermark_level(s);
-    if (fifo8_num_used(&s->tx_fifo) < s->tx_watermark_level) {
-        /*
-         * TX watermark interrupt is raised when FIFO depth goes from above
-         * watermark to below. If we haven't reached watermark, reset cached
-         * watermark level
-         */
-        s->tx_watermark_level = 0;
-    }
-
     if (ot_uart_is_tx_enabled(s)) {
         ot_uart_xmit(s);
+    } else {
+        /* tx_watermark/tx_empty are status-type: refresh from the new level. */
+        ot_uart_update_irqs(s);
     }
 }
 
@@ -445,6 +502,9 @@ static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
     hwaddr reg = R32_OFF(addr);
     switch (reg) {
     case R_INTR_STATE:
+        /* Status-type bits reflect the live FIFO condition, not a latch. */
+        val32 = ot_uart_intr_state(s);
+        break;
     case R_INTR_ENABLE:
     case R_CTRL:
     case R_FIFO_CTRL:
@@ -553,8 +613,14 @@ static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
 
     switch (reg) {
     case R_INTR_STATE:
-        val32 &= INTR_MASK;
-        s->regs[R_INTR_STATE] &= ~val32; /* RW1C */
+        /*
+         * Only the event-type bits are RW1C; the status-type bits are ro and
+         * are never stored in regs[R_INTR_STATE] (they are recomputed live), so
+         * mask them out here and leave regs[R_INTR_STATE] holding event bits
+         * only.
+         */
+        val32 &= INTR_MASK & ~INTR_STATUS_MASK;
+        s->regs[R_INTR_STATE] &= ~val32; /* RW1C (event-type bits only) */
         ot_uart_update_irqs(s);
         break;
     case R_INTR_ENABLE:
@@ -601,12 +667,15 @@ static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 & (R_FIFO_CTRL_RXILVL_MASK | R_FIFO_CTRL_TXILVL_MASK);
         if (val32 & R_FIFO_CTRL_RXRST_MASK) {
             ot_uart_reset_rx_fifo(s);
-            ot_uart_update_irqs(s);
         }
         if (val32 & R_FIFO_CTRL_TXRST_MASK) {
             ot_uart_reset_tx_fifo(s);
-            ot_uart_update_irqs(s);
         }
+        /*
+         * Changing RXILVL/TXILVL moves the status-type watermark thresholds, so
+         * re-evaluate the interrupt lines unconditionally.
+         */
+        ot_uart_update_irqs(s);
         break;
     case R_OVRD:
         if (val32 & R_OVRD_TXEN_MASK) {
@@ -680,7 +749,6 @@ static void ot_uart_reset_enter(Object *obj, ResetType type)
 
     memset(&s->regs[0], 0, sizeof(s->regs));
 
-    s->tx_watermark_level = 0;
     for (unsigned index = 0; index < ARRAY_SIZE(s->irqs); index++) {
         ibex_irq_set(&s->irqs[index], 0);
     }
