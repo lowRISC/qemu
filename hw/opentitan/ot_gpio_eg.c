@@ -340,14 +340,25 @@ static uint64_t ot_gpio_eg_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_STATE:
     case R_INTR_ENABLE:
     case R_DATA_IN:
-    case R_DIRECT_OUT:
-    case R_DIRECT_OE:
     case R_INTR_CTRL_EN_RISING:
     case R_INTR_CTRL_EN_FALLING:
     case R_INTR_CTRL_EN_LVLHIGH:
     case R_INTR_CTRL_EN_LVLLOW:
     case R_CTRL_EN_INPUT_FILTER:
         val32 = s->regs[reg];
+        break;
+    case R_DIRECT_OUT:
+        /*
+         * DIRECT_OUT and MASKED_OUT_{LOWER,UPPER} are alternate views of the
+         * same output data register: a masked write must be observable through
+         * a DIRECT_OUT read. Return the live output value rather than the last
+         * value written specifically through DIRECT_OUT.
+         */
+        val32 = s->data_out;
+        break;
+    case R_DIRECT_OE:
+        /* Same aliasing applies to the output-enable register. */
+        val32 = s->data_oe;
         break;
     case R_MASKED_OUT_LOWER:
         val32 = s->data_out & MASKED_VALUE_MASK;
