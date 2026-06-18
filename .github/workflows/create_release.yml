@@ -13,7 +13,6 @@ jobs:
       contents: write
     env:
       BUILD_DIR: build
-      BRANCH_NAME: ${{ github.event.repository.default_branch }}
       RELEASE_BIN_ARCHIVE: qemu-ot-earlgrey-${{ inputs.release_tag }}-x86_64-unknown-linux-gnu.tar.gz
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -45,7 +44,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create \
-            --target "$BRANCH_NAME" \
+            --target "$GITHUB_SHA" \
             ${{ inputs.release_tag }} \
             --generate-notes \
             "$RELEASE_BIN_ARCHIVE#QEMU system emulator"
