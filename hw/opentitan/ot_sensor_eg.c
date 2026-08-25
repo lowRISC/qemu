@@ -245,6 +245,7 @@ static uint64_t ot_sensor_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
         if (!s->regs[reg]) {
             /* fake init: reports initialized */
             s->regs[reg] |= R_STATUS_AST_INIT_DONE_MASK;
+            s->regs[reg] |= R_STATUS_IO_POK_MASK;
         }
         val32 = s->regs[reg];
         break;
