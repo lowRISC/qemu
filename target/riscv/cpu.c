@@ -3154,6 +3154,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
 
         .cfg.marchid = 0x16u,
         .cfg.mtvec = 0x00000001u,
+        .cfg.pmu_mask = MAKE_64BIT_MASK(3, 29),
 
 #ifndef CONFIG_USER_ONLY
         .custom_csrs = ibex_csr_list,
