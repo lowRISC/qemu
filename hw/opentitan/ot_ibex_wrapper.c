@@ -44,6 +44,8 @@
 #include "qemu/osdep.h"
 #include <string.h>
 #include "qemu/log.h"
+#include "qemu/main-loop.h"
+#include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "chardev/char-fe.h"
@@ -206,6 +208,8 @@ typedef struct {
     ot_ibex_wrapper_reg_read_fn read;
     ot_ibex_wrapper_reg_write_fn write;
     uint32_t mask; /* the mask to apply to the written value */
+    uint8_t
+        permit; /* RV_CORE_IBEX_CFG_PERMIT byte-enable mask (0 = unmapped) */
 } OtIbexWrapperAccess;
 
 struct OtIbexWrapperState {
@@ -227,7 +231,10 @@ struct OtIbexWrapperState {
     uint8_t cpu_en_bm;
     bool entropy_requested;
     bool edn_connected;
+    uint32_t rnd_inval_reads;
+    uint64_t rnd_inval_until_ns;
     bool esc_rx;
+    uint32_t nmi_in;
 
     char *ot_id;
     char *lc_ignore_ids;
@@ -290,6 +297,14 @@ static void ot_ibex_wrapper_update_alerts(OtIbexWrapperState *s)
 
     if (s->regs.sw_fatal_err != OT_MULTIBITBOOL4_FALSE) {
         level |= ALERT_FATAL_SW_MASK;
+    }
+    if (s->regs.sw_recov_err != OT_MULTIBITBOOL4_FALSE) {
+        level |= ALERT_RECOV_SW_MASK;
+    }
+    if (s->regs.err_status &
+        (ERR_STATUS_REG_INTG_MASK | ERR_STATUS_FATAL_INTG_MASK |
+         ERR_STATUS_FATAL_CORE_MASK)) {
+        level |= ALERT_FATAL_HW_MASK;
     }
 
     for (unsigned ix = 0; ix < NUM_ALERTS; ix++) {
@@ -871,7 +886,9 @@ static void ot_ibex_wrapper_update_exec(OtIbexWrapperState *s)
     if (enable) {
         cs->halted = 0;
         cs->disabled = false;
-        cpu_resume(cs);
+        if (runstate_is_running()) {
+            cpu_resume(cs);
+        }
     } else {
         cs->disabled = true;
         cpu_pause(cs);
@@ -908,6 +925,29 @@ static void ot_ibex_wrapper_cpu_enable_recv(void *opaque, int n, int level)
     ot_ibex_wrapper_update_exec(s);
 }
 
+extern void riscv_cpu_set_rnmi(CPUState *cpu, uint32_t irq, bool level);
+extern void riscv_cpu_set_rnmi_int(CPUState *cpu, uint32_t cause,
+                                   uint64_t mtval);
+
+void ot_ibex_wrapper_raise_load_integrity_error(OtIbexWrapperState *s,
+                                                hwaddr addr)
+{
+    s->regs.err_status |= ERR_STATUS_FATAL_INTG_MASK;
+    ot_ibex_wrapper_update_alerts(s);
+    if (s->cpu) {
+        riscv_cpu_set_rnmi_int(s->cpu, 0, addr);
+    }
+}
+
+static void ot_ibex_wrapper_update_nmi(OtIbexWrapperState *s)
+{
+    s->regs.nmi_state |= s->nmi_in;
+    if (s->cpu) {
+        bool irq_nm = (s->regs.nmi_state & s->regs.nmi_enable) != 0;
+        riscv_cpu_set_rnmi(s->cpu, 31, irq_nm);
+    }
+}
+
 static void ot_ibex_wrapper_escalate_rx(void *opaque, int n, int level)
 {
     OtIbexWrapperState *s = opaque;
@@ -916,9 +956,26 @@ static void ot_ibex_wrapper_escalate_rx(void *opaque, int n, int level)
 
     trace_ot_ibex_wrapper_escalate_rx(s->ot_id ?: "", (bool)level);
 
-    s->esc_rx = (bool)level;
+    if (level) {
+        s->nmi_in |= NMI_ALERT_EN_MASK;
+    } else {
+        s->nmi_in &= ~NMI_ALERT_EN_MASK;
+    }
+    ot_ibex_wrapper_update_nmi(s);
+}
 
-    ot_ibex_wrapper_update_exec(s);
+static void ot_ibex_wrapper_wdog_bark_rx(void *opaque, int n, int level)
+{
+    OtIbexWrapperState *s = opaque;
+
+    g_assert(n == 0);
+
+    if (level) {
+        s->nmi_in |= NMI_WDOG_EN_MASK;
+    } else {
+        s->nmi_in &= ~NMI_WDOG_EN_MASK;
+    }
+    ot_ibex_wrapper_update_nmi(s);
 }
 
 /*
@@ -940,6 +997,29 @@ static uint32_t ot_ibex_wrapper_read_reg(OtIbexWrapperState *s, unsigned reg)
     return *s->access_regs[reg];
 }
 
+static bool ot_ibex_wrapper_rnd_is_fetching(OtIbexWrapperState *s)
+{
+    if (s->rnd_inval_reads > 0) {
+        if (qemu_clock_get_ns(OT_VIRTUAL_CLOCK) < s->rnd_inval_until_ns) {
+            s->rnd_inval_reads--;
+            return true;
+        }
+        s->rnd_inval_reads = 0;
+    }
+    if (!(s->regs.rnd_status & RND_STATUS_RND_DATA_VALID_MASK)) {
+        ot_ibex_wrapper_request_entropy(s);
+        if (bql_locked()) {
+            for (int i = 0; i < 4 && !(s->regs.rnd_status &
+                                       RND_STATUS_RND_DATA_VALID_MASK);
+                 i++) {
+                qemu_clock_run_timers(OT_VIRTUAL_CLOCK);
+                aio_bh_poll(qemu_get_aio_context());
+            }
+        }
+    }
+    return false;
+}
+
 static uint32_t
 ot_ibex_wrapper_read_rnd_data(OtIbexWrapperState *s, unsigned reg)
 {
@@ -950,15 +1030,20 @@ ot_ibex_wrapper_read_rnd_data(OtIbexWrapperState *s, unsigned reg)
         return 0;
     }
 
+    if (ot_ibex_wrapper_rnd_is_fetching(s)) {
+        return 0;
+    }
+
     uint32_t value = s->regs.rnd_data;
-    if (!(s->regs.rnd_status & RND_STATUS_RND_DATA_VALID_MASK)) {
+    if (s->regs.rnd_status & RND_STATUS_RND_DATA_VALID_MASK) {
+        s->regs.rnd_data = 0;
+        s->regs.rnd_status = 0;
+        s->rnd_inval_reads = 3;
+        s->rnd_inval_until_ns = qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + 500;
+    } else {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Read invalid entropy data 0x%08x\n",
                       __func__, value);
     }
-    s->regs.rnd_data = 0;
-    s->regs.rnd_status = 0;
-
-    ot_ibex_wrapper_request_entropy(s);
 
     return value;
 }
@@ -973,8 +1058,8 @@ ot_ibex_wrapper_read_rnd_status(OtIbexWrapperState *s, unsigned reg)
         return 0;
     }
 
-    if (!(s->regs.rnd_status & RND_STATUS_RND_DATA_VALID_MASK)) {
-        ot_ibex_wrapper_request_entropy(s);
+    if (ot_ibex_wrapper_rnd_is_fetching(s)) {
+        return 0;
     }
 
     return s->regs.rnd_status;
@@ -1109,6 +1194,7 @@ static void ot_ibex_wrapper_write_nmi_enable(OtIbexWrapperState *s,
     (void)reg;
 
     s->regs.nmi_enable |= value; /* RW1S */
+    ot_ibex_wrapper_update_nmi(s);
 }
 
 static void ot_ibex_wrapper_write_nmi_state(OtIbexWrapperState *s, unsigned reg,
@@ -1116,19 +1202,17 @@ static void ot_ibex_wrapper_write_nmi_state(OtIbexWrapperState *s, unsigned reg,
 {
     (void)reg;
 
-    qemu_log_mask(LOG_UNIMP, "%s: %s: %s is not supported\n", __func__,
-                  s->ot_id, REG_NAME(s, reg));
-
     s->regs.nmi_state &= ~value; /* RW1C */
+    ot_ibex_wrapper_update_nmi(s);
 }
 
 static void ot_ibex_wrapper_write_err_status(OtIbexWrapperState *s,
                                              unsigned reg, uint32_t value)
 {
-    qemu_log_mask(LOG_UNIMP, "%s: %s: %s is not supported\n", __func__,
-                  s->ot_id, REG_NAME(s, reg));
+    (void)reg;
 
     s->regs.err_status &= ~value; /* RW1C */
+    ot_ibex_wrapper_update_alerts(s);
 }
 
 static void ot_ibex_wrapper_write_dv_sim_status(OtIbexWrapperState *s,
@@ -1187,6 +1271,17 @@ static void ot_ibex_wrapper_write_dv_sim_log(OtIbexWrapperState *s,
         s->regs.dv_sim_win[reg] = value;
         break;
     }
+}
+
+static bool ot_ibex_wrapper_regs_accepts(
+    void *opaque, hwaddr addr, unsigned size, bool is_write, MemTxAttrs attrs)
+{
+    OtIbexWrapperState *s = opaque;
+    (void)attrs;
+    hwaddr reg = R32_OFF(addr);
+    uint8_t permit = reg < s->reg_count ? s->access_table[reg].permit : 0u;
+    uint8_t reg_be = (uint8_t)(((1u << size) - 1u) << (addr & 0x3u));
+    return permit != 0u && (!is_write || (permit & ~reg_be) == 0u);
 }
 
 static uint64_t
@@ -1310,10 +1405,15 @@ static void ot_ibex_wrapper_fill_tables(OtIbexWrapperState *s)
     s->access_table[R32_DYN_POS(s, dv_sim_win[0u])].read =
         &ot_ibex_wrapper_read_zero;
 
-    /* assign writers */
+    /* assign writers and default permits */
     for (rix = 0; rix < s->reg_count; rix++) {
         s->access_table[rix].write = &ot_ibex_wrapper_write_reg;
         s->access_table[rix].mask = UINT32_MAX;
+        s->access_table[rix].permit = 0xfu;
+    }
+    for (rix = R32_DYN_POS(s, _reserved[0]);
+         rix < R32_DYN_POS(s, dv_sim_win[0]); rix++) {
+        s->access_table[rix].permit = 0u;
     }
 
     s->access_table[R32_DYN_POS(s, alert_test)].write =
@@ -1339,24 +1439,33 @@ static void ot_ibex_wrapper_fill_tables(OtIbexWrapperState *s)
         &ot_ibex_wrapper_write_dv_sim_log;
 
     s->access_table[R32_DYN_POS(s, alert_test)].mask = ALERT_MASK;
+    s->access_table[R32_DYN_POS(s, alert_test)].permit = 0x1u;
     s->access_table[R32_DYN_POS(s, sw_recov_err)].mask =
         R_SW_RECOV_ERR_VAL_MASK;
+    s->access_table[R32_DYN_POS(s, sw_recov_err)].permit = 0x1u;
     /* this register is extended in QEMU, HW mask is applied in HW handler */
     s->access_table[R32_DYN_POS(s, sw_fatal_err)].mask = UINT32_MAX;
+    s->access_table[R32_DYN_POS(s, sw_fatal_err)].permit = 0x1u;
     s->access_table[R32_DYN_POS(s, nmi_enable)].mask = NMI_MASK;
+    s->access_table[R32_DYN_POS(s, nmi_enable)].permit = 0x1u;
     s->access_table[R32_DYN_POS(s, nmi_state)].mask = NMI_MASK;
+    s->access_table[R32_DYN_POS(s, nmi_state)].permit = 0x1u;
     s->access_table[R32_DYN_POS(s, err_status)].mask = ERR_STATUS_MASK;
+    s->access_table[R32_DYN_POS(s, err_status)].permit = 0x3u;
+    s->access_table[R32_DYN_POS(s, rnd_status)].permit = 0x1u;
 
     unsigned base = FIRST_REMAP_REG_POS;
     for (unsigned aix = 0; aix < ACCESS_COUNT; aix++) {
         for (unsigned mix = 0; mix < s->num_regions; mix++) {
             s->access_table[base + mix].write = &ot_ibex_wrapper_write_regwen;
             s->access_table[base + mix].mask = REGWEN_EN_MASK;
+            s->access_table[base + mix].permit = 0x1u;
         }
         base += s->num_regions;
         for (unsigned mix = 0; mix < s->num_regions; mix++) {
             s->access_table[base + mix].write = &ot_ibex_wrapper_write_remap;
-            s->access_table[base + mix].mask = UINT32_MAX;
+            s->access_table[base + mix].mask = ADDR_EN_MASK;
+            s->access_table[base + mix].permit = 0x1u;
         }
         base += s->num_regions;
         for (unsigned mix = 0; mix < s->num_regions; mix++) {
@@ -1403,6 +1512,7 @@ static const MemoryRegionOps ot_ibex_wrapper_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_ibex_wrapper_regs_accepts,
 };
 
 static void ot_ibex_wrapper_reset_enter(Object *obj, ResetType type)
@@ -1449,15 +1559,27 @@ static void ot_ibex_wrapper_reset_enter(Object *obj, ResetType type)
     s->regs.sw_recov_err = OT_MULTIBITBOOL4_FALSE;
     s->regs.sw_fatal_err = OT_MULTIBITBOOL4_FALSE;
     for (unsigned aix = 0; aix < ACCESS_COUNT; aix++) {
+        memset(s->regs.remap[aix], 0,
+               (size_t)s->num_regions * sizeof(OtIbexRemap));
         for (unsigned rix = 0; rix < (unsigned)s->num_regions; rix++) {
             s->regs.remap[aix][rix].regwen = 0x1u;
+            if (!s->alias_mode && s->vmapper) {
+                ot_ibex_wrapper_update_remap_vmap(s, (OtIbexRemapAccess)aix,
+                                                  rix);
+            }
         }
     }
+    ot_ibex_wrapper_update_alerts(s);
 
     /* 'QMU_' in LE, _ is the QEMU version stored in the MSB */
     s->regs.fpga_info = 0x00554d51u + (((uint32_t)s->qemu_version) << 24u);
     s->entropy_requested = false;
+    s->rnd_inval_reads = 0;
+    s->rnd_inval_until_ns = 0;
     s->cpu_en_bm = s->lc_ignore ? (1u << OT_IBEX_LC_CTRL_CPU_EN) : 0;
+    if (s->cpu) {
+        riscv_cpu_set_rnmi(s->cpu, 31, false);
+    }
 
     memset(s->log_engine, 0, sizeof(*s->log_engine));
 }
@@ -1477,6 +1599,7 @@ static void ot_ibex_wrapper_reset_exit(Object *obj, ResetType type)
 
     /* "Upon reset the data will be invalid with a new EDN request pending." */
     ot_ibex_wrapper_request_entropy(s);
+    ot_ibex_wrapper_update_nmi(s);
 }
 
 static void ot_ibex_wrapper_realize(DeviceState *dev, Error **errp)
@@ -1500,7 +1623,7 @@ static void ot_ibex_wrapper_realize(DeviceState *dev, Error **errp)
 
     memory_region_init_io(&s->mmio, OBJECT(dev), &ot_ibex_wrapper_regs_ops, s,
                           TYPE_OT_IBEX_WRAPPER,
-                          s->reg_count * sizeof(uint32_t));
+                          MAX(s->reg_count * sizeof(uint32_t), 0x100u));
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->remappers = g_new0(MemoryRegion, s->num_regions);
@@ -1531,6 +1654,8 @@ static void ot_ibex_wrapper_init(Object *obj)
                             OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_CPU_EN_COUNT);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_escalate_rx,
                             OT_ALERT_ESCALATE, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_wdog_bark_rx,
+                            OT_IBEX_WRAPPER_WDOG_BARK, 1);
 
     s->log_engine = g_new0(OtIbexTestLogEngine, 1u);
 }
