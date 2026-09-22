@@ -92,6 +92,7 @@ struct OtTimerState {
 
     uint32_t regs[REGS_COUNT];
     int64_t origin_ns;
+    uint32_t runaway_rem_cycles;
     uint32_t pclk; /* Current input clock */
     const char *clock_src_name; /* IRQ name once connected */
 
@@ -110,6 +111,18 @@ static uint64_t ot_timer_ns_to_ticks(OtTimerState *s, int64_t ns)
     uint32_t prescaler = FIELD_EX32(s->regs[R_CFG0], CFG0, PRESCALE);
     uint64_t ticks = muldiv64((uint64_t)ns, s->pclk, NANOSECONDS_PER_SECOND);
     uint64_t step = FIELD_EX32(s->regs[R_CFG0], CFG0, STEP);
+    if (s->runaway_rem_cycles) {
+        /*
+         * In hw/ip/rv_timer/rtl/timer_core.sv:32, 39,
+         * tick_count resets only on exact equality (tick_count == prescaler)
+         * while tick asserts whenever active & (tick_count >= prescaler).
+         * During a 12-bit wrap burst, tick asserts every clock cycle for
+         * runaway_rem_cycles (4096 - tick_count) before resuming normal
+         * (prescaler + 1) division.
+         */
+        uint64_t burst = MIN(ticks, (uint64_t)s->runaway_rem_cycles);
+        return (burst + (ticks - burst) / (prescaler + 1u)) * step;
+    }
     return (ticks / (prescaler + 1u)) * step;
 }
 
@@ -189,8 +202,8 @@ static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
         s->origin_ns = now;
     }
 
-    uint32_t step = FIELD_EX32(s->regs[R_CFG0], CFG0, STEP);
-    if (!ot_timer_is_active(s) || !step) {
+    if (!ot_timer_is_active(s)) {
+        ot_timer_update_irqs(s);
         return;
     }
 
@@ -198,9 +211,10 @@ static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
     uint64_t mtimecmp = s->regs[R_COMPARE_LOWER0_0] |
                         ((uint64_t)s->regs[R_COMPARE_UPPER0_0] << 32u);
 
+    uint32_t step = FIELD_EX32(s->regs[R_CFG0], CFG0, STEP);
     if (mtime >= mtimecmp) {
         s->regs[R_INTR_STATE0] |= INTR_CMP0_MASK;
-    } else {
+    } else if (step) {
         int64_t delta = ot_timer_ticks_to_ns(s, mtimecmp - mtime);
         int64_t next = ot_timer_compute_next_timeout(s, now, delta);
         if (next < INT64_MAX) {
@@ -231,14 +245,34 @@ static void ot_timer_clock_input(void *opaque, int irq, int level)
     }
 
     trace_ot_timer_update_clock(s->ot_id, s->pclk);
+
     /* TODO: @loic: update on-going timer */
+}
+
+static const uint8_t RV_TIMER_PERMIT[REGS_COUNT] = {
+    [R_ALERT_TEST] = 0x1u,       [R_CTRL] = 0x1u,
+    [R_INTR_ENABLE0] = 0x1u,     [R_INTR_STATE0] = 0x1u,
+    [R_INTR_TEST0] = 0x1u,       [R_CFG0] = 0x7u,
+    [R_TIMER_V_LOWER0] = 0xfu,   [R_TIMER_V_UPPER0] = 0xfu,
+    [R_COMPARE_LOWER0_0] = 0xfu, [R_COMPARE_UPPER0_0] = 0xfu,
+};
+
+static bool ot_timer_accepts(void *opaque, hwaddr addr, unsigned size,
+                             bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    hwaddr reg = R32_OFF(addr);
+    uint8_t permit = reg < REGS_COUNT ? RV_TIMER_PERMIT[reg] : 0u;
+    uint8_t reg_be = (uint8_t)(((1u << size) - 1u) << (addr & 3u));
+    return permit != 0u && (!is_write || (permit & ~reg_be) == 0u);
 }
 
 static uint64_t ot_timer_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtTimerState *s = opaque;
     (void)size;
-    uint32_t val32 = 0;
+    uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
     switch (reg) {
@@ -299,14 +333,17 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        s->regs[reg] = val32;
-        ot_timer_update_alert(s);
+        if (val32) {
+            ibex_irq_set(&s->alert, 1);
+            ibex_irq_set(&s->alert, 0);
+        }
         break;
     case R_CTRL: {
         uint32_t prev = s->regs[R_CTRL];
         s->regs[R_CTRL] = val32 & R_CTRL_ACTIVE0_MASK;
         uint32_t change = prev ^ s->regs[R_CTRL];
         if (change & R_CTRL_ACTIVE0_MASK) {
+            s->runaway_rem_cycles = 0u;
             if (ot_timer_is_active(s)) {
                 /* start timer */
                 ot_timer_rearm(s, true);
@@ -347,15 +384,48 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
         ot_timer_update_irqs(s);
         break;
     case R_CFG0:
-        if (!ot_timer_is_active(s)) {
-            s->regs[R_CFG0] = val32 & (R_CFG0_PRESCALE_MASK | R_CFG0_STEP_MASK);
+        if (ot_timer_is_active(s)) {
+            int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+            uint64_t mtime = ot_timer_get_mtime(s, now);
+            s->runaway_rem_cycles = 0u;
+            uint32_t old_prescaler =
+                FIELD_EX32(s->regs[R_CFG0], CFG0, PRESCALE);
+            uint64_t pclk_ticks = muldiv64((uint64_t)(now - s->origin_ns),
+                                           s->pclk, NANOSECONDS_PER_SECOND);
+            uint32_t tick_count =
+                (uint32_t)(pclk_ticks % (old_prescaler + 1u)) & 0xfffu;
+            if (tick_count > FIELD_EX32(val32, CFG0, PRESCALE)) {
+                /*
+                 * In hw/ip/rv_timer/rtl/timer_core.sv:32, 39, tick_count only
+                 * clears on exact equality (tick_count == prescaler). Lowering
+                 * CFG0.PRESCALE below the in-flight 12-bit tick_count while
+                 * active causes tick (tick_count >= prescaler) to assert every
+                 * clock cycle until tick_count wraps 0xfff -> 0x000
+                 * (4096 - tick_count cycles).
+                 */
+                s->runaway_rem_cycles = 4096u - tick_count;
+            }
+            s->regs[R_TIMER_V_LOWER0] = (uint32_t)mtime;
+            s->regs[R_TIMER_V_UPPER0] = (uint32_t)(mtime >> 32u);
         }
+        s->regs[R_CFG0] = val32 & (R_CFG0_PRESCALE_MASK | R_CFG0_STEP_MASK);
+        ot_timer_rearm(s, true);
         break;
     case R_TIMER_V_LOWER0:
+        if (ot_timer_is_active(s)) {
+            int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+            uint64_t mtime = ot_timer_get_mtime(s, now);
+            s->regs[R_TIMER_V_UPPER0] = (uint32_t)(mtime >> 32u);
+        }
         s->regs[R_TIMER_V_LOWER0] = val32;
         ot_timer_rearm(s, true);
         break;
     case R_TIMER_V_UPPER0:
+        if (ot_timer_is_active(s)) {
+            int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+            uint64_t mtime = ot_timer_get_mtime(s, now);
+            s->regs[R_TIMER_V_LOWER0] = (uint32_t)mtime;
+        }
         s->regs[R_TIMER_V_UPPER0] = val32;
         ot_timer_rearm(s, true);
         break;
@@ -383,6 +453,7 @@ static const MemoryRegionOps ot_timer_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_timer_accepts,
 };
 
 static const Property ot_timer_properties[] = {
@@ -404,6 +475,7 @@ static void ot_timer_reset_enter(Object *obj, ResetType type)
     timer_del(s->timer);
 
     memset(s->regs, 0, sizeof(s->regs));
+    s->runaway_rem_cycles = 0u;
     s->regs[R_CFG0] = 1u << R_CFG0_STEP_SHIFT;
     s->regs[R_COMPARE_LOWER0_0] = UINT32_MAX;
     s->regs[R_COMPARE_UPPER0_0] = UINT32_MAX;
