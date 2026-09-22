@@ -33,6 +33,8 @@
 #define TYPE_OT_OTBN "ot-otbn"
 OBJECT_DECLARE_TYPE(OtOTBNState, OtOTBNClass, OT_OTBN)
 
+#define OT_OTBN_LC_ESCALATE_EN TYPE_OT_OTBN "-lc-escalate-en"
+
 #define OT_OTBN_KEY_SIZE (384u / 8u)
 
 #endif /* HW_OPENTITAN_OT_OTBN_H */

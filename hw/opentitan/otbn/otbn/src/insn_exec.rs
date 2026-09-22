@@ -85,6 +85,7 @@ pub struct HartState {
     pub csr_set: csrs::CSRSet,
     /// Track state changes (debug)
     pub updated: StateTracker,
+    pub x1_read: bool,
 }
 
 impl HartState {
@@ -96,6 +97,7 @@ impl HartState {
             loopstack: Vec::with_capacity(8),
             hwstack: Vec::with_capacity(8),
             updated: StateTracker::default(),
+            x1_read: false,
             csr_set: csrs::CSRSet::new(urnd, rnd, key),
         }
     }
@@ -107,6 +109,10 @@ impl HartState {
             return Ok(());
         }
         if reg_index == 1 {
+            if self.x1_read {
+                self.hwstack.pop();
+                self.x1_read = false;
+            }
             if self.hwstack.len() >= self.hwstack.capacity() {
                 return Err(InstructionTrap::Exception(ExceptionCause::ECallStack, None));
             }
@@ -124,8 +130,9 @@ impl HartState {
         if reg_index == 0 {
             Ok(0)
         } else if reg_index == 1 {
-            match self.hwstack.pop() {
-                Some(x) => {
+            self.x1_read = true;
+            match self.hwstack.last() {
+                Some(&x) => {
                     self.registers[reg_index] = x;
                     Ok(x)
                 }
@@ -477,6 +484,12 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
                 ));
             }
         };
+        if !self.dmem.is_valid(addr) {
+            return Err(InstructionTrap::Exception(
+                ExceptionCause::EFatal,
+                Some(super::otbn::ErrBits::DMEM_INTG_VIOLATION.bits()),
+            ));
+        }
 
         // Sign extend loaded data if required
         if signed {
@@ -531,14 +544,24 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     /// [InstructionTrap] is returned when the instruction execution causes a trap.
     pub fn step(&mut self) -> Result<(), InstructionTrap> {
         self.hart_state.updated.clear();
+        self.hart_state.x1_read = false;
 
         if let Some(next_insn) = self.imem.read_mem(self.hart_state.pc) {
+            if !self.imem.is_valid(self.hart_state.pc) {
+                return Err(InstructionTrap::Exception(
+                    ExceptionCause::EFatal,
+                    Some(super::otbn::ErrBits::IMEM_INTG_VIOLATION.bits()),
+                ));
+            }
             // Fetch next instruction from memory and eecute the instruction if fetch was
             // successful
             let step_result = insn_decode::decoder(self, next_insn);
 
             match step_result {
                 Some(Ok(pc_updated)) => {
+                    if self.hart_state.x1_read {
+                        self.hart_state.hwstack.pop();
+                    }
                     if !pc_updated {
                         let lstack = &mut self.hart_state.loopstack;
                         let loopdepth = lstack.len();
@@ -591,6 +614,18 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
                 Some(self.hart_state.pc),
             ))
         }
+    }
+
+    fn check_loop_end(&self) -> Result<(), InstructionTrap> {
+        if self
+            .hart_state
+            .loopstack
+            .last()
+            .is_some_and(|hwloop| self.hart_state.pc == hwloop.end)
+        {
+            return Err(InstructionTrap::Exception(ExceptionCause::ELoop, None));
+        }
+        Ok(())
     }
 }
 
@@ -787,6 +822,7 @@ impl<'a, M: Memory> insn_proc::InstructionProcessor for InstructionExecutor<'a, 
     make_store_op_fn! {sw}
 
     fn process_jal(&mut self, dec_insn: insn_format::JType) -> Self::InstructionResult {
+        self.check_loop_end()?;
         let target_pc = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
         self.hart_state
             .write_register(dec_insn.rd, self.hart_state.pc + 4)?;
@@ -795,6 +831,7 @@ impl<'a, M: Memory> insn_proc::InstructionProcessor for InstructionExecutor<'a, 
     }
 
     fn process_jalr(&mut self, dec_insn: insn_format::IType) -> Self::InstructionResult {
+        self.check_loop_end()?;
         let target_pc = self
             .hart_state
             .read_register(dec_insn.rs1)?
@@ -856,6 +893,7 @@ impl<'a, M: Memory> insn_proc::InstructionProcessor for InstructionExecutor<'a, 
         if hwloop.count == 0 {
             return Err(InstructionTrap::Exception(ExceptionCause::ELoop, None));
         }
+        self.check_loop_end()?;
         // need to check this instruction is not a last instruction in an existing loop
         self.hart_state.loopstack.push(hwloop);
         self.hart_state.updated.loophead = Some((self.hart_state.loopstack.len(), hwloop.count));
@@ -909,7 +947,24 @@ impl<'a, M: Memory> insn_proc::InstructionProcessor for InstructionExecutor<'a, 
         let mut bytes = [0; size_of::<U256>()];
         const RSIZE: usize = size_of::<u32>();
         for (pos, bchunk) in (0..bytes.len()).step_by(RSIZE).zip(bytes.chunks_mut(RSIZE)) {
-            let word = self.dmem.read_mem(src + pos as u32).unwrap();
+            let word_addr = src.wrapping_add(pos as u32);
+            let word = match self.dmem.read_mem(word_addr) {
+                Some(w) => {
+                    if !self.dmem.is_valid(word_addr) {
+                        return Err(InstructionTrap::Exception(
+                            ExceptionCause::EFatal,
+                            Some(super::otbn::ErrBits::DMEM_INTG_VIOLATION.bits()),
+                        ));
+                    }
+                    w
+                }
+                None => {
+                    return Err(InstructionTrap::Exception(
+                        ExceptionCause::EBadDataAddr,
+                        Some(word_addr),
+                    ));
+                }
+            };
             bchunk.copy_from_slice(&word.to_le_bytes()[..]);
         }
         let wvalue = U256::from_le_bytes(bytes);
@@ -972,6 +1027,20 @@ impl<'a, M: Memory> insn_proc::InstructionProcessor for InstructionExecutor<'a, 
             addr.wrapping_sub(-offset as u32)
         };
 
+        let wvalue = self.hart_state.read_wide_register(wri as usize)?;
+        let bytes = wvalue.to_le_bytes();
+        const RSIZE: usize = size_of::<u32>();
+        for pos in (0..bytes.len()).step_by(RSIZE) {
+            let word_addr = dst.wrapping_add(pos as u32);
+            let word = u32::from_le_bytes(bytes[pos..pos + RSIZE].try_into().unwrap());
+            if !self.dmem.write_mem(word_addr, word) {
+                return Err(InstructionTrap::Exception(
+                    ExceptionCause::EBadDataAddr,
+                    Some(word_addr),
+                ));
+            }
+        }
+
         if grs1_inc {
             let addr = addr.wrapping_add(size_of::<U256>() as u32);
             self.hart_state.write_register(dec_insn.rs1, addr)?;
@@ -979,14 +1048,6 @@ impl<'a, M: Memory> insn_proc::InstructionProcessor for InstructionExecutor<'a, 
 
         if grs2_inc {
             self.hart_state.write_register(dec_insn.rs2, wri + 1)?;
-        }
-
-        let wvalue = self.hart_state.read_wide_register(wri as usize)?;
-        let bytes = wvalue.to_le_bytes();
-        const RSIZE: usize = size_of::<u32>();
-        for pos in (0..bytes.len()).step_by(RSIZE) {
-            let word = u32::from_le_bytes(bytes[pos..pos + RSIZE].try_into().unwrap());
-            self.dmem.write_mem(dst + pos as u32, word);
         }
 
         Ok(false)
@@ -1125,7 +1186,7 @@ impl<'a, M: Memory> insn_proc::InstructionProcessor for InstructionExecutor<'a, 
             .unwrap();
 
         let (mut res, over) = a.overflowing_add(b);
-        if over || res > modv {
+        if over || res >= modv {
             res = res.wrapping_sub(modv)
         }
 

@@ -36,6 +36,7 @@
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "block/aio.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
@@ -171,9 +172,11 @@ struct OtOTBNState {
     uint32_t intr_test;
     uint32_t alert_test;
     uint32_t errbits;
+    uint32_t fatal_alert_cause;
     uint32_t load_checksum;
 
     enum OtOTBNCommand last_cmd;
+    int64_t exec_start_ns;
 
     char *ot_id;
     char *clock_name;
@@ -181,6 +184,7 @@ struct OtOTBNState {
     char *log_file;
     OtOTBNRandom rnds[OT_OTBN_RND_COUNT];
     bool log_asm;
+    bool lc_escalated;
 };
 
 struct OtOTBNClass {
@@ -203,12 +207,14 @@ static void ot_otbn_request_entropy(OtOTBNRandom *rnd);
 
 static bool ot_otbn_is_idle(OtOTBNState *s)
 {
-    return ot_otbn_proxy_get_status(s->proxy) == OT_OTBN_STATUS_IDLE;
+    return !s->lc_escalated &&
+           ot_otbn_proxy_get_status(s->proxy) == OT_OTBN_STATUS_IDLE;
 }
 
 static bool ot_otbn_is_locked(OtOTBNState *s)
 {
-    return ot_otbn_proxy_get_status(s->proxy) == OT_OTBN_STATUS_LOCKED;
+    return s->lc_escalated ||
+           ot_otbn_proxy_get_status(s->proxy) == OT_OTBN_STATUS_LOCKED;
 }
 
 static void ot_otbn_update_irq(OtOTBNState *s)
@@ -228,7 +234,7 @@ static void ot_otbn_update_alert(OtOTBNState *s)
     }
 
     uint16_t fatal_err_bits = (uint16_t)(s->errbits >> 16u);
-    if (fatal_err_bits) {
+    if (fatal_err_bits || s->fatal_alert_cause) {
         levels |= 1u << ALERT_FATAL;
     }
 
@@ -248,7 +254,8 @@ static void ot_otbn_update_alert(OtOTBNState *s)
     /* ALERT_TEST and recoverable error alerts are transient */
     s->alert_test = 0u;
     s->errbits &= ~UINT16_MAX;
-    levels = fatal_err_bits ? (1u << ALERT_FATAL) : 0u;
+    levels =
+        (fatal_err_bits || s->fatal_alert_cause) ? (1u << ALERT_FATAL) : 0u;
 
     for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
         int level = (int)((levels >> ix) & 0x1u);
@@ -266,6 +273,7 @@ static void ot_otbn_post_execute(void *opaque)
     OtOTBNState *s = OT_OTBN(opaque);
 
     s->errbits = ot_otbn_proxy_get_err_bits(s->proxy);
+    s->fatal_alert_cause |= (s->errbits >> 16u);
     uint32_t insncount = ot_otbn_proxy_get_instruction_count(s->proxy);
     trace_ot_otbn_post_execute(s->ot_id, s->errbits, insncount);
     s->intr_state |= INTR_DONE_MASK;
@@ -280,6 +288,9 @@ static void ot_otbn_signal_on_completion(void *opaque)
     OtOTBNState *s = OT_OTBN(opaque);
 
     qemu_bh_schedule(s->proxy_completion_bh);
+    if (first_cpu) {
+        cpu_exit(first_cpu);
+    }
 }
 
 static void ot_otbn_trigger_entropy_req(void *opaque)
@@ -300,6 +311,9 @@ static void ot_otbn_trigger_entropy_req(void *opaque)
     }
 
     qemu_bh_schedule(r->proxy_entropy_req_bh);
+    if (first_cpu) {
+        cpu_exit(first_cpu);
+    }
 }
 
 static void ot_otbn_proxy_completion_bh(void *opaque)
@@ -311,6 +325,16 @@ static void ot_otbn_proxy_completion_bh(void *opaque)
 
     trace_ot_otbn_proxy_completion_bh(s->ot_id, last_cmd);
 
+    if (last_cmd == OT_OTBN_CMD_NONE) {
+        return;
+    }
+
+    if (ot_otbn_is_locked(s)) {
+        timer_del(s->proxy_defer);
+        ot_otbn_post_execute(s);
+        return;
+    }
+
     switch (last_cmd) {
     case OT_OTBN_CMD_EXECUTE:
     case OT_OTBN_CMD_SEC_WIPE_DMEM:
@@ -318,14 +342,26 @@ static void ot_otbn_proxy_completion_bh(void *opaque)
         if (s->proxy_defer) {
             /*
              * timer is used to simulate a delayed processing, which maybe
-             * useful to pass some test suites such as OT smoketest wait 100
-             * microsecs so that the virtual hart can be scheduled and may poll
+             * useful to pass some test suites such as OT smoketest wait
+             * so that the virtual hart can be scheduled and may poll
              * the status register before the actual completion is signalled
              * from the OTBN working thread.
              */
+            uint64_t delay_ns = 100000ULL;
+            if (last_cmd == OT_OTBN_CMD_EXECUTE) {
+                uint32_t insncount =
+                    ot_otbn_proxy_get_instruction_count(s->proxy);
+                delay_ns = MIN(2000000ULL,
+                               MAX(500000ULL, (uint64_t)insncount * 10ULL));
+            }
+            int64_t now_ns = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+            int64_t min_end_ns = s->exec_start_ns + (int64_t)delay_ns;
             timer_del(s->proxy_defer);
-            timer_mod(s->proxy_defer,
-                      qemu_clock_get_us(OT_VIRTUAL_CLOCK) + 100u);
+            if (now_ns < min_end_ns) {
+                timer_mod(s->proxy_defer, min_end_ns);
+            } else {
+                ot_otbn_post_execute(s);
+            }
         } else {
             ot_otbn_post_execute(s);
         }
@@ -355,10 +391,10 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
 
     ot_fifo32_push(&rnd->packer, bits);
     rnd->no_fips |= !fips;
-    rnd->entropy_requested = false;
 
     if (!ot_fifo32_is_full(&rnd->packer)) {
         /* need more entropy to fill in the packer */
+        rnd->entropy_requested = false;
         ot_otbn_request_entropy(rnd);
         return;
     }
@@ -390,6 +426,7 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
     }
     ot_fifo32_reset(&rnd->packer);
     rnd->no_fips = false;
+    rnd->entropy_requested = false;
     if (!res) {
         trace_ot_otbn_error(s->ot_id, "cannot push entropy");
     }
@@ -446,14 +483,17 @@ static void ot_otbn_handle_command(OtOTBNState *s, unsigned command)
     switch (command) {
     case (unsigned)OT_OTBN_CMD_EXECUTE:
         s->last_cmd = command;
+        s->exec_start_ns = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
         ot_otbn_proxy_execute(s->proxy, false);
         break;
     case (unsigned)OT_OTBN_CMD_SEC_WIPE_DMEM:
         s->last_cmd = command;
+        s->exec_start_ns = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
         ot_otbn_proxy_wipe_memory(s->proxy, false);
         break;
     case (unsigned)OT_OTBN_CMD_SEC_WIDE_IMEM:
         s->last_cmd = command;
+        s->exec_start_ns = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
         ot_otbn_proxy_wipe_memory(s->proxy, true);
         break;
     default:
@@ -501,6 +541,73 @@ static void ot_otbn_push_key(OtKeySinkIf *ifd, const uint8_t *share0,
     }
 }
 
+static uint32_t ot_otbn_sync_proxy(OtOTBNState *s)
+{
+    uint32_t status = ot_otbn_proxy_get_status(s->proxy);
+    if (status == OT_OTBN_STATUS_IDLE && s->last_cmd == OT_OTBN_CMD_NONE) {
+        return status;
+    }
+
+    do {
+        qemu_clock_run_timers(OT_VIRTUAL_CLOCK);
+    } while (aio_bh_poll(qemu_get_aio_context()) > 0);
+    status = ot_otbn_proxy_get_status(s->proxy);
+
+    bool wait_for_worker =
+        (status != OT_OTBN_STATUS_IDLE) &&
+        ((status == OT_OTBN_STATUS_BUSY_SEC_WIPE_INT) ||
+         ((qemu_clock_get_ns(OT_VIRTUAL_CLOCK) - s->exec_start_ns >=
+           500000ULL) &&
+          ot_otbn_proxy_get_instruction_count(s->proxy) < 5000u));
+
+    if (wait_for_worker) {
+        for (int i = 0; i < 50; i++) {
+            do {
+                qemu_clock_run_timers(OT_VIRTUAL_CLOCK);
+            } while (aio_bh_poll(qemu_get_aio_context()) > 0);
+            status = ot_otbn_proxy_get_status(s->proxy);
+            if (status == OT_OTBN_STATUS_IDLE ||
+                s->last_cmd == OT_OTBN_CMD_NONE ||
+                s->rnds[OT_OTBN_URND].entropy_requested ||
+                s->rnds[OT_OTBN_RND].entropy_requested) {
+                break;
+            }
+            g_usleep(10);
+        }
+        do {
+            qemu_clock_run_timers(OT_VIRTUAL_CLOCK);
+        } while (aio_bh_poll(qemu_get_aio_context()) > 0);
+    }
+
+    return ot_otbn_proxy_get_status(s->proxy);
+}
+
+static uint8_t ot_otbn_reg_permit(hwaddr reg)
+{
+    switch (reg) {
+    case R_ERR_BITS:
+        return 0x7u;
+    case R_INSN_CNT:
+    case R_LOAD_CHECKSUM:
+        return 0xfu;
+    default:
+        return 0x1u;
+    }
+}
+
+static bool ot_otbn_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                 bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    if (!is_write) {
+        return true;
+    }
+    hwaddr reg = R32_OFF(addr);
+    uint32_t reg_be = ((1u << size) - 1u) << (addr & 3u);
+    return (ot_otbn_reg_permit(reg) & ~reg_be) == 0u;
+}
+
 static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtOTBNState *s = opaque;
@@ -510,8 +617,12 @@ static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
     uint32_t pc = ibex_get_current_pc();
 
     hwaddr reg = R32_OFF(addr);
+
     switch (reg) {
     case R_INTR_STATE:
+        if (!(s->intr_state & INTR_DONE_MASK)) {
+            (void)ot_otbn_sync_proxy(s);
+        }
         val32 = s->intr_state;
         break;
     case R_INTR_ENABLE:
@@ -521,13 +632,25 @@ static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = (uint32_t)ot_otbn_proxy_get_ctrl(s->proxy);
         break;
     case R_STATUS:
-        val32 = ot_otbn_proxy_get_status(s->proxy);
+        if (s->lc_escalated) {
+            val32 = OT_OTBN_STATUS_LOCKED;
+            break;
+        }
+        val32 = ot_otbn_sync_proxy(s);
+        if ((val32 == OT_OTBN_STATUS_IDLE ||
+             val32 == OT_OTBN_STATUS_BUSY_SEC_WIPE_INT) &&
+            (s->last_cmd == OT_OTBN_CMD_EXECUTE ||
+             (s->proxy_defer && timer_pending(s->proxy_defer)))) {
+            val32 = OT_OTBN_STATUS_BUSY_EXECUTE;
+        }
         break;
     case R_ERR_BITS:
-        val32 = ot_otbn_proxy_get_err_bits(s->proxy);
+        val32 = ot_otbn_proxy_get_err_bits(s->proxy) |
+                (s->errbits & R_ERR_BITS_LIFECYCLE_ESCALATION_MASK);
         break;
     case R_FATAL_ALERT_CAUSE:
-        val32 = s->errbits >> 16u;
+        s->fatal_alert_cause |= (ot_otbn_proxy_get_err_bits(s->proxy) >> 16u);
+        val32 = s->fatal_alert_cause;
         break;
     case R_INSN_CNT:
         val32 = ot_otbn_proxy_get_instruction_count(s->proxy);
@@ -567,11 +690,6 @@ static void ot_otbn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     uint32_t pc = ibex_get_current_pc();
     trace_ot_otbn_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
-    if (ot_otbn_is_locked(s)) {
-        trace_ot_otbn_deny(s->ot_id, pc, "write denied: locked");
-        return;
-    }
-
     switch (reg) {
     case R_INTR_STATE:
         val32 &= INTR_DONE_MASK;
@@ -594,18 +712,35 @@ static void ot_otbn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_otbn_update_alert(s);
         break;
     case R_CMD:
+        if (!ot_otbn_is_idle(s)) {
+            trace_ot_otbn_deny(s->ot_id, pc, "write denied: not idle");
+            break;
+        }
         val32 &= R_CMD_CMD_MASK;
         ot_otbn_handle_command(s, (unsigned)val32);
         break;
     case R_CTRL:
+        if (!ot_otbn_is_idle(s)) {
+            trace_ot_otbn_deny(s->ot_id, pc, "write denied: not idle");
+            break;
+        }
         val32 &= R_CTRL_SW_ERRS_FATAL_MASK;
         ot_otbn_proxy_set_ctrl(s->proxy, (bool)val32);
         ot_otbn_update_alert(s);
         break;
     case R_ERR_BITS:
+        if (!ot_otbn_is_idle(s) && !ot_otbn_is_locked(s)) {
+            trace_ot_otbn_deny(s->ot_id, pc, "write denied: busy");
+            break;
+        }
+        s->errbits = 0u;
         ot_otbn_proxy_set_err_bits(s->proxy, val32);
         break;
     case R_INSN_CNT:
+        if (!ot_otbn_is_idle(s) && !ot_otbn_is_locked(s)) {
+            trace_ot_otbn_deny(s->ot_id, pc, "write denied: busy");
+            break;
+        }
         ot_otbn_proxy_set_instruction_count(s->proxy, val32);
         break;
     case R_LOAD_CHECKSUM:
@@ -637,20 +772,66 @@ static void ot_otbn_update_checksum(OtOTBNState *s, bool doi, uint32_t addr,
 
 static uint32_t ot_otbn_mem_read(OtOTBNState *s, bool doi, hwaddr addr)
 {
-    uint32_t value = ot_otbn_proxy_read_memory(s->proxy, doi, addr);
+    bool valid = true;
+    uint32_t value = ot_otbn_proxy_read_memory(s->proxy, doi, addr, &valid);
     trace_ot_otbn_mem_read(s->ot_id, doi ? 'I' : 'D', (uint32_t)addr, value);
+    if (ot_otbn_is_locked(s)) {
+        s->last_cmd = OT_OTBN_CMD_NONE;
+        timer_del(s->proxy_defer);
+        ot_otbn_post_execute(s);
+    }
+    if (valid) {
+        /*
+         * In otbn.sv:737-746, mem_crc_data_in_valid checks:
+         *   ~(dmem_access_core | imem_access_core) &
+         *   ((imem_req_bus & (imem_byte_mask_bus == 4'hf)) |
+         *    (dmem_req_bus & (dmem_byte_mask_bus == 4'hf)))
+         * without gating on imem_write_bus / dmem_write_bus. Because
+         * tlul_adapter_host.sv:94 drives a_mask = 4'hf on all TL-UL Get
+         * requests and tlul_adapter_sram.sv:390,429 asserts req_o = 1 with
+         * wdata_int = 0 when we_o = 0, valid idle host reads advance
+         * u_mem_load_crc32 with wr_data = 0.
+         */
+        ot_otbn_update_checksum(s, doi, addr, 0u);
+    } else {
+        hwaddr offset = (doi ? OT_OTBN_IMEM_BASE : OT_OTBN_DMEM_BASE) + addr;
+        ot_common_raise_load_integrity_error(DEVICE(s), offset);
+    }
     return value;
 }
 
 static void ot_otbn_mem_write(OtOTBNState *s, bool doi, hwaddr addr,
                               uint32_t value)
 {
-    bool written = ot_otbn_proxy_write_memory(s->proxy, doi, addr, value);
+    bool was_locked = ot_otbn_is_locked(s);
+    bool written = !s->lc_escalated &&
+                   ot_otbn_proxy_write_memory(s->proxy, doi, addr, value);
     trace_ot_otbn_mem_write(s->ot_id, doi ? 'I' : 'D', (uint32_t)addr, value,
                             written ? "" : " FAILED");
-    if (written) {
+    if (written || was_locked) {
+        /*
+         * In otbn.sv:737-739, mem_crc_data_in_valid is gated by
+         * ~(dmem_access_core | imem_access_core), i.e. ~(busy_execute_q |
+         * start_q), and is NOT gated by ~locking. When OTBN is already in
+         * StatusLocked, prim_ram_1p_scr suppresses the SRAM macro write
+         * (.intg_error_i(locking)), but u_mem_load_crc32 still advances on
+         * 32-bit bus writes.
+         */
         ot_otbn_update_checksum(s, doi, addr, value);
     }
+    if (ot_otbn_is_locked(s)) {
+        s->last_cmd = OT_OTBN_CMD_NONE;
+        timer_del(s->proxy_defer);
+        ot_otbn_post_execute(s);
+    }
+}
+
+static bool ot_otbn_mem_accepts(void *opaque, hwaddr addr, unsigned size,
+                                bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    return !is_write || (size == 4u && (addr & 3u) == 0u);
 }
 
 static inline uint64_t
@@ -666,8 +847,7 @@ static inline void ot_otbn_imem_write(void *opaque, hwaddr addr, uint64_t val64,
 {
     (void)size;
 
-    return ot_otbn_mem_write((OtOTBNState *)opaque, true, addr,
-                             (uint32_t)val64);
+    ot_otbn_mem_write((OtOTBNState *)opaque, true, addr, (uint32_t)val64);
 }
 
 static inline uint64_t
@@ -683,8 +863,7 @@ static inline void ot_otbn_dmem_write(void *opaque, hwaddr addr, uint64_t val64,
 {
     (void)size;
 
-    return ot_otbn_mem_write((OtOTBNState *)opaque, false, addr,
-                             (uint32_t)val64);
+    ot_otbn_mem_write((OtOTBNState *)opaque, false, addr, (uint32_t)val64);
 }
 
 static const Property ot_otbn_properties[] = {
@@ -709,6 +888,7 @@ static const MemoryRegionOps ot_otbn_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_otbn_regs_accepts,
 };
 
 static const MemoryRegionOps ot_otbn_imem_ops = {
@@ -717,6 +897,7 @@ static const MemoryRegionOps ot_otbn_imem_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_otbn_mem_accepts,
 };
 
 static const MemoryRegionOps ot_otbn_dmem_ops = {
@@ -725,6 +906,7 @@ static const MemoryRegionOps ot_otbn_dmem_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_otbn_mem_accepts,
 };
 
 static void ot_otbn_reset_enter(Object *obj, ResetType type)
@@ -736,6 +918,7 @@ static void ot_otbn_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
+    qemu_bh_cancel(s->proxy_completion_bh);
     timer_del(s->proxy_defer);
 
     s->intr_state = 0;
@@ -743,9 +926,12 @@ static void ot_otbn_reset_enter(Object *obj, ResetType type)
     s->intr_test = 0;
     s->alert_test = 0;
     s->errbits = 0;
+    s->fatal_alert_cause = 0;
     s->load_checksum = 0;
+    s->lc_escalated = false;
 
     s->last_cmd = OT_OTBN_CMD_NONE;
+    s->exec_start_ns = 0;
     ibex_irq_set(&s->irq_done, 0);
     for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
         ibex_irq_set(&s->alerts[ix], 0);
@@ -753,6 +939,7 @@ static void ot_otbn_reset_enter(Object *obj, ResetType type)
 
     for (unsigned rix = 0; rix < (unsigned)OT_OTBN_RND_COUNT; rix++) {
         OtOTBNRandom *rnd = &s->rnds[rix];
+        qemu_bh_cancel(rnd->proxy_entropy_req_bh);
         rnd->otbn = s;
         rnd->no_fips = false;
         rnd->entropy_requested = false;
@@ -796,6 +983,28 @@ static void ot_otbn_reset_exit(Object *obj, ResetType type)
     }
 
     ot_otbn_proxy_start(s->proxy, false, s->log_file, s->log_asm);
+    qemu_bh_cancel(s->proxy_completion_bh);
+    for (unsigned rix = 0; rix < (unsigned)OT_OTBN_RND_COUNT; rix++) {
+        qemu_bh_cancel(s->rnds[rix].proxy_entropy_req_bh);
+    }
+    timer_del(s->proxy_defer);
+    s->last_cmd = OT_OTBN_CMD_NONE;
+}
+
+static void ot_otbn_lc_escalate_en(void *opaque, int irq, int level)
+{
+    OtOTBNState *s = opaque;
+
+    g_assert(irq == 0);
+
+    if (level && !s->lc_escalated) {
+        s->lc_escalated = true;
+        s->fatal_alert_cause |= R_FATAL_ALERT_CAUSE_LIFECYCLE_ESCALATION_MASK;
+        qemu_bh_cancel(s->proxy_completion_bh);
+        timer_del(s->proxy_defer);
+        s->last_cmd = OT_OTBN_CMD_NONE;
+        ot_otbn_update_alert(s);
+    }
 }
 
 static void ot_otbn_realize(DeviceState *dev, Error **errp)
@@ -814,6 +1023,8 @@ static void ot_otbn_realize(DeviceState *dev, Error **errp)
 
     qdev_init_gpio_in_named(DEVICE(s), &ot_otbn_clock_input,
                             OT_OTBN_CLOCK_INPUT, 1);
+    qdev_init_gpio_in_named(DEVICE(s), &ot_otbn_lc_escalate_en,
+                            OT_OTBN_LC_ESCALATE_EN, 1);
 }
 
 static void ot_otbn_init(Object *obj)
@@ -854,7 +1065,7 @@ static void ot_otbn_init(Object *obj)
     }
 
     s->proxy_completion_bh = qemu_bh_new(&ot_otbn_proxy_completion_bh, s);
-    s->proxy_defer = timer_new_us(OT_VIRTUAL_CLOCK, &ot_otbn_post_execute, s);
+    s->proxy_defer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otbn_post_execute, s);
     s->proxy =
         ot_otbn_proxy_new(&ot_otbn_trigger_entropy_req, &s->rnds[OT_OTBN_URND],
                           &ot_otbn_trigger_entropy_req, &s->rnds[OT_OTBN_RND],

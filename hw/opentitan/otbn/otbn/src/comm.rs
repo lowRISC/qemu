@@ -14,6 +14,7 @@ pub enum Command {
     Execute(bool),
     WipeDMem,
     WipeIMem,
+    Reset,
     Terminate,
 }
 

@@ -157,7 +157,7 @@ impl CSR for CSRFlagGroup {
             FlagMode::Fg1 => flags[1] = insn_proc::Flags::from_bits_truncate(val8 & 0x0f),
             FlagMode::Flags => {
                 flags[0] = insn_proc::Flags::from_bits_truncate(val8 & 0x0f);
-                flags[1] = insn_proc::Flags::from_bits_truncate(val8 & 0x0f);
+                flags[1] = insn_proc::Flags::from_bits_truncate((val8 >> 4) & 0x0f);
             }
         };
         self.flags.set(flags);
@@ -537,17 +537,15 @@ impl CSRSet {
          * - wipe with PRNG randomness
          * - zero
          */
-        for flag in self.shared_flags.get().iter_mut() {
-            *flag = insn_proc::Flags::empty();
-        }
+        self.shared_flags.set([insn_proc::Flags::empty(); 2]);
 
         let mut prng = prng.lock().unwrap();
 
-        let _ = self.acc.write(U256::from(0u32));
-        let _ = self.r#mod.write(U256::from(0u32));
-
         let _ = self.acc.write(prng.get_prng_u256());
         let _ = self.r#mod.write(prng.get_prng_u256());
+
+        let _ = self.acc.write(U256::from(0u32));
+        let _ = self.r#mod.write(U256::from(0u32));
     }
 
     pub fn set_test_mode(&mut self, enable: bool) {
