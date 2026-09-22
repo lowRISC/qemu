@@ -76,6 +76,11 @@
 #define OT_MULTIBITBOOL16_WIDTH 16u
 #define OT_MULTIBITBOOL16_MASK  ((1u << OT_MULTIBITBOOL16_WIDTH) - 1u)
 
+#define OT_MULTIBITBOOL32_TRUE  0x96969696u
+#define OT_MULTIBITBOOL32_FALSE 0x69696969u
+#define OT_MULTIBITBOOL32_WIDTH 32u
+#define OT_MULTIBITBOOL32_MASK  0xffffffffu
+
 #define OT_MULTIBITBOOL_LC4_TRUE  0xau
 #define OT_MULTIBITBOOL_LC4_FALSE 0x5u
 #define OT_MULTIBITBOOL_LC4_WIDTH 4u
@@ -259,12 +264,12 @@ static inline void ot_shadow_reg_init(OtShadowReg *sreg, uint32_t value)
 static inline int ot_shadow_reg_write(OtShadowReg *sreg, uint32_t value)
 {
     if (sreg->staged_p) {
+        sreg->staged_p = false;
         if (value != sreg->staged) {
             /* second write is different, return error status */
             return OT_SHADOW_REG_ERROR;
         }
         sreg->committed = value;
-        sreg->staged_p = false;
         return OT_SHADOW_REG_COMMITTED;
     } else {
         sreg->staged = value;
@@ -402,5 +407,6 @@ void ot_common_configure_device_opts(DeviceState **devices, unsigned count);
     OT_OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, ModuleClassName, \
                                    module_obj_name, MODULE_OBJ_NAME, \
                                    PARENT_MODULE_OBJ_NAME, true, { NULL })
+
 
 #endif /* HW_OPENTITAN_OT_COMMON_H */
