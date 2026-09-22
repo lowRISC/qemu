@@ -2165,11 +2165,157 @@ static const TypeInfo ot_i2c_info = {
     .class_init = &ot_i2c_class_init,
 };
 
+static bool pmod_i2c_sensor_match_and_add(I2CSlave *candidate, uint8_t address,
+                                          bool broadcast,
+                                          I2CNodeList *current_devs)
+{
+    (void)broadcast;
+    if (address != candidate->address) {
+        return false;
+    }
+    BusState *abus = qdev_get_parent_bus(DEVICE(candidate));
+    if (abus && abus->parent &&
+        object_dynamic_cast(OBJECT(abus->parent), TYPE_OT_I2C)) {
+        OtI2CState *ot_i2c = OT_I2C(abus->parent);
+        if (ot_i2c_target_enabled(ot_i2c) &&
+            ot_i2c_check_address_match(ot_i2c, address)) {
+            return false;
+        }
+    }
+    I2CNode *node = g_new0(struct I2CNode, 1u);
+    node->elt = candidate;
+    QLIST_INSERT_HEAD(current_devs, node, next);
+    return true;
+}
+
+static void pmod_i2c_sensor_reset(DeviceState *dev)
+{
+    PmodI2CSensorState *s = PMOD_I2C_SENSOR(dev);
+    memset(s->regs, 0, sizeof(s->regs));
+    s->reg_ptr = 0;
+    s->addr_bytes = 0;
+    s->busy_nak = false;
+
+    switch (s->parent_obj.address) {
+    case 0x10u: /* ADM1191 / PAC1934 Power Monitor */
+        s->regs[0xfdu] = 0x7bu;
+        s->regs[0xfeu] = 0x54u;
+        break;
+    case 0x1du: /* ADXL345 Accelerometer */
+        s->regs[0x00u] = 0xe5u;
+        s->regs[0x30u] = 0x80u;
+        s->regs[0x32u] = 0x01u;
+        break;
+    case 0x22u: /* Clock Stretching Test Device */
+        s->regs[0xddu] = 0xa2u;
+        s->regs[0xdeu] = 0xa1u;
+        break;
+    case 0x29u: /* LTR-303ALS Ambient Light Detector */
+        s->regs[0x86u] = 0xa0u;
+        s->regs[0x87u] = 0x05u;
+        s->regs[0x8cu] = 0x04u;
+        break;
+    case 0x30u: /* MMC34160PJ Compass */
+        s->regs[0x00u] = 0x01u;
+        s->regs[0x06u] = 0x01u;
+        s->regs[0x20u] = 0x06u;
+        break;
+    case 0x40u: /* HDC1080 Humidity/Temp (16-bit regs mapped at reg << 1) */
+        s->regs[0x00u] = 0x66u;
+        s->regs[0x02u] = 0x80u;
+        s->regs[0xfcu] = 0x54u;
+        s->regs[0xfdu] = 0x49u;
+        s->regs[0xfeu] = 0x10u;
+        s->regs[0xffu] = 0x50u;
+        break;
+    case 0x59u: /* SGP30 Gas Sensor (0xD4 = kSelfTestPass & non-00/non-FF) */
+        memset(s->regs, 0xd4u, sizeof(s->regs));
+        break;
+    case 0x7cu: /* I2C Reserved Device ID for MB85RC256V FRAM (0x51 << 1 = 0xA2)
+                 */
+        s->regs[0xa3u] = 0xa5u;
+        s->regs[0xa4u] = 0x10u;
+        break;
+    default:
+        break;
+    }
+}
+
+static int pmod_i2c_sensor_event(I2CSlave *i2c, enum i2c_event event)
+{
+    PmodI2CSensorState *s = PMOD_I2C_SENSOR(i2c);
+    if ((event == I2C_START_SEND || event == I2C_START_RECV) && s->busy_nak) {
+        s->busy_nak = false;
+        return 1;
+    }
+    if (event == I2C_START_SEND || event == I2C_START_SEND_ASYNC) {
+        s->addr_bytes = 0;
+    }
+    return 0;
+}
+
+static int pmod_i2c_sensor_send(I2CSlave *i2c, uint8_t data)
+{
+    PmodI2CSensorState *s = PMOD_I2C_SENSOR(i2c);
+    uint8_t addr = s->parent_obj.address;
+    if (addr == 0x59u) {
+        return 0;
+    }
+    uint8_t asize = (addr == 0x51u || addr == 0x52u) ? 2u : 1u;
+    if (s->addr_bytes < asize) {
+        uint8_t mapped = (addr == 0x40u) ? (uint8_t)(data << 1u) :
+                         (addr == 0x22u && data == 0xcfu) ? 0x00u :
+                                                            data;
+        s->reg_ptr = (s->addr_bytes == 0) ?
+                         mapped :
+                         ((s->reg_ptr << 8u) | mapped) & 0x7ffu;
+        s->addr_bytes++;
+        return 0;
+    }
+    s->regs[s->reg_ptr] = data;
+    s->reg_ptr = (s->reg_ptr + 1u) & (asize == 2u ? 0x7ffu : 0xffu);
+    if (addr == 0x52u) {
+        s->busy_nak = true;
+    }
+    return 0;
+}
+
+static uint8_t pmod_i2c_sensor_recv(I2CSlave *i2c)
+{
+    PmodI2CSensorState *s = PMOD_I2C_SENSOR(i2c);
+    uint8_t addr = s->parent_obj.address;
+    uint8_t val = s->regs[s->reg_ptr];
+    s->reg_ptr =
+        (s->reg_ptr + 1u) & ((addr == 0x51u || addr == 0x52u) ? 0x7ffu : 0xffu);
+    return val;
+}
+
+static void pmod_i2c_sensor_class_init(ObjectClass *klass, const void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
+    (void)data;
+
+    dc->desc = "PMOD I2C Sensor Device";
+    device_class_set_legacy_reset(dc, &pmod_i2c_sensor_reset);
+    sc->match_and_add = &pmod_i2c_sensor_match_and_add;
+    sc->event = &pmod_i2c_sensor_event;
+    sc->send = &pmod_i2c_sensor_send;
+    sc->recv = &pmod_i2c_sensor_recv;
+}
+
+static const TypeInfo pmod_i2c_sensor_info = {
+    .name = TYPE_PMOD_I2C_SENSOR,
+    .parent = TYPE_I2C_SLAVE,
+    .instance_size = sizeof(PmodI2CSensorState),
+    .class_init = &pmod_i2c_sensor_class_init,
+};
 
 static void ot_i2c_register_types(void)
 {
     type_register_static(&ot_i2c_info);
     type_register_static(&ot_i2c_target_info);
+    type_register_static(&pmod_i2c_sensor_info);
 }
 
 type_init(ot_i2c_register_types);
