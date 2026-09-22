@@ -1978,6 +1978,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     }
 
     if (ret == TRANSLATE_SUCCESS) {
+        if (env->tlb_subpage || ((address ^ pa) & ~TARGET_PAGE_MASK)) {
+            tlb_size = 1;
+        }
         tlb_set_page(cs, address & ~(tlb_size - 1), pa & ~(tlb_size - 1),
                      prot, mmu_idx, tlb_size);
         return true;
