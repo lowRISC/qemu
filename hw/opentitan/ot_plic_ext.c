@@ -199,13 +199,25 @@ static void ot_plic_ext_alert_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        if (val32) {
+            ibex_irq_set(&s->alert, 1);
+            ibex_irq_set(&s->alert, 0);
+        }
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%01x\n", __func__,
                       s->ot_id, (uint32_t)addr);
         break;
     }
+}
+
+static bool ot_plic_ext_accepts(void *opaque, hwaddr addr, unsigned size,
+                                bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)size;
+    (void)attrs;
+    return !is_write || (addr & 3u) == 0u;
 }
 
 static const Property ot_plic_ext_properties[] = {
@@ -216,6 +228,7 @@ static const MemoryRegionOps ot_plic_ext_msip_ops = {
     .read = &ot_plic_ext_msip_read,
     .write = &ot_plic_ext_msip_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid.accepts = &ot_plic_ext_accepts,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
@@ -224,6 +237,7 @@ static const MemoryRegionOps ot_plic_ext_alert_ops = {
     .read = &ot_plic_ext_alert_read,
     .write = &ot_plic_ext_alert_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid.accepts = &ot_plic_ext_accepts,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
@@ -237,6 +251,7 @@ static void ot_plic_ext_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
+    memset(s->msip_regs, 0, sizeof(s->msip_regs));
     ibex_irq_set(&s->irq, 0);
     ibex_irq_set(&s->alert, 0);
 }
