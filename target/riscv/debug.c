@@ -949,6 +949,9 @@ void tdata_csr_write(CPURISCVState *env, int tdata_index, target_ulong val)
 
     if (tdata_index == TDATA1) {
         trigger_type = extract_trigger_type(env, val);
+        if (val != 0 && !(tinfo_csr_read(env) & BIT(trigger_type))) {
+            trigger_type = get_trigger_type(env, env->trigger_cur);
+        }
     } else {
         trigger_type = get_trigger_type(env, env->trigger_cur);
     }
@@ -1238,8 +1241,7 @@ void riscv_trigger_reset_hold(CPURISCVState *env)
         env->tdata1[i] = tdata1;
         env->tdata2[i] = 0;
         env->tdata3[i] = 0;
-        env->cpu_breakpoint[i] = NULL;
-        env->cpu_watchpoint[i] = NULL;
+        type2_breakpoint_remove(env, i);
         if (env->itrigger_timer[i]) {
             timer_del(env->itrigger_timer[i]);
         }
