@@ -1417,6 +1417,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 3),
             OT_EG_SOC_GPIO_ALERT(0, 40)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL)
+        ),
     },
     [OT_EG_SOC_DEV_DM_LC_CTRL] = {
         .type = TYPE_OT_DM_TL,

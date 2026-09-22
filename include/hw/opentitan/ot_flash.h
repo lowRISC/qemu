@@ -49,6 +49,8 @@ typedef enum {
     OT_FLASH_LC_ESCALATE_EN,
     /* "Indication ... that non-volatile memory debug is allowed" */
     OT_FLASH_LC_NVM_DEBUG_EN,
+    /* "RMA request from lc_ctrl" - wipe flash contents */
+    OT_FLASH_LC_RMA,
     OT_FLASH_LC_BROADCAST_COUNT,
 } OtFlashLcBroadcastType;
 
@@ -80,5 +82,7 @@ struct OtFlashClass {
                               OtFlashKeyMgrSecretType type,
                               OtFlashKeyMgrSecret *secret);
 };
+
+bool ot_flash_is_idle(const OtFlashState *s);
 
 #endif /* HW_OPENTITAN_OT_FLASH_H */

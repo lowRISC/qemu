@@ -46,9 +46,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/bitmap.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/memalign.h"
+#include "qemu/queue.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
@@ -798,11 +800,22 @@ typedef struct {
     uint32_t *info; /* info buffer (all partitions/banks) */
     unsigned bank_count; /* count of banks */
     unsigned size; /* overall storage size in bytes (excl. header) */
+    unsigned header_size; /* size in bytes of the backend file header */
     unsigned data_size; /* data buffer size of a bank in bytes */
     unsigned info_size; /* info buffer size of a bank in bytes */
     unsigned info_part_count; /* count of info partition (per bank) */
     OtFlashInfoPart info_parts[MAX_INFO_PART_COUNT];
+    uint32_t info_page_provisioned_bm; /* bitmask of provisioned info pages */
+    unsigned long *word_prog_bm; /* bitmap of programmed 32-bit data words */
+    unsigned total_data_words; /* total 32-bit words in data partition */
 } OtFlashStorage;
+
+typedef struct OtFlashEccFault {
+    MemoryRegion mr;
+    OtFlashState *s;
+    hwaddr offset;
+    QLIST_ENTRY(OtFlashEccFault) node;
+} OtFlashEccFault;
 
 typedef struct {
     char magic[4u]; /* vFSH */
@@ -846,6 +859,7 @@ struct OtFlashState {
 
     uint32_t *regs;
     uint32_t *csrs;
+    OtShadowReg mp_bank_cfg;
 
     /* "sticky" alerts that should stay signaled after firing */
     uint32_t latched_alerts;
@@ -864,11 +878,13 @@ struct OtFlashState {
         bool failed;
         bool hw; /* hw- or sw-requested operation? */
     } op;
+    uint32_t rd_err_addr; /* u_flash_ctrl_rd.op_err_addr_o registered flop */
     OtFlashLifeCyclePhase phase; /* HW LC phase for memory protection / RMA */
     OtFlashLcBroadcast lc_broadcast;
     OtFifo32 rd_fifo;
     OtFifo32 prog_fifo;
     OtFlashStorage flash;
+    QLIST_HEAD(, OtFlashEccFault) ecc_faults;
 
     /*
      * HW and SW operations share a program FIFO, but read to separate
@@ -972,9 +988,9 @@ static const OtFlashHwInfoPageRule OT_FLASH_HW_INFO_PAGE_RULES[] = {
 
 static void ot_flash_update_irqs(OtFlashState *s)
 {
-    uint32_t level = s->regs[R_INTR_STATE] & s->regs[R_INTR_ENABLE];
-    trace_ot_flash_irqs(s->ot_id, s->regs[R_INTR_STATE], s->regs[R_INTR_ENABLE],
-                        level);
+    uint32_t state = s->regs[R_INTR_STATE] | s->regs[R_INTR_TEST];
+    uint32_t level = state & s->regs[R_INTR_ENABLE];
+    trace_ot_flash_irqs(s->ot_id, state, s->regs[R_INTR_ENABLE], level);
     for (unsigned ix = 0u; ix < PARAM_NUM_IRQS; ix++) {
         ibex_irq_set(&s->irqs[ix], (int)((level >> ix) & 0x1u));
     }
@@ -982,9 +998,12 @@ static void ot_flash_update_irqs(OtFlashState *s)
 
 static void ot_flash_update_alerts(OtFlashState *s)
 {
-    uint32_t levels = s->regs[R_ALERT_TEST];
+    uint32_t fault_alerts = 0u;
+    if (s->regs[R_FAULT_STATUS]) {
+        fault_alerts |= ALERT_FATAL_ERR_MASK;
+    }
 
-    levels |= s->latched_alerts;
+    uint32_t levels = s->regs[R_ALERT_TEST] | s->latched_alerts | fault_alerts;
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         int level = (int)((levels >> ix) & 0x1u);
@@ -1000,7 +1019,7 @@ static void ot_flash_update_alerts(OtFlashState *s)
     if (s->regs[R_ALERT_TEST]) {
         s->regs[R_ALERT_TEST] = 0;
 
-        levels = s->latched_alerts;
+        levels = s->latched_alerts | fault_alerts;
         for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
             int level = (int)((levels >> ix) & 0x1u);
             if (level != ibex_irq_get_level(&s->alerts[ix])) {
@@ -1022,8 +1041,8 @@ static bool ot_flash_write_backend(OtFlashState *s, const void *buffer,
                                    unsigned offset, size_t size)
 {
     /* NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange) */
-    return blk_pwrite(s->blk, (int64_t)(intptr_t)offset, (int64_t)size, buffer,
-                      (BdrvRequestFlags)0);
+    return blk_pwrite(s->blk, (int64_t)s->flash.header_size + (int64_t)offset,
+                      (int64_t)size, buffer, (BdrvRequestFlags)0) < 0;
     /* NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange) */
 }
 
@@ -1089,6 +1108,11 @@ static bool ot_flash_in_operation(const OtFlashState *s)
     return s->op.kind != OP_NONE;
 }
 
+bool ot_flash_is_idle(const OtFlashState *s)
+{
+    return !ot_flash_in_operation(s);
+}
+
 static bool ot_flash_in_hw_operation(const OtFlashState *s)
 {
     return s->op.kind != OP_NONE && s->op.hw;
@@ -1124,12 +1148,35 @@ static void ot_flash_set_error(OtFlashState *s, uint32_t ebit, uint32_t eaddr)
     if (ebit) {
         if (s->op.hw) {
             s->regs[R_FAULT_STATUS] |= ebit;
-            s->latched_alerts |= ALERT_FATAL_ERR_MASK;
         } else {
             s->regs[R_OP_STATUS] |= R_OP_STATUS_ERR_MASK;
-            s->regs[R_INTR_STATE] |= INTR_CORR_ERR_MASK;
-            s->regs[R_ERR_ADDR] = FIELD_DP32(0, ERR_ADDR, ERR_ADDR, eaddr);
-            s->regs[R_ERR_CODE] = ebit;
+            uint32_t addr_err_mask =
+                R_ERR_CODE_MP_ERR_MASK | R_ERR_CODE_RD_ERR_MASK |
+                R_ERR_CODE_PROG_ERR_MASK;
+            if (ebit & addr_err_mask) {
+                if (s->op.kind == OP_ERASE) {
+                    uint32_t align_mask = (s->op.erase_sel == ERASE_SEL_BANK) ?
+                                              ~(BYTES_PER_BANK - 1u) :
+                                              ~(BYTES_PER_PAGE - 1u);
+                    eaddr = s->op.address & align_mask;
+                } else if (s->op.kind == OP_READ) {
+                    /*
+                     * In flash_ctrl_rd.sv:96-102, 135-147, op_err_addr_o is a
+                     * registered flop updated on (~|op_err_q && |op_err_d).
+                     * When OP_READ faults on its final word (remaining == 1),
+                     * cnt_hit == 1 asserts op_done_o and hw2reg.err_addr.de on
+                     * the same cycle before op_err_addr_o updates, latching the
+                     * previous rd_err_addr into ERR_ADDR.
+                     */
+                    uint32_t prev_eaddr = s->rd_err_addr;
+                    s->rd_err_addr = eaddr;
+                    if (s->op.remaining == 1u) {
+                        eaddr = prev_eaddr;
+                    }
+                }
+                s->regs[R_ERR_ADDR] = FIELD_DP32(0, ERR_ADDR, ERR_ADDR, eaddr);
+            }
+            s->regs[R_ERR_CODE] |= ebit;
             s->regs[R_ALERT_TEST] |= ALERT_RECOV_ERR_MASK;
             ot_flash_update_irqs(s);
         }
@@ -1146,6 +1193,7 @@ static void ot_flash_op_complete(OtFlashState *s)
      * if there was an error at some point in the operation.
      */
     if (!s->op.hw) {
+        s->regs[R_CONTROL] &= ~R_CONTROL_START_MASK;
         s->regs[R_OP_STATUS] |= R_OP_STATUS_DONE_MASK;
         s->regs[R_INTR_STATE] |= INTR_OP_DONE_MASK;
         ot_flash_update_irqs(s);
@@ -1383,6 +1431,133 @@ static bool ot_flash_default_region_cfg_op_enabled(const OtFlashState *s)
     return en_field == OT_MULTIBITBOOL4_TRUE;
 }
 
+static bool ot_flash_data_attr_enabled(const OtFlashState *s, unsigned address,
+                                       bool scramble)
+{
+    unsigned page = address / BYTES_PER_PAGE;
+    for (unsigned region = 0u; region < NUM_REGIONS; region++) {
+        unsigned r_region_cfg = R_MP_REGION_CFG_0 + region;
+        if (SHARED_FIELD_EX32(s->regs[r_region_cfg], MP_REGION_CFG_EN) !=
+            OT_MULTIBITBOOL4_TRUE) {
+            continue;
+        }
+        unsigned r_region = R_MP_REGION_0 + region;
+        unsigned region_base_page =
+            SHARED_FIELD_EX32(s->regs[r_region], MP_REGION_BASE);
+        unsigned region_size =
+            SHARED_FIELD_EX32(s->regs[r_region], MP_REGION_SIZE);
+        if (page < region_base_page ||
+            page >= (region_base_page + region_size)) {
+            continue;
+        }
+        unsigned en =
+            scramble ?
+                SHARED_FIELD_EX32(s->regs[r_region_cfg],
+                                  MP_REGION_CFG_SCRAMBLE_EN) :
+                SHARED_FIELD_EX32(s->regs[r_region_cfg], MP_REGION_CFG_ECC_EN);
+        return en == OT_MULTIBITBOOL4_TRUE;
+    }
+    unsigned def_en =
+        scramble ?
+            FIELD_EX32(s->regs[R_DEFAULT_REGION], DEFAULT_REGION, SCRAMBLE_EN) :
+            FIELD_EX32(s->regs[R_DEFAULT_REGION], DEFAULT_REGION, ECC_EN);
+    return def_en == OT_MULTIBITBOOL4_TRUE;
+}
+
+static bool ot_flash_data_ecc_enabled(const OtFlashState *s, unsigned address)
+{
+    return ot_flash_data_attr_enabled(s, address, false);
+}
+
+static bool
+ot_flash_data_scramble_enabled(const OtFlashState *s, unsigned address)
+{
+    return ot_flash_data_attr_enabled(s, address, true);
+}
+
+static bool ot_flash_is_ecc_corrupted(const OtFlashState *s, hwaddr address)
+{
+    hwaddr aligned_offset = address & ~7ULL;
+    const OtFlashEccFault *fault;
+    QLIST_FOREACH(fault, &s->ecc_faults, node) {
+        if (fault->offset == aligned_offset) {
+            return ot_flash_data_ecc_enabled(s, (unsigned)address);
+        }
+    }
+    return false;
+}
+
+static MemTxResult ot_flash_ecc_fault_read_with_attrs(
+    void *opaque, hwaddr addr, uint64_t *data, unsigned size, MemTxAttrs attrs)
+{
+    OtFlashEccFault *fault = opaque;
+    OtFlashState *s = fault->s;
+    hwaddr flash_offset = fault->offset + addr;
+    (void)attrs;
+
+    if (!ot_flash_data_ecc_enabled(s, (unsigned)flash_offset)) {
+        uint64_t val = 0;
+        memcpy(&val, (const uint8_t *)s->flash.data + flash_offset, size);
+        *data = val;
+        return MEMTX_OK;
+    }
+
+    qemu_log_mask(
+        LOG_GUEST_ERROR,
+        "%s: %s: uncorrectable ECC fault reading flash data at 0x%" HWADDR_PRIx
+        "\n",
+        __func__, s->ot_id, flash_offset);
+
+    s->regs[R_FAULT_STATUS] |= R_FAULT_STATUS_PHY_RELBL_ERR_MASK;
+    s->regs[R_ERR_ADDR] =
+        FIELD_DP32(0, ERR_ADDR, ERR_ADDR, (uint32_t)flash_offset);
+    ot_flash_update_alerts(s);
+
+    *data = UINT64_MAX;
+    return MEMTX_ERROR;
+}
+
+static const MemoryRegionOps ot_flash_ecc_fault_ops = {
+    .read_with_attrs = &ot_flash_ecc_fault_read_with_attrs,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl.min_access_size = 1u,
+    .impl.max_access_size = 4u,
+    .valid.min_access_size = 1u,
+    .valid.max_access_size = 4u,
+};
+
+static void ot_flash_add_ecc_fault(OtFlashState *s, hwaddr address)
+{
+    hwaddr aligned_offset = address & ~7ULL;
+    OtFlashEccFault *fault;
+    QLIST_FOREACH(fault, &s->ecc_faults, node) {
+        if (fault->offset == aligned_offset) {
+            return;
+        }
+    }
+    fault = g_new0(OtFlashEccFault, 1);
+    fault->s = s;
+    fault->offset = aligned_offset;
+    memory_region_init_io(&fault->mr, OBJECT(s), &ot_flash_ecc_fault_ops, fault,
+                          TYPE_OT_FLASH ".ecc-fault", 8u);
+    memory_region_add_subregion_overlap(&s->mmio.mem, aligned_offset,
+                                        &fault->mr, 1);
+    QLIST_INSERT_HEAD(&s->ecc_faults, fault, node);
+}
+
+static void
+ot_flash_clear_ecc_faults_range(OtFlashState *s, hwaddr start, hwaddr size)
+{
+    OtFlashEccFault *fault, *next;
+    QLIST_FOREACH_SAFE(fault, &s->ecc_faults, node, next) {
+        if (fault->offset >= start && fault->offset < (start + size)) {
+            memory_region_del_subregion(&s->mmio.mem, &fault->mr);
+            QLIST_REMOVE(fault, node);
+            g_free(fault);
+        }
+    }
+}
+
 static bool ot_flash_can_erase_bank(const OtFlashState *s, unsigned bank)
 {
     switch (bank) {
@@ -1497,6 +1672,21 @@ static unsigned ot_flash_next_info_address(OtFlashState *s)
         ot_flash_set_error(s, mp_err_ebit, op_address);
         s->op.failed = true;
         return address;
+    }
+
+    if (!s->op.hw && s->op.kind == OP_READ && cfg.scramble_en && cfg.ecc_en) {
+        unsigned info_page_idx = address / BYTES_PER_PAGE;
+        if (info_page_idx < 32u &&
+            !(storage->info_page_provisioned_bm & (1u << info_page_idx))) {
+            qemu_log_mask(
+                LOG_GUEST_ERROR,
+                "%s: %s: read error on unprovisioned scrambled/ECC info page "
+                "%u in partition %u of bank %u\n",
+                __func__, s->ot_id, page, info_partition, bank);
+            ot_flash_set_error(s, R_ERR_CODE_RD_ERR_MASK, op_address);
+            s->op.failed = true;
+            return address;
+        }
     }
 
     return address;
@@ -1629,7 +1819,30 @@ static void ot_flash_op_read(OtFlashState *s)
 
             /* For multi-word read access permission errors, return all 1s. */
             if (!s->op.failed) {
-                word = src[address];
+                if (!s->op.info_part &&
+                    ot_flash_is_ecc_corrupted(s, address * sizeof(uint32_t))) {
+                    s->regs[R_FAULT_STATUS] |=
+                        R_FAULT_STATUS_PHY_RELBL_ERR_MASK;
+                    ot_flash_set_error(s, R_ERR_CODE_RD_ERR_MASK,
+                                       address * sizeof(uint32_t));
+                    s->op.failed = true;
+                    word = 0xFFFFFFFFu;
+                } else {
+                    word = src[address];
+                }
+            }
+        } else if (!s->op.info_part &&
+                   (s->regs[R_ERR_CODE] & R_ERR_CODE_RD_ERR_MASK)) {
+            /*
+             * RTL: flash_ctrl_rd.sv:180 (`assign data_o = ~err_sel |
+             * (err_sel & op_err_o.rd_err) ? flash_data_i : inv_data_integ`).
+             * In StErr after a physical RD_ERR, flash_req_o is 0 so
+             * flash_phy_rd.sv data_err_o is 0 and flash_data_i outputs the
+             * latched 64-bit flash word's low 32-bit word (word_sel = 0).
+             */
+            unsigned err_word = (s->regs[R_ERR_ADDR] / sizeof(uint32_t)) & ~1u;
+            if (err_word < storage->total_data_words) {
+                word = src[err_word];
             }
         }
 
@@ -1658,6 +1871,10 @@ static void ot_flash_op_prog(OtFlashState *s)
 {
     if (ot_fifo32_is_empty(&s->prog_fifo)) {
         xtrace_ot_flash_error(s->ot_id, "prog while prog FIFO empty");
+        return;
+    }
+    if (ot_fifo32_num_used(&s->prog_fifo) < s->op.remaining &&
+        !ot_fifo32_is_full(&s->prog_fifo)) {
         return;
     }
 
@@ -1699,8 +1916,30 @@ static void ot_flash_op_prog(OtFlashState *s)
         g_assert(word_address <
                  ((s->op.info_part ? storage->info_size : storage->data_size) *
                   storage->bank_count));
+        uint32_t prev_word = dest[word_address];
         dest[word_address] &= word;
-        if (!s->op.info_part) {
+        if (!s->op.info_part && word_address < storage->total_data_words) {
+            bool scrambled = ot_flash_data_scramble_enabled(s, address);
+            unsigned aligned_word = word_address & ~1u;
+            bool both_zero =
+                (dest[aligned_word] == 0u) && (dest[aligned_word + 1u] == 0u);
+            if (both_zero && !scrambled) {
+                ot_flash_clear_ecc_faults_range(s, address & ~7ULL, 8u);
+            } else if (test_bit(word_address, storage->word_prog_bm) &&
+                       word != prev_word && (word != 0u || scrambled) &&
+                       ot_flash_data_ecc_enabled(s, address)) {
+                ot_flash_add_ecc_fault(s, address);
+            }
+            if (word != 0xFFFFFFFFu || scrambled) {
+                set_bit(word_address, storage->word_prog_bm);
+            }
+        }
+        if (s->op.info_part) {
+            unsigned info_page_idx = address / BYTES_PER_PAGE;
+            if (info_page_idx < 32u) {
+                storage->info_page_provisioned_bm |= (1u << info_page_idx);
+            }
+        } else {
             /*
              * for data, we must flush relevant TLB pages to ensure host reads
              * for XIP execution of mutated code in flash are correct.
@@ -1710,9 +1949,10 @@ static void ot_flash_op_prog(OtFlashState *s)
         }
         trace_ot_flash_prog_word(s->ot_id, s->op.info_part, word_address, word);
         if (ot_flash_is_backend_writable(s)) {
-            uintptr_t dest_offset = (uintptr_t)dest - (uintptr_t)storage->data;
+            uintptr_t dest_offset =
+                (uintptr_t)&dest[word_address] - (uintptr_t)storage->data;
             if (ot_flash_write_backend(s, &dest[word_address],
-                                       (unsigned)(dest_offset + word_address),
+                                       (unsigned)dest_offset,
                                        sizeof(uint32_t))) {
                 qemu_log_mask(LOG_GUEST_ERROR,
                               "%s: %s: cannot update flash backend\n", __func__,
@@ -1749,7 +1989,15 @@ static void ot_flash_op_erase_page(OtFlashState *s, unsigned address)
              ((s->op.info_part ? storage->info_size : storage->data_size) *
               storage->bank_count));
     memset(&dest[word_address], 0xFF, page_size);
-    if (!s->op.info_part) {
+    if (s->op.info_part) {
+        unsigned info_page_idx = page_address / BYTES_PER_PAGE;
+        if (info_page_idx < 32u) {
+            storage->info_page_provisioned_bm |= (1u << info_page_idx);
+        }
+    } else {
+        bitmap_clear(storage->word_prog_bm, (long)word_address,
+                     (long)(page_size / sizeof(uint32_t)));
+        ot_flash_clear_ecc_faults_range(s, page_address, page_size);
         /*
          * for data, we must flush relevant TLB pages to ensure host reads
          * for XIP execution of mutated code in flash are correct.
@@ -1758,10 +2006,10 @@ static void ot_flash_op_erase_page(OtFlashState *s, unsigned address)
     }
     trace_ot_flash_erase(s->ot_id, s->op.info_part, word_address, page_size);
     if (ot_flash_is_backend_writable(s)) {
-        uintptr_t dest_offset = (uintptr_t)dest - (uintptr_t)storage->data;
+        uintptr_t dest_offset =
+            (uintptr_t)&dest[word_address] - (uintptr_t)storage->data;
         if (ot_flash_write_backend(s, &dest[word_address],
-                                   (unsigned)(dest_offset + word_address),
-                                   page_size)) {
+                                   (unsigned)dest_offset, page_size)) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: cannot update flash backend\n", __func__,
                           s->ot_id);
@@ -1773,7 +2021,8 @@ static void ot_flash_op_erase_page(OtFlashState *s, unsigned address)
         }
     }
 
-    ot_flash_op_complete(s);
+    timer_mod(s->op_delay,
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
 }
 
 static void ot_flash_op_erase_bank(OtFlashState *s, unsigned address)
@@ -1815,6 +2064,12 @@ static void ot_flash_op_erase_bank(OtFlashState *s, unsigned address)
         g_assert((info_address + bank_size) <=
                  (storage->info_size * storage->bank_count));
         memset(&storage->info[info_address], 0xFF, bank_size);
+        unsigned pages_per_bank = storage->info_size / BYTES_PER_PAGE;
+        unsigned first_page = bank * pages_per_bank;
+        for (unsigned p = 0; p < pages_per_bank && (first_page + p) < 32u;
+             p++) {
+            storage->info_page_provisioned_bm |= (1u << (first_page + p));
+        }
         trace_ot_flash_erase(s->ot_id, true, info_address, bank_size);
 
         bank_size = storage->data_size;
@@ -1829,20 +2084,24 @@ static void ot_flash_op_erase_bank(OtFlashState *s, unsigned address)
      * for XIP execution of mutated code in flash are correct.
      */
     hwaddr data_byte_address = (hwaddr)data_address * sizeof(uint32_t);
+    bitmap_clear(storage->word_prog_bm, (long)data_address,
+                 (long)(bank_size / sizeof(uint32_t)));
+    ot_flash_clear_ecc_faults_range(s, data_byte_address, bank_size);
     memory_region_set_dirty(&s->mmio.mem, data_byte_address, bank_size);
 
     if (ot_flash_is_backend_writable(s)) {
+        uintptr_t data_offset =
+            (uintptr_t)&storage->data[data_address] - (uintptr_t)storage->data;
         int data_write_err =
             ot_flash_write_backend(s, &storage->data[data_address],
-                                   (unsigned)(data_address),
-                                   storage->data_size);
+                                   (unsigned)data_offset, storage->data_size);
         int info_write_err = 0u;
         if (s->op.info_part) {
-            uintptr_t offset =
-                (uintptr_t)storage->info - (uintptr_t)storage->data;
+            uintptr_t info_offset = (uintptr_t)&storage->info[info_address] -
+                                    (uintptr_t)storage->data;
             info_write_err =
                 ot_flash_write_backend(s, &storage->info[info_address],
-                                       (unsigned)(offset + info_address),
+                                       (unsigned)info_offset,
                                        storage->info_size);
         }
 
@@ -1858,7 +2117,8 @@ static void ot_flash_op_erase_bank(OtFlashState *s, unsigned address)
         }
     }
 
-    ot_flash_op_complete(s);
+    timer_mod(s->op_delay,
+              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + OP_INIT_DURATION_NS);
 }
 
 static void ot_flash_op_erase(OtFlashState *s)
@@ -2084,7 +2344,6 @@ static bool ot_flash_check_program_resolution(OtFlashState *s)
                       __func__, s->ot_id, s->op.address, s->op.count,
                       start_window, end_window);
         ot_flash_set_error(s, R_ERR_CODE_PROG_WIN_ERR_MASK, s->op.address);
-        ot_flash_op_complete(s);
         return false;
     }
     return true;
@@ -2102,7 +2361,6 @@ static bool ot_flash_check_program_type(OtFlashState *s)
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: program type not enabled: %s\n",
                       __func__, s->ot_id, PROGRAM_NAME(s->op.prog_sel));
         ot_flash_set_error(s, R_ERR_CODE_PROG_TYPE_ERR_MASK, s->op.address);
-        ot_flash_op_complete(s);
         return false;
     }
     return true;
@@ -2124,6 +2382,7 @@ static void ot_flash_process_control_op(OtFlashState *s)
     unsigned num = (unsigned)FIELD_EX32(ctrl, CONTROL, NUM);
 
     s->op.hw = false;
+    s->op.failed = false;
 
     /*
      * If the flash controller is disabled by software, then (a) the flash
@@ -2147,7 +2406,7 @@ static void ot_flash_process_control_op(OtFlashState *s)
         xtrace_ot_flash_info(s->ot_id, "Read from", s->op.address);
         s->op.count = num + 1u;
         break;
-    case CONTROL_OP_PROG:
+    case CONTROL_OP_PROG: {
         s->op.kind = OP_PROG;
         s->op.address = WORD_ALIGN_ADDR(s->regs[R_ADDR]);
         s->op.info_part = part_sel;
@@ -2155,15 +2414,17 @@ static void ot_flash_process_control_op(OtFlashState *s)
         s->op.prog_sel = (bool)prog_sel;
         s->op.count = num + 1u;
         /*
-         * On encountering either a program resolution error or program type
-         * error, do not start the transaction.
+         * In RTL (flash_ctrl_prog.sv:164-178), both prog_win_err and
+         * prog_type_err are evaluated in parallel on op_start_i, and
+         * flash_ctrl_prog enters StErr to drain op_num_words_i + 1 words
+         * from PROG_FIFO before asserting op_done_o.
          */
-        if (!ot_flash_check_program_resolution(s) ||
-            !ot_flash_check_program_type(s)) {
-            break;
-        }
+        bool res_ok = ot_flash_check_program_resolution(s);
+        bool type_ok = ot_flash_check_program_type(s);
+        s->op.failed = !(res_ok && type_ok);
         xtrace_ot_flash_info(s->ot_id, "Write to", s->op.address);
         break;
+    }
     case CONTROL_OP_ERASE:
         s->op.kind = OP_ERASE;
         s->op.address = WORD_ALIGN_ADDR(s->regs[R_ADDR]);
@@ -2181,7 +2442,6 @@ static void ot_flash_process_control_op(OtFlashState *s)
         ot_flash_op_complete(s);
         return;
     }
-    s->op.failed = false;
     s->op.remaining = s->op.count;
     ot_flash_op_start(s);
 }
@@ -2190,14 +2450,20 @@ static void ot_flash_init_complete(void *opaque)
 {
     OtFlashState *s = opaque;
 
-    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 0u);
-    s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INITIALIZED, 1u);
-    s->regs[R_PHY_STATUS] =
-        FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
+    if (s->op.kind == OP_INIT) {
+        s->regs[R_STATUS] = FIELD_DP32(s->regs[R_STATUS], STATUS, INIT_WIP, 0u);
+        s->regs[R_STATUS] =
+            FIELD_DP32(s->regs[R_STATUS], STATUS, INITIALIZED, 1u);
+        s->regs[R_PHY_STATUS] =
+            FIELD_DP32(s->regs[R_PHY_STATUS], PHY_STATUS, INIT_WIP, 0u);
 
-    trace_ot_flash_op_complete(s->ot_id, OP_NAME(s->op.kind), s->op.hw, true);
+        trace_ot_flash_op_complete(s->ot_id, OP_NAME(s->op.kind), s->op.hw,
+                                   true);
 
-    s->op.kind = OP_NONE;
+        s->op.kind = OP_NONE;
+    } else if (s->op.kind != OP_NONE) {
+        ot_flash_op_complete(s);
+    }
 }
 
 static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -2210,6 +2476,8 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
 
     switch (reg) {
     case R_INTR_STATE:
+        val32 = s->regs[R_INTR_STATE] | s->regs[R_INTR_TEST];
+        break;
     case R_INTR_ENABLE:
     case R_DIS:
     case R_EXEC:
@@ -2298,7 +2566,6 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_BANK1_INFO2_PAGE_CFG_1:
     case R_HW_INFO_CFG_OVERRIDE:
     case R_BANK_CFG_REGWEN:
-    case R_MP_BANK_CFG_SHADOWED:
     case R_OP_STATUS:
     case R_DEBUG_STATE:
     case R_ERR_CODE:
@@ -2315,6 +2582,9 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_FIFO_RST:
     case R_STATUS:
         val32 = s->regs[reg];
+        break;
+    case R_MP_BANK_CFG_SHADOWED:
+        val32 = ot_shadow_reg_read(&s->mp_bank_cfg);
         break;
     case R_RD_FIFO:
         if (!ot_fifo32_is_empty(&s->rd_fifo)) {
@@ -2362,6 +2632,7 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
         val32 = SHARED_FIELD_DP32(val32, FIFO_LVL_PROG,
                                   ot_fifo32_num_used(&s->prog_fifo));
         break;
+    case R_INTR_TEST:
     case R_ALERT_TEST:
     case R_PROG_FIFO:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x%03x (%s)\n",
@@ -2381,6 +2652,68 @@ static uint64_t ot_flash_regs_read(void *opaque, hwaddr addr, unsigned size)
 
     return (uint64_t)val32;
 };
+
+static inline uint32_t ot_flash_byte_mask(hwaddr addr, unsigned size)
+{
+    uint32_t mask = (size >= 4u) ? 0xfu : ((1u << size) - 1u);
+    return (mask << (addr & 3u)) & 0xfu;
+}
+
+static uint32_t ot_flash_core_reg_permit(hwaddr reg)
+{
+    switch (reg) {
+    case R_EXEC:
+    case R_CONTROL:
+    case R_MP_REGION_CFG_0 ... R_MP_REGION_CFG_7:
+    case R_BANK0_INFO0_PAGE_CFG_0 ... R_BANK0_INFO0_PAGE_CFG_9:
+    case R_BANK0_INFO1_PAGE_CFG:
+    case R_BANK0_INFO2_PAGE_CFG_0 ... R_BANK0_INFO2_PAGE_CFG_1:
+    case R_BANK1_INFO0_PAGE_CFG_0 ... R_BANK1_INFO0_PAGE_CFG_9:
+    case R_BANK1_INFO1_PAGE_CFG:
+    case R_BANK1_INFO2_PAGE_CFG_0 ... R_BANK1_INFO2_PAGE_CFG_1:
+    case R_SCRATCH:
+    case R_PROG_FIFO:
+        return 0xfu;
+    case R_ADDR:
+    case R_MP_REGION_0 ... R_MP_REGION_7:
+    case R_DEFAULT_REGION:
+    case R_ERR_ADDR:
+    case R_ECC_SINGLE_ERR_ADDR_0 ... R_ECC_SINGLE_ERR_ADDR_1:
+        return 0x7u;
+    case R_DEBUG_STATE:
+    case R_STD_FAULT_STATUS:
+    case R_FAULT_STATUS:
+    case R_ECC_SINGLE_ERR_CNT:
+    case R_FIFO_LVL:
+    case R_CURR_FIFO_LVL:
+        return 0x3u;
+    default:
+        return 0x1u;
+    }
+}
+
+static bool ot_flash_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                  bool is_write, MemTxAttrs attrs)
+{
+    OtFlashState *s = opaque;
+    (void)attrs;
+    hwaddr reg = R32_OFF(addr);
+    if (!is_write) {
+        if (reg == R_PROG_FIFO) {
+            return false;
+        }
+        if (reg == R_RD_FIFO && ot_fifo32_is_empty(&s->rd_fifo)) {
+            return !ot_flash_is_disabled(s) && ot_flash_operation_ongoing(s) &&
+                   s->op.kind == OP_READ;
+        }
+        return true;
+    }
+    if (reg == R_RD_FIFO) {
+        return false;
+    }
+    return (ot_flash_core_reg_permit(reg) & ~ot_flash_byte_mask(addr, size)) ==
+           0u;
+}
 
 static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                 unsigned size)
@@ -2413,11 +2746,16 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[R_INTR_ENABLE] = val32;
         ot_flash_update_irqs(s);
         break;
-    case R_INTR_TEST:
+    case R_INTR_TEST: {
+        uint32_t status_mask = INTR_PROG_EMPTY_MASK | INTR_PROG_LVL_MASK |
+                               INTR_RD_FULL_MASK | INTR_RD_LVL_MASK;
+        uint32_t rw1c_mask = INTR_CORR_ERR_MASK | INTR_OP_DONE_MASK;
         val32 &= INTR_MASK;
-        s->regs[R_INTR_STATE] |= val32;
+        s->regs[R_INTR_TEST] = val32 & status_mask;
+        s->regs[R_INTR_STATE] |= val32 & rw1c_mask;
         ot_flash_update_irqs(s);
         break;
+    }
     case R_ALERT_TEST:
         val32 &= ALERT_MASK;
         s->regs[reg] = val32;
@@ -2433,7 +2771,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_INIT:
         val32 &= R_INIT_VAL_MASK;
-        s->regs[reg] = val32;
+        s->regs[reg] |= val32; /* rw1s */
         if (val32) {
             ot_flash_initialize(s);
         }
@@ -2473,20 +2811,32 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_flash_process_control_op(s);
         break;
     case R_ADDR:
+        if (!(s->regs[R_CTRL_REGWEN] & R_CTRL_REGWEN_EN_MASK)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: %s is not enabled, so %s is protected\n",
+                          __func__, s->ot_id, REG_NAME(R_CTRL_REGWEN),
+                          REG_NAME(reg));
+            break;
+        }
         val32 &= R_ADDR_START_MASK;
         s->regs[reg] = val32;
         break;
     case R_PROG_TYPE_EN:
+        if (!(s->regs[R_CTRL_REGWEN] & R_CTRL_REGWEN_EN_MASK)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: %s is not enabled, so %s is protected\n",
+                          __func__, s->ot_id, REG_NAME(R_CTRL_REGWEN),
+                          REG_NAME(reg));
+            break;
+        }
         val32 &= R_PROG_TYPE_EN_NORMAL_MASK | R_PROG_TYPE_EN_REPAIR_MASK;
-        s->regs[reg] = val32;
+        s->regs[reg] &= val32; /* rw0c */
         break;
     case R_ERASE_SUSPEND:
-        /*
-         * @todo We do not implement the erase suspend operation in QEMU as we
-         * do all erases synchronously, and so just immediately clear the erase
-         * suspend request. To implement this feature properly we would have to
-         * add delay to bank erases & check for erase suspends at each step.
-         */
+        if ((val32 & R_ERASE_SUSPEND_REQ_MASK) && s->op.kind == OP_ERASE) {
+            timer_del(s->op_delay);
+            ot_flash_op_complete(s);
+        }
         s->regs[reg] = 0u;
         break;
     case R_REGION_CFG_REGWEN_0:
@@ -2625,9 +2975,23 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         break;
     case R_MP_BANK_CFG_SHADOWED:
-        val32 &= (R_MP_BANK_CFG_SHADOWED_ERASE_EN_0_MASK |
-                  R_MP_BANK_CFG_SHADOWED_ERASE_EN_1_MASK);
-        s->regs[reg] = val32;
+        if (ot_flash_regs_is_wr_enabled(s, R_BANK_CFG_REGWEN)) {
+            val32 &= (R_MP_BANK_CFG_SHADOWED_ERASE_EN_0_MASK |
+                      R_MP_BANK_CFG_SHADOWED_ERASE_EN_1_MASK);
+            switch (ot_shadow_reg_write(&s->mp_bank_cfg, val32)) {
+            case OT_SHADOW_REG_COMMITTED:
+                s->regs[reg] = ot_shadow_reg_peek(&s->mp_bank_cfg);
+                break;
+            case OT_SHADOW_REG_ERROR:
+                s->regs[R_ERR_CODE] |= R_ERR_CODE_UPDATE_ERR_MASK;
+                s->regs[R_ALERT_TEST] |= ALERT_RECOV_ERR_MASK;
+                ot_flash_update_alerts(s);
+                break;
+            case OT_SHADOW_REG_STAGED:
+            default:
+                break;
+            }
+        }
         break;
     case R_OP_STATUS:
         val32 &= R_OP_STATUS_DONE_MASK | R_OP_STATUS_ERR_MASK;
@@ -2706,18 +3070,22 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= rw0c_mask;
         val32 |= ~rw0c_mask;
         s->regs[reg] &= val32;
+        ot_flash_update_alerts(s);
         break;
     }
     case R_CTRL_REGWEN:
     case R_STATUS:
     case R_DEBUG_STATE:
-    case R_RD_FIFO:
     case R_STD_FAULT_STATUS:
     case R_ERR_ADDR:
     case R_ECC_SINGLE_ERR_ADDR_0:
     case R_ECC_SINGLE_ERR_ADDR_1:
     case R_PHY_STATUS:
     case R_CURR_FIFO_LVL:
+    case R_RD_FIFO:
+        /*
+         * R_RD_FIFO (0x1bc) is a read-only FIFO window; writes are ignored.
+         */
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: R/O register 0x%03x (%s)\n",
                       __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
@@ -2789,16 +3157,21 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
     bool enable = s->csrs[R_CSR0_REGWEN] & R_CSR0_REGWEN_FIELD0_MASK;
     switch (csr) {
     case R_CSR0_REGWEN:
-        val32 &= R_CSR0_REGWEN_FIELD0_MASK;
-        break;
+        s->csrs[R_CSR0_REGWEN] &= (val32 & R_CSR0_REGWEN_FIELD0_MASK);
+        return;
     case R_CSR1:
         val32 &= R_CSR1_FIELD0_MASK | R_CSR1_FIELD1_MASK;
         break;
-    case R_CSR2:
-        val32 &= R_CSR2_FIELD0_MASK | R_CSR2_FIELD1_MASK | R_CSR2_FIELD2_MASK |
-                 R_CSR2_FIELD3_MASK | R_CSR2_FIELD4_MASK | R_CSR2_FIELD5_MASK |
-                 R_CSR2_FIELD6_MASK | R_CSR2_FIELD7_MASK;
-        break;
+    case R_CSR2: {
+        uint32_t rw1c_mask =
+            R_CSR2_FIELD0_MASK | R_CSR2_FIELD1_MASK | R_CSR2_FIELD2_MASK |
+            R_CSR2_FIELD4_MASK | R_CSR2_FIELD5_MASK | R_CSR2_FIELD6_MASK;
+        uint32_t rw_mask = R_CSR2_FIELD3_MASK | R_CSR2_FIELD7_MASK;
+        s->csrs[R_CSR2] =
+            ((s->csrs[R_CSR2] & ~(val32 & rw1c_mask)) & ~rw_mask) |
+            (val32 & rw_mask);
+        return;
+    }
     case R_CSR3:
         val32 &= R_CSR3_FIELD0_MASK | R_CSR3_FIELD1_MASK | R_CSR3_FIELD2_MASK |
                  R_CSR3_FIELD3_MASK | R_CSR3_FIELD4_MASK | R_CSR3_FIELD5_MASK |
@@ -2851,9 +3224,9 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
         val32 &= R_CSR19_FIELD0_MASK;
         break;
     case R_CSR20:
-        val32 &=
-            R_CSR20_FIELD0_MASK | R_CSR20_FIELD1_MASK | R_CSR20_FIELD2_MASK;
-        break;
+        s->csrs[R_CSR20] &=
+            ~(val32 & (R_CSR20_FIELD0_MASK | R_CSR20_FIELD1_MASK));
+        return;
     default:
         enable = false;
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Bad offset 0x%02x\n", __func__,
@@ -2866,12 +3239,78 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
+static uint32_t ot_flash_prim_csr_permit(hwaddr csr)
+{
+    switch (csr) {
+    case R_CSR0_REGWEN:
+    case R_CSR2:
+    case R_CSR18 ... R_CSR20:
+        return 0x1u;
+    case R_CSR1:
+    case R_CSR4:
+    case R_CSR12:
+    case R_CSR14 ... R_CSR17:
+        return 0x3u;
+    case R_CSR5:
+    case R_CSR7:
+    case R_CSR13:
+        return 0x7u;
+    case R_CSR3:
+    case R_CSR6:
+    case R_CSR8 ... R_CSR11:
+        return 0xfu;
+    default:
+        return 0u;
+    }
+}
+
+static bool ot_flash_csrs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                  bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    return !is_write || (ot_flash_prim_csr_permit(R32_OFF(addr)) &
+                         ~ot_flash_byte_mask(addr, size)) == 0u;
+}
+
+static void ot_flash_rma_wipe(OtFlashState *s)
+{
+    OtFlashStorage *storage = &s->flash;
+    unsigned data_bytes = storage->data_size * storage->bank_count;
+
+    if (storage->data && data_bytes > 0) {
+        memset(storage->data, 0xFF, data_bytes);
+        memory_region_set_dirty(&s->mmio.mem, 0, data_bytes);
+    }
+
+    if (storage->info && storage->info_part_count > 0) {
+        static const unsigned rma_info_pages[] = {
+            FLASH_QUAL_INFO_PAGE_CREATOR,
+            FLASH_QUAL_INFO_PAGE_OWNER,
+            FLASH_QUAL_INFO_PAGE_ISOLATED,
+        };
+        for (unsigned i = 0; i < ARRAY_SIZE(rma_info_pages); i++) {
+            unsigned page = rma_info_pages[i];
+            unsigned byte_offset =
+                storage->info_parts[0].offset + page * BYTES_PER_PAGE;
+            if (byte_offset + BYTES_PER_PAGE <= storage->info_size) {
+                uint8_t *info_ptr = (uint8_t *)storage->info + byte_offset;
+                memset(info_ptr, 0xFF, BYTES_PER_PAGE);
+            }
+        }
+    }
+}
+
 static void ot_flash_lc_broadcast_recv(void *opaque, int n, int level)
 {
     OtFlashState *s = opaque;
     OtFlashLcBroadcast *bcast = &s->lc_broadcast;
 
     g_assert((unsigned)n < OT_FLASH_LC_BROADCAST_COUNT);
+
+    if (n == OT_FLASH_LC_RMA && level) {
+        ot_flash_rma_wipe(s);
+    }
 
     uint16_t bit = 1u << (unsigned)n;
     bcast->incoming_signal_bm |= bit;
@@ -2913,6 +3352,7 @@ static void ot_flash_lc_broadcast(void *opaque)
         case OT_FLASH_LC_OWNER_SEED_SW_RW_EN:
         case OT_FLASH_LC_ISO_PART_SW_RD_EN:
         case OT_FLASH_LC_ISO_PART_SW_WR_EN:
+        case OT_FLASH_LC_RMA:
             /* nothing to do here, flag is latched in current_level */
             break;
         case OT_FLASH_LC_ESCALATE_EN:
@@ -3043,6 +3483,7 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
 
         unsigned offset = offsetof(OtFlashBackendHeader, hlength) +
                           sizeof(header->hlength) + header->hlength;
+        flash->header_size = offset;
 
         /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
         rc = blk_pread(s->blk, (int64_t)offset, flash_size, flash->storage, 0);
@@ -3126,6 +3567,43 @@ static void ot_flash_load(OtFlashState *s, Error **errp)
         (uint32_t *)(base + (uintptr_t)(flash->bank_count * data_size));
     flash->data_size = data_size;
     flash->info_size = info_size;
+
+    flash->total_data_words =
+        (flash->bank_count * flash->data_size) / sizeof(uint32_t);
+    flash->word_prog_bm = bitmap_new(flash->total_data_words);
+    unsigned words_per_page = BYTES_PER_PAGE / sizeof(uint32_t);
+    unsigned total_data_pages =
+        (flash->bank_count * flash->data_size) / BYTES_PER_PAGE;
+    for (unsigned p = 0; p < total_data_pages; p++) {
+        const uint32_t *page_words = &flash->data[p * words_per_page];
+        bool page_has_data = false;
+        for (unsigned w = 0; w < words_per_page; w++) {
+            if (page_words[w] != 0xFFFFFFFFu) {
+                page_has_data = true;
+                break;
+            }
+        }
+        if (page_has_data) {
+            bitmap_set(flash->word_prog_bm, p * words_per_page, words_per_page);
+        }
+    }
+
+    /*
+     * Unprovisioned secret, attestation seed, and certificate info pages
+     * raise RD_ERR when read with scrambling and ECC enabled before being
+     * erased or programmed:
+     *   Bank 0 Info 0 Pages 1..4 (CreatorSecret, OwnerSecret, WaferAuthSecret,
+     *                             AttestationKeySeeds) -> indices 1..4
+     *   Bank 0 Info 0 Pages 5..8 (OwnerReserved0..3) -> indices 5..8
+     *   Bank 0 Info 0 Page 9 (FactoryCerts) -> index 9
+     *   Bank 1 Info 0 Pages 2..3 (OwnerSlot0, OwnerSlot1) -> indices 15..16
+     *   Bank 1 Info 0 Page 9 (DiceCerts) -> index 22
+     */
+    const uint32_t unprovisioned_default_mask =
+        (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 5) | (1u << 6) |
+        (1u << 7) | (1u << 8) | (1u << 9) | (1u << 15) | (1u << 16) |
+        (1u << 22);
+    flash->info_page_provisioned_bm = ~unprovisioned_default_mask;
 }
 
 #if DATA_PART_USE_IO_OPS
@@ -3182,6 +3660,7 @@ static const MemoryRegionOps ot_flash_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_flash_regs_accepts,
 };
 
 static const MemoryRegionOps ot_flash_csrs_ops = {
@@ -3190,6 +3669,7 @@ static const MemoryRegionOps ot_flash_csrs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_flash_csrs_accepts,
 };
 
 #if DATA_PART_USE_IO_OPS
@@ -3300,13 +3780,16 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
     s->regs[R_STATUS] = 0xau;
     s->regs[R_PHY_STATUS] = 0x6u;
     s->regs[R_FIFO_LVL] = 0xf0fu;
+    ot_shadow_reg_init(&s->mp_bank_cfg, 0u);
 
+    memset(s->csrs, 0, CSRS_SIZE);
     s->csrs[R_CSR0_REGWEN] = 0x1u;
 
     /* restore flash memory region enablement if previously disabled */
     memory_region_set_enabled(&s->mmio.mem, true);
 
     s->latched_alerts = 0u;
+    s->rd_err_addr = 0u;
 
     s->lc_broadcast.incoming_signal_bm = 0u;
     s->lc_broadcast.incoming_level_bm = 0u;
@@ -3385,6 +3868,7 @@ static void ot_flash_init(Object *obj)
     ot_fifo32_create(&s->rd_fifo, OT_FLASH_READ_FIFO_SIZE);
     ot_fifo32_create(&s->hw_rd_fifo, FLASH_SEED_WORDS);
     ot_fifo32_create(&s->prog_fifo, OT_FLASH_PROG_FIFO_SIZE);
+    QLIST_INIT(&s->ecc_faults);
 
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
