@@ -37,6 +37,7 @@
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_sysrst_ctrl.h"
 #include "hw/opentitan/ot_uart.h"
+#include "hw/opentitan/ot_usbdev.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -556,7 +557,7 @@ void ot_pinmux_eg_update_sysrst_inputs(OtPinmuxEgState *s)
     } else if (usb_sel == 1u) {
         usb_sense = 1;
     }
-    (void)usb_sense;
+    ot_usbdev_set_pinmux_sense(usb_sense);
     ot_pinmux_eg_eval_wkup_detectors(s);
 }
 

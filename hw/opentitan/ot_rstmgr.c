@@ -44,6 +44,7 @@
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
+#include "hw/opentitan/ot_usbdev.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -387,7 +388,9 @@ static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
 
     trace_ot_rstmgr_sw_rst(desc->ot_id, desc->path, desc->reset);
 
-    if (desc->reset) {
+    if (desc->aon) {
+        ot_usbdev_aon_reset(OT_USBDEV(dev), desc->reset);
+    } else if (desc->reset) {
         resettable_assert_reset(OBJECT(dev), RESET_TYPE_WAKEUP);
     } else {
         resettable_release_reset(OBJECT(dev), RESET_TYPE_WAKEUP);
