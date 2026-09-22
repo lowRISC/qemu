@@ -66,4 +66,9 @@ typedef enum {
 /* input lines */
 #define OT_RSTMGR_RST_REQ TYPE_OT_RSTMGR "-reset-req"
 
+bool ot_rstmgr_is_low_power_exit(void);
+bool ot_rstmgr_is_por_reset(void);
+bool ot_rstmgr_is_ndm_reset(void);
+bool ot_rstmgr_is_internal_reset(void);
+
 #endif /* HW_OPENTITAN_OT_RSTMGR_H */
