@@ -33,4 +33,17 @@
 #define TYPE_OT_PINMUX_EG TYPE_OT_PINMUX "-eg"
 OBJECT_DECLARE_TYPE(OtPinmuxEgState, OtPinmuxEgClass, OT_PINMUX_EG)
 
+int ot_pinmux_eg_get_dio_sleep_val(unsigned dio_pad);
+void ot_pinmux_eg_dio_pad_in(unsigned dio_pad, int level);
+int ot_pinmux_eg_mio_to_host_pin(unsigned pad);
+int ot_pinmux_eg_host_pin_to_gpio(OtPinmuxEgState *s, unsigned host_pin);
+uint32_t ot_pinmux_eg_get_mio_outsel(OtPinmuxEgState *s, unsigned mio_pad);
+uint32_t ot_pinmux_eg_get_mio_pad_attr(OtPinmuxEgState *s, unsigned mio_pad);
+uint32_t ot_pinmux_eg_get_dio_pad_attr(unsigned dio_pad);
+void ot_pinmux_eg_update_sysrst_inputs(OtPinmuxEgState *s);
+uint32_t ot_pinmux_eg_get_gpio_outsel(OtPinmuxEgState *s, unsigned gpio_pin);
+uint32_t ot_pinmux_eg_get_periph_insel(OtPinmuxEgState *s, unsigned periph_in);
+bool ot_pinmux_eg_is_periph_in_zero(unsigned periph_in);
+bool ot_pinmux_eg_trigger_mio_wkup(unsigned mio_pad);
+
 #endif /* HW_OPENTITAN_OT_PINMUX_EG_H */
