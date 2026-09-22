@@ -74,6 +74,7 @@
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
+#include "hw/opentitan/ot_sysrst_ctrl.h"
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/opentitan/ot_unimp.h"
@@ -1030,19 +1031,19 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_SYSRST_CTRL] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_SYSRST_CTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40430000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "sysrst_ctrl"),
-            IBEX_DEV_UINT_PROP("size", 0x100u),
-            IBEX_DEV_UINT_PROP("irq-count", 1u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "sysrst_ctrl")
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 154),
+            OT_EG_SOC_SIGNAL(OT_SYSRST_CTRL_WKUP_REQ, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_SYSRST),
+            OT_EG_SOC_SIGNAL(OT_SYSRST_CTRL_RST_REQ, 0, PWRMGR,
+                             OT_PWRMGR_RST, OT_EG_RESET_SYSRST_CTRL),
             OT_EG_SOC_GPIO_ALERT(0, 27)
         )
     },
