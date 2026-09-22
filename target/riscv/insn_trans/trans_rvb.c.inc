@@ -576,6 +576,176 @@ static bool trans_xperm8(DisasContext *ctx, arg_xperm8 *a)
     return gen_arith(ctx, a, EXT_NONE, gen_helper_xperm8, NULL);
 }
 
+static void gen_packu(TCGv ret, TCGv src1, TCGv src2)
+{
+    TCGv t1 = tcg_temp_new();
+    TCGv t2 = tcg_temp_new();
+
+    tcg_gen_shri_tl(t1, src1, TARGET_LONG_BITS / 2);
+    tcg_gen_shri_tl(t2, src2, TARGET_LONG_BITS / 2);
+    tcg_gen_deposit_tl(ret, t1, t2,
+                       TARGET_LONG_BITS / 2,
+                       TARGET_LONG_BITS / 2);
+}
+
+static bool trans_packu(DisasContext *ctx, arg_packu *a)
+{
+    return gen_arith(ctx, a, EXT_NONE, gen_packu, NULL);
+}
+
+static bool trans_bfp(DisasContext *ctx, arg_bfp *a)
+{
+    return gen_arith(ctx, a, EXT_NONE, gen_helper_bfp, NULL);
+}
+
+static bool trans_xperm_h(DisasContext *ctx, arg_xperm_h *a)
+{
+    return gen_arith(ctx, a, EXT_NONE, gen_helper_xperm16, NULL);
+}
+
+static bool trans_grev(DisasContext *ctx, arg_grev *a)
+{
+    return gen_arith(ctx, a, EXT_NONE, gen_helper_grev, NULL);
+}
+
+static bool trans_grevi(DisasContext *ctx, arg_grevi *a)
+{
+    return gen_shift_imm_tl(ctx, a, EXT_NONE, gen_helper_grev);
+}
+
+static bool trans_gorc(DisasContext *ctx, arg_gorc *a)
+{
+    return gen_arith(ctx, a, EXT_NONE, gen_helper_gorc, NULL);
+}
+
+static bool trans_gorci(DisasContext *ctx, arg_gorci *a)
+{
+    return gen_shift_imm_tl(ctx, a, EXT_NONE, gen_helper_gorc);
+}
+
+static bool trans_shfl(DisasContext *ctx, arg_shfl *a)
+{
+    return gen_arith(ctx, a, EXT_NONE, gen_helper_shfl, NULL);
+}
+
+static bool trans_shfli(DisasContext *ctx, arg_shfli *a)
+{
+    return gen_shift_imm_tl(ctx, a, EXT_NONE, gen_helper_shfl);
+}
+
+static bool trans_unshfl(DisasContext *ctx, arg_unshfl *a)
+{
+    return gen_arith(ctx, a, EXT_NONE, gen_helper_unshfl, NULL);
+}
+
+static bool trans_unshfli(DisasContext *ctx, arg_unshfli *a)
+{
+    return gen_shift_imm_tl(ctx, a, EXT_NONE, gen_helper_unshfl);
+}
+
+static void gen_slo(TCGv ret, TCGv arg1, TCGv shamt)
+{
+    TCGv t = tcg_temp_new();
+
+    tcg_gen_not_tl(t, arg1);
+    tcg_gen_shl_tl(t, t, shamt);
+    tcg_gen_not_tl(ret, t);
+}
+
+static void gen_sro(TCGv ret, TCGv arg1, TCGv shamt)
+{
+    TCGv t = tcg_temp_new();
+
+    tcg_gen_not_tl(t, arg1);
+    tcg_gen_shr_tl(t, t, shamt);
+    tcg_gen_not_tl(ret, t);
+}
+
+static bool trans_slo(DisasContext *ctx, arg_slo *a)
+{
+    return gen_shift(ctx, a, EXT_NONE, gen_slo, NULL);
+}
+
+static bool trans_sloi(DisasContext *ctx, arg_sloi *a)
+{
+    return gen_shift_imm_tl(ctx, a, EXT_NONE, gen_slo);
+}
+
+static bool trans_sro(DisasContext *ctx, arg_sro *a)
+{
+    return gen_shift(ctx, a, EXT_NONE, gen_sro, NULL);
+}
+
+static bool trans_sroi(DisasContext *ctx, arg_sroi *a)
+{
+    return gen_shift_imm_tl(ctx, a, EXT_NONE, gen_sro);
+}
+
+static bool trans_fsl(DisasContext *ctx, arg_fsl *a)
+{
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+
+    gen_helper_fsl(dest, src1, src2, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_fsr(DisasContext *ctx, arg_fsr *a)
+{
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+
+    gen_helper_fsr(dest, src1, src2, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_fsri(DisasContext *ctx, arg_fsri *a)
+{
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv shamt = tcg_constant_tl(a->shamt);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+
+    gen_helper_fsr(dest, src1, shamt, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_cmix(DisasContext *ctx, arg_cmix *a)
+{
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+    TCGv t1 = tcg_temp_new();
+    TCGv t2 = tcg_temp_new();
+
+    tcg_gen_and_tl(t1, src1, src2);
+    tcg_gen_andc_tl(t2, src3, src2);
+    tcg_gen_or_tl(dest, t1, t2);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_cmov(DisasContext *ctx, arg_cmov *a)
+{
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+    TCGv zero = tcg_constant_tl(0);
+
+    tcg_gen_movcond_tl(TCG_COND_NE, dest, src2, zero, src1, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
 static bool gen_crc(DisasContext *ctx, arg_r2 *a,
                     void (*func)(TCGv, TCGv, TCGv), TCGv tsz)
 {

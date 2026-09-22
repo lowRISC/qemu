@@ -1,0 +1,48 @@
+#
+# RISC-V translation routines for the RV32 Bitmanip Draft 0.93 (Xdraft093b) extension
+#
+# Copyright lowRISC contributors.
+#
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# Fields:
+%rs3       27:5
+%rs2       20:5
+%rs1       15:5
+%rd        7:5
+%sh5       20:5
+
+# Argument sets:
+&r         rd rs1 rs2                               !extern
+&shift     shamt rs1 rd                             !extern
+&r4        rd rs1 rs2 rs3
+&r4_sh     rd rs1 shamt rs3
+
+# Formats:
+@r         .......  ..... .....   ... ..... ....... &r                %rs2 %rs1 %rd
+@sh5       .......  ..... .....   ... ..... ....... &shift  shamt=%sh5     %rs1 %rd
+@r4        ..... .. ..... .....   ... ..... ....... &r4               %rs3 %rs2 %rs1 %rd
+@r4_sh     ..... .. ..... .....   ... ..... ....... &r4_sh  shamt=%sh5 %rs3     %rs1 %rd
+
+# *** RV32 Xdraft093b Extension (Bitmanip draft 0.93) ***
+grevi      0110100  ..... .....   101 ..... 0010011 @sh5
+gorci      0010100  ..... .....   101 ..... 0010011 @sh5
+unshfli    0000100  ..... .....   101 ..... 0010011 @sh5
+shfli      0000100  ..... .....   001 ..... 0010011 @sh5
+sroi       0010000  ..... .....   101 ..... 0010011 @sh5
+sloi       0010000  ..... .....   001 ..... 0010011 @sh5
+fsri       ..... 10 ..... .....   101 ..... 0010011 @r4_sh
+packu      0100100  ..... .....   100 ..... 0110011 @r
+bfp        0100100  ..... .....   111 ..... 0110011 @r
+grev       0110100  ..... .....   101 ..... 0110011 @r
+gorc       0010100  ..... .....   101 ..... 0110011 @r
+shfl       0000100  ..... .....   001 ..... 0110011 @r
+unshfl     0000100  ..... .....   101 ..... 0110011 @r
+slo        0010000  ..... .....   001 ..... 0110011 @r
+sro        0010000  ..... .....   101 ..... 0110011 @r
+fsl        ..... 10 ..... .....   001 ..... 0110011 @r4
+fsr        ..... 10 ..... .....   101 ..... 0110011 @r4
+cmix       ..... 11 ..... .....   001 ..... 0110011 @r4
+cmov       ..... 11 ..... .....   101 ..... 0110011 @r4
+xperm_h    0010100  ..... .....   110 ..... 0110011 @r

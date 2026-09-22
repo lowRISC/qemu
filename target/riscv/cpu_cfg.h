@@ -67,5 +67,6 @@ MATERIALISE_EXT_PREDICATE(XVentanaCondOps)
 
 /* Extensions that are not yet upstream */
 MATERIALISE_EXT_PREDICATE(zbr);
+MATERIALISE_EXT_PREDICATE(xdraft093b)
 
 #endif
