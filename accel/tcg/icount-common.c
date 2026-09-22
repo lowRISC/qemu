@@ -154,9 +154,38 @@ int64_t icount_get(void)
     return icount;
 }
 
+static uint64_t icount_freq_hz;
+
+void icount_set_freq_hz(uint64_t freq_hz)
+{
+    qatomic_set(&icount_freq_hz, freq_hz);
+}
+
 int64_t icount_to_ns(int64_t icount)
 {
+    uint64_t freq = qatomic_read(&icount_freq_hz);
+    if (freq) {
+        return (int64_t)muldiv64(icount, NANOSECONDS_PER_SECOND, freq);
+    }
     return icount << qatomic_read(&timers_state.icount_time_shift);
+}
+
+int64_t icount_get_cycles(void)
+{
+    return icount_get_raw() +
+           icount_round(qatomic_read_i64(&timers_state.qemu_icount_bias));
+}
+
+void icount_advance_bias_ns(int64_t delta_ns)
+{
+    if (delta_ns > 0 && icount_enabled()) {
+        seqlock_write_lock(&timers_state.vm_clock_seqlock,
+                           &timers_state.vm_clock_lock);
+        qatomic_set_i64(&timers_state.qemu_icount_bias,
+                        timers_state.qemu_icount_bias + delta_ns);
+        seqlock_write_unlock(&timers_state.vm_clock_seqlock,
+                             &timers_state.vm_clock_lock);
+    }
 }
 
 /*
@@ -225,6 +254,13 @@ static void icount_adjust_vm(void *opaque)
 
 int64_t icount_round(int64_t count)
 {
+    if (count <= 0) {
+        return 0;
+    }
+    uint64_t freq = qatomic_read(&icount_freq_hz);
+    if (freq) {
+        return (int64_t)muldiv64(count, freq, NANOSECONDS_PER_SECOND) ?: 1;
+    }
     int shift = qatomic_read(&timers_state.icount_time_shift);
     return (count + (1 << shift) - 1) >> shift;
 }
@@ -247,6 +283,9 @@ static void icount_warp_rt(void)
         return;
     }
 
+    int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+                                                  ~QEMU_TIMER_ATTR_EXTERNAL);
+
     seqlock_write_lock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
     if (runstate_is_running()) {
@@ -255,6 +294,9 @@ static void icount_warp_rt(void)
         int64_t warp_delta;
 
         warp_delta = clock - timers_state.vm_clock_warp_start;
+        if (deadline >= 0) {
+            warp_delta = MIN(warp_delta, deadline);
+        }
         if (icount_enabled() == ICOUNT_ADAPTATIVE) {
             /*
              * In adaptive mode, do not let QEMU_CLOCK_VIRTUAL run too far

@@ -89,7 +89,7 @@ bool cpu_thread_is_idle(CPUState *cpu)
     if (cpu->stop || !cpu_work_list_empty(cpu)) {
         return false;
     }
-    if (cpu_is_stopped(cpu)) {
+    if (cpu_is_stopped(cpu) || cpu->disabled) {
         return true;
     }
     if (!cpu->halted || cpu_has_work(cpu)) {

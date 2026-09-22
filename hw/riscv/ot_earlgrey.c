@@ -29,6 +29,7 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "qom/object.h"
+#include "exec/icount.h"
 #include "hw/block/flash.h"
 #include "hw/boards.h"
 #include "hw/core/split-irq.h"
@@ -1588,6 +1589,8 @@ static void ot_eg_soc_ast_configure(DeviceState *dev, const IbexDeviceDef *def,
     }
 
     qdev_prop_set_string(dev, "topclocks", clock_cfg);
+    /* Align icount virtual clock frequency with the active AST main clock */
+    icount_set_freq_hz(!verilator_mode ? 24000000u : 500000u);
 }
 
 static void ot_eg_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
