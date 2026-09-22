@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_pwrmgr.h"
+#include "hw/opentitan/ot_rstmgr.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -289,8 +290,8 @@ typedef enum {
     LC_IF_DMI, /* DMI requester */
 } OtLcCtrlIf;
 
-#define EXCLUSIVE_SLOTS_COUNT 2u
-#define LC_XSLOT(_ifreq_)     (((unsigned)(_ifreq_)) - 1u)
+#define EXCLUSIVE_SLOTS_COUNT 1u
+#define LC_XSLOT(_ifreq_)     ((void)(_ifreq_), 0u)
 
 typedef enum {
     ST_RESET,
@@ -408,6 +409,8 @@ struct OtLcCtrlState {
     bool force_raw; /* survivability mode */
     uint8_t volatile_raw_unlock_bm; /* xslot-indexed bitmap */
     uint8_t state_invalid_error_bm; /* error bitmap */
+    uint8_t claim_if[2]; /* SW and DMI CLAIM_TRANSITION_IF mubi8 values */
+    uint8_t claim_if_regwen[2]; /* SW and DMI CLAIM_TRANSITION_IF_REGWEN */
     char *hexstr;
 
     /* properties */
@@ -736,10 +739,22 @@ ot_lc_ctrl_change_state_line(OtLcCtrlState *s, OtLcCtrlFsmState state, int line)
 
 static void ot_lc_ctrl_update_alerts(OtLcCtrlState *s)
 {
-    uint32_t level = s->regs[R_ALERT_TEST];
+    uint32_t fatal_level = (s->regs[R_STATUS] & R_STATUS_OTP_ERROR_MASK) ?
+                               ALERT_FATAL_PROG_ERROR_MASK :
+                               0u;
+    uint32_t level = fatal_level | s->regs[R_ALERT_TEST];
 
     for (unsigned ix = 0; ix < NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+    }
+
+    if (s->regs[R_ALERT_TEST]) {
+        /* In RTL (lc_ctrl.sv:573-606), alert_test is a transient 1-cycle pulse
+         */
+        s->regs[R_ALERT_TEST] = 0u;
+        for (unsigned ix = 0; ix < NUM_ALERTS; ix++) {
+            ibex_irq_set(&s->alerts[ix], (int)((fatal_level >> ix) & 0x1u));
+        }
     }
 }
 
@@ -826,15 +841,15 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
             break;
         case LC_STATE_RMA:
             /* note: RMA signal not available on EG 1.0.0 */
-            sigbm = LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
-                    LC_BCAST_BIT(NVM_DEBUG_EN) | LC_BCAST_BIT(HW_DEBUG_EN) |
-                    LC_BCAST_BIT(CPU_EN) | LC_BCAST_BIT(KEYMGR_EN) |
-                    LC_BCAST_BIT(CHECK_BYP_EN) |
-                    LC_BCAST_BIT(CREATOR_SEED_SW_RW_EN) |
-                    LC_BCAST_BIT(OWNER_SEED_SW_RW_EN) |
-                    LC_BCAST_BIT(ISO_PART_SW_RD_EN) |
-                    LC_BCAST_BIT(ISO_PART_SW_WR_EN) |
-                    LC_BCAST_BIT(SEED_HW_RD_EN) | LC_BCAST_BIT(RMA);
+            sigbm =
+                LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
+                LC_BCAST_BIT(NVM_DEBUG_EN) | LC_BCAST_BIT(HW_DEBUG_EN) |
+                LC_BCAST_BIT(CPU_EN) | LC_BCAST_BIT(KEYMGR_EN) |
+                LC_BCAST_BIT(CHECK_BYP_EN) |
+                LC_BCAST_BIT(CREATOR_SEED_SW_RW_EN) |
+                LC_BCAST_BIT(OWNER_SEED_SW_RW_EN) |
+                LC_BCAST_BIT(ISO_PART_SW_RD_EN) |
+                LC_BCAST_BIT(ISO_PART_SW_WR_EN) | LC_BCAST_BIT(SEED_HW_RD_EN);
             div_type = LC_DIV_RMA;
             break;
         case LC_STATE_SCRAP:
@@ -860,8 +875,17 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
     s->km_div_type = div_type;
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->broadcasts); ix++) {
-        bool level = (bool)(sigbm & (1u << ix));
         bool curlvl = (bool)ibex_irq_get_level(&s->broadcasts[ix]);
+        bool level = (bool)(sigbm & (1u << ix));
+        if (s->state == ST_RESET && ix == OT_LC_HW_DEBUG_EN &&
+            ot_rstmgr_is_ndm_reset()) {
+            /*
+             * In RTL (pinmux_strap_sampling.sv), pinmux_hw_debug_en is latched
+             * under rst_sys_ni (which is not asserted during an NDM reset) so
+             * that RV_DM JTAG and TAP remain live across an NDM reset cycle.
+             */
+            level = curlvl;
+        }
         if (level != curlvl) {
             trace_ot_lc_ctrl_update_broadcast(s->ot_id,
                                               LC_FSM_STATE_NAME(s->state),
@@ -897,22 +921,6 @@ static bool
 ot_lc_ctrl_is_hw_mutex_owner(const OtLcCtrlState *s, OtLcCtrlIf owner)
 {
     return s->owner == owner;
-}
-
-static bool ot_lc_ctrl_lock_hw_mutex(OtLcCtrlState *s, OtLcCtrlIf owner)
-{
-    if (s->owner != LC_IF_NONE) {
-        return ot_lc_ctrl_is_hw_mutex_owner(s, owner);
-    }
-
-    s->owner = owner;
-
-    return true;
-}
-
-static void ot_lc_ctrl_release_hw_mutex(OtLcCtrlState *s)
-{
-    s->owner = LC_IF_NONE;
 }
 
 static bool
@@ -1413,7 +1421,7 @@ static void ot_lc_ctrl_start_transition(OtLcCtrlState *s)
     }
 
     LC_FSM_CHANGE_STATE(s, ST_CNT_INCR);
-    if (s->lc_tcount >= LC_TRANSITION_COUNT_MAX) {
+    if (s->lc_tcount >= LC_TRANSITION_COUNT_MAX && target != LC_STATE_SCRAP) {
         trace_ot_lc_ctrl_error(s->ot_id, "Max transition count reached");
         s->regs[R_STATUS] |= R_STATUS_TRANSITION_COUNT_ERROR_MASK;
         LC_FSM_CHANGE_STATE(s, ST_POST_TRANS);
@@ -1429,7 +1437,9 @@ static void ot_lc_ctrl_start_transition(OtLcCtrlState *s)
 
     LC_FSM_CHANGE_STATE(s, ST_CNT_PROG);
 
-    ot_lc_ctrl_program_otp(s, s->lc_tcount, s->lc_state);
+    ot_lc_ctrl_program_otp(s, s->lc_tcount,
+                           target == LC_STATE_SCRAP ? LC_STATE_SCRAP :
+                                                      s->lc_state);
 }
 
 static void ot_lc_ctrl_resume_transition(OtLcCtrlState *s)
@@ -1473,6 +1483,10 @@ static void ot_lc_ctrl_resume_transition(OtLcCtrlState *s)
         s->lc_state = LC_STATE_POST_TRANSITION;
     } else {
         trace_ot_lc_ctrl_info(s->ot_id, "Valid token");
+
+        if (target_state == LC_STATE_RMA) {
+            ibex_irq_set(&s->broadcasts[OT_LC_RMA], 1);
+        }
 
         LC_FSM_CHANGE_STATE(s, ST_TRANS_PROG);
 
@@ -1542,6 +1556,10 @@ static void ot_lc_ctrl_compute_predefined_tokens(OtLcCtrlState *s)
 
 static void ot_lc_ctrl_initialize(OtLcCtrlState *s)
 {
+    /*
+     * initialize is invoked after the first machine reset, following the end of
+     * the OTP initialization sequence.
+     */
     s->regs[R_HW_REVISION0] =
         (((uint32_t)s->silicon_creator_id) << 16u) | ((uint32_t)s->product_id);
     s->regs[R_HW_REVISION1] = (uint32_t)s->revision_id;
@@ -1629,6 +1647,8 @@ static void ot_lc_ctrl_pwr_lc_req(void *opaque, int n, int level)
     }
 }
 
+static void ot_lc_ctrl_escalate_bh(void *opaque);
+
 static void ot_lc_ctrl_escalate_rx(void *opaque, int n, int level)
 {
     OtLcCtrlState *s = opaque;
@@ -1638,7 +1658,7 @@ static void ot_lc_ctrl_escalate_rx(void *opaque, int n, int level)
     trace_ot_lc_ctrl_escalate_rx(s->ot_id, (unsigned)n, (bool)level);
 
     if (level) {
-        qemu_bh_schedule(s->escalate_bh);
+        ot_lc_ctrl_escalate_bh(s);
     }
 }
 
@@ -1659,6 +1679,7 @@ static void ot_lc_ctrl_escalate_bh(void *opaque)
 {
     OtLcCtrlState *s = opaque;
 
+    s->lc_state = LC_STATE_ESCALATE;
     LC_FSM_CHANGE_STATE(s, ST_ESCALATE);
 
     ot_lc_ctrl_update_broadcast(s);
@@ -1693,34 +1714,47 @@ static uint32_t ot_lc_ctrl_regs_read(OtLcCtrlState *s, hwaddr addr,
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
+    unsigned if_ix = (ifreq == LC_IF_DMI) ? 1u : 0u;
+    bool is_terminal_fsm = (s->state == ST_RESET || s->state == ST_ESCALATE ||
+                            s->state == ST_POST_TRANS ||
+                            s->state == ST_INVALID || s->state == ST_SCRAP);
 
     switch (reg) {
     case R_LC_TRANSITION_CNT:
-        /* TODO: >= 24 -> state == SCRAP */
-
-        /* Error: should be 31 */
-        val32 = s->lc_tcount;
+        /*
+         * In RTL (lc_ctrl_state_decode.sv:53,57-65,101-129), dec_lc_cnt_o is
+         * 5'd31 (0x1f) in terminal FSM states or when lc_cnt_i > 24.
+         */
+        val32 = (is_terminal_fsm || s->lc_tcount > LC_TRANSITION_COUNT_MAX) ?
+                    R_LC_TRANSITION_CNT_CNT_MASK :
+                    s->lc_tcount;
         break;
     case R_LC_STATE:
         val32 = LC_ENCODE_STATE(s->lc_state);
         break;
     case R_OTP_VENDOR_TEST_STATUS:
         val32 = ot_lc_ctrl_is_hw_mutex_owner(s, ifreq) &&
-                        ot_lc_ctrl_is_vendor_test_state(s->lc_state) ?
+                        ot_lc_ctrl_is_vendor_test_state(
+                            LC_ENCODE_STATE(s->lc_state)) ?
                     s->regs[reg] :
                     0u;
         break;
     case R_OTP_VENDOR_TEST_CTRL:
         val32 = ot_lc_ctrl_is_hw_mutex_owner(s, ifreq) ? s->regs[reg] : 0u;
         break;
+    case R_CLAIM_TRANSITION_IF_REGWEN:
+        val32 = s->claim_if_regwen[if_ix];
+        break;
     case R_CLAIM_TRANSITION_IF:
-        val32 = ot_lc_ctrl_is_hw_mutex_owner(s, ifreq) ?
-                    OT_MULTIBITBOOL8_TRUE :
-                    OT_MULTIBITBOOL8_FALSE;
+        /*
+         * In RTL (lc_ctrl.sv:344-345), reading CLAIM_TRANSITION_IF returns
+         * the raw 8-bit mubi8_t value stored in sw/tap_claim_transition_if_q.
+         */
+        val32 = s->claim_if[if_ix];
         break;
     case R_TRANSITION_CTRL:
         val32 = 0;
-        if (ot_lc_ctrl_is_transition_en(s, ifreq)) {
+        if (ot_lc_ctrl_is_hw_mutex_owner(s, ifreq)) {
             if (s->ext_clock_en) {
                 val32 |= R_TRANSITION_CTRL_EXT_CLOCK_EN_MASK;
             }
@@ -1740,12 +1774,22 @@ static uint32_t ot_lc_ctrl_regs_read(OtLcCtrlState *s, hwaddr addr,
     case R_TRANSITION_TOKEN_3:
     case R_TRANSITION_TARGET:
         g_assert(LC_XSLOT(ifreq) < EXCLUSIVE_SLOTS_COUNT);
-        val32 = s->xregs[LC_XSLOT(ifreq)][reg - R_FIRST_EXCLUSIVE_REG];
+        val32 = ot_lc_ctrl_is_hw_mutex_owner(s, ifreq) ?
+                    s->xregs[LC_XSLOT(ifreq)][reg - R_FIRST_EXCLUSIVE_REG] :
+                    0u;
         break;
     case R_STATUS:
-    case R_TRANSITION_CMD:
-    case R_CLAIM_TRANSITION_IF_REGWEN:
+        val32 = s->regs[reg];
+        break;
     case R_LC_ID_STATE:
+        /*
+         * In RTL (lc_ctrl_state_decode.sv:54,57-65), dec_lc_id_state_o defaults
+         * to DecLcIdInvalid (0xaaaaaaaa) in ResetSt, EscalateSt, PostTransSt,
+         * InvalidSt, and ScrapSt.
+         */
+        val32 = is_terminal_fsm ? LC_ID_STATE_INVALID : s->regs[reg];
+        break;
+    case R_TRANSITION_CMD:
     case R_HW_REVISION0:
     case R_HW_REVISION1:
     case R_DEVICE_ID_0:
@@ -1814,6 +1858,8 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
                                   OtLcCtrlIf ifreq)
 {
     hwaddr reg = R32_OFF(addr);
+    unsigned if_ix = (ifreq == LC_IF_DMI) ? 1u : 0u;
+    unsigned other_ix = 1u - if_ix;
 
     uint32_t pc = ibex_get_current_pc();
     trace_ot_lc_ctrl_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
@@ -1827,21 +1873,31 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
         break;
     case R_CLAIM_TRANSITION_IF_REGWEN:
         val32 &= R_CLAIM_TRANSITION_IF_REGWEN_EN_MASK;
-        s->regs[reg] &= val32; /* rw0c */
+        s->claim_if_regwen[if_ix] &= (uint8_t)val32; /* rw0c */
+        s->regs[reg] = s->claim_if_regwen[0];
         break;
     case R_CLAIM_TRANSITION_IF:
-        if (!(s->regs[R_CLAIM_TRANSITION_IF_REGWEN] &
-              R_CLAIM_TRANSITION_IF_REGWEN_EN_MASK)) {
+        if (!s->claim_if_regwen[if_ix]) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: CLAIM_TRANSITION_IF disabled\n", __func__,
                           s->ot_id);
             break;
         }
         val32 &= R_CLAIM_TRANSITION_IF_MUTEX_MASK;
-        if (val32 == OT_MULTIBITBOOL8_TRUE) {
-            ot_lc_ctrl_lock_hw_mutex(s, ifreq);
-        } else {
-            ot_lc_ctrl_release_hw_mutex(s);
+        /*
+         * In RTL (lc_ctrl.sv:380-387), an interface can update its
+         * claim_transition_if_q register iff mubi8_test_false_loose(other_q)
+         * is true (i.e. the other interface does not hold MuBi8True).
+         */
+        if (s->claim_if[other_ix] != OT_MULTIBITBOOL8_TRUE) {
+            s->claim_if[if_ix] = (uint8_t)val32;
+            if (s->claim_if[1] == OT_MULTIBITBOOL8_TRUE) {
+                s->owner = LC_IF_DMI;
+            } else if (s->claim_if[0] == OT_MULTIBITBOOL8_TRUE) {
+                s->owner = LC_IF_SW;
+            } else {
+                s->owner = LC_IF_NONE;
+            }
         }
         break;
     case R_TRANSITION_CMD:
@@ -1863,6 +1919,10 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
         }
         if (val32 & R_TRANSITION_CTRL_EXT_CLOCK_EN_MASK) {
             s->ext_clock_en = true; /* rw1s */
+            if (s->state == ST_IDLE &&
+                ot_lc_ctrl_is_vendor_test_state(LC_ENCODE_STATE(s->lc_state))) {
+                s->regs[R_STATUS] |= R_STATUS_EXT_CLOCK_SWITCHED_MASK;
+            }
         }
         if (s->volatile_raw_unlock) {
             if (val32 & R_TRANSITION_CTRL_VOLATILE_RAW_UNLOCK_MASK) {
@@ -1890,11 +1950,14 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
                           __func__, s->ot_id);
             break;
         }
-        val32 &= R_TRANSITION_TARGET_STATE_MASK;
-        if (ot_lc_ctrl_is_known_state(val32)) {
-            g_assert(LC_XSLOT(ifreq) < EXCLUSIVE_SLOTS_COUNT);
-            s->xregs[LC_XSLOT(ifreq)][reg - R_FIRST_EXCLUSIVE_REG] = val32;
-        }
+        /*
+         * In RTL (lc_ctrl.sv:359, 451-456), transition_target_q stores any
+         * 30-bit value when TRANSITION_REGWEN == 1; validity is checked when
+         * transition starts (lc_ctrl_fsm.sv:349-354).
+         */
+        g_assert(LC_XSLOT(ifreq) < EXCLUSIVE_SLOTS_COUNT);
+        s->xregs[LC_XSLOT(ifreq)][reg - R_FIRST_EXCLUSIVE_REG] =
+            val32 & R_TRANSITION_TARGET_STATE_MASK;
         break;
     case R_OTP_VENDOR_TEST_CTRL:
         if (!ot_lc_ctrl_is_transition_en(s, ifreq)) {
@@ -1937,6 +2000,26 @@ static void ot_lc_ctrl_regs_write(OtLcCtrlState *s, hwaddr addr, uint32_t val32,
         break;
     }
 };
+
+static bool ot_lc_ctrl_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                    bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    if (addr >= REGS_SIZE) {
+        return false;
+    }
+    if (!is_write) {
+        return true;
+    }
+    uint32_t permit =
+        (R32_OFF(addr) <= R_TRANSITION_CTRL ||
+         R32_OFF(addr) == R_LC_TRANSITION_CNT) ?
+            (R32_OFF(addr) == R_STATUS ? 0x3u : 0x1u) :
+            0xfu;
+    uint32_t be = ((1u << size) - 1u) << (addr & 3u);
+    return (permit & ~be) == 0u;
+}
 
 static uint64_t
 ot_lc_ctrl_sw_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -2235,6 +2318,9 @@ static const MemoryRegionOps ot_lc_ctrl_sw_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.min_access_size = 1u,
+    .valid.max_access_size = 4u,
+    .valid.accepts = &ot_lc_ctrl_regs_accepts,
 };
 
 static const MemoryRegionOps ot_lc_ctrl_dmi_regs_ops = {
@@ -2243,6 +2329,9 @@ static const MemoryRegionOps ot_lc_ctrl_dmi_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.min_access_size = 1u,
+    .valid.max_access_size = 4u,
+    .valid.accepts = &ot_lc_ctrl_regs_accepts,
 };
 
 static void ot_lc_ctrl_reset_enter(Object *obj, ResetType type)
@@ -2267,6 +2356,10 @@ static void ot_lc_ctrl_reset_enter(Object *obj, ResetType type)
     s->kmac_state = ST_KMAC_IDLE;
     s->regs[R_CLAIM_TRANSITION_IF] = OT_MULTIBITBOOL8_FALSE;
     s->regs[R_CLAIM_TRANSITION_IF_REGWEN] = 1u;
+    s->claim_if[0] = OT_MULTIBITBOOL8_FALSE;
+    s->claim_if[1] = OT_MULTIBITBOOL8_FALSE;
+    s->claim_if_regwen[0] = 1u;
+    s->claim_if_regwen[1] = 1u;
     s->ext_clock_en = false;
     s->volatile_unlocked = false;
     s->force_raw = false;
@@ -2278,6 +2371,14 @@ static void ot_lc_ctrl_reset_enter(Object *obj, ResetType type)
     ot_lc_ctrl_update_alerts(s);
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->broadcasts); ix++) {
+        if (ix == OT_LC_HW_DEBUG_EN && ot_rstmgr_is_ndm_reset()) {
+            /*
+             * In RTL (pinmux_strap_sampling.sv), pinmux_hw_debug_en is latched
+             * under rst_sys_ni (which is not asserted during an NDM reset) so
+             * that RV_DM JTAG and TAP remain live across an NDM reset cycle.
+             */
+            continue;
+        }
         ibex_irq_set(&s->broadcasts[ix], 0);
     }
 
