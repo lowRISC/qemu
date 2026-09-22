@@ -37,12 +37,16 @@
 #define TYPE_OT_IBEX_WRAPPER "ot-ibex_wrapper"
 OBJECT_DECLARE_TYPE(OtIbexWrapperState, OtIbexWrapperClass, OT_IBEX_WRAPPER)
 
-#define OT_IBEX_WRAPPER_CPU_EN TYPE_OT_IBEX_WRAPPER "-cpu-en"
+#define OT_IBEX_WRAPPER_CPU_EN    TYPE_OT_IBEX_WRAPPER "-cpu-en"
+#define OT_IBEX_WRAPPER_WDOG_BARK TYPE_OT_IBEX_WRAPPER "-wdog-bark"
 
 typedef enum {
     OT_IBEX_LC_CTRL_CPU_EN,
     OT_IBEX_PWRMGR_CPU_EN,
     OT_IBEX_CPU_EN_COUNT
 } OtIbexWrapperCpuEnable;
+
+void ot_ibex_wrapper_raise_load_integrity_error(OtIbexWrapperState *s,
+                                                hwaddr addr);
 
 #endif /* HW_OPENTITAN_OT_IBEX_WRAPPER_H */
