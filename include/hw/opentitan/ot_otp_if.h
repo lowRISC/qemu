@@ -74,6 +74,7 @@ typedef struct {
     uint8_t soc_dbg_state[OT_OTP_HWCFG_SOC_DBG_STATE_BYTES];
     ot_mb8_t en_sram_ifetch_mb8;
     ot_mb8_t en_csrng_sw_app_read_mb8;
+    ot_mb8_t dis_rv_dm_late_debug_mb8;
     ot_mb_lc4_t valid_lc4; /* seems generated but no used on real HW */
 } OtOTPHWCfg;
 
