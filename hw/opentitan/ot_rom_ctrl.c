@@ -105,7 +105,6 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #undef REG_NAME_ENTRY
 
 #define OT_ROM_CTRL_NUM_ADDR_SUBST_PERM_ROUNDS 2u
-#define OT_ROM_CTRL_NUM_DATA_SUBST_PERM_ROUNDS 2u
 #define OT_ROM_CTRL_NUM_PRINCE_HALF_ROUNDS     3u
 
 #define OT_ROM_CTRL_DATA_BITS  (sizeof(uint32_t) * 8u)
@@ -150,6 +149,7 @@ struct OtRomCtrlState {
     SysBusDevice parent_obj;
 
     MemoryRegion mem;
+    MemoryRegion digest_io;
     MemoryRegion mmio;
     IbexIRQ pwrmgr_good;
     IbexIRQ pwrmgr_done;
@@ -296,13 +296,6 @@ static unsigned ot_rom_ctrl_addr_sp_enc(const OtRomCtrlState *s, unsigned addr)
                                       OT_ROM_CTRL_NUM_ADDR_SUBST_PERM_ROUNDS);
 }
 
-static uint64_t ot_rom_ctrl_data_sp_enc(const OtRomCtrlState *s, uint64_t in)
-{
-    (void)s;
-    return ot_rom_ctrl_subst_perm_enc(in, 0, OT_ROM_CTRL_WORD_BITS,
-                                      OT_ROM_CTRL_NUM_DATA_SUBST_PERM_ROUNDS);
-}
-
 static uint64_t
 ot_rom_ctrl_get_keystream(const OtRomCtrlState *s, unsigned addr)
 {
@@ -317,13 +310,6 @@ ot_rom_ctrl_unscramble_word(const OtRomCtrlState *s, unsigned addr, uint64_t in)
 {
     uint64_t keystream = ot_rom_ctrl_get_keystream(s, addr);
     return keystream ^ in;
-}
-
-static uint64_t
-ot_rom_ctrl_scramble_word(const OtRomCtrlState *s, unsigned addr, uint64_t in)
-{
-    uint64_t keystream = ot_rom_ctrl_get_keystream(s, addr);
-    return ot_rom_ctrl_data_sp_enc(s, keystream ^ in);
 }
 
 static uint32_t ot_rom_ctrl_verify_ecc_39_32_u32(
@@ -449,7 +435,10 @@ static void ot_rom_ctrl_unscramble(OtRomCtrlState *s, const uint64_t *src,
     for (unsigned wix = 0u; wix < ROM_DIGEST_WORDS; wix++, log_addr++) {
         unsigned phy_addr = ot_rom_ctrl_addr_sp_enc(s, log_addr);
         g_assert(phy_addr < dword_count);
-        s->regs[R_EXP_DIGEST_0 + wix] = (uint32_t)src[phy_addr];
+        uint64_t scrdata = src[phy_addr];
+        s->regs[R_EXP_DIGEST_0 + wix] = (uint32_t)scrdata;
+        dst[log_addr] =
+            (uint32_t)ot_rom_ctrl_unscramble_word(s, log_addr, scrdata);
         /* note: ECC is not used for DIGEST words */
     }
 }
@@ -457,17 +446,18 @@ static void ot_rom_ctrl_unscramble(OtRomCtrlState *s, const uint64_t *src,
 static void ot_rom_ctrl_scramble(OtRomCtrlState *s, const uint32_t *src,
                                  uint64_t *dst)
 {
+    unsigned scr_word_size = (s->size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
+    memset(&dst[scr_word_size], 0, ROM_DIGEST_WORDS * sizeof(uint64_t));
     if (!s->key_xstr || !s->nonce_xstr) {
         trace_ot_rom_ctrl_missing(s->ot_id,
                                   "missing key/nonce to fake scrambling");
         return;
     }
 
-    unsigned scr_word_size = (s->size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
     for (unsigned log_addr = 0u; log_addr < scr_word_size; log_addr++) {
         uint64_t clrdata = src[log_addr];
         uint64_t eclrdata = ot_rom_ctrl_add_ecc_39_32_u64(clrdata);
-        uint64_t scrdata = ot_rom_ctrl_scramble_word(s, log_addr, eclrdata);
+        uint64_t scrdata = ot_rom_ctrl_unscramble_word(s, log_addr, eclrdata);
         dst[log_addr] = scrdata;
     }
 }
@@ -479,12 +469,13 @@ static void ot_rom_ctrl_compare_and_notify(OtRomCtrlState *s)
     for (unsigned ix = 0u; ix < ROM_DIGEST_WORDS; ix++) {
         if (s->regs[R_EXP_DIGEST_0 + ix] != s->regs[R_DIGEST_0 + ix]) {
             rom_good = false;
-            error_setg(&error_fatal,
-                       "ot_rom_ctrl: %s: Digest mismatch (expected 0x%08x got "
-                       "0x%08x) @ %u, errors: %u single-bit, %u double-bit\n",
-                       s->ot_id, s->regs[R_EXP_DIGEST_0 + ix],
-                       s->regs[R_DIGEST_0 + ix], ix, s->recovered_error_count,
-                       s->unrecoverable_error_count);
+            qemu_log_mask(
+                LOG_GUEST_ERROR,
+                "ot_rom_ctrl: %s: Digest mismatch (expected 0x%08x got "
+                "0x%08x) @ %u, errors: %u single-bit, %u double-bit\n",
+                s->ot_id, s->regs[R_EXP_DIGEST_0 + ix],
+                s->regs[R_DIGEST_0 + ix], ix, s->recovered_error_count,
+                s->unrecoverable_error_count);
         }
     }
 
@@ -522,6 +513,7 @@ ot_rom_ctrl_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
     g_assert(s->scrambled.word_pos == s->scrambled.word_count);
 
     qemu_vfree(s->scrambled.buffer);
+    s->scrambled.buffer = NULL;
     s->scrambled.word_count = 0u;
 
     /*
@@ -1018,8 +1010,10 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_ERROR_MASK;
-        s->regs[reg] = val32;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        if (val32) {
+            ibex_irq_set(&s->alert, 1);
+            ibex_irq_set(&s->alert, (int)(bool)s->regs[R_FATAL_ALERT_CAUSE]);
+        }
         break;
     case R_FATAL_ALERT_CAUSE:
     case R_DIGEST_0:
@@ -1047,6 +1041,21 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     }
 };
+
+static bool ot_rom_ctrl_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                     bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    if (!is_write) {
+        return true;
+    }
+    hwaddr reg = R32_OFF(addr);
+    uint32_t permit =
+        (reg == R_ALERT_TEST || reg == R_FATAL_ALERT_CAUSE) ? 0x1u : 0xfu;
+    uint32_t be = (((1u << size) - 1u) << (addr & 3u)) & 0xfu;
+    return (permit & ~be) == 0u;
+}
 
 static void ot_rom_ctrl_get_rom_digest(const OtRomCtrlState *s,
                                        uint8_t digest[OT_ROM_DIGEST_BYTES])
@@ -1142,6 +1151,41 @@ static const Property ot_rom_ctrl_properties[] = {
     DEFINE_PROP_STRING("key", OtRomCtrlState, key_xstr),
 };
 
+static uint64_t
+ot_rom_ctrl_digest_mem_read(void *opaque, hwaddr addr, unsigned size)
+{
+    OtRomCtrlState *s = opaque;
+    hwaddr rom_offset = (hwaddr)(s->size - OT_ROM_DIGEST_BYTES) + addr;
+    const uint8_t *rom_ptr =
+        (const uint8_t *)memory_region_get_ram_ptr(&s->mem);
+    if (!s->first_reset) {
+        SysBusDevice *sbd = SYS_BUS_DEVICE(s);
+        hwaddr mem_off = (sbd->mmio[1].addr - sbd->mmio[0].addr) + rom_offset;
+        ot_common_raise_load_integrity_error(DEVICE(s), mem_off);
+    }
+    return (uint64_t)ldn_le_p(&rom_ptr[rom_offset], (int)size);
+}
+
+static bool ot_rom_ctrl_digest_mem_accepts(
+    void *opaque, hwaddr addr, unsigned size, bool is_write, MemTxAttrs attrs)
+{
+    OtRomCtrlState *s = opaque;
+    hwaddr rom_offset = (hwaddr)(s->size - OT_ROM_DIGEST_BYTES) + addr;
+    if (!is_write && !s->first_reset) {
+        return s->unrecoverable_error_count == 0u;
+    }
+    return ot_rom_ctrl_mem_accepts(s, rom_offset, size, is_write, attrs);
+}
+
+static const MemoryRegionOps ot_rom_ctrl_digest_mem_ops = {
+    .read = &ot_rom_ctrl_digest_mem_read,
+    .write = &ot_rom_ctrl_mem_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl.min_access_size = 1u,
+    .impl.max_access_size = 4u,
+    .valid.accepts = &ot_rom_ctrl_digest_mem_accepts,
+};
+
 static const MemoryRegionOps ot_rom_ctrl_mem_ops = {
     .write = &ot_rom_ctrl_mem_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
@@ -1156,6 +1200,7 @@ static const MemoryRegionOps ot_rom_ctrl_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_rom_ctrl_regs_accepts,
 };
 
 static void ot_rom_ctrl_reset_hold(Object *obj, ResetType type)
@@ -1182,6 +1227,7 @@ static void ot_rom_ctrl_reset_hold(Object *obj, ResetType type)
 
     ibex_irq_set(&s->pwrmgr_good, false);
     ibex_irq_set(&s->pwrmgr_done, false);
+    ibex_irq_set(&s->alert, false);
 
     /* connect to KMAC */
     OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
@@ -1231,6 +1277,11 @@ static void ot_rom_ctrl_realize(DeviceState *dev, Error **errp)
                                             &ot_rom_ctrl_mem_ops, s,
                                             TYPE_OT_ROM_CTRL ".mem", s->size,
                                             errp);
+    memory_region_init_io(&s->digest_io, OBJECT(dev),
+                          &ot_rom_ctrl_digest_mem_ops, s,
+                          TYPE_OT_ROM_CTRL ".digest_io", OT_ROM_DIGEST_BYTES);
+    memory_region_add_subregion_overlap(&s->mem, s->size - OT_ROM_DIGEST_BYTES,
+                                        &s->digest_io, 1);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mem);
 
     /*
