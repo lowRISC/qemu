@@ -509,7 +509,16 @@ struct CPUArchState {
     /* Ibex custom CSRs */
     target_ulong cpuctrlsts;
     target_ulong secureseed;
+    uint32_t ic_scr_key_inval_cnt;
 #endif
+
+    bool sync_exc_seen;
+    bool double_fault_seen;
+    bool unclocked_mmio_stall;
+    target_ulong prev_exception_pc;
+    target_ulong prev_exception_addr;
+    target_ulong last_data_addr;
+    target_ulong wfi_pc;
 
     /* Fields from here on are preserved across CPU reset. */
     QEMUTimer *stimer; /* Internal timer for S-mode interrupt */

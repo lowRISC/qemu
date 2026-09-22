@@ -957,6 +957,9 @@ static bool trans_fence_i(DisasContext *ctx, arg_fence_i *a)
         return false;
     }
 
+    tcg_gen_st_i32(tcg_constant_i32(2), tcg_env,
+                   offsetof(CPURISCVState, ic_scr_key_inval_cnt));
+
     /*
      * FENCE_I is a no-op in QEMU,
      * however we need to end the translation block

@@ -46,7 +46,9 @@ static RISCVException read_cpuctrlsts(CPURISCVState *env, int csrno,
                                       target_ulong *val)
 {
     (void)csrno;
-    *val = CPUCTRLSTS_IC_SCR_KEY_VALID | env->cpuctrlsts;
+    *val = (env->ic_scr_key_inval_cnt ? 0 : CPUCTRLSTS_IC_SCR_KEY_VALID) |
+           env->cpuctrlsts;
+    env->ic_scr_key_inval_cnt = 0;
     return RISCV_EXCP_NONE;
 }
 
