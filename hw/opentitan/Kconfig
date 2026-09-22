@@ -180,6 +180,8 @@ config OT_PRINCE
 config OT_PRNG
     bool
 
+config OT_PWM
+    bool
 
 config OT_PWRMGR
     select OT_CLOCK_CTRL

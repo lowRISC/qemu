@@ -65,6 +65,7 @@
 #include "hw/opentitan/ot_otp_ot_be.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_plic_ext.h"
+#include "hw/opentitan/ot_pwm.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
@@ -1060,16 +1061,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         )
     },
     [OT_EG_SOC_DEV_PWM] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_PWM,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40450000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pwm"),
-            IBEX_DEV_UINT_PROP("size", 0x80u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pwm")
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_ALERT(0, 29)
