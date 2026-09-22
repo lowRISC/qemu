@@ -1943,7 +1943,7 @@ static void ot_eg_soc_hw_reset(void *opaque, int irq, int level)
     g_assert(irq == 0);
 
     if (level) {
-        resettable_reset(OBJECT(s), RESET_TYPE_COLD);
+        resettable_reset(OBJECT(s), RESET_TYPE_WAKEUP);
     }
 }
 
