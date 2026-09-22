@@ -42,7 +42,8 @@ typedef enum {
 
 #define OT_CLOCK_HINT_PREFIX "ot-clock-hint-"
 
-#define OT_CLKMGR_CLOCK_INPUT TYPE_OT_CLKMGR "-clock-in"
+#define OT_CLKMGR_CLOCK_INPUT    TYPE_OT_CLKMGR "-clock-in"
+#define OT_CLKMGR_LC_HW_DEBUG_EN TYPE_OT_CLKMGR "-lc-hw-debug-en"
 
 /* deprecated definitions */
 typedef enum {
