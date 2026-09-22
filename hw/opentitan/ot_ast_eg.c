@@ -133,7 +133,7 @@ static const char REGB_NAMES[REGSB_COUNT][6U] = {
 };
 #undef REG_NAME_ENTRY
 
-#define OT_AST_EG_NOISE_4BIT_RATE 50000u /* 50 kHz */
+#define OT_AST_EG_NOISE_4BIT_RATE 200000u /* 200 kHz (24 MHz / 120 clocks) */
 
 typedef struct {
     char *name;
@@ -329,6 +329,16 @@ static void ot_ast_eg_parse_clocks(OtASTEgState *s, Error **errp)
 }
 
 
+static bool ot_ast_eg_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                   bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    hwaddr reg = R32_OFF(addr);
+    return (reg <= R_REGAL || (reg >= R_REGB0 && reg <= R_REGB4)) &&
+           (!is_write || size == 4u);
+}
+
 static uint64_t ot_ast_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtASTEgState *s = opaque;
@@ -376,8 +386,12 @@ static uint64_t ot_ast_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_REGA35:
     case R_REGA36:
     case R_REGA37:
-    case R_REGAL:
         val32 = s->regsa[reg];
+        break;
+    case R_REGAL:
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s is write-only\n", __func__,
+                      REG_NAME(reg));
+        val32 = 0;
         break;
     case R_REGB0:
     case R_REGB1:
@@ -414,6 +428,14 @@ static void ot_ast_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_REGA0:
     case R_REGA1:
+    case R_REGA28:
+        /*
+         * ROM startup (sw/device/silicon_creator/rom/rom_start.S) bulk-copies
+         * CREATOR_SW_CFG_AST_CFG across the contiguous REGA0..REGAL range via
+         * crt_section_copy when AST_INIT_EN is enabled; ignore writes to these
+         * read-only registers without logging guest errors.
+         */
+        break;
     case R_REGA2:
     case R_REGA3:
     case R_REGA4:
@@ -440,7 +462,6 @@ static void ot_ast_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_REGA25:
     case R_REGA26:
     case R_REGA27:
-    case R_REGA28:
     case R_REGA29:
     case R_REGA30:
     case R_REGA31:
@@ -451,7 +472,7 @@ static void ot_ast_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_REGA36:
     case R_REGA37:
     case R_REGAL:
-        s->regsa[reg] = val32 & 0xffu;
+        s->regsa[reg] = val32;
         break;
     case R_REGB0:
     case R_REGB1:
@@ -478,6 +499,7 @@ static const MemoryRegionOps ot_ast_eg_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_ast_eg_regs_accepts,
 };
 
 static void ot_ast_eg_reset_enter(Object *obj, ResetType type)
@@ -559,7 +581,7 @@ static void ot_ast_eg_init(Object *obj)
     OtASTEgState *s = OT_AST_EG(obj);
 
     memory_region_init_io(&s->mmio, obj, &ot_ast_eg_regs_ops, s, TYPE_OT_AST_EG,
-                          REGS_SIZE);
+                          0x400u);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regsa = g_new0(uint32_t, REGSA_COUNT);
