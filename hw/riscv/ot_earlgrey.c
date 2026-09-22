@@ -33,6 +33,7 @@
 #include "hw/block/flash.h"
 #include "hw/boards.h"
 #include "hw/core/split-irq.h"
+#include "hw/i2c/i2c.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
@@ -2047,6 +2048,31 @@ static void ot_eg_board_realize(DeviceState *dev, Error **errp)
         qdev_connect_gpio_out_named(spihost, SSI_GPIO_CS, 0, cs);
 
         g_free(flashname);
+        g_free(busname);
+    }
+
+    for (unsigned i2c_idx = 0; i2c_idx < 3; i2c_idx++) {
+        DeviceState *i2cdev =
+            RISCV_OT_EG_SOC(soc)->devices[OT_EG_SOC_DEV_I2C0 + i2c_idx];
+        char *busname = g_strdup_printf("ot-i2c%u", i2c_idx);
+        BusState *i2cbus = qdev_get_child_bus(i2cdev, busname);
+        g_assert(i2cbus);
+
+        /* PMOD I2C Sensor / Stretch / FRAM / EEPROM targets */
+        static const uint8_t pmod_sensor_addrs[] = {
+            0x10u, 0x1du, 0x22u, 0x29u, 0x30u, 0x40u, 0x51u, 0x52u, 0x59u, 0x7cu
+        };
+        for (size_t s_idx = 0; s_idx < ARRAY_SIZE(pmod_sensor_addrs); s_idx++) {
+            DeviceState *sensor = qdev_new("pmod-i2c-sensor");
+            qdev_prop_set_uint8(sensor, "address", pmod_sensor_addrs[s_idx]);
+            char *sensor_name = g_strdup_printf("pmod-sensor%u-%02x", i2c_idx,
+                                                pmod_sensor_addrs[s_idx]);
+            object_property_add_child(OBJECT(board), sensor_name,
+                                      OBJECT(sensor));
+            qdev_realize_and_unref(sensor, i2cbus, &error_fatal);
+            g_free(sensor_name);
+        }
+
         g_free(busname);
     }
 }
