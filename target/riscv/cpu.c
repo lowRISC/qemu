@@ -792,6 +792,10 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
         riscv_trigger_reset_hold(env);
     }
 
+    env->rnmip = 0;
+    env->nmi_mode = false;
+    env->rnmi_int_mtval = 0;
+    env->rnmi_int_pending_count = 0;
     if (cpu->cfg.ext_smrnmi) {
         env->rnmip = 0;
         env->mnstatus = set_field(env->mnstatus, MNSTATUS_NMIE, false);
