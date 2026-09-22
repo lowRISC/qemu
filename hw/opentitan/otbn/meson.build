@@ -21,6 +21,7 @@ otbn_lib = static_library('otbn',
                             paste_dep,
                             ethnum_dep,
                             dl_dep],
+                          rust_args: ['-C', 'opt-level=3', '-C', 'debug-assertions=no', '-C', 'target-cpu=native', '-C', 'codegen-units=1'],
                           rust_crate_type: 'staticlib')
 
 otbn_dep = declare_dependency(link_with: otbn_lib)

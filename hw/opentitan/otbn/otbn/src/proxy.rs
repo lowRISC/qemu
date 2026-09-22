@@ -120,19 +120,18 @@ impl Proxy {
     pub fn start(&mut self, test_mode: bool, log_name: Option<&str>, log_asm: bool) {
         if self.core_id.is_some() {
             // already started, only reset
-            // hartstate is not reset, as it is done after each execution
-            match self.get_status() {
-                otbn::Status::Idle | otbn::Status::Locked => {
-                    let regs = &self.registers;
-                    regs.status
-                        .store(otbn::Status::Idle as u32, Ordering::Relaxed);
-                    regs.err_bits.store(0, Ordering::Relaxed);
-                    regs.fatal_bits.store(0, Ordering::Relaxed);
-                    regs.ctrl.store(false, Ordering::Relaxed);
-                    regs.insn_count.store(0, Ordering::Relaxed);
-                }
-                _ => (),
+            self.registers.resetting.store(true, Ordering::Relaxed);
+            self.syncurnd.abort_wait();
+            self.rnd.abort_wait();
+            let channel = self.get_channel();
+            channel.0.send(comm::Command::Reset).unwrap();
+            match channel.1.recv().unwrap() {
+                comm::Response::Ack => (),
+                comm::Response::Error(e) => panic!("Error: {}", e),
+                _ => panic!("Unexpected response"),
             }
+            self.syncurnd.clear();
+            self.rnd.clear();
             return;
         }
 
@@ -184,15 +183,31 @@ impl Proxy {
         }
     }
 
+    fn lock_illegal_bus_access(&mut self) {
+        self.registers
+            .fatal_bits
+            .fetch_or(otbn::ErrBits::ILLEGAL_BUS_ACCESS.bits(), Ordering::Relaxed);
+        self.registers
+            .status
+            .store(otbn::Status::Locked as u32, Ordering::Relaxed);
+        self.syncurnd.abort_wait();
+        self.rnd.abort_wait();
+        if let Some(ref mut cb) = self.on_complete {
+            cb.signal();
+        }
+    }
+
     /// Read one 32-bit from memory
-    fn read_memory(&mut self, doi: bool, addr: u32) -> u32 {
+    fn read_memory(&mut self, doi: bool, addr: u32, valid: &mut bool) -> u32 {
         match self.get_status() {
             otbn::Status::Idle => (),
-            otbn::Status::Locked => return 0, // Reads return zero in Locked state
+            otbn::Status::Locked => {
+                *valid = true;
+                return 0; // Reads return zero in Locked state
+            }
             _ => {
-                self.registers
-                    .fatal_bits
-                    .fetch_or(otbn::ErrBits::ILLEGAL_BUS_ACCESS.bits(), Ordering::Relaxed);
+                *valid = false;
+                self.lock_illegal_bus_access();
                 return 0;
             }
         }
@@ -201,12 +216,15 @@ impl Proxy {
             &self.imem
         } else {
             if addr as usize >= otbn::DMEM_PUB_SIZE {
+                *valid = true;
                 return 0;
             }
             &self.dmem
         };
 
-        if let Some(data) = mem.lock().unwrap().read_mem(addr) {
+        let mut mem_guard = mem.lock().unwrap();
+        *valid = mem_guard.is_valid(addr);
+        if let Some(data) = mem_guard.read_mem(addr) {
             data
         } else {
             0
@@ -219,9 +237,7 @@ impl Proxy {
             otbn::Status::Idle => (),
             otbn::Status::Locked => return false, // Writes have no effect in Locked state
             _ => {
-                self.registers
-                    .fatal_bits
-                    .fetch_or(otbn::ErrBits::ILLEGAL_BUS_ACCESS.bits(), Ordering::Relaxed);
+                self.lock_illegal_bus_access();
                 return false;
             }
         }
@@ -503,8 +519,14 @@ pub extern "C" fn ot_otbn_proxy_read_memory(
     proxy: Option<&mut Proxy>,
     doi: bool,
     addr: u32,
+    valid: Option<&mut bool>,
 ) -> u32 {
-    proxy.unwrap().read_memory(doi, addr)
+    let mut is_valid = true;
+    let res = proxy.unwrap().read_memory(doi, addr, &mut is_valid);
+    if let Some(v) = valid {
+        *v = is_valid;
+    }
+    res
 }
 
 #[no_mangle]
@@ -533,29 +555,38 @@ pub extern "C" fn ot_otbn_proxy_get_instruction_count(proxy: Option<&mut Proxy>)
 }
 
 #[no_mangle]
-pub extern "C" fn ot_otbn_proxy_set_instruction_count(proxy: Option<&mut Proxy>, value: u32) {
+pub extern "C" fn ot_otbn_proxy_set_instruction_count(proxy: Option<&mut Proxy>, _value: u32) {
     let proxy = proxy.unwrap();
-    if proxy.get_status() == otbn::Status::Idle {
+    let status = proxy.get_status();
+    if status == otbn::Status::Idle || status == otbn::Status::Locked {
         proxy
             .registers
             .insn_count
-            .store(value as usize, Ordering::Relaxed)
+            .store(0, Ordering::Relaxed)
     }
 }
 
 #[no_mangle]
 pub extern "C" fn ot_otbn_proxy_get_err_bits(proxy: Option<&mut Proxy>) -> u32 {
-    proxy.unwrap().registers.err_bits.load(Ordering::Relaxed)
+    let proxy = proxy.unwrap();
+    let err_bits = proxy.registers.err_bits.load(Ordering::Relaxed);
+    let fatal_bits = proxy.registers.fatal_bits.load(Ordering::Relaxed);
+    err_bits | fatal_bits
 }
 
 #[no_mangle]
-pub extern "C" fn ot_otbn_proxy_set_err_bits(proxy: Option<&mut Proxy>, value: u32) {
+pub extern "C" fn ot_otbn_proxy_set_err_bits(proxy: Option<&mut Proxy>, _value: u32) {
     let proxy = proxy.unwrap();
-    if proxy.get_status() == otbn::Status::Idle {
+    let status = proxy.get_status();
+    if status == otbn::Status::Idle || status == otbn::Status::Locked {
         proxy.registers.err_bits.store(
-            otbn::ErrBits::from_bits_truncate(value).bits(),
+            0,
             Ordering::Relaxed,
-        )
+        );
+        proxy.registers.fatal_bits.store(
+            0,
+            Ordering::Relaxed,
+        );
     }
 }
 

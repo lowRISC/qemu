@@ -81,5 +81,11 @@ pub trait Memory: Send {
 
     fn wipe(&mut self, prng: &mut dyn PRNG);
 
+    fn is_valid(&self, _addr: u32) -> bool {
+        true
+    }
+
+    fn reset(&mut self) {}
+
     fn update_from_slice(&mut self, src: &[u32]);
 }
