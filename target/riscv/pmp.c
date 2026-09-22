@@ -27,6 +27,7 @@
 #include "exec/cputlb.h"
 #include "exec/page-protection.h"
 #include "exec/target_page.h"
+#include "exec/tb-flush.h"
 
 static bool pmp_write_cfg(CPURISCVState *env, uint32_t addr_index,
                           uint8_t val);
@@ -528,6 +529,7 @@ void pmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
     if (modified) {
         pmp_update_rule_nums(env);
         tlb_flush(env_cpu(env));
+        queue_tb_flush(env_cpu(env));
     }
 }
 
@@ -590,6 +592,7 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
                 pmp_update_rule_addr(env, addr_index + 1);
             }
             tlb_flush(env_cpu(env));
+            queue_tb_flush(env_cpu(env));
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "ignoring pmpaddr write - read only\n");
@@ -672,6 +675,7 @@ void mseccfg_csr_write(CPURISCVState *env, target_ulong val)
         val |= (env->mseccfg & mask);
         if ((val ^ env->mseccfg) & mask) {
             tlb_flush(env_cpu(env));
+            queue_tb_flush(env_cpu(env));
         }
     } else {
         mask |= MSECCFG_RLB;

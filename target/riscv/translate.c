@@ -30,6 +30,7 @@
 #include "semihosting/semihost.h"
 
 #include "internals.h"
+#include "pmp.h"
 
 #define HELPER_H "helper.h"
 #include "exec/helper-info.c.inc"
@@ -1340,6 +1341,11 @@ static void riscv_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
     ctx->zero = tcg_constant_tl(0);
     ctx->virt_inst_excp = false;
     ctx->decoders = cpu->decoders;
+#ifndef CONFIG_USER_ONLY
+    if (pmp_get_tlb_size(env, ctx->base.pc_first) == 1) {
+        ctx->base.max_insns = 1;
+    }
+#endif
 }
 
 static void riscv_tr_tb_start(DisasContextBase *db, CPUState *cpu)
