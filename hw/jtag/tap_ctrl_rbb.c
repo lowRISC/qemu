@@ -74,6 +74,7 @@ typedef struct TapCtrlRbbState {
     TAPState state; /* Current state */
 
     /* signals */
+    bool enabled; /* TAP enabled */
     bool trst; /* TAP controller reset */
     bool srst; /* System reset */
     bool tck; /* JTAG clock */
@@ -327,7 +328,7 @@ static void tap_ctrl_rbb_step(TapCtrlRbbState *tap, bool tck, bool tms,
 {
     trace_tap_ctrl_rbb_step(tck, tms, tdi);
 
-    if (tap->trst) {
+    if (tap->trst || !tap->enabled) {
         return;
     }
 
@@ -497,7 +498,8 @@ static void tap_ctrl_rbb_chr_receive(void *opaque, const uint8_t *buf, int size)
 
     for (unsigned ix = 0; ix < size; ix++) {
         if (tap_ctrl_rbb_read_byte(tap, buf[ix])) {
-            uint8_t outbuf[1] = { '0' + (unsigned)tap->tdo };
+            uint8_t outbuf[1] = { '0' +
+                                  (unsigned)(tap->enabled ? tap->tdo : true) };
             qemu_chr_fe_write_all(&tap->chr, outbuf, (int)sizeof(outbuf));
         }
     }
@@ -627,6 +629,7 @@ static const Property tap_ctrl_rbb_properties[] = {
     DEFINE_PROP_UINT8("ir_length", TapCtrlRbbState, ir_length, 0),
     DEFINE_PROP_UINT8("idcode_inst", TapCtrlRbbState, idcode_inst, 1u),
     DEFINE_PROP_BOOL("quit", TapCtrlRbbState, enable_quit, true),
+    DEFINE_PROP_BOOL("enabled", TapCtrlRbbState, enabled, true),
     DEFINE_PROP_CHR("chardev", TapCtrlRbbState, chr),
 };
 
@@ -680,12 +683,28 @@ static void tap_ctrl_rbb_realize(DeviceState *dev, Error **errp)
     qemu_chr_fe_accept_input(&tap->chr);
 }
 
+static void tap_ctrl_rbb_enable_in(void *opaque, int n, int level)
+{
+    TapCtrlRbbState *tap = opaque;
+    (void)n;
+    bool enabled = (bool)level;
+    if (tap->enabled != enabled) {
+        tap->enabled = enabled;
+        if (!enabled) {
+            tap_ctrl_rbb_tap_reset(tap);
+            tap->tdo = true;
+        }
+    }
+}
+
 static void tap_ctrl_rbb_init(Object *obj)
 {
     TapCtrlRbbState *tap = TAP_CTRL_RBB(obj);
 
     tap->tdhtable = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL,
                                           tap_ctrl_rbb_free_data_handler);
+    qdev_init_gpio_in_named(DEVICE(obj), &tap_ctrl_rbb_enable_in,
+                            TAP_CTRL_RBB_ENABLE, 1);
 }
 
 static void tap_ctrl_rbb_class_init(ObjectClass *klass, const void *data)
