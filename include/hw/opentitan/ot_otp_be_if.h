@@ -63,6 +63,11 @@ struct OtOtpBeIfClass {
      * @return the OTP characteristics
      */
     const OtOtpBeCharacteristics *(*get_characteristics)(OtOtpBeIf *beif);
+
+    /*
+     * Update LC_DFT_EN gate state for the OTP backend TL-UL port
+     */
+    void (*set_lc_dft_en)(OtOtpBeIf *beif, bool en);
 };
 
 #endif /* HW_OPENTITAN_OT_OTP_BE_IF_H */
