@@ -81,19 +81,27 @@ typedef union {
 #define OT_PWRMGR_STRAP       TYPE_OT_PWRMGR "-strap"
 #define OT_PWRMGR_RST_REQ     TYPE_OT_PWRMGR "-reset-req"
 #define OT_PWRMGR_BOOT_STATUS TYPE_OT_PWRMGR "-boot-status"
+#define OT_PWRMGR_SLEEP_EN    TYPE_OT_PWRMGR "-sleep-en"
 
 /* input lines */
 #define OT_PWRMGR_LC_RSP  TYPE_OT_PWRMGR "-lc-rsp"
 #define OT_PWRMGR_OTP_RSP TYPE_OT_PWRMGR "-otp-rsp"
 
-#define OT_PWRMGR_WKUP   TYPE_OT_PWRMGR "-wkup"
-#define OT_PWRMGR_RST    TYPE_OT_PWRMGR "-rst"
-#define OT_PWRMGR_SW_RST TYPE_OT_PWRMGR "-sw-rst"
+#define OT_PWRMGR_WKUP    TYPE_OT_PWRMGR "-wkup"
+#define OT_PWRMGR_RST     TYPE_OT_PWRMGR "-rst"
+#define OT_PWRMGR_SW_RST  TYPE_OT_PWRMGR "-sw-rst"
+#define OT_PWRMGR_NDM_RST TYPE_OT_PWRMGR "-ndm-rst"
 
 #define OT_PWRMGR_ROM_GOOD TYPE_OT_PWRMGR "-rom-good"
 #define OT_PWRMGR_ROM_DONE TYPE_OT_PWRMGR "-rom-done"
 
+#define OT_PWRMGR_LC_DFT_EN      TYPE_OT_PWRMGR "-lc-dft-en"
+#define OT_PWRMGR_LC_HW_DEBUG_EN TYPE_OT_PWRMGR "-lc-hw-debug-en"
+
 /* custom extension */
 #define OT_PWRMGR_HOLDON_FETCH TYPE_OT_PWRMGR "-holdon-fetch"
+
+void ot_pwrmgr_trigger_check(OtPwrMgrState *s);
+void ot_pwrmgr_cancel_check(OtPwrMgrState *s);
 
 #endif /* HW_OPENTITAN_OT_PWRMGR_H */
