@@ -37,6 +37,7 @@
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
 #include "hw/misc/pulp_rv_dm.h"
+#include "hw/opentitan/ot_adc_ctrl.h"
 #include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert.h"
@@ -1046,19 +1047,14 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         )
     },
     [OT_EG_SOC_DEV_ADC_CTRL] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_ADC_CTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40440000u }
         ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "adc_ctrl"),
-            IBEX_DEV_UINT_PROP("size", 0x80u),
-            IBEX_DEV_UINT_PROP("irq-count", 1u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
-        ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
+            OT_EG_SOC_SIGNAL(OT_ADC_CTRL_WKUP, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_ADC_CTRL),
             OT_EG_SOC_GPIO_ALERT(0, 28)
         )
     },

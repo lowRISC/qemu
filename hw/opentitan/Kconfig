@@ -1,5 +1,7 @@
 # OpenTitan devices
 
+config OT_ADC_CTRL
+    bool
 
 config OT_ADDRESS_SPACE
     bool
