@@ -862,6 +862,7 @@ static int ex_rvc_shiftri(DisasContext *ctx, int imm)
 
 /* Include the auto-generated decoder for 32 bit insn */
 #include "decode-insn32.c.inc"
+#include "decode-Xdraft093b.c.inc"
 
 static bool gen_logic_imm_fn(DisasContext *ctx, arg_i *a,
                              void (*func)(TCGv, TCGv, target_long))
@@ -1231,6 +1232,7 @@ const RISCVDecoder decoder_table[] = {
     { always_true_p, decode_insn32 },
     { has_xthead_p, decode_xthead},
     { has_XVentanaCondOps_p, decode_XVentanaCodeOps},
+    { has_xdraft093b_p, decode_Xdraft093b },
 };
 
 const size_t decoder_table_size = ARRAY_SIZE(decoder_table);
