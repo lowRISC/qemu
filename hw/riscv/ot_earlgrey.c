@@ -63,6 +63,7 @@
 #include "hw/opentitan/ot_otp_eg.h"
 #include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_otp_ot_be.h"
+#include "hw/opentitan/ot_pattgen.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_plic_ext.h"
 #include "hw/opentitan/ot_pwm.h"
@@ -738,19 +739,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_PATTGEN] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_PATTGEN,
         .memmap = MEMMAPENTRIES(
             { .base = 0x400e0000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pattgen"),
-            IBEX_DEV_UINT_PROP("size", 0x40u),
-            IBEX_DEV_UINT_PROP("irq-count", 2u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pattgen")
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 122),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 123),
             OT_EG_SOC_GPIO_ALERT(0, 9)
         )
     },
