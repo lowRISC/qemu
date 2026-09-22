@@ -725,6 +725,10 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     env->miclaim = MIP_SGEIP;
     env->bins = 0;
     env->two_stage_lookup = false;
+    env->debugger = false;
+    env->debug_cause = DCSR_CAUSE_NONE;
+    env->dcsr = set_field(env->dcsr, DCSR_STEP, 0);
+    cs->singlestep_enabled = 0;
 
     env->menvcfg = (cpu->cfg.ext_svpbmt ? MENVCFG_PBMTE : 0) |
                    (!cpu->cfg.ext_svade && cpu->cfg.ext_svadu ?
