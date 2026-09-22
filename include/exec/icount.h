@@ -46,6 +46,15 @@ void icount_update(CPUState *cpu);
 /* get raw icount value */
 int64_t icount_get_raw(void);
 
+/* get elapsed CPU cycles (executed instructions + idle warp cycles) */
+int64_t icount_get_cycles(void);
+
+/* set nominal CPU clock frequency in Hz for exact cycle-to-ns conversion */
+void icount_set_freq_hz(uint64_t freq_hz);
+
+/* advance icount_bias by delta_ns when sleeping for host I/O */
+void icount_advance_bias_ns(int64_t delta_ns);
+
 /* return the virtual CPU time in ns, based on the instruction counter. */
 int64_t icount_get(void);
 /*
