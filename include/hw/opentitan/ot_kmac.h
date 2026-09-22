@@ -36,6 +36,8 @@
 #define TYPE_OT_KMAC "ot-kmac"
 OBJECT_DECLARE_TYPE(OtKMACState, OtKMACClass, OT_KMAC)
 
+#define OT_KMAC_LC_ESCALATE_EN TYPE_OT_KMAC "-lc-escalate-en"
+
 enum OtKMACMode {
     OT_KMAC_MODE_NONE,
     OT_KMAC_MODE_SHA3,
