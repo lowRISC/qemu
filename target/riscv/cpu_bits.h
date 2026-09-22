@@ -461,7 +461,9 @@
 #define CSR_TDATA2          0x7a2
 #define CSR_TDATA3          0x7a3
 #define CSR_TINFO           0x7a4
+#define CSR_SCONTEXT        0x5a8
 #define CSR_MCONTEXT        0x7a8
+#define CSR_MSCONTEXT       0x7aa
 
 /* Debug Mode Registers */
 #define CSR_DCSR            0x7b0
