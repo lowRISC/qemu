@@ -33,16 +33,17 @@
 #define TYPE_RISCV_DM "riscv-dm"
 OBJECT_DECLARE_TYPE(RISCVDMState, RISCVDMClass, RISCV_DM)
 
-#define RISCV_DM_ACK_LINES TYPE_RISCV_DM ".ack"
+#define RISCV_DM_ACK_LINES     TYPE_RISCV_DM ".ack"
+#define RISCV_DM_NDMRESET_LINE TYPE_RISCV_DM ".ndmreset"
 
 /*
  * Note: these offsets depends on the debug module implementation, so they
  * should be better defined as yet another configurable properties
  */
 #define RISCV_DM_HALTED_OFFSET    0x100u
-#define RISCV_DM_GOING_OFFSET     0x104u
-#define RISCV_DM_RESUMING_OFFSET  0x108u
-#define RISCV_DM_EXCEPTION_OFFSET 0x10cu
+#define RISCV_DM_GOING_OFFSET     0x108u
+#define RISCV_DM_RESUMING_OFFSET  0x110u
+#define RISCV_DM_EXCEPTION_OFFSET 0x118u
 #define RISCV_DM_FLAGS_OFFSET     0x400u
 
 enum RISCVDMAckInterface {
