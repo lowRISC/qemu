@@ -121,6 +121,7 @@ struct OtOtpOtBeState {
 
     uint32_t regs[REGS_COUNT];
     OtOtpBeCharacteristics characteristics;
+    bool lc_dft_en;
 
     char *ot_id;
     DeviceState *parent;
@@ -137,6 +138,42 @@ static const OtOtpBeCharacteristics OTP_BE_CHARACTERISTICS = {
         .write_ns = 50000u /* 50 us */,
     },
 };
+
+static uint8_t ot_otp_ot_be_reg_permit(hwaddr reg)
+{
+    switch (reg) {
+    case R_CSR2:
+        return 0x1u;
+    case R_CSR4:
+    case R_CSR7:
+        return 0x3u;
+    case R_CSR3:
+        return 0x7u;
+    case R_CSR0:
+    case R_CSR1:
+    case R_CSR5:
+    case R_CSR6:
+        return 0xfu;
+    default:
+        return 0x0u;
+    }
+}
+
+static bool ot_otp_ot_be_accepts(void *opaque, hwaddr addr, unsigned size,
+                                 bool is_write, MemTxAttrs attrs)
+{
+    OtOtpOtBeState *s = opaque;
+    (void)attrs;
+    if (!s->lc_dft_en) {
+        return false;
+    }
+    if (!is_write) {
+        return true;
+    }
+    uint8_t permit = ot_otp_ot_be_reg_permit(R32_OFF(addr));
+    uint32_t byte_mask = ((1u << size) - 1u) << (addr & 3u);
+    return (permit & ~byte_mask) == 0u;
+}
 
 static uint64_t ot_otp_ot_be_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -170,6 +207,24 @@ static uint64_t ot_otp_ot_be_read(void *opaque, hwaddr addr, unsigned size)
     return (uint64_t)val32;
 }
 
+#define CSR0_WMASK \
+    (R_CSR0_FIELD0_MASK | R_CSR0_FIELD1_MASK | R_CSR0_FIELD2_MASK | \
+     R_CSR0_FIELD3_MASK | R_CSR0_FIELD4_MASK)
+#define CSR1_WMASK \
+    (R_CSR1_FIELD0_MASK | R_CSR1_FIELD1_MASK | R_CSR1_FIELD2_MASK | \
+     R_CSR1_FIELD3_MASK | R_CSR1_FIELD4_MASK)
+#define CSR2_WMASK R_CSR2_FIELD0_MASK
+#define CSR3_W1C_MASK \
+    (R_CSR3_FIELD0_MASK | R_CSR3_FIELD1_MASK | R_CSR3_FIELD2_MASK)
+#define CSR4_WMASK \
+    (R_CSR4_FIELD0_MASK | R_CSR4_FIELD1_MASK | R_CSR4_FIELD2_MASK | \
+     R_CSR4_FIELD3_MASK)
+#define CSR5_WMASK \
+    (R_CSR5_FIELD0_MASK | R_CSR5_FIELD1_MASK | R_CSR5_FIELD6_MASK)
+#define CSR6_WMASK \
+    (R_CSR6_FIELD0_MASK | R_CSR6_FIELD1_MASK | R_CSR6_FIELD2_MASK | \
+     R_CSR6_FIELD3_MASK)
+
 static void ot_otp_ot_be_write(void *opaque, hwaddr addr, uint64_t value,
                                unsigned size)
 {
@@ -184,14 +239,25 @@ static void ot_otp_ot_be_write(void *opaque, hwaddr addr, uint64_t value,
 
     switch (reg) {
     case R_CSR0:
+        s->regs[reg] = val32 & CSR0_WMASK;
+        break;
     case R_CSR1:
+        s->regs[reg] = val32 & CSR1_WMASK;
+        break;
     case R_CSR2:
+        s->regs[reg] = val32 & CSR2_WMASK;
+        break;
     case R_CSR3:
+        s->regs[reg] &= ~(val32 & CSR3_W1C_MASK); /* W1C */
+        break;
     case R_CSR4:
+        s->regs[reg] = val32 & CSR4_WMASK;
+        break;
     case R_CSR5:
+        s->regs[reg] = (s->regs[reg] & ~CSR5_WMASK) | (val32 & CSR5_WMASK);
+        break;
     case R_CSR6:
-        /* TODO: not yet implemented */
-        s->regs[reg] = val32;
+        s->regs[reg] = val32 & CSR6_WMASK;
         break;
     case R_CSR7:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x02%x (%s)\n",
@@ -219,6 +285,13 @@ ot_otp_ot_be_get_characteristics(OtOtpBeIf *beif)
     return &s->characteristics;
 }
 
+static void ot_otp_ot_be_set_lc_dft_en(OtOtpBeIf *beif, bool en)
+{
+    OtOtpOtBeState *s = OT_OTP_OT_BE(beif);
+
+    s->lc_dft_en = en;
+}
+
 static const Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
@@ -237,6 +310,7 @@ static const MemoryRegionOps ot_otp_ot_be_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
+    .valid.accepts = &ot_otp_ot_be_accepts,
 };
 
 static void ot_otp_ot_be_reset_enter(Object *obj, ResetType type)
@@ -249,6 +323,7 @@ static void ot_otp_ot_be_reset_enter(Object *obj, ResetType type)
     }
 
     memset(s->regs, 0, sizeof(s->regs));
+    s->lc_dft_en = false;
 }
 
 static void ot_otp_ot_be_init(Object *obj)
@@ -276,6 +351,7 @@ static void ot_otp_ot_be_class_init(ObjectClass *klass, const void *data)
     OtOtpBeIfClass *bec = OT_OTP_BE_IF_CLASS(klass);
     bec->is_ecc_enabled = &ot_otp_ot_be_is_ecc_enabled;
     bec->get_characteristics = &ot_otp_ot_be_get_characteristics;
+    bec->set_lc_dft_en = &ot_otp_ot_be_set_lc_dft_en;
 }
 
 static const TypeInfo ot_otp_ot_be_init_info = {
