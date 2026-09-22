@@ -508,6 +508,7 @@ struct CPUArchState {
     /* Ibex custom CSRs */
     target_ulong cpuctrlsts;
     target_ulong secureseed;
+    uint32_t ic_scr_key_inval_cnt;
 #endif
 
     /* Fields from here on are preserved across CPU reset. */
