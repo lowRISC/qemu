@@ -1490,10 +1490,24 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_SPLIT_IRQ,
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_S2D(0, SRAM_MAIN_CTRL, OT_SRAM_CTRL_HW_DEBUG_EN, 0),
-            OT_EG_SOC_S2D(1, SRAM_RET_CTRL, OT_SRAM_CTRL_HW_DEBUG_EN, 0)
+            OT_EG_SOC_S2D(1, PWRMGR, OT_PWRMGR_LC_HW_DEBUG_EN, 0),
+            OT_EG_SOC_S2D(2, TAP_CTRL, TAP_CTRL_RBB_ENABLE, 0),
+            OT_EG_SOC_S2D(3, RV_DM, PULP_RV_DM_LC_HW_DEBUG_EN, 0),
+            OT_EG_SOC_S2D(4, CLKMGR, OT_CLKMGR_LC_HW_DEBUG_EN, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 2u) /* @todo to be changed */
+            IBEX_DEV_UINT_PROP("num-lines", 5u)
+        )
+    },
+    [OT_EG_SOC_SPLITTER_LC_DFT] = {
+        .type = TYPE_SPLIT_IRQ,
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_S2D(0, PWRMGR, OT_PWRMGR_LC_DFT_EN, 0),
+            OT_EG_SOC_S2D(1, RV_DM, PULP_RV_DM_LC_DFT_EN, 0),
+            OT_EG_SOC_S2D(2, OTP_CTRL, OT_LC_BROADCAST, OT_OTP_LC_DFT_EN)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("num-lines", 3u)
         )
     },
     [OT_EG_SOC_SPLITTER_LC_ESCALATE] = {
