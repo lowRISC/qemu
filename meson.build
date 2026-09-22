@@ -4399,6 +4399,42 @@ foreach target : target_dirs
                  c_args: c_args,
                  build_by_default: false)
 
+  if target == 'riscv32-softmmu'
+    src_sys = system_ss.apply(config_target, strict: false)
+    libsystem_ot_cov = static_library('system-ot-cov',
+                                      src_sys.sources() + genh,
+                                      c_args: ['-DCONFIG_SOFTMMU',
+                                               '-DCOMPILING_SYSTEM_VS_USER',
+                                               '--coverage'],
+                                      dependencies: system_ss.all_dependencies(),
+                                      build_by_default: false)
+    objects_cov = [common_all.extract_objects(target_common.sources())]
+    if target_base_arch in target_common_arch_libs
+      src_ca = target_common_arch[target_base_arch].apply(config_target, strict: false)
+      objects_cov += target_common_arch_libs[target_base_arch].extract_objects(src_ca.sources())
+    endif
+    objects_cov += libsystem_ot_cov.extract_all_objects(recursive: true)
+    if target_base_arch in target_common_system_arch_libs
+      src_csa = target_common_system_arch[target_base_arch].apply(config_target, strict: false)
+      objects_cov += target_common_system_arch_libs[target_base_arch].extract_objects(src_csa.sources())
+    endif
+    lib_ot_cov = static_library('qemu-' + target + '-ot-cov',
+                   sources: arch_srcs + genh,
+                   dependencies: lib_deps,
+                   objects: objects_cov,
+                   include_directories: target_inc,
+                   c_args: c_args + ['--coverage'],
+                   build_by_default: false)
+    executable('qemu-system-riscv32-cov', files('system/main.c'),
+               install: true,
+               c_args: c_args,
+               dependencies: arch_deps + [sdl],
+               objects: lib_ot_cov.extract_all_objects(recursive: true),
+               link_depends: [block_syms, qemu_syms],
+               link_args: link_args + ['--coverage'],
+               win_subsystem: 'console')
+  endif
+
   if target.endswith('-softmmu')
     execs = [{
       'name': 'qemu-system-' + target_name,
