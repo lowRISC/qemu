@@ -611,6 +611,13 @@ void helper_wfi(CPURISCVState *env)
         riscv_raise_exception(env, RISCV_EXCP_VIRT_INSTRUCTION_FAULT, GETPC());
     } else {
         if (!unlikely(env->debugger || env->debug_cs)) {
+            env->wfi_pc = env->pc - 4;
+            uint32_t insn = cpu_ldl_code(env, env->wfi_pc - 4);
+            if ((insn & 0x7f) == 0x23) {
+                int32_t imm = (((int32_t)insn >> 25) << 5) |
+                              ((insn >> 7) & 0x1f);
+                env->last_data_addr = env->gpr[(insn >> 15) & 0x1f] + imm;
+            }
             cs->halted = 1;
             cs->exception_index = EXCP_HLT;
             cpu_loop_exit(cs);
