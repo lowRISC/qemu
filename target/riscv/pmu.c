@@ -238,7 +238,7 @@ static void riscv_pmu_cycle_update_priv(CPURISCVState *env,
     uint64_t delta;
 
     if (icount_enabled()) {
-        current_ticks = icount_get();
+        current_ticks = icount_get_cycles();
     } else {
         current_ticks = cpu_get_host_ticks();
     }
