@@ -32,4 +32,6 @@
 #define TYPE_TAP_CTRL_RBB "tap-ctrl-rbb"
 OBJECT_DECLARE_SIMPLE_TYPE(TapCtrlRbbState, TAP_CTRL_RBB)
 
+#define TAP_CTRL_RBB_ENABLE "enable"
+
 #endif /* HW_JTAG_TAP_CTRL_RBB_H */
