@@ -102,6 +102,7 @@ config OT_EARLGREY
     select OT_OTP_OT_BE
     select OT_PINMUX_EG
     select OT_PLIC_EXT
+    select OT_PWM
     select OT_PWRMGR
     select OT_ROM_CTRL
     select OT_RSTMGR
