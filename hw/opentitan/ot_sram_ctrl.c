@@ -37,6 +37,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_prng.h"
+#include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
 #include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties.h"
@@ -126,11 +127,13 @@ struct OtSramCtrlState {
     OtPrngState *prng; /* simplified PRNG, does not match OT's */
     OtOTPKey *otp_key;
     uint32_t regs[REGS_COUNT];
+    uint32_t scr_key; /* current active scrambling key seed (0 = default) */
     unsigned init_slot_count; /* count of init_slot_bm */
     unsigned init_slot_pos; /* current SRAM cell (word-sized) for init. */
     unsigned wsize; /* size of RAM in words */
     bool initialized; /* SRAM has been fully initialized at least once */
     bool initializing; /* CTRL.INIT has been requested */
+    bool scr_invalid; /* CTRL.RENEW_SCR_KEY without CTRL.INIT */
     bool otp_ifetch; /* whether OTP enable execution from this RAM */
     bool csr_ifetch; /* whether CSR enable execution from this RAM */
     bool lc_hw_debug_ifetch; /* HW_DEBUG_EN signal from the lc_ctrl */
@@ -191,6 +194,20 @@ static void ot_sram_ctrl_mem_switch_to_ram(OtSramCtrlState *s)
     trace_ot_sram_ctrl_switch_mem(s->ot_id, "ram");
 }
 
+static void ot_sram_ctrl_mem_switch_to_init(OtSramCtrlState *s)
+{
+    if (s->noinit) {
+        return;
+    }
+    memory_region_transaction_begin();
+    memory_region_set_enabled(&s->mem->sram, false);
+    memory_region_set_enabled(&s->mem->init, true);
+    s->mem->alias.alias = &s->mem->init;
+    memory_region_transaction_commit();
+
+    trace_ot_sram_ctrl_switch_mem(s->ot_id, "init");
+}
+
 static bool ot_sram_ctrl_mem_is_fully_initialized(const OtSramCtrlState *s)
 {
     for (unsigned ix = 0; ix < s->init_slot_count; ix++) {
@@ -226,7 +243,10 @@ static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count,
 
     if (s->init_slot_pos >= s->wsize) {
         /* init has been completed */
-        s->regs[R_STATUS] |= R_STATUS_INIT_DONE_MASK;
+        bool escalated = (s->regs[R_STATUS] & R_STATUS_ESCALATED_MASK) != 0;
+        if (!escalated) {
+            s->regs[R_STATUS] |= R_STATUS_INIT_DONE_MASK;
+        }
         /* enable new request for initialization */
         s->regs[R_CTRL] &= ~R_CTRL_INIT_MASK;
 
@@ -237,10 +257,9 @@ static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count,
         size_t cell_slot_count = ot_sram_ctrl_get_slot_count(s->wsize);
         memset(s->init_sram_bm, 0, cell_slot_count * sizeof(uint64_t));
         memset(s->init_slot_bm, 0, s->init_slot_count * sizeof(uint64_t));
+        s->scr_invalid = false;
 
-        s->init_slot_bm = g_new0(uint64_t, s->init_slot_count);
-
-        if (!s->noswitch) {
+        if (!s->noswitch && !escalated) {
             /* switch memory to SRAM */
             trace_ot_sram_ctrl_initialization_complete(s->ot_id, "ctrl");
             ot_sram_ctrl_mem_switch_to_ram(s);
@@ -261,8 +280,24 @@ static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count,
     return false;
 }
 
+static void ot_sram_ctrl_apply_scr_key(OtSramCtrlState *s, uint32_t new_key)
+{
+    uint32_t mask = s->scr_key ^ new_key;
+    if (!mask || s->noinit) {
+        return;
+    }
+    uint32_t *mem = memory_region_get_ram_ptr(&s->mem->sram);
+    for (unsigned ix = 0; ix < s->wsize; ix++) {
+        mem[ix] ^= mask;
+    }
+    memory_region_set_dirty(&s->mem->sram, 0, s->size);
+    s->scr_key = new_key;
+}
+
 static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
 {
+    bool escalated = (s->regs[R_STATUS] & R_STATUS_ESCALATED_MASK) != 0;
+
     s->regs[R_STATUS] &=
         ~(R_STATUS_SCR_KEY_VALID_MASK | R_STATUS_SCR_KEY_SEED_VALID_MASK);
 
@@ -304,7 +339,7 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
                         ot_sram_ctrl_hexdump(s, s->otp_key->nonce,
                                              s->otp_key->nonce_size));
 
-        if (s->otp_key->seed_valid) {
+        if (s->otp_key->seed_valid && !escalated) {
             s->regs[R_STATUS] |= R_STATUS_SCR_KEY_SEED_VALID_MASK;
         }
 
@@ -323,8 +358,22 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
                                  sizeof(uint32_t));
     }
 
+    if (!escalated) {
+        uint32_t new_key =
+            (ot_prng_random_u32(s->prng) | 1u) ^ ((s->scr_key & 1u) ? 2u : 0u);
+        ot_sram_ctrl_apply_scr_key(s, new_key);
+        if (!s->noinit && s->init_sram_bm) {
+            size_t cell_slot_count = ot_sram_ctrl_get_slot_count(s->wsize);
+            memset(s->init_sram_bm, 0xff, cell_slot_count * sizeof(uint64_t));
+            s->scr_invalid = true;
+            ot_sram_ctrl_mem_switch_to_init(s);
+        }
+
+        s->regs[R_STATUS] |= R_STATUS_SCR_KEY_VALID_MASK;
+        s->regs[R_SCR_KEY_ROTATED] = OT_MULTIBITBOOL4_TRUE;
+    }
+
     s->regs[R_CTRL] &= ~R_CTRL_RENEW_SCR_KEY_MASK;
-    s->regs[R_STATUS] |= R_STATUS_SCR_KEY_VALID_MASK;
 }
 
 static void ot_sram_ctrl_start_initialization(OtSramCtrlState *s)
@@ -352,6 +401,8 @@ static void ot_sram_ctrl_start_initialization(OtSramCtrlState *s)
     ot_sram_ctrl_initialize(s, count, false);
 }
 
+static void ot_sram_ctrl_update_exec(OtSramCtrlState *s);
+
 static void ot_sram_ctrl_lc_signal(void *opaque, int irq, int level)
 {
     OtSramCtrlState *s = opaque;
@@ -361,6 +412,27 @@ static void ot_sram_ctrl_lc_signal(void *opaque, int irq, int level)
     trace_ot_sram_ctrl_lc_signal(s->ot_id, level);
 
     s->lc_hw_debug_ifetch = (bool)level;
+    ot_sram_ctrl_update_exec(s);
+}
+
+static void ot_sram_ctrl_lc_escalate(void *opaque, int irq, int level)
+{
+    OtSramCtrlState *s = opaque;
+
+    g_assert(irq == 0);
+
+    if (level) {
+        timer_del(s->init_timer);
+        s->initializing = false;
+        s->init_slot_pos = 0;
+        s->regs[R_STATUS] |= R_STATUS_ESCALATED_MASK;
+        s->regs[R_STATUS] &=
+            ~(R_STATUS_SCR_KEY_VALID_MASK | R_STATUS_SCR_KEY_SEED_VALID_MASK |
+              R_STATUS_INIT_DONE_MASK);
+        s->regs[R_SCR_KEY_ROTATED] = OT_MULTIBITBOOL4_FALSE;
+        ot_sram_ctrl_apply_scr_key(s, 0u);
+        memory_region_set_enabled(&s->mem->alias, false);
+    }
 }
 
 static void ot_sram_ctrl_update_exec(OtSramCtrlState *s)
@@ -411,13 +483,13 @@ static uint64_t ot_sram_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_EXEC_REGWEN:
     case R_EXEC:
     case R_CTRL_REGWEN:
-    case R_CTRL:
     case R_SCR_KEY_ROTATED:
     case R_READBACK_REGWEN:
     case R_READBACK:
         val32 = s->regs[reg];
         break;
     case R_ALERT_TEST:
+    case R_CTRL:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s W/O register 0x%02x (%s)\n",
                       __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         val32 = 0;
@@ -452,7 +524,10 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     switch (reg) {
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_ERROR_MASK;
-        ibex_irq_set(&s->alert, (int)(bool)val32);
+        if (val32) {
+            ibex_irq_set(&s->alert, 1);
+            ibex_irq_set(&s->alert, 0);
+        }
         break;
     case R_EXEC_REGWEN:
         val32 &= R_EXEC_REGWEN_EN_MASK;
@@ -477,9 +552,7 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_CTRL:
         if (s->regs[R_CTRL_REGWEN]) { /* WO */
             val32 &= R_CTRL_INIT_MASK | R_CTRL_RENEW_SCR_KEY_MASK;
-            uint32_t trig = (val32 ^ s->regs[reg]) & val32;
-            /* storing value prevents from trigerring again before completion */
-            s->regs[reg] = val32;
+            uint32_t trig = s->initializing ? 0u : val32;
             if (trig & R_CTRL_RENEW_SCR_KEY_MASK) {
                 ot_sram_ctrl_reseed(s);
             }
@@ -498,11 +571,12 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                           s->ot_id);
         }
         break;
-    case R_SCR_KEY_ROTATED:
-        /* this register has been deprecated on Darjeeling */
-        qemu_log_mask(LOG_UNIMP, "%s: %s R_SCR_KEY_ROTATED\n", __func__,
-                      s->ot_id);
+    case R_SCR_KEY_ROTATED: {
+        uint32_t inv_wd = ~val32 & R_SCR_KEY_ROTATED_SUCCESS_MASK;
+        s->regs[reg] = ((s->regs[reg] & inv_wd) & OT_MULTIBITBOOL4_TRUE) |
+                       ((s->regs[reg] | inv_wd) & OT_MULTIBITBOOL4_FALSE);
         break;
+    }
     case R_READBACK_REGWEN:
         val32 &= R_READBACK_REGWEN_EN_MASK;
         s->regs[reg] &= val32; /* RW0C */
@@ -592,6 +666,15 @@ static MemTxResult ot_sram_ctrl_mem_init_read_with_attrs(
     uint32_t val32 = mem[cell];
     val32 >>= addr_offset << 3u;
     *val64 = (uint64_t)val32;
+
+    if (s->scr_invalid && s->init_sram_bm &&
+        (s->init_sram_bm[ot_sram_ctrl_get_u64_slot(cell)] &
+         (1ull << ot_sram_ctrl_get_u64_offset(cell)))) {
+        SysBusDevice *sbd = SYS_BUS_DEVICE(s);
+        ot_common_raise_load_integrity_error(DEVICE(s), (sbd->mmio[1].addr -
+                                                         sbd->mmio[0].addr) +
+                                                            addr);
+    }
 
     trace_ot_sram_ctrl_mem_io_reado(s->ot_id, (uint32_t)addr, size, val32, pc);
 
@@ -697,10 +780,20 @@ static const Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_BOOL("noswitch", OtSramCtrlState, noswitch, false),
 };
 
+static bool ot_sram_ctrl_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                      bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)size;
+    (void)attrs;
+    return !is_write || (addr & 3u) == 0u;
+}
+
 static const MemoryRegionOps ot_sram_ctrl_regs_ops = {
     .read = &ot_sram_ctrl_regs_read,
     .write = &ot_sram_ctrl_regs_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid.accepts = &ot_sram_ctrl_regs_accepts,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
@@ -722,7 +815,17 @@ static void ot_sram_ctrl_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
+    if (s->ot_id && !strcmp(s->ot_id, "ret") && ot_rstmgr_is_low_power_exit()) {
+        return;
+    }
+
     timer_del(s->init_timer);
+    s->initializing = false;
+    s->init_slot_pos = 0;
+
+    ot_sram_ctrl_apply_scr_key(s, 0u);
+    s->scr_invalid = false;
+    memory_region_set_enabled(&s->mem->alias, true);
 
     memset(s->regs, 0, REGS_SIZE);
 
@@ -753,6 +856,10 @@ static void ot_sram_ctrl_reset_exit(Object *obj, ResetType type)
     s->otp_ifetch = (s->otp_ctrl == NULL);
     s->csr_ifetch = (s->regs[R_EXEC] == OT_MULTIBITBOOL4_TRUE);
 
+    if (s->initialized && !s->noswitch && !s->noinit && !s->scr_invalid) {
+        ot_sram_ctrl_mem_switch_to_ram(s);
+    }
+
     ot_sram_ctrl_update_exec(s);
 }
 
@@ -776,7 +883,8 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 
     if (!s->init_chunk_words) {
         /* somewhat arbitrary */
-        s->init_chunk_words = MAX(s->wsize / 16u, INIT_TIMER_CHUNK_WORDS);
+        s->init_chunk_words =
+            MAX(MIN(s->wsize / 16u, INIT_TIMER_CHUNK_WORDS), 1u);
     } else {
         g_assert(s->init_chunk_words < s->wsize);
     }
@@ -869,6 +977,8 @@ static void ot_sram_ctrl_init(Object *obj)
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_sram_ctrl_lc_signal,
                             OT_SRAM_CTRL_HW_DEBUG_EN, 1);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_sram_ctrl_lc_escalate,
+                            OT_SRAM_CTRL_LC_ESCALATE_EN, 1);
 
     s->mem = g_new0(OtSramCtrlMem, 1u);
     s->init_timer =
