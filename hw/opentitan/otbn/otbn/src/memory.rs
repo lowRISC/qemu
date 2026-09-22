@@ -45,12 +45,14 @@ pub fn read_to_memory(
 /// result in a failed read or write.
 pub struct VecMemory {
     pub mem: Vec<u32>,
+    pub valid: Vec<bool>,
 }
 
 impl VecMemory {
     pub fn new(size: usize) -> Self {
         Self {
             mem: vec![0u32; size / 4],
+            valid: vec![false; size / 4],
         }
     }
 
@@ -58,6 +60,7 @@ impl VecMemory {
         for cell in self.mem.iter_mut() {
             *cell = prng.get_prng_u32();
         }
+        self.valid.fill(false);
     }
 }
 
@@ -85,8 +88,12 @@ impl Memory for VecMemory {
 
         // Calculate vector index data to update is contained in
         let word_addr = (addr >> 2) as usize;
+        if word_addr >= self.mem.len() {
+            return false;
+        }
 
         self.mem[word_addr] = store_data;
+        self.valid[word_addr] = true;
         true
     }
 
@@ -94,13 +101,24 @@ impl Memory for VecMemory {
         if src.len() < self.mem.len() {
             let (head, _) = self.mem.split_at_mut(src.len());
             head.copy_from_slice(src);
+            self.valid[..src.len()].fill(true);
         } else {
             self.mem.copy_from_slice(src);
+            self.valid.fill(true);
         }
     }
 
     fn wipe(&mut self, prng: &mut dyn PRNG) {
         self.random_wipe(prng);
+    }
+
+    fn is_valid(&self, addr: u32) -> bool {
+        let word_addr = (addr >> 2) as usize;
+        self.valid.get(word_addr).copied().unwrap_or(false)
+    }
+
+    fn reset(&mut self) {
+        self.valid.fill(false);
     }
 }
 
@@ -131,5 +149,13 @@ impl Memory for MemoryRegion {
 
     fn wipe(&mut self, prng: &mut dyn PRNG) {
         self.memory.wipe(prng)
+    }
+
+    fn is_valid(&self, addr: u32) -> bool {
+        self.memory.is_valid(addr)
+    }
+
+    fn reset(&mut self) {
+        self.memory.reset()
     }
 }
