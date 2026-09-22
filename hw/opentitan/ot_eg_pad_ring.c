@@ -32,6 +32,7 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
+#include "qapi/visitor.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_eg_pad_ring.h"
 #include "hw/opentitan/ot_rstmgr.h"
@@ -86,6 +87,7 @@ static void ot_eg_pad_ring_por_update(OtEgPadRingState *s)
      * later resume when setting it low again.
      */
     if (ibex_gpio_is_hiz(level) || blevel) {
+        ibex_irq_set(&s->por, 0);
         return;
     }
 
@@ -114,9 +116,6 @@ static void ot_eg_pad_ring_reset_enter(Object *obj, ResetType type)
             ibex_irq_set(&s->outputs[ix], IBEX_GPIO_HIZ);
         }
     }
-
-    /* Reset the dedicated PoR signal */
-    ibex_irq_set(&s->por, 0);
 }
 
 static void ot_eg_pad_ring_reset_exit(Object *obj, ResetType type)
@@ -150,6 +149,23 @@ static void ot_eg_pad_ring_realize(DeviceState *dev, Error **errp)
                                 OT_EG_PAD_RING_PAD_COUNT, -1);
 }
 
+static void ot_eg_pad_ring_pad_set(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
+{
+    OtEgPadRingState *s = OT_EG_PAD_RING(obj);
+    unsigned ix = (unsigned)(uintptr_t)opaque;
+    char *value = NULL;
+
+    if (visit_type_str(v, name, &value, errp) &&
+        ibex_gpio_parse_level(name, value, &s->default_levels[ix], errp)) {
+        ibex_irq_set(&s->outputs[ix], s->default_levels[ix]);
+        if (ix == OT_EG_PAD_RING_PAD_POR_N) {
+            ot_eg_pad_ring_por_update(s);
+        }
+    }
+    g_free(value);
+}
+
 static void ot_eg_pad_ring_init(Object *obj)
 {
     OtEgPadRingState *s = OT_EG_PAD_RING(obj);
@@ -159,7 +175,9 @@ static void ot_eg_pad_ring_init(Object *obj)
     for (unsigned ix = 0; ix < OT_EG_PAD_RING_PAD_COUNT; ix++) {
         gchar *pad_name = g_ascii_strdown(PAD_NAME(ix), -1);
         s->default_levels[ix] = DEFAULT_LEVELS[ix];
-        object_property_add_ibex_gpio(obj, pad_name, &s->default_levels[ix]);
+        object_property_add(obj, pad_name, "string", NULL,
+                            &ot_eg_pad_ring_pad_set, NULL,
+                            (void *)(uintptr_t)ix);
         g_free(pad_name);
     }
 }
