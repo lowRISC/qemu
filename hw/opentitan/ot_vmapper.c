@@ -31,6 +31,7 @@
 #include "exec/cputlb.h"
 #include "exec/page-protection.h"
 #include "exec/target_page.h"
+#include "exec/tb-flush.h"
 #include "hw/boards.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_vmapper.h"
@@ -120,10 +121,7 @@ static gint ot_vmapper_compare(gconstpointer a, gconstpointer b,
     (void)user_data;
 
     if (ra->start == rb->start) {
-        if (ra->end == rb->end) {
-            return (gint)ra->prio - (gint)rb->prio;
-        }
-        return (ra->end < rb->end) ? -1 : 1;
+        return (gint)ra->prio - (gint)rb->prio;
     }
     return (ra->start < rb->start) ? -1 : 1;
 }
@@ -313,29 +311,40 @@ static void ot_vmapper_show_range_tree(const OtVMapperState *s, bool insn)
 /* class singleton */
 static OtVMapperClass *ot_vmapper_class;
 
-static int ot_vmapper_get_phy_addr(OtVMapperState *s, hwaddr *physical,
-                                   int *ret_prot, vaddr addr, int access_type)
+static OtRegionRange *
+ot_vmapper_lookup_range(OtVMapperState *s, bool insn, uint32_t addr)
 {
-    bool insn = access_type == MMU_INST_FETCH;
-
     OtRegionRange *range = s->lranges[insn];
 
-#ifdef SHOW_ADDRESS_MAPPING
-    bool trace;
-#endif
-    if (!range || (((uint32_t)addr) < range->start) ||
-        (((uint32_t)addr) > range->end)) {
+    if (!range || (addr < range->start) || (addr > range->end)) {
         GTree *tree = insn ? s->itree : s->dtree;
         range = g_tree_lookup(tree, VMAP_RANGE_TO_TREE_KEY(addr, 0));
         s->lranges[insn] = range;
-#ifdef SHOW_ADDRESS_MAPPING
-        trace = true;
-#endif
-    } else {
-#ifdef SHOW_ADDRESS_MAPPING
-        trace = false;
-#endif
     }
+
+    return range;
+}
+
+static bool ot_vmapper_is_subpage(const OtRegionRange *r, vaddr addr_page)
+{
+    return (r->start > addr_page) ||
+           (r->end < (addr_page + TARGET_PAGE_SIZE - 1u)) ||
+           (((r->start ^ r->dest) & ~TARGET_PAGE_MASK) != 0);
+}
+
+static int ot_vmapper_get_phy_addr(OtVMapperState *s, CPURISCVState *env,
+                                   hwaddr *physical, int *ret_prot, vaddr addr,
+                                   int access_type)
+{
+    bool insn = access_type == MMU_INST_FETCH;
+
+#ifdef SHOW_ADDRESS_MAPPING
+    OtRegionRange *prev_range = s->lranges[insn];
+#endif
+    OtRegionRange *range = ot_vmapper_lookup_range(s, insn, (uint32_t)addr);
+#ifdef SHOW_ADDRESS_MAPPING
+    bool trace = (range != prev_range);
+#endif
 
     if G_UNLIKELY (!range || (addr > range->end)) {
         return TRANSLATE_FAIL;
@@ -345,9 +354,33 @@ static int ot_vmapper_get_phy_addr(OtVMapperState *s, hwaddr *physical,
         return TRANSLATE_PMP_FAIL;
     }
 
+    vaddr addr_page = addr & TARGET_PAGE_MASK;
+    bool range_subpage = ot_vmapper_is_subpage(range, addr_page);
+
+    OtRegionRange *other_range =
+        ot_vmapper_lookup_range(s, !insn, (uint32_t)addr);
+    bool share_page = false;
+    if (!range_subpage && other_range && (addr <= other_range->end) &&
+        !ot_vmapper_is_subpage(other_range, addr_page)) {
+        uint32_t phys_page = range->dest + ((uint32_t)addr_page - range->start);
+        uint32_t other_phys_page =
+            other_range->dest + ((uint32_t)addr_page - other_range->start);
+        share_page = (phys_page == other_phys_page);
+    }
+
+    env->tlb_subpage = range_subpage;
+
     hwaddr offset = addr - (hwaddr)range->start;
     *physical = range->dest + offset;
-    *ret_prot = PAGE_READ | PAGE_WRITE | (range->execute ? PAGE_EXEC : 0);
+
+    if (share_page) {
+        const OtRegionRange *irange = insn ? range : other_range;
+        *ret_prot = PAGE_READ | PAGE_WRITE | (irange->execute ? PAGE_EXEC : 0);
+    } else if (insn) {
+        *ret_prot = range->execute ? PAGE_EXEC : 0;
+    } else {
+        *ret_prot = PAGE_READ | PAGE_WRITE;
+    }
 
 #ifdef SHOW_ADDRESS_MAPPING
     if (trace) {
@@ -378,7 +411,8 @@ static int ot_riscv_get_physical_address(
 
     OtVMapperState *s = ot_vmapper_class->instances[cpu->cpu_index];
 
-    return ot_vmapper_get_phy_addr(s, physical, ret_prot, addr, access_type);
+    return ot_vmapper_get_phy_addr(s, env, physical, ret_prot, addr,
+                                   access_type);
 }
 
 static GList *ot_vmapper_range_discretize(OtVMapperState *s, GList *rglist)
@@ -406,7 +440,7 @@ static GList *ot_vmapper_range_discretize(OtVMapperState *s, GList *rglist)
          */
 
         /* are two consecutive ranges overlapping? */
-        if (VMAP_RANGE(next)->start < VMAP_RANGE(current)->end) {
+        if (VMAP_RANGE(next)->start <= VMAP_RANGE(current)->end) {
             /*
              * next item starts before current ends: do split, two cases:
              *   +-----------------+       +---------------+
@@ -430,15 +464,18 @@ static GList *ot_vmapper_range_discretize(OtVMapperState *s, GList *rglist)
                      * case (a1): next is fully masked by current, as next as
                      * a less priority than current, skip next entirely
                      */
-                    current = g_list_remove_link(current, next);
+                    rglist = g_list_remove_link(rglist, next);
+                    g_free(next->data);
                     g_list_free_1(next);
-                } else {
-                    /*
-                     * case (a2): central part of current is masked by next
-                     * 1. create a new region for the right part of current
-                     * 2. insert the new region after next
-                     * 3. update current's end position
-                     */
+                    continue;
+                }
+                /*
+                 * case (a2): central part of current is masked by next
+                 * 1. create a new region for the right part of current
+                 * 2. insert the new region after next
+                 * 3. update current's end position
+                 */
+                if (VMAP_RANGE(next)->end < VMAP_RANGE(current)->end) {
                     OtRegionRange *right = g_new0(OtRegionRange, 1);
                     right->start = VMAP_RANGE(next)->end + 1u;
                     right->end = VMAP_RANGE(current)->end;
@@ -449,9 +486,9 @@ static GList *ot_vmapper_range_discretize(OtVMapperState *s, GList *rglist)
                     right->active = true;
                     /* assignation is useless, but GCC won't let it go */
                     next = g_list_insert(next, right, 1u);
-                    /* trim current on next */
-                    VMAP_RANGE(current)->end = VMAP_RANGE(next)->start - 1u;
                 }
+                /* trim current on next */
+                VMAP_RANGE(current)->end = VMAP_RANGE(next)->start - 1u;
             } else {
                 /* case (b): next extends after current, two cases:
                  *
@@ -463,9 +500,10 @@ static GList *ot_vmapper_range_discretize(OtVMapperState *s, GList *rglist)
                  */
                 if (VMAP_RANGE(current)->prio < VMAP_RANGE(next)->prio) {
                     /* case (b1): next is partially masked by current, trim it*/
-                    VMAP_RANGE(next)->dest +=
-                        VMAP_RANGE(current)->end - VMAP_RANGE(next)->start;
-                    VMAP_RANGE(next)->start = VMAP_RANGE(current)->end + 1u;
+                    uint32_t shift =
+                        VMAP_RANGE(current)->end - VMAP_RANGE(next)->start + 1u;
+                    VMAP_RANGE(next)->dest += shift;
+                    VMAP_RANGE(next)->start += shift;
                 } else {
                     /* case (b2): current is partially masked by next, trim it*/
                     VMAP_RANGE(current)->end = VMAP_RANGE(next)->start - 1u;
@@ -485,49 +523,29 @@ static GList *ot_vmapper_range_discretize(OtVMapperState *s, GList *rglist)
 
 static GList *ot_vmapper_range_split_noexec(OtVMapperState *s, GList *rglist)
 {
-    (void)s;
-
-    /*
-     * split the list into two sub-lists
-     * - first list contains the "(no)exec" ranges; they can be identified
-     *   thanks to their higher priority
-     * - second list contains the remap ranges
-     * the input list must be sorted, highest priority first, and all overlaps
-     * must have been discretized.
-     */
-    GList *current;
     GList *noexec = NULL;
-    GList *noexec_last = NULL;
-    GList *trans = NULL;
-    current = rglist;
-    while (current) {
-        if (VMAP_RANGE(current)->prio >= VMAP_TRANS_PRIORITY_BASE) {
-            /* first range that is not a noexec one */
-            if (current->prev) {
-                /* there is at list one range in the noexec list */
-                noexec = rglist;
-                noexec_last = current->prev;
-                /* end the noexec list */
-                noexec_last->next = NULL;
-            }
-            /* first range of the remap list is the current node */
-            trans = current;
-            trans->prev = NULL;
-            break;
+
+    for (unsigned ix = 0; ix < (unsigned)s->noexec_count; ix++) {
+        const OtRegionRange *crg = &s->iranges[s->trans_count + ix];
+        if (!crg->active) {
+            continue;
         }
-        current = current->next;
+        OtRegionRange *range = g_new0(OtRegionRange, 1);
+        memcpy(range, crg, sizeof(OtRegionRange));
+        noexec = g_list_prepend(noexec, range);
     }
 
     if (!noexec) {
-        /* there are no defined noexec range, end work here */
         return rglist;
     }
+
+    noexec = g_list_sort_with_data(noexec, &ot_vmapper_compare, NULL);
 
     /*
      * for each translating range, check whether it translates into one or more
      * noexec range.
      */
-    current = trans;
+    GList *current = rglist;
     while (current) {
         uint32_t dst_start = VMAP_RANGE(current)->dest;
         uint32_t dst_end =
@@ -579,13 +597,13 @@ static GList *ot_vmapper_range_split_noexec(OtVMapperState *s, GList *rglist)
                  * region; then replace the current region with the remaining
                  * right side of the translation region
                  */
-                left_size = VMAP_RANGE(curnx)->start - dst_start + 1u;
+                left_size = VMAP_RANGE(curnx)->start - dst_start;
                 right = g_new0(OtRegionRange, 1);
                 memcpy(right, VMAP_RANGE(current), sizeof(OtRegionRange));
                 right->start = VMAP_RANGE(current)->start + left_size;
                 right->dest = VMAP_RANGE(current)->dest + left_size;
                 VMAP_RANGE(current)->end =
-                    VMAP_RANGE(current)->end + left_size - 1u;
+                    VMAP_RANGE(current)->start + left_size - 1u;
                 dst_start += left_size;
                 current = g_list_insert(current, right, 1u);
                 current = current->next; /* i.e. right */
@@ -621,7 +639,7 @@ static GList *ot_vmapper_range_split_noexec(OtVMapperState *s, GList *rglist)
                 right->start = VMAP_RANGE(current)->start + left_size;
                 right->dest = VMAP_RANGE(current)->dest + left_size;
                 VMAP_RANGE(current)->end =
-                    VMAP_RANGE(current)->end + left_size - 1u;
+                    VMAP_RANGE(current)->start + left_size - 1u;
                 VMAP_RANGE(current)->execute = VMAP_RANGE(curnx)->execute;
                 dst_start += left_size;
                 current = g_list_insert(current, right, 1u);
@@ -660,6 +678,7 @@ static GList *ot_vmapper_range_split_noexec(OtVMapperState *s, GList *rglist)
                 VMAP_RANGE(current)->end =
                     VMAP_RANGE(current)->start + left_size - 1u;
                 VMAP_RANGE(current)->execute = VMAP_RANGE(curnx)->execute;
+                dst_start += left_size;
                 current = g_list_insert(current, right, 1u);
                 current = current->next; /* i.e. right */
             }
@@ -670,14 +689,9 @@ static GList *ot_vmapper_range_split_noexec(OtVMapperState *s, GList *rglist)
         current = current->next;
     }
 
-    /* restore the whole range list */
-    g_assert(noexec_last);
+    g_list_free_full(noexec, &g_free);
 
-    /* reconnect the noexec list with the translation list */
-    noexec_last->next = trans;
-    trans->prev = noexec_last;
-
-    return noexec;
+    return rglist;
 }
 
 static GList *
@@ -818,10 +832,9 @@ static void ot_vmapper_update(OtVMapperState *s, bool insn)
 {
     GList *rglist = NULL;
     OtRegionRange *ranges = insn ? s->iranges : s->dranges;
-    unsigned range_count = s->trans_count + (insn ? s->noexec_count : 0);
 
     /* create sortable range items and add them to a new list */
-    for (unsigned ix = 0; ix < range_count; ix++) {
+    for (unsigned ix = 0; ix < s->trans_count; ix++) {
         const OtRegionRange *crg = &ranges[ix];
 
         /* ignore disabled range entries */
@@ -848,34 +861,27 @@ static void ot_vmapper_update(OtVMapperState *s, bool insn)
         rglist = ot_vmapper_range_discretize(s, rglist);
 
         VMAP_SHOW_RANGE_LIST(s, insn, rglist, "discretized");
-
-        /* now rglist contains a list of unique range permissions */
-
-        /*
-         * split ranges that span across execution disabled HW regions and
-         * disable ranges that redirect execution disabled HW regions
-         */
-        if (insn) {
-            rglist = ot_vmapper_range_split_noexec(s, rglist);
-
-            VMAP_SHOW_RANGE_LIST(s, insn, rglist, "split_nx");
-        }
-
-        /* fill all empty gaps with denied ranges */
-        rglist = ot_vmapper_fill_empty_gaps(s, rglist, insn);
-
-        VMAP_SHOW_RANGE_LIST(s, insn, rglist, "extended");
-
-        /* combine adjacent items sharing the same properties */
-        rglist = ot_vmapper_fuse(s, rglist);
-
-        VMAP_SHOW_RANGE_LIST(s, insn, rglist, "fused");
-    } else {
-        /* create a one item list with no access for the whole address range */
-        rglist = ot_vmapper_fill_empty_gaps(s, rglist, insn);
-
-        VMAP_SHOW_RANGE_LIST(s, insn, rglist, "default");
     }
+
+    /* fill all empty gaps with 1:1 mapped ranges */
+    rglist = ot_vmapper_fill_empty_gaps(s, rglist, insn);
+
+    VMAP_SHOW_RANGE_LIST(s, insn, rglist, "extended");
+
+    /*
+     * split ranges that span across execution disabled HW regions and
+     * disable ranges that redirect to execution disabled HW regions
+     */
+    if (insn) {
+        rglist = ot_vmapper_range_split_noexec(s, rglist);
+
+        VMAP_SHOW_RANGE_LIST(s, insn, rglist, "split_nx");
+    }
+
+    /* combine adjacent items sharing the same properties */
+    rglist = ot_vmapper_fuse(s, rglist);
+
+    VMAP_SHOW_RANGE_LIST(s, insn, rglist, "fused");
 
     /* rglist is freed on return */
     ot_vmapper_rebuild_tree(s, insn, rglist);
@@ -883,16 +889,23 @@ static void ot_vmapper_update(OtVMapperState *s, bool insn)
     s->lranges[insn] = NULL;
 
     VMAP_SHOW_RANGE_TREE(s, insn);
+
+    if (qemu_cpu_is_self(s->cpu)) {
+        tlb_flush(s->cpu);
+        tb_flush__exclusive_or_serial();
+    } else {
+        queue_tb_flush(s->cpu);
+    }
 }
 
 static void ot_vmapper_translate(OtVMapperState *s, bool insn, unsigned slot,
                                  hwaddr src, hwaddr dst, size_t size)
 {
     g_assert(slot < s->trans_count);
-    g_assert(src < UINT32_MAX);
-    g_assert(dst < UINT32_MAX);
-    g_assert(src + size <= UINT32_MAX);
-    g_assert(dst + size <= UINT32_MAX);
+    g_assert(src <= UINT32_MAX);
+    g_assert(dst <= UINT32_MAX);
+    g_assert(src + size <= (hwaddr)UINT32_MAX + 1u);
+    g_assert(dst + size <= (hwaddr)UINT32_MAX + 1u);
 
     /*
      * QEMU virtual address implementation is built around the size of a small
@@ -1092,8 +1105,8 @@ static void ot_vmapper_reset_enter(Object *obj, ResetType type)
     s->show = false;
     s->silent_align = false;
 
-    ot_vmapper_flush_tree(s, s->dtree);
-    ot_vmapper_flush_tree(s, s->itree);
+    ot_vmapper_flush_tree(s, false);
+    ot_vmapper_flush_tree(s, true);
 
     s->cpu = ot_vmapper_retrieve_cpu(s);
 }
