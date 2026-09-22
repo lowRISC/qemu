@@ -411,6 +411,7 @@ struct CPUArchState {
 
     /* Whether to use virtual address for PMP (default: physical address) */
     bool vaddr_pmp;
+    bool tlb_subpage;
 
     /*
      * Signals whether the current exception occurred while doing two-stage
