@@ -38,4 +38,6 @@ OBJECT_DECLARE_TYPE(OtAlertState, OtAlertClass, OT_ALERT)
 #define OT_DEVICE_ALERT   TYPE_OT_ALERT "-sig"
 #define OT_ALERT_ESCALATE TYPE_OT_ALERT "-esc"
 
+void ot_alert_get_crash_dump(OtAlertState *s, uint32_t dump[9]);
+
 #endif /* HW_OPENTITAN_OT_ALERT_H */
