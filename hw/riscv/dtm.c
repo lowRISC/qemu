@@ -103,6 +103,7 @@ struct RISCVDTMState {
     RISCVDebugModule *last_dm; /* last selected DM */
 
     uint32_t address; /* last updated address */
+    uint32_t data; /* last updated or read data */
     RISCVDebugResult dmistat; /* Operation result */
     bool cmd_busy; /* A command is being executed */
 
@@ -295,53 +296,31 @@ static void riscv_dtm_tap_dmi_capture(TapDataHandler *tdh)
 {
     RISCVDTMState *s = tdh->opaque;
 
-    uint32_t addr = s->address;
-    uint32_t value = 0;
-
-    if (s->dmistat == RISCV_DEBUG_NOERR) {
-        unsigned op = (unsigned)(tdh->value & 0b11);
-        if (op == DMI_READ) {
-            RISCVDebugModule *dm = riscv_dtm_get_dm(s, addr);
-            if (!dm) {
-                s->dmistat = RISCV_DEBUG_FAILED;
-                value = 0;
-                qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n",
-                              __func__, addr);
-            } else {
-                trace_riscv_dtm_tap_dmi_capture(addr);
-                value = dm->dc->read_value(dm->dev);
-            }
-        }
-    }
-
     /*
      * In Capture-DR, the DTM updates data with the result from [the previous
      * update] operation, updating op if the current op isn’t sticky.
      */
-    tdh->value = (((uint64_t)addr) << (32u + 2u)) | (((uint64_t)value) << 2u) |
-                 ((uint64_t)(s->dmistat & 0b11));
+    tdh->value = (((uint64_t)s->address) << (32u + 2u)) |
+                 (((uint64_t)s->data) << 2u) | ((uint64_t)(s->dmistat & 0b11));
 }
 
 static void riscv_dtm_tap_dmi_update(TapDataHandler *tdh)
 {
     RISCVDTMState *s = tdh->opaque;
 
-    uint32_t value;
+    uint32_t value = (uint32_t)FIELD_EX64(tdh->value, DMI, DATA);
     uint32_t addr =
         (uint32_t)extract64(tdh->value, R_DMI_ADDRESS_SHIFT, (int)s->abits);
     unsigned op = (unsigned)(tdh->value & 0b11);
 
-    if (op == DMI_IGNORE) {
-        /*
-         * Don’t send anything over the DMI during Update-DR. This operation
-         * should never result in a busy or error response. The address and data
-         * reported in the following Capture-DR are undefined.
-         */
-        return;
+    if (s->dmistat == RISCV_DEBUG_NOERR) {
+        s->address = addr;
+        s->data = value;
     }
 
-    /* store address for next read back */
-    s->address = addr;
+    if (op == DMI_IGNORE || s->dmistat != RISCV_DEBUG_NOERR) {
+        return;
+    }
 
     RISCVDebugModule *dm = riscv_dtm_get_dm(s, addr);
     if (!dm) {
@@ -362,10 +341,12 @@ static void riscv_dtm_tap_dmi_update(TapDataHandler *tdh)
     case DMI_READ:
         trace_riscv_dtm_tap_dmi_update(addr, "read");
         s->dmistat = dm->dc->read_rq(dm->dev, addr - dm->base);
+        if (s->dmistat == RISCV_DEBUG_NOERR) {
+            s->data = dm->dc->read_value(dm->dev);
+        }
         break;
     case DMI_WRITE:
         trace_riscv_dtm_tap_dmi_update(addr, "write");
-        value = (uint32_t)FIELD_EX64(tdh->value, DMI, DATA);
         s->dmistat = dm->dc->write_rq(dm->dev, addr - dm->base, value);
         break;
     case DMI_RESERVED:
@@ -525,11 +506,19 @@ static void riscv_dtm_reset_enter(Object *obj, ResetType type)
     RISCVDTMClass *c = RISCV_DTM_GET_CLASS(obj);
     RISCVDTMState *s = RISCV_DTM(obj);
 
+    RISCVDebugModule *dm;
+    QLIST_FOREACH(dm, &s->dms, entry) {
+        if (dm->dev && dm->dev->in_ndmreset) {
+            return;
+        }
+    }
+
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
 
     s->address = 0;
+    s->data = 0;
     s->last_dm = NULL;
 }
 

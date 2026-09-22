@@ -72,6 +72,7 @@ struct RISCVDebugDeviceClass {
 
 struct RISCVDebugDeviceState {
     DeviceState parent_obj;
+    bool in_ndmreset;
 };
 
 #endif /* HW_RISCV_DEBUG_H */
