@@ -671,6 +671,9 @@ bool riscv_cpu_has_work(CPUState *cs)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);
     CPURISCVState *env = &cpu->env;
+    if (env->double_fault_seen || env->unclocked_mmio_stall) {
+        return false;
+    }
     /*
      * Definition of the WFI instruction requires it to ignore the privilege
      * mode and delegation registers, but respect individual enables
@@ -678,6 +681,7 @@ bool riscv_cpu_has_work(CPUState *cs)
     return riscv_cpu_all_pending(env) != 0 ||
         riscv_cpu_sirq_pending(env) != RISCV_EXCP_NONE ||
         riscv_cpu_vsirq_pending(env) != RISCV_EXCP_NONE ||
+        env->rnmip != 0 ||
         env->debug_cs;
 }
 #endif /* !CONFIG_USER_ONLY */
@@ -797,7 +801,6 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     env->rnmi_int_mtval = 0;
     env->rnmi_int_pending_count = 0;
     if (cpu->cfg.ext_smrnmi) {
-        env->rnmip = 0;
         env->mnstatus = set_field(env->mnstatus, MNSTATUS_NMIE, false);
     }
 
@@ -823,6 +826,14 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     pmp_update_rule_nums(env);
 
     env->mseccfg = (target_ulong)cfg->mseccfg;
+    env->sync_exc_seen = false;
+    env->double_fault_seen = false;
+    env->unclocked_mmio_stall = false;
+    env->prev_exception_pc = 0;
+    env->prev_exception_addr = 0;
+    env->last_data_addr = 0;
+    env->wfi_pc = 0;
+    cs->halted = 0;
 #endif
 }
 

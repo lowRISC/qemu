@@ -474,6 +474,14 @@ static int riscv_cpu_local_irq_pending(CPURISCVState *env)
     uint64_t vsbits, irq_delegated;
     int virq;
 
+    /*
+     * Interrupts including NMI are ignored while in NMI mode
+     * (ibex_controller.sv: handle_irq = ... & ~nmi_mode_q & ...).
+     */
+    if (env->nmi_mode) {
+        return RISCV_EXCP_NONE;
+    }
+
     /* Priority: RNMI > Other interrupt. */
     if (riscv_cpu_cfg(env)->ext_smrnmi) {
         /* If mnstatus.NMIE == 0, all interrupts are disabled. */
@@ -484,6 +492,8 @@ static int riscv_cpu_local_irq_pending(CPURISCVState *env)
         if (env->rnmip) {
             return ctz64(env->rnmip); /* since non-zero */
         }
+    } else if (env->rnmip) {
+        return (env->rnmip & (1ULL << 31)) ? 31 : ctz64(env->rnmip);
     }
 
     /* Determine interrupt enable state of all privilege modes */
@@ -553,6 +563,9 @@ bool riscv_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     if (interrupt_request & mask) {
         RISCVCPU *cpu = RISCV_CPU(cs);
         CPURISCVState *env = &cpu->env;
+        if (env->double_fault_seen || env->unclocked_mmio_stall) {
+            return false;
+        }
         if (unlikely(env->debug_dm &&
                      (env->debugger || get_field(env->dcsr, DCSR_STEP)))) {
             return false;
@@ -2306,6 +2319,8 @@ void riscv_cpu_do_interrupt(CPUState *cs)
     int mxlen = 16 << riscv_cpu_mxl(env);
     bool nnmi_excep = false;
 
+    env->wfi_pc = 0;
+
     if (cpu->cfg.ext_smrnmi && env->rnmip && async) {
         riscv_do_nmi(env, cause | ((target_ulong)1U << (mxlen - 1)),
                      env->virt_enabled);
@@ -2405,6 +2420,19 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                 return;
             }
         }
+
+        if (cause == RISCV_EXCP_LOAD_ACCESS_FAULT ||
+            cause == RISCV_EXCP_STORE_AMO_ACCESS_FAULT ||
+            cause == RISCV_EXCP_LOAD_ADDR_MIS ||
+            cause == RISCV_EXCP_STORE_AMO_ADDR_MIS) {
+            env->last_data_addr = tval;
+        }
+        if (env->sync_exc_seen) {
+            env->double_fault_seen = true;
+            env->prev_exception_pc = env->mepc;
+            env->prev_exception_addr = env->mtval;
+        }
+        env->sync_exc_seen = true;
     }
 
     trace_riscv_trap(env->mhartid, async, cause, env->pc, tval,
@@ -2612,7 +2640,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         } else {
             target_ulong vec_cause = is_ibex_nmi ? 31 : cause;
             env->pc = (env->mtvec >> 2 << 2) +
-                      ((async && (env->mtvec & 3) == 1) ? cause * 4 : 0);
+                      ((async && (env->mtvec & 3) == 1) ? vec_cause * 4 : 0);
         }
         riscv_cpu_set_mode(env, PRV_M, virt);
         src = env->mepc;
@@ -2652,6 +2680,48 @@ void riscv_cpu_do_interrupt(CPUState *cs)
 
     env->two_stage_lookup = false;
     env->two_stage_indirect_lookup = false;
+
+    if (env->double_fault_seen) {
+        cs->halted = 1;
+        cs->exception_index = EXCP_HLT;
+        cpu_loop_exit(cs);
+    }
+}
+
+void riscv_cpu_get_crash_dump(CPUState *cs, uint32_t dump[8])
+{
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    dump[0] = env->mtval;
+    dump[1] = env->mepc;
+    dump[2] = env->last_data_addr;
+    if (env->double_fault_seen) {
+        dump[3] = env->pc;
+        dump[4] = env->mepc;
+    } else if (env->wfi_pc != 0) {
+        dump[3] = env->wfi_pc + 4;
+        dump[4] = env->wfi_pc;
+    } else {
+        dump[3] = env->pc + 4;
+        dump[4] = env->pc;
+    }
+    dump[5] = env->prev_exception_addr;
+    dump[6] = env->prev_exception_pc;
+    dump[7] = env->double_fault_seen ? 1u : 0u;
+}
+
+G_NORETURN void riscv_cpu_stall_on_unclocked_mmio(CPUState *cs,
+                                                  uint64_t phys_addr)
+{
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    env->last_data_addr = (target_ulong)phys_addr;
+    env->unclocked_mmio_stall = true;
+    cs->halted = 1;
+    cs->exception_index = EXCP_HLT;
+    cpu_loop_exit(cs);
 }
 
 #endif /* !CONFIG_USER_ONLY */
