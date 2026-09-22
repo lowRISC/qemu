@@ -72,6 +72,7 @@ config OT_DARJEELING
 config OT_EARLGREY
     bool
     default y
+    select AT24C
     select IBEX
     select IBEX_CLOCK_SRC
     select IBEX_COMMON
