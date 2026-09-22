@@ -35,6 +35,7 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_rstmgr.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_clock_src.h"
@@ -135,6 +136,7 @@ typedef struct {
     GList *outputs; /* wekrefs to OtClkMgrClockOutput */
     unsigned divider; /* divider applied on parent clock if any (0 if top) */
     unsigned ratio; /* ratio w/ reference clock (may be 0) */
+    unsigned frequency; /* actual clock frequency in Hz */
     bool ref; /* reference clock */
     bool loose; /* clock which is declared but not connected */
 } OtClkMgrClock;
@@ -247,6 +249,7 @@ struct OtClkMgrState {
     OtClkMgrMeasureRegs *measure_regs;
     unsigned measure_count; /* count of measure_regs */
     bool input_clock_connected; /* true once clock source are connected */
+    bool lc_hw_debug_en;
 
     char *ot_id;
     DeviceState *clock_src; /* Top clock source */
@@ -293,9 +296,72 @@ static const char *CFGSEP = ",";
 
 static void ot_clkmgr_update_alerts(OtClkMgrState *s)
 {
-    bool recov = (bool)(s->regs[R_RECOV_ERR_CODE] &
-                        R_RECOV_ERR_CODE_SHADOW_UPDATE_ERR_MASK);
+    bool recov = s->regs[R_RECOV_ERR_CODE] != 0;
     ibex_irq_set(&s->alerts[ALERT_RECOVERABLE], recov);
+}
+
+static OtClkMgrClock *ot_clkmgr_find_clock(GList *clock_list, const char *name);
+
+static uint32_t
+ot_clkmgr_get_clock_count(OtClkMgrState *s, const OtClkMgrClock *clk)
+{
+    const OtClkMgrClock *target_clk = clk;
+    if (s->lc_hw_debug_en && FIELD_EX32(s->regs[R_EXTCLK_CTRL], EXTCLK_CTRL,
+                                        SEL) == OT_MULTIBITBOOL4_TRUE) {
+        bool hi_speed = (FIELD_EX32(s->regs[R_EXTCLK_CTRL], EXTCLK_CTRL,
+                                    HI_SPEED_SEL) == OT_MULTIBITBOOL4_TRUE);
+        if (!hi_speed) {
+            if (!strcmp(clk->name, "io")) {
+                const OtClkMgrClock *io_div2 =
+                    ot_clkmgr_find_clock(s->clocks, "io_div2");
+                if (io_div2) {
+                    target_clk = io_div2;
+                }
+            }
+        } else {
+            if (!strcmp(clk->name, "main")) {
+                const OtClkMgrClock *io = ot_clkmgr_find_clock(s->clocks, "io");
+                if (io) {
+                    target_clk = io;
+                }
+            }
+        }
+    }
+
+    const OtClkMgrClock *ref = ot_clkmgr_find_clock(s->clocks, s->cfg_refclock);
+    uint32_t ratio = (ref && ref->frequency && target_clk->frequency) ?
+                         (target_clk->frequency / ref->frequency) :
+                         target_clk->ratio;
+    return ratio > 0 ? (ratio - 1u) : 0u;
+}
+
+static unsigned ot_clkmgr_get_measure_width(const OtClkMgrClock *clk)
+{
+    if (!clk || clk->ratio == 0) {
+        return 10u;
+    }
+    return 32u - (unsigned)clz32((2u * clk->ratio) - 1u);
+}
+
+static void ot_clkmgr_check_measurement(OtClkMgrState *s, unsigned measure)
+{
+    g_assert(measure < s->measure_count);
+    OtClkMgrMeasureRegs *mreg = &s->measure_regs[measure];
+    /* RTL clkmgr.sv uses mubi4_test_true_loose (enabled when != MuBi4False) */
+    if (mreg->ctrl_en == OT_MULTIBITBOOL4_FALSE) {
+        return;
+    }
+    unsigned width = ot_clkmgr_get_measure_width(mreg->clock);
+    uint32_t mask = (1u << width) - 1u;
+    uint32_t ctrl = ot_shadow_reg_peek(&mreg->ctrl);
+    uint32_t hi = ctrl & mask;
+    uint32_t lo = (ctrl >> width) & mask;
+    uint32_t count = ot_clkmgr_get_clock_count(s, mreg->clock);
+    if (count > hi || count < lo) {
+        s->regs[R_RECOV_ERR_CODE] |=
+            1u << (R_RECOV_ERR_CODE_SHADOW_UPDATE_ERR_SHIFT + 1u + measure);
+        ot_clkmgr_update_alerts(s);
+    }
 }
 
 /* NOLINTNEXTLINE(misc-no-recursion) */
@@ -304,6 +370,8 @@ static void ot_clkmgr_update_clock_frequency(
 {
     unsigned frequency =
         clk->divider > 1 ? (input_freq / clk->divider) : input_freq;
+
+    clk->frequency = frequency;
 
     trace_ot_clkmgr_update_clock(s->ot_id, clk->name, frequency);
 
@@ -893,8 +961,10 @@ static gint ot_clkmgr_compare_swcg_by_name(gconstpointer a, gconstpointer b)
 {
     const OtClkMgrSwCgClock *sa = a;
     const OtClkMgrSwCgClock *sb = b;
+    int diff =
+        (int)sb->output->clock->divider - (int)sa->output->clock->divider;
 
-    return strcmp(sa->name, sb->name);
+    return diff ? diff : strcmp(sa->name, sb->name);
 }
 
 static gint ot_clkmgr_compare_swcg_by_name_with_data(
@@ -993,14 +1063,14 @@ static void ot_clkmgr_reset_measure_regs(OtClkMgrState *s)
     for (unsigned ix = 0; ix < s->measure_count; ix++) {
         OtClkMgrMeasureRegs *mreg = &s->measure_regs[ix];
 
-        mreg->ctrl_en = OT_MULTIBITBOOL4_TRUE;
+        mreg->ctrl_en = OT_MULTIBITBOOL4_FALSE;
 
         uint32_t hi = mreg->clock->ratio + 10u;
         uint32_t lo = (uint32_t)MAX(0, ((int)mreg->clock->ratio) - 10);
 
-        uint32_t value = 0;
-        value = SHARED_FIELD_DP32(value, MEAS_CTRL_SHADOWED_HI, hi);
-        value = SHARED_FIELD_DP32(value, MEAS_CTRL_SHADOWED_LO, lo);
+        unsigned width = ot_clkmgr_get_measure_width(mreg->clock);
+        uint32_t mask = (1u << width) - 1u;
+        uint32_t value = (hi & mask) | ((lo & mask) << width);
 
         trace_ot_clkmgr_reset_meas(s->ot_id, ix, mreg->clock->name, lo, hi);
 
@@ -1127,8 +1197,12 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TEST:
         val32 &= ALERT_TEST_MASK;
         for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
-            ibex_irq_set(&s->alerts[ix], (int)((val32 >> ix) & 0x1u));
+            if ((val32 >> ix) & 0x1u) {
+                ibex_irq_set(&s->alerts[ix], 1);
+                ibex_irq_set(&s->alerts[ix], 0);
+            }
         }
+        ot_clkmgr_update_alerts(s);
         break;
     case R_EXTCLK_CTRL_REGWEN:
         val32 &= R_EXTCLK_CTRL_REGWEN_EN_MASK;
@@ -1138,6 +1212,14 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
         if (s->regs[R_EXTCLK_CTRL_REGWEN]) {
             val32 &= R_EXTCLK_CTRL_SEL_MASK | R_EXTCLK_CTRL_HI_SPEED_SEL_MASK;
             s->regs[reg] = val32;
+            uint32_t sel = FIELD_EX32(val32, EXTCLK_CTRL, SEL);
+            s->regs[R_EXTCLK_STATUS] =
+                (s->lc_hw_debug_en && sel == OT_MULTIBITBOOL4_TRUE) ?
+                    OT_MULTIBITBOOL4_TRUE :
+                    OT_MULTIBITBOOL4_FALSE;
+            for (unsigned ix = 0; ix < s->measure_count; ix++) {
+                ot_clkmgr_check_measurement(s, ix);
+            }
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: EXTCLK_CTRL protected w/ REGWEN\n", __func__);
@@ -1148,21 +1230,13 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] &= val32;
         break;
     case R_JITTER_ENABLE:
-        if (s->regs[R_JITTER_REGWEN] ||
-            s->version == OT_CLKMGR_VERSION_EG_1_0_0) {
-            if (s->version == OT_CLKMGR_VERSION_EG_1_0_0) {
-                qemu_log_mask(
-                    LOG_GUEST_ERROR,
-                    "%s: JITTER_ENABLE should be protected w/ REGWEN,\n"
-                    "but is allowed due to a known bug in Earlgrey 1.0.0\n",
-                    __func__);
-            }
-            val32 &= R_JITTER_ENABLE_VAL_MASK;
-            s->regs[reg] = val32;
-        } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: JITTER_ENABLE protected w/ REGWEN\n", __func__);
-        }
+        /*
+         * In clkmgr_reg_top.sv (u_jitter_enable), .we is jitter_enable_we
+         * (not gated by jitter_regwen) and .wd is hardwired to
+         * prim_mubi_pkg::MuBi4True (0x6). Any write latches JITTER_ENABLE to
+         * MuBi4True until reset.
+         */
+        s->regs[reg] = OT_MULTIBITBOOL4_TRUE;
         break;
     case R_CLK_ENABLES: {
         uint32_t prev = s->regs[reg];
@@ -1220,33 +1294,26 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
 
         switch (offset) {
         case 0u:
-            if (mreg->ctrl_en == OT_MULTIBITBOOL4_TRUE) {
-                val32 &= MEAS_CTRL_EN_MASK;
-                mreg->ctrl_en = val32;
-            } else {
-                qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ EN\n",
-                              __func__, s->ot_id, reg_name);
-            }
+            val32 &= MEAS_CTRL_EN_MASK;
+            mreg->ctrl_en = val32;
+            ot_clkmgr_check_measurement(s, measure);
             break;
-        case 1u:
-            if (mreg->ctrl_en) {
-                val32 &=
-                    MEAS_CTRL_SHADOWED_HI_MASK | MEAS_CTRL_SHADOWED_LO_MASK;
-                switch (ot_shadow_reg_write(&mreg->ctrl, val32)) {
-                case OT_SHADOW_REG_STAGED:
-                case OT_SHADOW_REG_COMMITTED:
-                    break;
-                case OT_SHADOW_REG_ERROR:
-                default:
-                    s->regs[R_RECOV_ERR_CODE] |=
-                        R_RECOV_ERR_CODE_SHADOW_UPDATE_ERR_MASK;
-                    ot_clkmgr_update_alerts(s);
-                }
-            } else {
-                qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ EN\n",
-                              __func__, s->ot_id, reg_name);
+        case 1u: {
+            unsigned width = ot_clkmgr_get_measure_width(mreg->clock);
+            val32 &= (1u << (2u * width)) - 1u;
+            switch (ot_shadow_reg_write(&mreg->ctrl, val32)) {
+            case OT_SHADOW_REG_STAGED:
+                break;
+            case OT_SHADOW_REG_COMMITTED:
+                ot_clkmgr_check_measurement(s, measure);
+                break;
+            case OT_SHADOW_REG_ERROR:
+            default:
+                s->regs[R_RECOV_ERR_CODE] |=
+                    R_RECOV_ERR_CODE_SHADOW_UPDATE_ERR_MASK;
+                ot_clkmgr_update_alerts(s);
             }
-            break;
+        } break;
         default:
             g_assert_not_reached();
             break;
@@ -1267,6 +1334,10 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
                           (s->measure_count * 2u)))) -
                  1u;
         s->regs[reg_err] &= ~val32; /* RW1C */
+        for (unsigned ix = 0; ix < s->measure_count; ix++) {
+            ot_clkmgr_check_measurement(s, ix);
+        }
+        ot_clkmgr_update_alerts(s);
         break;
     case R_FATAL_ERR_CODE:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%02x (%s)\n",
@@ -1293,12 +1364,51 @@ static const Property ot_clkmgr_properties[] = {
     DEFINE_PROP_UINT8("version", OtClkMgrState, version, UINT8_MAX),
 };
 
+static uint32_t ot_clkmgr_get_permit(OtClkMgrState *s, hwaddr reg)
+{
+    if (reg < R_MEASURE_REG_BASE) {
+        return 0x1u;
+    }
+    if (reg < (R_MEASURE_REG_BASE + (s->measure_count * 2u))) {
+        unsigned measure = (reg - R_MEASURE_REG_BASE) >> 1u;
+        unsigned offset = (reg - R_MEASURE_REG_BASE) & 1u;
+        if (offset == 0u) {
+            return 0x1u;
+        }
+        unsigned width =
+            ot_clkmgr_get_measure_width(s->measure_regs[measure].clock);
+        unsigned bytes = ((2u * width) + 7u) / 8u;
+        return (1u << bytes) - 1u;
+    }
+    unsigned reg_err = reg - (s->measure_count * 2u);
+    if (reg_err == R_RECOV_ERR_CODE) {
+        return 0x3u;
+    }
+    return 0x1u;
+}
+
+static bool ot_clkmgr_accepts(void *opaque, hwaddr addr, unsigned size,
+                              bool is_write, MemTxAttrs attrs)
+{
+    (void)attrs;
+    if (!is_write) {
+        return true;
+    }
+    OtClkMgrState *s = opaque;
+    uint32_t permit = ot_clkmgr_get_permit(s, R32_OFF(addr));
+    uint32_t reg_be = (((1u << size) - 1u) << (addr & 3u)) & 0xfu;
+    return (permit & ~reg_be) == 0u;
+}
+
 static const MemoryRegionOps ot_clkmgr_regs_ops = {
     .read = &ot_clkmgr_read,
     .write = &ot_clkmgr_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.min_access_size = 1u,
+    .valid.max_access_size = 4u,
+    .valid.accepts = &ot_clkmgr_accepts,
 };
 
 static void ot_clkmgr_reset_enter(Object *obj, ResetType type)
@@ -1310,28 +1420,41 @@ static void ot_clkmgr_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
-    memset(s->regs, 0, sizeof(s->regs));
+    if (ot_rstmgr_is_low_power_exit()) {
+        /*
+         * In top_earlgrey.sv (u_clkmgr_aon), all clkmgr resets belong to
+         * DomainAonSel, which is not asserted on low-power exit. However,
+         * AST drops calib_rdy_i (ast_init_done) to MuBi4False during deep
+         * sleep, which sets MEASURE_CTRL_REGWEN=1 (clkmgr.sv:555-558) and
+         * clears any enabled *_MEAS_CTRL_EN to MuBi4False
+         * (clkmgr_meas_chk.sv:81-85).
+         */
+        s->regs[R_MEASURE_CTRL_REGWEN] = 0x1u;
+        for (unsigned ix = 0; ix < s->measure_count; ix++) {
+            if (s->measure_regs[ix].ctrl_en != OT_MULTIBITBOOL4_FALSE) {
+                s->measure_regs[ix].ctrl_en = OT_MULTIBITBOOL4_FALSE;
+            }
+        }
+    } else {
+        memset(s->regs, 0, sizeof(s->regs));
 
-    s->regs[R_EXTCLK_CTRL_REGWEN] = 0x1u;
-    s->regs[R_EXTCLK_CTRL] = 0x99u;
-    s->regs[R_EXTCLK_STATUS] = 0x9u;
-    s->regs[R_JITTER_REGWEN] = 0x1u;
-    s->regs[R_JITTER_ENABLE] = 0x9u;
-    s->regs[R_CLK_ENABLES] = 0xfu;
-    s->regs[R_CLK_HINTS] = 0xfu;
-    s->regs[R_CLK_HINTS_STATUS] = 0xfu;
-    s->regs[R_MEASURE_CTRL_REGWEN] = 0x1u;
+        s->regs[R_EXTCLK_CTRL_REGWEN] = 0x1u;
+        s->regs[R_EXTCLK_CTRL] = 0x99u;
+        s->regs[R_EXTCLK_STATUS] = 0x9u;
+        s->regs[R_JITTER_REGWEN] = 0x1u;
+        s->regs[R_JITTER_ENABLE] = 0x9u;
+        s->regs[R_CLK_ENABLES] = 0xfu;
+        s->regs[R_CLK_HINTS] = 0xfu;
+        s->regs[R_CLK_HINTS_STATUS] = 0xfu;
+        s->regs[R_MEASURE_CTRL_REGWEN] = 0x1u;
 
-    for (unsigned ix = 0; ix < s->swcg_count; ix++) {
-        g_assert(s->swcgs[ix] && s->swcgs[ix]->output);
-        s->swcgs[ix]->output->disabled = 0;
+        ot_clkmgr_reset_measure_regs(s);
     }
 
-    ot_clkmgr_reset_measure_regs(s);
+    ot_clkmgr_update_swcg(s, (1u << s->swcg_count) - 1u);
 
-    for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
-        ibex_irq_set(&s->alerts[ix], 0);
-    }
+    ibex_irq_set(&s->alerts[ALERT_FATAL], 0);
+    ot_clkmgr_update_alerts(s);
 
     if (!s->input_clock_connected) {
         ot_clkmgr_connect_input_clocks(s);
@@ -1398,13 +1521,35 @@ static void ot_clkmgr_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 }
 
+static void ot_clkmgr_lc_hw_debug_en(void *opaque, int irq, int level)
+{
+    OtClkMgrState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->lc_hw_debug_en = (bool)level;
+    uint32_t sel = FIELD_EX32(s->regs[R_EXTCLK_CTRL], EXTCLK_CTRL, SEL);
+    s->regs[R_EXTCLK_STATUS] =
+        (s->lc_hw_debug_en && sel == OT_MULTIBITBOOL4_TRUE) ?
+            OT_MULTIBITBOOL4_TRUE :
+            OT_MULTIBITBOOL4_FALSE;
+    for (unsigned ix = 0; ix < s->measure_count; ix++) {
+        ot_clkmgr_check_measurement(s, ix);
+    }
+}
+
 static void ot_clkmgr_init(Object *obj)
 {
     OtClkMgrState *s = OT_CLKMGR(obj);
 
+    s->lc_hw_debug_en = true;
+
     for (unsigned ix = 0; ix < ALERT_COUNT; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
+
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_clkmgr_lc_hw_debug_en,
+                            OT_CLKMGR_LC_HW_DEBUG_EN, 1);
 }
 
 static void ot_clkmgr_class_init(ObjectClass *klass, const void *data)
