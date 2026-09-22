@@ -492,12 +492,52 @@ static const char *OTP_TOKEN_NAMES[] = {
 
 static uint32_t ot_otp_eg_get_status(const OtOTPEngineState *s)
 {
-    uint32_t status;
+    uint32_t status = s->regs[R_STATUS] & ~0x1fffu;
 
-    status = FIELD_DP32(s->regs[R_STATUS], STATUS, DAI_IDLE,
-                        !ot_otp_engine_dai_is_busy(s));
+    for (unsigned ix = 0; ix <= (R_ERR_CODE_12 - R_ERR_CODE_0); ix++) {
+        if (s->regs[R_ERR_CODE_0 + ix] != 0u) {
+            status |= 1u << ix;
+        }
+    }
+
+    status =
+        FIELD_DP32(status, STATUS, DAI_IDLE, !ot_otp_engine_dai_is_busy(s));
 
     return status;
+}
+
+static bool ot_otp_eg_reg_accepts(void *opaque, hwaddr addr, unsigned size,
+                                  bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    if (!is_write) {
+        return true;
+    }
+    hwaddr reg = R32_OFF(addr);
+    uint8_t permit;
+    switch (reg) {
+    /* OTP_CTRL_CORE_PERMIT (otp_ctrl_core_reg_pkg.sv): */
+    /* - DIRECT_ACCESS_ADDRESS: 4'b0011 (0x3) */
+    /* - STATUS: 4'b0111 (0x7) */
+    /* - 32-bit WDATA/RDATA: 4'b1111 (0xf) */
+    /* - 32-bit CHECK_PERIOD: 4'b1111 (0xf) */
+    /* - 32-bit DIGEST CSRs: 4'b1111 (0xf) */
+    case R_DIRECT_ACCESS_WDATA_0 ... R_DIRECT_ACCESS_RDATA_1:
+    case R_CHECK_TIMEOUT ... R_CONSISTENCY_CHECK_PERIOD:
+    case R_VENDOR_TEST_DIGEST_0 ... R_SECRET2_DIGEST_1:
+        permit = 0xfu;
+        break;
+    default:
+        permit = (reg == R_DIRECT_ACCESS_ADDRESS) ?
+                     0x3u :
+                     ((reg == R_STATUS) ?
+                          0x7u :
+                          ((reg <= R_SECRET2_DIGEST_1) ? 0x1u : 0x0u));
+        break;
+    }
+    uint32_t byte_mask = ((1u << size) - 1u) << (addr & 3u);
+    return (permit != 0u) && ((permit & ~byte_mask) == 0u);
 }
 
 static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
@@ -514,13 +554,15 @@ static uint64_t ot_otp_eg_reg_read(void *opaque, hwaddr addr, unsigned size)
     case R_ERR_CODE_0 ... R_ERR_CODE_12:
     case R_DIRECT_ACCESS_WDATA_0:
     case R_DIRECT_ACCESS_WDATA_1:
-    case R_DIRECT_ACCESS_RDATA_0:
-    case R_DIRECT_ACCESS_RDATA_1:
     case R_DIRECT_ACCESS_ADDRESS:
     case R_VENDOR_TEST_READ_LOCK ... R_ROT_CREATOR_AUTH_STATE_READ_LOCK:
     case R_CHECK_TRIGGER_REGWEN:
     case R_CHECK_REGWEN:
         val32 = s->regs[reg];
+        break;
+    case R_DIRECT_ACCESS_RDATA_0:
+    case R_DIRECT_ACCESS_RDATA_1:
+        val32 = ot_otp_engine_dai_is_busy(s) ? 0u : s->regs[reg];
         break;
     case R_STATUS:
         val32 = ot_otp_eg_get_status(s);
@@ -593,7 +635,8 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
     case R_DIRECT_ACCESS_WDATA_1:
     case R_VENDOR_TEST_READ_LOCK ... R_ROT_CREATOR_AUTH_STATE_READ_LOCK:
         if (!(s->regs[R_DIRECT_ACCESS_REGWEN] &
-              R_DIRECT_ACCESS_REGWEN_REGWEN_MASK)) {
+              R_DIRECT_ACCESS_REGWEN_REGWEN_MASK) ||
+            ot_otp_engine_dai_is_busy(s)) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: %s is not enabled, %s is protected\n",
                           __func__, s->ot_id, REG_NAME(R_DIRECT_ACCESS_REGWEN),
@@ -647,7 +690,7 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_INTR_TEST:
         val32 &= INTR_WMASK;
-        s->regs[R_INTR_STATE] = val32;
+        s->regs[R_INTR_STATE] |= val32;
         c->update_irqs(s);
         break;
     case R_ALERT_TEST:
@@ -688,10 +731,14 @@ static void ot_otp_eg_reg_write(void *opaque, hwaddr addr, uint64_t value,
         val32 &= R_CHECK_REGWEN_REGWEN_MASK;
         s->regs[reg] &= val32; /* RW0C */
         break;
-    case R_CHECK_TRIGGER:
     case R_CHECK_TIMEOUT:
     case R_INTEGRITY_CHECK_PERIOD:
     case R_CONSISTENCY_CHECK_PERIOD:
+        s->regs[reg] = val32;
+        qemu_log_mask(LOG_UNIMP, "%s: %s: %s is not supported\n", __func__,
+                      s->ot_id, REG_NAME(reg));
+        break;
+    case R_CHECK_TRIGGER:
         qemu_log_mask(LOG_UNIMP, "%s: %s: %s is not supported\n", __func__,
                       s->ot_id, REG_NAME(reg));
         break;
@@ -876,10 +923,9 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
     }
 
     bool is_readable = c->is_readable(s, part_ix);
-    bool is_digest = ot_otp_engine_is_part_digest_offset(s, part_ix, addr);
     bool is_zer = ot_otp_engine_is_part_zer_offset(s, part_ix, addr);
 
-    if (!is_readable && !(is_digest || is_zer)) {
+    if (!is_readable && !is_zer) {
         trace_ot_otp_access_error_on(s->ot_id, partition, addr, "not readable");
         c->set_error(s, part_ix, OT_OTP_ACCESS_ERROR);
 
@@ -898,6 +944,16 @@ static MemTxResult ot_otp_eg_swcfg_read_with_attrs(
     *data = (uint64_t)val32;
 
     return MEMTX_OK;
+}
+
+static bool ot_otp_eg_swcfg_accepts(void *opaque, hwaddr addr, unsigned size,
+                                    bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)addr;
+    (void)size;
+    (void)attrs;
+    return !is_write;
 }
 
 static void ot_otp_eg_get_lc_info(
@@ -1027,6 +1083,9 @@ static void ot_otp_eg_pwr_load_hw_cfg(OtOTPEngineState *s)
     hw_cfg->en_csrng_sw_app_read_mb8 =
         s->blk ? pdata1[A_HW_CFG1_EN_CSRNG_SW_APP_READ - pdesc1->offset] :
                  OT_MULTIBITBOOL8_TRUE;
+    hw_cfg->dis_rv_dm_late_debug_mb8 =
+        s->blk ? pdata1[A_HW_CFG1_DIS_RV_DM_LATE_DEBUG - pdesc1->offset] :
+                 OT_MULTIBITBOOL8_FALSE;
 }
 
 static void ot_otp_eg_pwr_load_tokens(OtOTPEngineState *s)
@@ -1095,6 +1154,7 @@ static const MemoryRegionOps ot_otp_eg_reg_ops = {
     .read = &ot_otp_eg_reg_read,
     .write = &ot_otp_eg_reg_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid.accepts = &ot_otp_eg_reg_accepts,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
 };
@@ -1102,6 +1162,7 @@ static const MemoryRegionOps ot_otp_eg_reg_ops = {
 static const MemoryRegionOps ot_otp_eg_swcfg_ops = {
     .read_with_attrs = &ot_otp_eg_swcfg_read_with_attrs,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid.accepts = &ot_otp_eg_swcfg_accepts,
     .impl.min_access_size = 4,
     .impl.max_access_size = 4,
 };

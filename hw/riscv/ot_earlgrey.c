@@ -794,7 +794,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_OTP_BACKEND] = {
         .type = TYPE_OT_OTP_OT_BE,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x40132000u }
+            { .base = 0x40138000u }
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("parent", OTP_CTRL)
@@ -835,8 +835,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_OWNER_SEED_SW_RW_EN,
                              FLASH_CTRL, OT_LC_BROADCAST,
                              OT_FLASH_LC_OWNER_SEED_SW_RW_EN),
-            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_SEED_HW_RD_EN, FLASH_CTRL,
-                             OT_LC_BROADCAST, OT_FLASH_LC_SEED_HW_RD_EN),
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_ISO_PART_SW_RD_EN,
                              FLASH_CTRL, OT_LC_BROADCAST,
                              OT_FLASH_LC_ISO_PART_SW_RD_EN),

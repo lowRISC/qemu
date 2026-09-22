@@ -319,7 +319,9 @@ static void ot_otp_engine_set_error(OtOTPEngineState *s, unsigned part_ix,
     case OT_OTP_MACRO_WRITE_BLANK_ERROR:
         break;
     case OT_OTP_ACCESS_ERROR:
-        ic->update_status_error(OT_OTP_IMPL_IF(s), OT_OTP_STATUS_DAI, true);
+        if (part_ix == OTP_ENTRY_DAI(s)) {
+            ic->update_status_error(OT_OTP_IMPL_IF(s), OT_OTP_STATUS_DAI, true);
+        }
         break;
     case OT_OTP_CHECK_FAIL_ERROR:
     case OT_OTP_FSM_STATE_ERROR:
@@ -346,8 +348,7 @@ ot_otp_engine_get_part_from_address(const OtOTPEngineState *s, hwaddr addr)
 {
     for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
         const OtOTPPartDesc *part = &s->part_descs[part_ix];
-        if ((addr >= part->offset) &&
-            ((addr + sizeof(uint32_t)) <= (part->offset + part->size))) {
+        if ((addr >= part->offset) && (addr < (part->offset + part->size))) {
             trace_ot_otp_addr_to_part(s->ot_id, (uint32_t)addr,
                                       ot_otp_engine_part_name(s, part_ix),
                                       part_ix);
@@ -639,7 +640,13 @@ static bool ot_otp_engine_is_readable(const OtOTPEngineState *s,
     const OtOTPPartController *pctrl = &s->part_ctrls[part_ix];
 
     if (pdesc->secret) {
-        /* secret partitions are only readable if digest is not yet set. */
+        /*
+         * secret partitions are only readable if digest is not yet set and
+         * HW read lock (e.g. CREATOR_SEED_SW_RW_EN) is not asserted.
+         */
+        if (pdesc->read_lock && pctrl->read_lock) {
+            return false;
+        }
         return pctrl->digest == 0u;
     }
 
@@ -659,7 +666,7 @@ static bool ot_otp_engine_is_readable(const OtOTPEngineState *s,
         if (pix == part_ix) {
             break;
         }
-        if (pdesc->read_lock_csr) {
+        if (s->part_descs[pix].read_lock_csr) {
             roffset++;
         }
     }
@@ -702,6 +709,8 @@ static void ot_otp_engine_lci_change_state_line(OtOTPEngineState *s,
     s->lci->state = state;
 }
 
+static void ot_otp_engine_lc_broadcast_bh(void *opaque);
+
 static void ot_otp_engine_lc_broadcast_recv(void *opaque, int n, int level)
 {
     OtOTPEngineState *s = opaque;
@@ -721,8 +730,7 @@ static void ot_otp_engine_lc_broadcast_recv(void *opaque, int n, int level)
         bcast->level &= ~bit;
     }
 
-    /* use a BH to decouple IRQ signaling from actual handling */
-    qemu_bh_schedule(s->lc_broadcast.bh);
+    ot_otp_engine_lc_broadcast_bh(s);
 }
 
 static void ot_otp_engine_lc_broadcast_bh(void *opaque)
@@ -744,8 +752,12 @@ static void ot_otp_engine_lc_broadcast_bh(void *opaque)
 
         switch ((int)sig) {
         case OT_OTP_LC_DFT_EN:
-            qemu_log_mask(LOG_UNIMP, "%s: %s: DFT feature not supported\n",
-                          __func__, s->ot_id);
+            if (s->otp_backend) {
+                OtOtpBeIfClass *bec = OT_OTP_BE_IF_GET_CLASS(s->otp_backend);
+                if (bec->set_lc_dft_en) {
+                    bec->set_lc_dft_en(s->otp_backend, level);
+                }
+            }
             break;
         case OT_OTP_LC_ESCALATE_EN:
             if (level) {
@@ -1004,7 +1016,9 @@ static void ot_otp_engine_dai_set_error(OtOTPEngineState *s, OtOTPError err)
         DAI_CHANGE_STATE(s, OT_OTP_DAI_ERROR);
         break;
     default:
+        s->regs[R_INTR_STATE] |= INTR_OTP_OPERATION_DONE_MASK;
         DAI_CHANGE_STATE(s, OT_OTP_DAI_IDLE);
+        ot_otp_engine_update_irqs(s);
         break;
     }
 }
@@ -1029,6 +1043,8 @@ static void ot_otp_engine_dai_read(OtOTPEngineState *s)
     ot_otp_engine_dai_clear_error(s);
 
     DAI_CHANGE_STATE(s, OT_OTP_DAI_READ);
+    DIRECT_ACCESS_REG(s, RDATA_0) = 0u;
+    DIRECT_ACCESS_REG(s, RDATA_1) = 0u;
 
     unsigned address = DIRECT_ACCESS_REG(s, ADDRESS);
 
@@ -1063,10 +1079,11 @@ static void ot_otp_engine_dai_read(OtOTPEngineState *s)
     bool is_buffered = ot_otp_engine_is_buffered(s, part_ix);
     bool is_secret = ot_otp_engine_is_secret(s, part_ix);
     bool is_digest = ot_otp_engine_is_part_digest_offset(s, part_ix, address);
+    bool is_hw_digest = s->part_descs[part_ix].hw_digest && is_digest;
     bool is_zer = ot_otp_engine_is_part_zer_offset(s, part_ix, address);
 
-    /* in all partitions, the digest and zer fields are always readable. */
-    if (!is_digest && !is_zer && !is_readable) {
+    /* HW digest and zer fields remain readable even when read_lock is set. */
+    if (!is_hw_digest && !is_zer && !is_readable) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: %s: partition %s @ 0x%04x not readable\n", __func__,
                       s->ot_id, ot_otp_engine_part_name(s, part_ix), address);
@@ -1170,7 +1187,9 @@ static void ot_otp_engine_dai_read(OtOTPEngineState *s)
         timer_mod(s->dai->delay,
                   qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + access_time);
     } else {
+        s->regs[R_INTR_STATE] |= INTR_OTP_OPERATION_DONE_MASK;
         DAI_CHANGE_STATE(s, OT_OTP_DAI_IDLE);
+        ot_otp_engine_update_irqs(s);
     }
 }
 
@@ -1326,6 +1345,9 @@ static void ot_otp_engine_dai_write(OtOTPEngineState *s)
         return;
     }
 
+    DIRECT_ACCESS_REG(s, RDATA_0) = 0u;
+    DIRECT_ACCESS_REG(s, RDATA_1) = 0u;
+
     if (!ot_otp_engine_is_backend_writable(s)) {
         /* OTP backend missing or read-only; reject any write request */
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -1440,6 +1462,9 @@ static void ot_otp_engine_dai_digest(OtOTPEngineState *s)
                       __func__, s->ot_id, DAI_STATE_NAME(s->dai->state));
         return;
     }
+
+    DIRECT_ACCESS_REG(s, RDATA_0) = 0u;
+    DIRECT_ACCESS_REG(s, RDATA_1) = 0u;
 
     if (!ot_otp_engine_is_backend_writable(s)) {
         /* OTP backend missing or read-only; reject any write request */
@@ -1615,14 +1640,17 @@ static void ot_otp_engine_dai_complete(void *opaque)
                               (unsigned)s->dai->partition,
                               DIRECT_ACCESS_REG(s, RDATA_0),
                               DIRECT_ACCESS_REG(s, RDATA_1));
+        s->regs[R_INTR_STATE] |= INTR_OTP_OPERATION_DONE_MASK;
         s->dai->partition = -1;
         DAI_CHANGE_STATE(s, OT_OTP_DAI_IDLE);
+        ot_otp_engine_update_irqs(s);
         break;
     case OT_OTP_DAI_WRITE_WAIT:
         g_assert(s->dai->partition >= 0);
         s->regs[R_INTR_STATE] |= INTR_OTP_OPERATION_DONE_MASK;
         s->dai->partition = -1;
         DAI_CHANGE_STATE(s, OT_OTP_DAI_IDLE);
+        ot_otp_engine_update_irqs(s);
         break;
     case OT_OTP_DAI_DIG_WAIT:
         g_assert(s->dai->partition >= 0);
@@ -1659,9 +1687,9 @@ static void ot_otp_engine_request_entropy(void *opaque)
      * can only be performed once the reset sequence is over.
      */
     if (!s->keygen->edn_sched) {
+        s->keygen->edn_sched = true;
         int rc = ot_edn_request_entropy(s->edn, s->edn_ep);
         g_assert(rc == 0);
-        s->keygen->edn_sched = true;
     }
 }
 
@@ -2165,6 +2193,10 @@ static void ot_otp_engine_pwr_load(OtOTPEngineState *s)
 
     uintptr_t base = (uintptr_t)otp->storage;
     g_assert(!(base & (sizeof(uint64_t) - 1u)));
+
+    if (s->blk && !blk_is_available(s->blk)) {
+        return;
+    }
 
     memset(otp->storage, 0, otp_size);
 
@@ -2782,6 +2814,11 @@ static void ot_otp_engine_reset_enter(Object *obj, ResetType type)
     ibex_irq_set(&s->pwc_otp_rsp, 0);
 
     for (unsigned part_ix = 0; part_ix < s->part_count; part_ix++) {
+        s->part_ctrls[part_ix].digest = 0;
+        s->part_ctrls[part_ix].locked = false;
+        s->part_ctrls[part_ix].failed = false;
+        s->part_ctrls[part_ix].read_lock = false;
+        s->part_ctrls[part_ix].write_lock = false;
         /* @todo initialize with actual default partition data once known */
         if (s->part_descs[part_ix].buffered) {
             s->part_ctrls[part_ix].state.b = OT_OTP_BUF_IDLE;
@@ -2791,7 +2828,6 @@ static void ot_otp_engine_reset_enter(Object *obj, ResetType type)
         }
         unsigned part_size = ot_otp_engine_part_data_byte_size(s, part_ix);
         memset(s->part_ctrls[part_ix].buffer.data, 0, part_size);
-        s->part_ctrls[part_ix].digest = 0;
         if (s->part_descs[part_ix].iskeymgr_creator ||
             s->part_descs[part_ix].iskeymgr_owner) {
             s->part_ctrls[part_ix].read_lock = true;
@@ -2799,7 +2835,12 @@ static void ot_otp_engine_reset_enter(Object *obj, ResetType type)
         }
     }
     DAI_CHANGE_STATE(s, OT_OTP_DAI_RESET);
+    s->dai->partition = -1;
     LCI_CHANGE_STATE(s, OT_OTP_LCI_RESET);
+    s->lci->error = OT_OTP_NO_ERROR;
+    s->lci->ack_fn = NULL;
+    s->lci->ack_data = NULL;
+    s->lci->hpos = 0u;
 }
 
 static void ot_otp_engine_reset_exit(Object *obj, ResetType type)
