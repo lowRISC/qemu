@@ -60,6 +60,7 @@ system_ss.add(when: 'CONFIG_OT_SOC_DBG_CTRL', if_true: files('ot_soc_dbg_ctrl.c'
 system_ss.add(when: 'CONFIG_OT_SPI_DEVICE', if_true: files('ot_spi_device.c'))
 system_ss.add(when: 'CONFIG_OT_SPI_HOST', if_true: files('ot_spi_host.c'))
 system_ss.add(when: 'CONFIG_OT_SRAM_CTRL', if_true: files('ot_sram_ctrl.c'))
+system_ss.add(when: 'CONFIG_OT_SYSRST_CTRL', if_true: files('ot_sysrst_ctrl.c'))
 system_ss.add(when: 'CONFIG_OT_TIMER', if_true: files('ot_timer.c'))
 system_ss.add(when: 'CONFIG_OT_UART', if_true: files('ot_uart.c'))
 system_ss.add(when: 'CONFIG_OT_UNIMP', if_true: files('ot_unimp.c'))

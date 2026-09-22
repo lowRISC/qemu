@@ -219,6 +219,8 @@ config OT_SRAM_CTRL
     select OT_OTP_IF
     bool
 
+config OT_SYSRST_CTRL
+    bool
 
 config OT_TIMER
     bool
