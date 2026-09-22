@@ -1092,6 +1092,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 157),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR, \
                              OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
+            OT_EG_SOC_SIGNAL(OT_AON_TIMER_BARK, 0, IBEX_WRAPPER, \
+                             OT_IBEX_WRAPPER_WDOG_BARK, 0),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
                              OT_PWRMGR_RST, OT_EG_RESET_AON_TIMER),
             OT_EG_SOC_GPIO_ALERT(0, 31)
