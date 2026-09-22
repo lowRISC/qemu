@@ -161,6 +161,8 @@ config OT_OTP_OT_BE
     select OT_OTP_IF
     bool
 
+config OT_PATTGEN
+    bool
 
 config OT_PINMUX_DJ
     bool
