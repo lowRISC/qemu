@@ -182,6 +182,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_VMAPPER,
     /* IRQ splitters, i.e. 1-to-N signal dispatchers */
     OT_EG_SOC_SPLITTER_LC_HW_DEBUG,
+    OT_EG_SOC_SPLITTER_LC_DFT,
     OT_EG_SOC_SPLITTER_LC_ESCALATE,
     OT_EG_SOC_SPLITTER_LC_SEED_HW_RD,
     OT_EG_SOC_SPLITTER_LC_CREATOR_SEED_SW_RW,
@@ -843,9 +844,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_FLASH_LC_ISO_PART_SW_WR_EN),
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_NVM_DEBUG_EN, FLASH_CTRL,
                              OT_LC_BROADCAST, OT_FLASH_LC_NVM_DEBUG_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_RMA, FLASH_CTRL,
+                             OT_LC_BROADCAST, OT_FLASH_LC_RMA),
             /* Signals to OTP */
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CHECK_BYP_EN, OTP_CTRL,
-                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN)
+                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN),
+            /* Signals to pwrmgr and rv_dm */
+            OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_DFT_EN, LC_DFT)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL),
@@ -855,7 +860,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_UINT_PROP("silicon_creator_id", 0x4001u),
             IBEX_DEV_UINT_PROP("product_id", 0x0002u),
             IBEX_DEV_UINT_PROP("revision_id", 0x1u),
-            IBEX_DEV_BOOL_PROP("volatile_raw_unlock", true),
+            IBEX_DEV_BOOL_PROP("volatile_raw_unlock", false),
             IBEX_DEV_UINT_PROP("kmac-app", 1u)
         )
     },
@@ -871,7 +876,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 130),
             OT_EG_SOC_GPIO_ESCALATE(0, IBEX_WRAPPER, 0),
             OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 0),
-            OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 1),
+            OT_EG_SOC_GPIO_ESCALATE(2, LC_CTRL, 1),
             OT_EG_SOC_GPIO_ESCALATE(3, PWRMGR, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
