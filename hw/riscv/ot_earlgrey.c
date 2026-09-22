@@ -983,6 +983,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_DEV_USBDEV] = {
         .type = TYPE_OT_USBDEV,
+        .instance = IBEX_MAKE_INSTANCE_NUM(0),
         .cfg = &ot_eg_soc_usbdev_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40320000u }
@@ -1006,6 +1007,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 150),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 151),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 152),
+            OT_EG_SOC_SIGNAL(OT_USBDEV_WKUP, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_USBDEV),
             OT_EG_SOC_GPIO_ALERT(0, 21)
             /* The VBUS sense pin is handled by a chardev */
         ),
@@ -1014,7 +1017,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "usbdev"),
-            IBEX_DEV_STRING_PROP("clock-name", "usb"),
+            IBEX_DEV_STRING_PROP("clock-name", "peri.usb"),
             IBEX_DEV_STRING_PROP("clock-name-aon", "aon")
         ),
     },
