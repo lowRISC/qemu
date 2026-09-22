@@ -33,4 +33,10 @@
 #define TYPE_OT_GPIO_EG "ot-gpio-eg"
 OBJECT_DECLARE_TYPE(OtGpioEgState, OtGpioEgClass, OT_GPIO_EG)
 
+void ot_gpio_eg_notify_sysrst_change(void);
+int ot_gpio_eg_get_mio_pad_in(unsigned mio_pad);
+uint64_t ot_gpio_eg_get_total_us(OtGpioEgState *s);
+void ot_gpio_eg_set_pattgen_batch(OtGpioEgState *s, bool active);
+void ot_gpio_eg_notify_pattgen_change(OtGpioEgState *s, uint64_t step_us);
+
 #endif /* HW_OPENTITAN_OT_GPIO_EG_H */

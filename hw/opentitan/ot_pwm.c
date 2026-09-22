@@ -12,6 +12,7 @@
 #include "qemu/timer.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_pwm.h"
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/qdev-properties.h"
@@ -290,6 +291,7 @@ static void ot_pwm_write(void *opaque, hwaddr addr, uint64_t val64,
         }
     }
 
+    ot_gpio_eg_notify_sysrst_change();
 }
 
 static const MemoryRegionOps ot_pwm_regs_ops = {

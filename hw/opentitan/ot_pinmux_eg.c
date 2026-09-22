@@ -32,6 +32,7 @@
 #include "qom/object.h"
 #include "hw/core/cpu.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_sysrst_ctrl.h"
@@ -476,7 +477,7 @@ static int ot_pinmux_eg_eval_mio_sel(const OtPinmuxEgState *s, uint32_t sel)
     }
     if (sel >= 2u && (sel - 2u) < PARAM_N_MIO_PADS) {
         unsigned mio_pad = sel - 2u;
-        int mio_in = -1;
+        int mio_in = ot_gpio_eg_get_mio_pad_in(mio_pad);
         if (mio_in >= 0) {
             return mio_in;
         }
@@ -564,6 +565,7 @@ static void ot_pinmux_eg_update_gpio_inputs(OtPinmuxEgState *s)
     for (unsigned i = 0; i < 32u; i++) {
         ibex_irq_set(&s->gpio_inputs[i], -1);
     }
+    ot_gpio_eg_notify_sysrst_change();
 }
 
 bool ot_pinmux_eg_trigger_mio_wkup(unsigned mio_pad)
@@ -823,6 +825,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             ot_uart_update_pinmux(regs->mio_outsel, regs->mio_periph_insel);
             ot_pinmux_eg_update_pads(s);
             ot_pinmux_eg_update_gpio_inputs(s);
+            ot_gpio_eg_notify_sysrst_change();
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
@@ -839,6 +842,7 @@ static void ot_pinmux_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             val32 &= MIO_PAD_ATTR_MASK;
             regs->mio_pad_attr[pad_no] = val32;
             ot_pinmux_eg_update_pads(s);
+            ot_gpio_eg_notify_sysrst_change();
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: 0x%03x access is disabled\n",
                           __func__, (uint32_t)addr);
@@ -1043,6 +1047,7 @@ static void ot_pinmux_eg_reset_enter(Object *obj, ResetType type)
         ot_pinmux_eg_update_sysrst_inputs(s);
         ot_pinmux_eg_update_gpio_inputs(s);
         ot_pinmux_eg_update_pads(s);
+        ot_gpio_eg_notify_sysrst_change();
         ibex_irq_set(&s->wkup, (int)(bool)regs->wkup_cause);
         ibex_irq_set(&s->alert, 0);
         return;
