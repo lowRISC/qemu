@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_i2c.h"
+#include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
@@ -594,6 +595,11 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                 timer_mod(s->sw_reset_timer,
                           qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + 1000);
             }
+            OtPwrMgrState *pwrmgr = (OtPwrMgrState *)
+                object_resolve_path_type("", TYPE_OT_PWRMGR, NULL);
+            if (pwrmgr) {
+                ot_pwrmgr_cancel_check(pwrmgr);
+            }
             if (s->fatal_reset) {
                 s->fatal_reset--;
                 if (!s->fatal_reset) {
@@ -632,6 +638,14 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         if (s->regs[R_CPU_REGWEN]) {
             val32 &= CPU_INFO_CTRL_MASK;
             s->regs[reg] = val32;
+            if ((val32 & R_CPU_INFO_CTRL_EN_MASK) && s->cpu &&
+                !s->cpu->halted) {
+                OtPwrMgrState *pwrmgr = (OtPwrMgrState *)
+                    object_resolve_path_type("", TYPE_OT_PWRMGR, NULL);
+                if (pwrmgr) {
+                    ot_pwrmgr_trigger_check(pwrmgr);
+                }
+            }
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s protected w/ REGWEN\n",
                           __func__, s->ot_id, REG_NAME(reg));
