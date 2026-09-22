@@ -435,11 +435,23 @@ void tlb_flush_all_cpus_synced(CPUState *src_cpu)
     tlb_flush_by_mmuidx_all_cpus_synced(src_cpu, ALL_MMUIDX_BITS);
 }
 
+/**
+ * tlb_entry_is_empty - return true if the entry is not in use
+ * @te: pointer to CPUTLBEntry
+ */
+static inline bool tlb_entry_is_empty(const CPUTLBEntry *te)
+{
+    return te->addr_read == -1 && te->addr_write == -1 && te->addr_code == -1;
+}
+
 static bool tlb_hit_page_mask_anyprot(CPUTLBEntry *tlb_entry,
                                       vaddr page, vaddr mask)
 {
-    page &= mask;
-    mask &= TARGET_PAGE_MASK | TLB_INVALID_MASK;
+    if (tlb_entry_is_empty(tlb_entry)) {
+        return false;
+    }
+    page &= mask & TARGET_PAGE_MASK;
+    mask &= TARGET_PAGE_MASK;
 
     return (page == (tlb_entry->addr_read & mask) ||
             page == (tlb_addr_write(tlb_entry) & mask) ||
@@ -449,15 +461,6 @@ static bool tlb_hit_page_mask_anyprot(CPUTLBEntry *tlb_entry,
 static inline bool tlb_hit_page_anyprot(CPUTLBEntry *tlb_entry, vaddr page)
 {
     return tlb_hit_page_mask_anyprot(tlb_entry, page, -1);
-}
-
-/**
- * tlb_entry_is_empty - return true if the entry is not in use
- * @te: pointer to CPUTLBEntry
- */
-static inline bool tlb_entry_is_empty(const CPUTLBEntry *te)
-{
-    return te->addr_read == -1 && te->addr_write == -1 && te->addr_code == -1;
 }
 
 /* Called with tlb_c.lock held */
@@ -1151,13 +1154,15 @@ void tlb_set_page_full(CPUState *cpu, int mmu_idx,
      * subtract here is that of the page base, and not the same as the
      * vaddr we add back in io_prepare()/get_page_addr_code().
      */
+    hwaddr ofs_diff = (full->phys_addr & ~TARGET_PAGE_MASK) -
+                      (addr & ~TARGET_PAGE_MASK);
     desc->fulltlb[index] = *full;
     full = &desc->fulltlb[index];
     full->xlat_section = iotlb - addr_page;
-    full->phys_addr = paddr_page;
+    full->phys_addr = paddr_page + ofs_diff;
 
     /* Now calculate the new entry */
-    tn.addend = addend - addr_page;
+    tn.addend = addend - addr_page + ofs_diff;
 
     tlb_set_compare(full, &tn, addr_page, read_flags,
                     MMU_INST_FETCH, prot & PAGE_EXEC);
@@ -1292,7 +1297,7 @@ static void io_failed(CPUState *cpu, CPUTLBEntryFull *full, vaddr addr,
 {
     if (!cpu->ignore_memory_transaction_failures
         && cpu->cc->tcg_ops->do_transaction_failed) {
-        hwaddr physaddr = full->phys_addr | (addr & ~TARGET_PAGE_MASK);
+        hwaddr physaddr = full->phys_addr + (addr & ~TARGET_PAGE_MASK);
 
         cpu->cc->tcg_ops->do_transaction_failed(cpu, physaddr, addr, size,
                                                 access_type, mmu_idx,
@@ -1546,10 +1551,6 @@ tb_page_addr_t get_page_addr_code_hostp(CPUArchState *env, vaddr addr,
                                 cpu_mmu_index(env_cpu(env), true), false,
                                 &p, &full, 0, false);
     if (p == NULL) {
-        return -1;
-    }
-
-    if (full->lg_page_size < TARGET_PAGE_BITS) {
         return -1;
     }
 
