@@ -34,6 +34,7 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
+#include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
@@ -48,6 +49,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
+#include "system/replay.h"
 #include "system/runstate.h"
 #include "trace.h"
 
@@ -167,9 +169,12 @@ struct OtRstMgrState {
     IbexIRQ sw_reset;
     IbexIRQ alerts[PARAM_NUM_ALERTS];
     QEMUBH *bus_reset_bh;
+    QEMUTimer *sw_reset_timer;
     CPUState *cpu;
 
     uint32_t *regs;
+    uint32_t cpu_info_dump[8];
+    uint32_t alert_info_dump[9];
     bool por; /* Power-On Reset property */
 
     char *ot_id;
@@ -182,14 +187,41 @@ struct OtRstMgrClass {
     ResettablePhases parent_phases;
 };
 
+static bool ot_rstmgr_pending_internal_reset;
+static bool ot_rstmgr_last_reset_por = true;
+static bool ot_rstmgr_last_reset_low_power;
+static bool ot_rstmgr_last_reset_ndm;
+
+bool ot_rstmgr_is_low_power_exit(void)
+{
+    return ot_rstmgr_pending_internal_reset && ot_rstmgr_last_reset_low_power;
+}
+
+bool ot_rstmgr_is_por_reset(void)
+{
+    return !ot_rstmgr_pending_internal_reset || ot_rstmgr_last_reset_por;
+}
+
+bool ot_rstmgr_is_ndm_reset(void)
+{
+    return ot_rstmgr_pending_internal_reset && ot_rstmgr_last_reset_ndm;
+}
+
+bool ot_rstmgr_is_internal_reset(void)
+{
+    return ot_rstmgr_pending_internal_reset;
+}
+
 typedef struct {
     const char *typename;
     unsigned idx;
+    bool aon;
 } OtRstMgrResettable;
 
 typedef struct {
     char *path;
     bool reset;
+    bool aon;
     char *ot_id;
 } OtRstMgrResetDesc;
 
@@ -207,23 +239,19 @@ static const OtRstMgrConfig RSTMGR_CONFIG[OT_RSTMGR_VERSION_COUNT] = {
             [OT_RSTMGR_RESET_SYSCTRL] = BIT(3),
             [OT_RSTMGR_RESET_AON_TIMER] = BIT(4),
             [OT_RSTMGR_RESET_SENSOR] = BIT(5),
-            [OT_RSTMGR_RESET_PWRMGR] = BIT(6),
-            [OT_RSTMGR_RESET_ALERT_HANDLER] = BIT(7),
-            [OT_RSTMGR_RESET_RV_DM] = BIT(8),
+            [OT_RSTMGR_RESET_PWRMGR] = BIT(5),
+            [OT_RSTMGR_RESET_ALERT_HANDLER] = BIT(6),
+            [OT_RSTMGR_RESET_RV_DM] = BIT(7),
         },
         .sw_resettable_devices = {
             [0u] = { TYPE_OT_SPI_DEVICE, 0u },
             [1u] = { TYPE_OT_SPI_HOST, 0u },
             [2u] = { TYPE_OT_SPI_HOST, 1u },
-            /*
-             * Not yet supported
-             *
-             * [3u] = { TYPE_OT_USB, 0u },
-             * [4u] = { TYPE_OT_USB, 1u },
-             * [5u] = { TYPE_OT_I2C_EG, 0u },
-             * [6u] = { TYPE_OT_I2C_EG, 1u },
-             * [7u] = { TYPE_OT_I2C_EG, 2u },
-             */
+            [3u] = { TYPE_OT_USBDEV, 0u },
+            [4u] = { TYPE_OT_USBDEV, 0u, true },
+            [5u] = { TYPE_OT_I2C, 0u },
+            [6u] = { TYPE_OT_I2C, 1u },
+            [7u] = { TYPE_OT_I2C, 2u },
         }
     },
     [OT_RSTMGR_VERSION_DJ] = {
@@ -280,22 +308,66 @@ static void ot_rstmgr_update_alerts(OtRstMgrState *s)
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
+
+    if (s->regs[R_ALERT_TEST]) {
+        s->regs[R_ALERT_TEST] = 0u;
+        for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
+            ibex_irq_set(&s->alerts[ix], 0);
+        }
+    }
 }
+
+static void ot_rstmgr_sw_reset_timer_cb(void *opaque)
+{
+    OtRstMgrState *s = opaque;
+
+    if (s->regs[R_RESET_REQ] == OT_MULTIBITBOOL4_TRUE) {
+        ibex_irq_raise(&s->sw_reset);
+    }
+}
+
+extern void riscv_cpu_get_crash_dump(CPUState *cs, uint32_t dump[8]);
 
 static void ot_rstmgr_reset_bus(void *opaque)
 {
     OtRstMgrState *s = opaque;
 
-    /* request the vCPU to stop */
-    s->cpu->stop = true;
+    g_assert(s->cpu);
 
-    /* wait for the vCPU to stop */
-    while (!s->cpu->stopped) {
+    if (!s->cpu->stopped) {
+        /* request the vCPU to stop */
+        s->cpu->stop = true;
+
+        /*
+         * Drop replay_mutex so the vCPU thread can acquire it in
+         * rr_cpu_thread_fn and reach rr_wait_io_event() to set cpu->stopped =
+         * true. Lock ordering: replay_mutex must always be acquired before bql.
+         */
+        replay_mutex_unlock();
         bql_unlock();
-        qemu_cpu_kick(s->cpu);
+        while (!s->cpu->stopped) {
+            qemu_cpu_kick(s->cpu);
+            g_usleep(100);
+        }
+        g_usleep(1000);
+        replay_mutex_lock();
         bql_lock();
+        qemu_notify_event();
+    } else {
+        s->cpu->stop = false;
     }
-    qemu_notify_event();
+
+    if (s->regs[R_CPU_INFO_CTRL] & R_CPU_INFO_CTRL_EN_MASK) {
+        riscv_cpu_get_crash_dump(s->cpu, s->cpu_info_dump);
+    }
+
+    if (s->regs[R_ALERT_INFO_CTRL] & R_ALERT_INFO_CTRL_EN_MASK) {
+        OtAlertState *alert_dev =
+            (OtAlertState *)object_resolve_path_type("", TYPE_OT_ALERT, NULL);
+        if (alert_dev) {
+            ot_alert_get_crash_dump(alert_dev, s->alert_info_dump);
+        }
+    }
 
     ibex_irq_raise(&s->soc_reset);
 }
@@ -315,9 +387,9 @@ static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
     trace_ot_rstmgr_sw_rst(desc->ot_id, desc->path, desc->reset);
 
     if (desc->reset) {
-        resettable_assert_reset(OBJECT(dev), RESET_TYPE_COLD);
+        resettable_assert_reset(OBJECT(dev), RESET_TYPE_WAKEUP);
     } else {
-        resettable_release_reset(OBJECT(dev), RESET_TYPE_COLD);
+        resettable_release_reset(OBJECT(dev), RESET_TYPE_WAKEUP);
     }
 
     /* abort walk immediately */
@@ -342,6 +414,7 @@ static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
 
     desc.path = g_strdup_printf("%s[%d]", rst->typename, rst->idx);
     desc.reset = !s->regs[R_SW_RST_CTRL_N_0 + devix];
+    desc.aon = rst->aon;
     desc.ot_id = s->ot_id;
 
     trace_ot_rstmgr_sw_reset(s->ot_id, desc.path);
@@ -383,11 +456,31 @@ static void ot_rstmgr_reset_req(void *opaque, int irq, int level)
         return;
     }
 
-    s->regs[R_RESET_INFO] = req;
+    /* Only SW is allowed to clear a reset reason, HW only sets bits (|=) */
+    if (level == OT_RSTMGR_RESET_POR) {
+        s->por = true;
+    }
+    s->regs[R_RESET_INFO] |= req;
+    ot_rstmgr_last_reset_por =
+        (ot_rstmgr_pending_internal_reset && ot_rstmgr_last_reset_por) ||
+        (level == OT_RSTMGR_RESET_POR);
+    ot_rstmgr_last_reset_low_power = (level == OT_RSTMGR_RESET_LOW_POWER);
+    ot_rstmgr_last_reset_ndm =
+        (ot_rstmgr_pending_internal_reset && ot_rstmgr_last_reset_ndm) ||
+        (level == OT_RSTMGR_RESET_RV_DM);
+    ot_rstmgr_pending_internal_reset = true;
 
     trace_ot_rstmgr_reset_req(s->ot_id, REQ_NAME(level), req, fastclk);
 
-    qemu_bh_schedule(s->bus_reset_bh);
+    if (s->cpu) {
+        cpu_pause(s->cpu);
+    }
+
+    if (level == OT_RSTMGR_RESET_RV_DM) {
+        ot_rstmgr_reset_bus(s);
+    } else {
+        qemu_bh_schedule(s->bus_reset_bh);
+    }
 }
 
 static uint64_t ot_rstmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -403,12 +496,8 @@ static uint64_t ot_rstmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_RESET_INFO:
     case R_ALERT_REGWEN:
     case R_ALERT_INFO_CTRL:
-    case R_ALERT_INFO_ATTR:
-    case R_ALERT_INFO:
     case R_CPU_REGWEN:
     case R_CPU_INFO_CTRL:
-    case R_CPU_INFO_ATTR:
-    case R_CPU_INFO:
     case R_SW_RST_REGWEN_0:
     case R_SW_RST_REGWEN_1:
     case R_SW_RST_REGWEN_2:
@@ -428,6 +517,32 @@ static uint64_t ot_rstmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_ERR_CODE:
         val32 = s->regs[reg];
         break;
+    case R_ALERT_INFO_ATTR:
+        val32 = 9u;
+        break;
+    case R_ALERT_INFO: {
+        uint32_t idx =
+            FIELD_EX32(s->regs[R_ALERT_INFO_CTRL], ALERT_INFO_CTRL, INDEX);
+        val32 = (idx < ARRAY_SIZE(s->alert_info_dump)) ?
+                    s->alert_info_dump[idx] :
+                    0u;
+        break;
+    }
+    case R_CPU_INFO_ATTR:
+        val32 = 8u;
+        break;
+    case R_CPU_INFO: {
+        /*
+         * In rstmgr_crash_info.sv, SlotCntWidth = $clog2(CrashStoreSlot).
+         * For CPU_INFO, CrashStoreSlot = 8 -> SlotCntWidth = $clog2(8) = 3,
+         * so slot_sel_i[3] is tied off as unused_idx and slot_o indexes
+         * slots[slot_sel_i[2:0]] (idx % 8u).
+         */
+        uint32_t idx =
+            FIELD_EX32(s->regs[R_CPU_INFO_CTRL], CPU_INFO_CTRL, INDEX);
+        val32 = s->cpu_info_dump[idx % ARRAY_SIZE(s->cpu_info_dump)];
+        break;
+    }
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: W/O register 0x02%x (%s)\n",
                       __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
@@ -468,8 +583,17 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             /*
              * "Upon completion of reset, this bit is automatically cleared by
              * hardware."
+             * Schedule software reset request with a short delay (1 us) to
+             * model pwrmgr synchronization latency, allowing software to
+             * execute trailing instructions (e.g. wfi) before reset assertion.
+             * Do not re-arm if already pending, as tight shutdown loops (e.g.
+             * ROM shutdown_hang) repeatedly write R_RESET_REQ in < 1 us and
+             * would otherwise postpone the reset timer indefinitely.
              */
-            ibex_irq_raise(&s->sw_reset);
+            if (!timer_pending(s->sw_reset_timer)) {
+                timer_mod(s->sw_reset_timer,
+                          qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + 1000);
+            }
             if (s->fatal_reset) {
                 s->fatal_reset--;
                 if (!s->fatal_reset) {
@@ -478,6 +602,9 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                         SHUTDOWN_CAUSE_GUEST_SHUTDOWN, 1);
                 }
             }
+        } else {
+            timer_del(s->sw_reset_timer);
+            ibex_irq_lower(&s->sw_reset);
         }
         break;
     case R_RESET_INFO:
@@ -534,7 +661,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
             uint32_t change = s->regs[reg] ^ val32;
             s->regs[reg] = val32;
             unsigned devix = (unsigned)reg - R_SW_RST_CTRL_N_0;
-            if (change & (1u << devix)) {
+            if (change & SW_RST_CTRL_VAL_MASK) {
                 ot_rstmgr_update_sw_reset(s, devix);
             }
         } else {
@@ -562,6 +689,20 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
+static bool ot_rstmgr_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                   bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    if (!is_write) {
+        return true;
+    }
+    hwaddr reg = R32_OFF(addr);
+    uint8_t permit = (reg == R_ALERT_INFO || reg == R_CPU_INFO) ? 0xfu : 0x1u;
+    uint8_t reg_be = (uint8_t)(((1u << size) - 1u) << (addr & 0x3u));
+    return (permit & ~reg_be) == 0u;
+}
+
 static const Property ot_rstmgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtRstMgrState, ot_id),
     DEFINE_PROP_UINT32("fatal_reset", OtRstMgrState, fatal_reset, 0),
@@ -572,6 +713,7 @@ static const MemoryRegionOps ot_rstmgr_regs_ops = {
     .read = &ot_rstmgr_regs_read,
     .write = &ot_rstmgr_regs_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid.accepts = &ot_rstmgr_regs_accepts,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
 };
@@ -588,16 +730,30 @@ static void ot_rstmgr_reset_enter(Object *obj, ResetType type)
     }
 
     qemu_bh_cancel(s->bus_reset_bh);
+    timer_del(s->sw_reset_timer);
 
     uint32_t reset_info = s->regs[R_RESET_INFO];
+    uint32_t alert_info_ctrl = s->regs[R_ALERT_INFO_CTRL];
+    uint32_t cpu_info_ctrl = s->regs[R_CPU_INFO_CTRL];
 
     memset(s->regs, 0, REGS_SIZE);
 
-    if (s->por) {
-        s->regs[R_RESET_INFO] = R_RESET_INFO_POR_MASK;
+    if (s->por || ot_rstmgr_is_por_reset()) {
+        memset(s->cpu_info_dump, 0, sizeof(s->cpu_info_dump));
+        memset(s->alert_info_dump, 0, sizeof(s->alert_info_dump));
+        s->regs[R_RESET_INFO] = R_RESET_INFO_POR_MASK |
+                                (reset_info & R_RESET_INFO_LOW_POWER_EXIT_MASK);
         s->por = false;
+        ot_rstmgr_last_reset_low_power = false;
+        ot_rstmgr_last_reset_ndm = false;
     } else {
         s->regs[R_RESET_INFO] = reset_info;
+        uint32_t ctrl_mask = R_ALERT_INFO_CTRL_INDEX_MASK;
+        if (ot_rstmgr_is_low_power_exit()) {
+            ctrl_mask |= R_ALERT_INFO_CTRL_EN_MASK;
+        }
+        s->regs[R_ALERT_INFO_CTRL] = alert_info_ctrl & ctrl_mask;
+        s->regs[R_CPU_INFO_CTRL] = cpu_info_ctrl & ctrl_mask;
     }
     s->regs[R_RESET_REQ] = OT_MULTIBITBOOL4_FALSE;
     s->regs[R_ALERT_REGWEN] = R_ALERT_REGWEN_EN_MASK;
@@ -632,6 +788,8 @@ static void ot_rstmgr_reset_exit(Object *obj, ResetType type)
     OtRstMgrState *s = OT_RSTMGR(obj);
 
     trace_ot_rstmgr_reset(s->ot_id, "exit");
+
+    ot_rstmgr_pending_internal_reset = false;
 
     if (c->parent_phases.exit) {
         c->parent_phases.exit(obj, type);
@@ -678,6 +836,8 @@ static void ot_rstmgr_init(Object *obj)
                             OT_RSTMGR_RST_REQ, 1);
 
     s->bus_reset_bh = qemu_bh_new(&ot_rstmgr_reset_bus, s);
+    s->sw_reset_timer =
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_rstmgr_sw_reset_timer_cb, s);
 }
 
 static void ot_rstmgr_class_init(ObjectClass *klass, const void *data)
