@@ -33,4 +33,8 @@
 #define TYPE_OT_SENSOR_EG "ot-sensor-eg"
 OBJECT_DECLARE_TYPE(OtSensorEgState, OtSensorEgClass, OT_SENSOR_EG)
 
+#define OT_SENSOR_WKUP TYPE_OT_SENSOR_EG "-wkup"
+
+void ot_sensor_eg_trigger_recov_event(OtSensorEgState *s, unsigned event_idx);
+
 #endif /* HW_OPENTITAN_OT_SENSOR_EG_H */

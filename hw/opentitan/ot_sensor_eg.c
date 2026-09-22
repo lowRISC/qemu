@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "qemu/typedefs.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_sensor_eg.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -192,6 +193,8 @@ struct OtSensorEgState {
     MemoryRegion mmio;
     IbexIRQ irqs[2u];
     IbexIRQ alerts[NUM_ALERTS];
+    IbexIRQ wkup;
+    uint32_t ast_alert_latch;
 
     uint32_t *regs;
 };
@@ -211,13 +214,95 @@ static void ot_sensor_eg_update_irqs(OtSensorEgState *s)
     }
 }
 
+static uint32_t ot_sensor_eg_get_alert_en_mask(const OtSensorEgState *s)
+{
+    uint32_t mask = 0;
+    for (unsigned ix = 0; ix <= (R_ALERT_EN_10 - R_ALERT_EN_0); ix++) {
+        if ((s->regs[R_ALERT_EN_0 + ix] & ALERT_EN_VAL_MASK) !=
+            OT_MULTIBITBOOL4_FALSE) {
+            mask |= 1u << ix;
+        }
+    }
+    return mask;
+}
+
 static void ot_sensor_eg_update_alerts(OtSensorEgState *s)
 {
+    s->ast_alert_latch |= s->regs[R_ALERT_TRIG];
+
+    uint32_t alert_en_mask = ot_sensor_eg_get_alert_en_mask(s);
+    uint32_t active_events = s->ast_alert_latch & alert_en_mask;
+    uint32_t recov_events = active_events & ~s->regs[R_FATAL_ALERT_EN];
+    uint32_t fatal_events = active_events & s->regs[R_FATAL_ALERT_EN];
+
+    s->regs[R_RECOV_ALERT] |= recov_events;
+    s->regs[R_FATAL_ALERT] |= fatal_events;
+
     uint32_t level = s->regs[R_ALERT_TEST];
+    if (recov_events) {
+        level |= (1u << 0u);
+    }
+    if (s->regs[R_FATAL_ALERT]) {
+        level |= (1u << 1u);
+    }
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
+
+    /*
+     * In ast_alert.sv & sensor_ctrl.sv:
+     * event_clr[i] = recov_event[i] & reg2hw.recov_alert[i].q
+     * clr_p_alert = !set_p_alert && p_alert_ack
+     */
+    s->ast_alert_latch &= ~(recov_events & ~s->regs[R_ALERT_TRIG]);
+    uint32_t rem_recov =
+        s->ast_alert_latch & alert_en_mask & ~s->regs[R_FATAL_ALERT_EN];
+    if (!rem_recov &&
+        !(s->regs[R_ALERT_TEST] & R_ALERT_TEST_RECOV_ALERT_MASK)) {
+        ibex_irq_set(&s->alerts[0], 0);
+    }
+
+    ibex_irq_set(&s->wkup, (int)(bool)((s->ast_alert_latch & alert_en_mask) ||
+                                       s->regs[R_RECOV_ALERT]));
+}
+
+void ot_sensor_eg_trigger_recov_event(OtSensorEgState *s, unsigned event_idx)
+{
+    if (!s || event_idx > (R_ALERT_EN_10 - R_ALERT_EN_0)) {
+        return;
+    }
+    s->ast_alert_latch |= (1u << event_idx);
+    ot_sensor_eg_update_alerts(s);
+}
+
+static uint8_t ot_sensor_eg_reg_permit(hwaddr reg)
+{
+    switch (reg) {
+    case R_ALERT_TRIG:
+    case R_FATAL_ALERT_EN:
+    case R_RECOV_ALERT:
+    case R_FATAL_ALERT:
+        return 0x3u;
+    default:
+        return 0x1u;
+    }
+}
+
+static bool ot_sensor_eg_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                      bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    hwaddr reg = R32_OFF(addr);
+    if (reg >= REGS_COUNT) {
+        return false;
+    }
+    if (!is_write) {
+        return true;
+    }
+    uint32_t reg_be = ((1u << size) - 1u) << (addr & 3u);
+    return (ot_sensor_eg_reg_permit(reg) & ~reg_be) == 0u;
 }
 
 static uint64_t ot_sensor_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -265,7 +350,7 @@ static uint64_t ot_sensor_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
     trace_ot_sensor_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
 
     return (uint64_t)val32;
-};
+}
 
 static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
                                     unsigned size)
@@ -309,8 +394,7 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ALERT_TRIG:
         val32 &= ALERT_SENSOR_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
-                      (uint32_t)addr, REG_NAME(reg));
+        ot_sensor_eg_update_alerts(s);
         break;
     case R_ALERT_EN_0 ... R_ALERT_EN_10:
         if (!s->regs[R_CFG_REGWEN]) {
@@ -321,8 +405,7 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= ALERT_EN_VAL_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
-                      (uint32_t)addr, REG_NAME(reg));
+        ot_sensor_eg_update_alerts(s);
         break;
     case R_FATAL_ALERT_EN:
         if (!s->regs[R_CFG_REGWEN]) {
@@ -333,20 +416,16 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= ALERT_SENSOR_MASK;
         s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
-                      (uint32_t)addr, REG_NAME(reg));
+        ot_sensor_eg_update_alerts(s);
         break;
     case R_RECOV_ALERT:
         val32 &= ALERT_SENSOR_MASK;
-        s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
-                      (uint32_t)addr, REG_NAME(reg));
+        s->regs[reg] &= ~val32;
+        ot_sensor_eg_update_alerts(s);
         break;
     case R_FATAL_ALERT:
-        val32 &= ALERT_SENSOR_MASK;
-        s->regs[reg] = val32;
-        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
-                      (uint32_t)addr, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%02x (%s)\n",
+                      __func__, (uint32_t)addr, REG_NAME(reg));
         break;
     case R_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: R/O register 0x%02x (%s)\n",
@@ -358,15 +437,16 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_MANUAL_PAD_ATTR_0 ... R_MANUAL_PAD_ATTR_3:
         if (!s->regs[reg - R_MANUAL_PAD_ATTR_0 + R_MANUAL_PAD_ATTR_REGWEN_0]) {
-            qemu_log_mask(LOG_GUEST_ERROR, "Cannot change %s, %s disabled",
+            qemu_log_mask(LOG_GUEST_ERROR, "Cannot change %s, %s disabled\n",
                           REG_NAME(reg),
                           REG_NAME(reg - R_MANUAL_PAD_ATTR_0 +
                                    R_MANUAL_PAD_ATTR_REGWEN_0));
+            break;
         }
-        break;
         val32 &= MANUAL_PAD_ATTR_MASK;
-        qemu_log_mask(LOG_UNIMP, "Unimplemented register 0x%02x (%s)\n",
-                      (uint32_t)addr, REG_NAME(reg));
+        s->regs[reg] = val32;
+        qemu_log_mask(LOG_UNIMP, "%s: %s is not supported\n", __func__,
+                      REG_NAME(reg));
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%02x\n", __func__,
@@ -381,6 +461,7 @@ static const MemoryRegionOps ot_sensor_eg_regs_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_sensor_eg_regs_accepts,
 };
 
 static void ot_sensor_eg_reset_enter(Object *obj, ResetType type)
@@ -392,9 +473,16 @@ static void ot_sensor_eg_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
+    s->ast_alert_latch = 0u;
+
+    uint32_t alert_trig = s->regs[R_ALERT_TRIG];
+    uint32_t recov_alert = s->regs[R_RECOV_ALERT];
     memset(s->regs, 0, REGS_SIZE);
+    s->regs[R_ALERT_TRIG] = alert_trig;
+    s->regs[R_RECOV_ALERT] = recov_alert;
 
     s->regs[R_CFG_REGWEN] = 0x1u;
+    s->regs[R_STATUS] = R_STATUS_AST_INIT_DONE_MASK | R_STATUS_IO_POK_MASK;
     for (unsigned rix = R_ALERT_EN_0; rix <= R_ALERT_EN_10; rix++) {
         s->regs[rix] = 0x6u;
     }
@@ -412,7 +500,7 @@ static void ot_sensor_eg_init(Object *obj)
     OtSensorEgState *s = OT_SENSOR_EG(obj);
 
     memory_region_init_io(&s->mmio, obj, &ot_sensor_eg_regs_ops, s,
-                          TYPE_OT_SENSOR_EG, REGS_SIZE);
+                          TYPE_OT_SENSOR_EG, 0x80u);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
@@ -422,6 +510,7 @@ static void ot_sensor_eg_init(Object *obj)
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
+    ibex_qdev_init_irq(obj, &s->wkup, OT_SENSOR_WKUP);
 }
 
 static void ot_sensor_eg_class_init(ObjectClass *klass, const void *data)

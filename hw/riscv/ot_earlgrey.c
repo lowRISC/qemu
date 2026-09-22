@@ -1119,6 +1119,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40490000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 158),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 159),
+            OT_EG_SOC_SIGNAL(OT_SENSOR_WKUP, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_SENSOR),
             OT_EG_SOC_GPIO_ALERT(0, 32),
             OT_EG_SOC_GPIO_ALERT(1, 33)
         ),
