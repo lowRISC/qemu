@@ -710,7 +710,6 @@ static void ot_keymgr_update_alerts(OtKeyMgrState *s)
     }
     /* ALERT_TEST and recoverable error alerts are transient */
     s->regs[R_ALERT_TEST] = 0u;
-    s->regs[R_FAULT_STATUS] &= ~FAULT_STATUS_MASK;
     levels = fatal_fault ? (1u << ALERT_FATAL) : 0u;
 
     for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
@@ -1091,16 +1090,15 @@ static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s)
     return OT_OTP_HWCFG_DEVICE_ID_BYTES;
 }
 
-static size_t
-ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
-                                const char *seed_name, uint32_t debug_mask)
+static void
+ot_keymgr_check_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
+                           const char *seed_name, uint32_t debug_mask)
 {
     OtFlashKeyMgrSecret seed = { 0u };
 
     OtFlashClass *fc = OT_FLASH_GET_CLASS(s->flash_ctrl);
     fc->get_keymgr_secret(s->flash_ctrl, type, &seed);
 
-    ot_keymgr_kdf_push_bytes(s, seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
     bool data_valid =
         ot_keymgr_valid_data_check(seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
 
@@ -1108,10 +1106,18 @@ ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
      * Unprovisioned flash will not contain valid secrets, and will return all
      * 1s (failing the validity check) if scrambling/ECCs are disabled. Using
      * the `disable-flash-seed-check` property allows you to optionally bypass
-     * these errors for unprovisioned environments where flash info page
-     * splicing is not available.
+     * these errors for unprovisioned (all-0xFF) environments where flash info
+     * page splicing is not available, while still catching explicitly
+     * programmed all-zero (0x00) seeds.
      */
-    if (!data_valid && s->disable_flash_seed_check) {
+    bool is_all_ones = true;
+    for (unsigned ix = 0u; ix < OT_FLASH_KEYMGR_SECRET_BYTES; ix++) {
+        if (seed.secret[ix] != 0xffu) {
+            is_all_ones = false;
+            break;
+        }
+    }
+    if (!data_valid && s->disable_flash_seed_check && is_all_ones) {
         trace_ot_keymgr_bypass_failure(s->ot_id, seed_name);
         data_valid = true;
     }
@@ -1119,7 +1125,17 @@ ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
         s->regs[R_DEBUG] |= debug_mask;
         s->op_state.valid_inputs = false;
     }
+}
 
+static size_t ot_keymgr_kdf_append_flash_seed(
+    OtKeyMgrState *s, OtFlashKeyMgrSecretType type, const char *seed_name)
+{
+    OtFlashKeyMgrSecret seed = { 0u };
+
+    OtFlashClass *fc = OT_FLASH_GET_CLASS(s->flash_ctrl);
+    fc->get_keymgr_secret(s->flash_ctrl, type, &seed);
+
+    ot_keymgr_kdf_push_bytes(s, seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES);
     ot_keymgr_dump_kdf_material(s, seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES,
                                 "%s", seed_name);
     return OT_FLASH_KEYMGR_SECRET_BYTES;
@@ -1287,20 +1303,37 @@ static void ot_keymgr_operation_advance(OtKeyMgrState *s, OtKeyMgrStage stage,
 
         /* Device ID (from OTP) */
         expected_kdf_len += ot_keymgr_kdf_append_dev_id(s);
+
+        /*
+         * In RTL (keymgr.sv:442, 537), adv_dvalid[Creator] and
+         * hw2reg.debug.invalid_creator_seed.de check creator_seed_vld
+         * during stage_sel == Creator.
+         */
+        ot_keymgr_check_flash_seed(s, FLASH_KEYMGR_SECRET_CREATOR_SEED,
+                                   "CREATOR_SEED",
+                                   R_DEBUG_INVALID_CREATOR_SEED_MASK);
         break;
     case KEYMGR_STAGE_OWNER_INT:
-        /* Creator Seed (from flash) */
+        /*
+         * In RTL (keymgr.sv:459-460, 538), adv_matrix[OwnerInt] hashes
+         * creator_seed, while adv_dvalid[OwnerInt] and
+         * hw2reg.debug.invalid_owner_seed.de check owner_seed_vld.
+         */
         expected_kdf_len +=
             ot_keymgr_kdf_append_flash_seed(s, FLASH_KEYMGR_SECRET_CREATOR_SEED,
-                                            "CREATOR_SEED",
-                                            R_DEBUG_INVALID_CREATOR_SEED_MASK);
+                                            "CREATOR_SEED");
+        ot_keymgr_check_flash_seed(s, FLASH_KEYMGR_SECRET_OWNER_SEED,
+                                   "OWNER_SEED",
+                                   R_DEBUG_INVALID_OWNER_SEED_MASK);
         break;
     case KEYMGR_STAGE_OWNER:
-        /* Owner Seed (from flash) */
+        /*
+         * In RTL (keymgr.sv:463-464), adv_matrix[Owner] hashes owner_seed
+         * and adv_dvalid[Owner] = 1'b1.
+         */
         expected_kdf_len +=
             ot_keymgr_kdf_append_flash_seed(s, FLASH_KEYMGR_SECRET_OWNER_SEED,
-                                            "OWNER_SEED",
-                                            R_DEBUG_INVALID_OWNER_SEED_MASK);
+                                            "OWNER_SEED");
         break;
     case KEYMGR_STAGE_DISABLE:
         /* you can "advance" from the OwnerRootKey to the `Disabled` state */
@@ -1464,11 +1497,11 @@ static void ot_keymgr_start_operation(OtKeyMgrState *s)
         ot_keymgr_operation_gen_output(s, s->op_state.stage, false);
         break;
     case KEYMGR_OP_DISABLE:
+    default:
+        /* All values not enumerated behave the same as disable
+         * (keymgr_ctrl.sv:154) */
         ot_keymgr_operation_disable(s);
         break;
-    default:
-        /* should only be called with a valid operation */
-        g_assert_not_reached();
     }
 }
 
@@ -1489,13 +1522,16 @@ ot_keymgr_handle_kmac_resp_advance(OtKeyMgrState *s, const OtKMACAppRsp *rsp)
 
     g_assert(cdi < NUM_CDIS);
 
-    OtKeyMgrKey *key_state = &s->key_states[cdi];
-    key_state->valid = true;
-    memcpy(key_state->share0, rsp->digest_share0, OT_KMAC_KEY_SIZE);
-    memcpy(key_state->share1, rsp->digest_share1, OT_KMAC_KEY_SIZE);
-
-    /* SW can lock the `SW_BINDING` regs, and HW unlocks after an advance */
-    s->regs[R_SW_BINDING_REGWEN] |= R_SW_BINDING_REGWEN_EN_MASK;
+    /*
+     * In RTL (keymgr_ctrl.sv:769-773), op_update_sel is KeyUpdateIdle when
+     * op_err (e.g. !valid_inputs) is asserted in normal active stages.
+     */
+    if (s->op_state.valid_inputs) {
+        OtKeyMgrKey *key_state = &s->key_states[cdi];
+        key_state->valid = true;
+        memcpy(key_state->share0, rsp->digest_share0, OT_KMAC_KEY_SIZE);
+        memcpy(key_state->share1, rsp->digest_share1, OT_KMAC_KEY_SIZE);
+    }
 
     unsigned next_cdi = cdi + 1;
     if (next_cdi < NUM_CDIS) {
@@ -1508,7 +1544,17 @@ ot_keymgr_handle_kmac_resp_advance(OtKeyMgrState *s, const OtKMACAppRsp *rsp)
     /* all CDIs have been advanced, so complete the advance operation */
     s->op_state.adv_cdi_cnt = 0u;
 
-    /* SW can lock the `SW_BINDING` regs, and HW unlocks after an advance */
+    /*
+     * In RTL (keymgr_ctrl.sv:185, keymgr.sv:371), adv_state and sw_binding_clr
+     * are gated by ~op_err & ~op_fault_err. Do not unlock SW_BINDING_REGWEN or
+     * advance FSM state if any input check failed.
+     */
+    if (!s->op_state.valid_inputs) {
+        return true;
+    }
+
+    /* SW can lock the `SW_BINDING` regs, and HW unlocks after a valid advance
+     */
     s->regs[R_SW_BINDING_REGWEN] |= R_SW_BINDING_REGWEN_EN_MASK;
 
     switch (s->op_state.stage) {
@@ -1537,14 +1583,26 @@ static bool ot_keymgr_handle_kmac_resp_gen_output_hw(OtKeyMgrState *s,
     OtKeyMgrDestSel dest =
         (OtKeyMgrDestSel)FIELD_EX32(ctrl, CONTROL_SHADOWED, DEST_SEL);
 
+    /*
+     * In RTL (keymgr_ctrl.sv:259, keymgr_sideload_key_ctrl.sv:153,168,182),
+     * data_valid_o = op_done_o & (id_en_o | gen_en_o) & ~op_err &
+     * ~op_fault_err. When valid_inputs is false (op_err), set_i is 0 so
+     * existing sideload keys are not overwritten or invalidated. When
+     * SIDELOAD_CLEAR is active for the target slot, clr_i has priority over
+     * set_i and keeps it cleared.
+     */
+    if (!s->op_state.valid_inputs) {
+        return true;
+    }
+
     switch (dest) {
     case KEYMGR_DEST_SEL_VALUE_AES:
     case KEYMGR_DEST_SEL_VALUE_KMAC:
     case KEYMGR_DEST_SEL_VALUE_OTBN: {
         OtKeyMgrKeySink key_sink = (OtKeyMgrKeySink)(dest - KEY_SINK_OFFSET);
-        bool key_valid = s->op_state.valid_inputs;
         ot_keymgr_push_key(s, key_sink, rsp->digest_share0, rsp->digest_share1,
-                           key_valid, true);
+                           true, true);
+        ot_keymgr_sideload_clear(s);
         break;
     }
     case KEYMGR_DEST_SEL_VALUE_NONE:
@@ -1559,9 +1617,15 @@ static bool ot_keymgr_handle_kmac_resp_gen_output_hw(OtKeyMgrState *s,
 static bool ot_keymgr_handle_kmac_resp_gen_output_sw(OtKeyMgrState *s,
                                                      const OtKMACAppRsp *rsp)
 {
-    memcpy(s->sw_out_key->share0, rsp->digest_share0, KEYMGR_KEY_BYTES);
-    memcpy(s->sw_out_key->share1, rsp->digest_share1, KEYMGR_KEY_BYTES);
-    s->sw_out_key->valid = s->op_state.valid_inputs;
+    /*
+     * In RTL (keymgr_ctrl.sv:259, keymgr.sv:638-646), SW_SHARE0/1_OUTPUT are
+     * only updated when data_valid (~op_err & ~op_fault_err) or wipe_key is 1.
+     */
+    if (s->op_state.valid_inputs) {
+        memcpy(s->sw_out_key->share0, rsp->digest_share0, KEYMGR_KEY_BYTES);
+        memcpy(s->sw_out_key->share1, rsp->digest_share1, KEYMGR_KEY_BYTES);
+        s->sw_out_key->valid = true;
+    }
 
     return true;
 }
@@ -1690,14 +1754,20 @@ static void ot_keymgr_fsm_key_stage(OtKeyMgrState *s, bool supports_generation,
     }
 
     switch (op) {
-    case KEYMGR_OP_DISABLE:
-        s->op_state.stage = KEYMGR_STAGE_DISABLE;
-        break;
     case KEYMGR_OP_ADVANCE:
         s->op_state.stage = advance;
         break;
-    default:
+    case KEYMGR_OP_GENERATE_ID:
+    case KEYMGR_OP_GENERATE_SW_OUTPUT:
+    case KEYMGR_OP_GENERATE_HW_OUTPUT:
         s->op_state.stage = generate;
+        break;
+    case KEYMGR_OP_DISABLE:
+    default:
+        /* All values not enumerated behave the same as disable
+         * (keymgr_ctrl.sv:154) */
+        s->op_state.stage = KEYMGR_STAGE_DISABLE;
+        break;
     }
     s->op_state.op_req = true;
     s->op_state.valid_inputs = true;
@@ -1812,6 +1882,8 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_DISABLED);
         if (!s->enabled || invalid_state) {
             ot_keymgr_change_main_fsm_state(s, KEYMGR_ST_WIPE);
+        } else if (op_start) {
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
         }
         break;
     case KEYMGR_ST_WIPE:
@@ -1834,10 +1906,10 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         break;
     }
 
-    /* update the last requested operation status */
+    /* update the last requested operation status (keymgr_ctrl.sv:247-248) */
     bool invalid_op = (bool)(s->regs[R_ERR_CODE] & R_ERR_CODE_INVALID_OP_MASK);
-    bool op_done =
-        s->op_state.op_req ? s->op_state.op_ack : (init || invalid_op);
+    bool op_done = s->op_state.op_req ? s->op_state.op_ack :
+                                        ((init || invalid_op) && op_start);
     if (op_done) {
         s->op_state.op_req = false;
         s->op_state.op_ack = false;
@@ -1870,14 +1942,10 @@ static void ot_keymgr_fsm_tick(void *opaque)
 {
     OtKeyMgrState *s = opaque;
 
-    bool fsm_state_changed = ot_keymgr_main_fsm_tick(s);
-    if (fsm_state_changed) {
-        /* FSM state changed, so schedule an FSM update once more */
-        ot_keymgr_schedule_fsm(s);
-    } else {
-        /* no FSM state change, so go idle and wait for some external event */
-        trace_ot_keymgr_go_idle(s->ot_id);
+    while (ot_keymgr_main_fsm_tick(s)) {
+        /* continue ticking until FSM transitions settle */
     }
+    trace_ot_keymgr_go_idle(s->ot_id);
 }
 
 static void ot_keymgr_lc_signal(void *opaque, int irq, int level)
@@ -1890,10 +1958,6 @@ static void ot_keymgr_lc_signal(void *opaque, int irq, int level)
     trace_ot_keymgr_lc_signal(s->ot_id, level);
 
     bool enablement_changed = enable_keymgr ^ s->enabled;
-    if (!enablement_changed) {
-        return;
-    }
-
     s->enabled = enable_keymgr;
 
     if (s->enabled) {
@@ -1902,21 +1966,37 @@ static void ot_keymgr_lc_signal(void *opaque, int irq, int level)
         s->regs[R_CFG_REGWEN] &= ~R_CFG_REGWEN_EN_MASK;
     }
 
+    if (!enablement_changed) {
+        return;
+    }
+
     ot_keymgr_schedule_fsm(s);
 }
 
-#define ot_keymgr_check_reg_write(_s_, _reg_, _regwen_) \
-    ot_keymgr_check_reg_write_func(__func__, _s_, _reg_, _regwen_)
-
-static inline bool ot_keymgr_check_reg_write_func(
-    const char *func, OtKeyMgrState *s, hwaddr reg, hwaddr regwen)
+static bool ot_keymgr_is_cfg_regwen_enabled(const OtKeyMgrState *s)
 {
-    if (s->regs[regwen]) {
-        return true;
+    return s->enabled && (bool)(s->regs[R_CFG_REGWEN] & R_CFG_REGWEN_EN_MASK);
+}
+
+static bool ot_keymgr_check_reg_write(const OtKeyMgrState *s, hwaddr reg,
+                                      hwaddr regwen)
+{
+    bool en;
+    if (regwen == R_CFG_REGWEN) {
+        en = ot_keymgr_is_cfg_regwen_enabled(s);
+    } else if (regwen == R_SW_BINDING_REGWEN) {
+        /* In RTL (keymgr.sv:370), sw_binding_regwen.d = sw_binding_regwen &
+         * cfg_regwen */
+        en = ot_keymgr_is_cfg_regwen_enabled(s) &&
+             (bool)(s->regs[R_SW_BINDING_REGWEN] & R_SW_BINDING_REGWEN_EN_MASK);
+    } else {
+        en = (bool)(s->regs[regwen] & 1u);
     }
-    qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Write to %s protected with %s\n",
-                  func, s->ot_id, REG_NAME(reg), REG_NAME(regwen));
-    return false;
+    if (!en) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: write to %s blocked by %s=0\n",
+                      __func__, s->ot_id, REG_NAME(reg), REG_NAME(regwen));
+    }
+    return en;
 }
 
 static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
@@ -1935,7 +2015,6 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_START:
     case R_SIDELOAD_CLEAR:
     case R_RESEED_INTERVAL_REGWEN:
-    case R_SW_BINDING_REGWEN:
     case R_KEY_VERSION:
     case R_MAX_CREATOR_KEY_VER_REGWEN:
     case R_MAX_OWNER_INT_KEY_VER_REGWEN:
@@ -1946,6 +2025,13 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_FAULT_STATUS:
     case R_DEBUG:
         val32 = s->regs[reg];
+        break;
+    case R_SW_BINDING_REGWEN:
+        /* In RTL (keymgr.sv:370), sw_binding_regwen.d = sw_binding_regwen &
+         * cfg_regwen */
+        val32 = ot_keymgr_is_cfg_regwen_enabled(s) ?
+                    s->regs[R_SW_BINDING_REGWEN] :
+                    0u;
         break;
     case R_CONTROL_SHADOWED:
         val32 = ot_shadow_reg_read(&s->control);
@@ -2367,12 +2453,46 @@ static const Property ot_keymgr_properties[] = {
                      disable_flash_seed_check, false),
 };
 
+static bool ot_keymgr_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                   bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    if (!is_write) {
+        return true;
+    }
+    uint32_t permit;
+    switch (R32_OFF(addr)) {
+    case R_SEALING_SW_BINDING_0 ... R_SEALING_SW_BINDING_7:
+    case R_ATTEST_SW_BINDING_0 ... R_ATTEST_SW_BINDING_7:
+    case R_SALT_0 ... R_SALT_7:
+    case R_KEY_VERSION:
+    case R_MAX_CREATOR_KEY_VER_SHADOWED:
+    case R_MAX_OWNER_INT_KEY_VER_SHADOWED:
+    case R_MAX_OWNER_KEY_VER_SHADOWED:
+    case R_SW_SHARE0_OUTPUT_0 ... R_SW_SHARE1_OUTPUT_7:
+        permit = 0xfu;
+        break;
+    case R_CONTROL_SHADOWED:
+    case R_RESEED_INTERVAL_SHADOWED:
+    case R_FAULT_STATUS:
+        permit = 0x3u;
+        break;
+    default:
+        permit = 0x1u;
+        break;
+    }
+    uint32_t reg_be = (((1u << size) - 1u) << (addr & 3u)) & 0xfu;
+    return (permit & ~reg_be) == 0u;
+}
+
 static const MemoryRegionOps ot_keymgr_regs_ops = {
     .read = &ot_keymgr_read,
     .write = &ot_keymgr_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl.min_access_size = 4u,
     .impl.max_access_size = 4u,
+    .valid.accepts = &ot_keymgr_regs_accepts,
 };
 
 static void ot_keymgr_reset_enter(Object *obj, ResetType type)
@@ -2401,7 +2521,7 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
 
     /* reset registers */
     memset(s->regs, 0u, sizeof(s->regs));
-    s->regs[R_CFG_REGWEN] = 0x1u;
+    s->regs[R_CFG_REGWEN] = 0x0u;
     ot_shadow_reg_init(&s->control, 0x10u);
     s->regs[R_RESEED_INTERVAL_REGWEN] = 0x1u;
     ot_shadow_reg_init(&s->reseed_interval, 0x100u);
