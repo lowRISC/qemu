@@ -557,7 +557,12 @@ static MemTxResult access_with_adjusted_size(hwaddr addr,
     /* FIXME: support unaligned access? */
     access_size = MAX(MIN(size, access_size_max), access_size_min);
     access_mask = MAKE_64BIT_MASK(0, access_size * 8);
-    if (devend_big_endian(mr->ops->endianness)) {
+    if (size < access_size && !devend_big_endian(mr->ops->endianness)) {
+        unsigned byte_off = addr & (access_size - 1);
+        access_mask = MAKE_64BIT_MASK(byte_off * 8, size * 8);
+        r |= access_fn(mr, addr - byte_off, value, access_size,
+                       -(signed)(byte_off * 8), access_mask, attrs);
+    } else if (devend_big_endian(mr->ops->endianness)) {
         for (i = 0; i < size; i += access_size) {
             r |= access_fn(mr, addr + i, value, access_size,
                         (size - access_size - i) * 8, access_mask, attrs);
