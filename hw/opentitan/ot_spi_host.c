@@ -59,9 +59,9 @@
 /* fake delayed completion of HW commands */
 #define FSM_COMPLETION_DELAY_NS 100U /* 100 ns (~ BH) */
 /* initial FSM start up delay */
-#define FSM_START_DELAY_NS 20000U /* 20 uS */
+#define FSM_START_DELAY_NS 200U /* 200 ns */
 
-#define TXFIFO_LEN  288U /* bytes */
+#define TXFIFO_LEN  292U /* (72 + 1) * 4 bytes (u_tx_fifo + u_select) */
 #define RXFIFO_LEN  256U /* bytes */
 #define CMDFIFO_LEN 4U /* slots */
 
@@ -324,6 +324,12 @@ typedef struct {
     unsigned size;
 } OtSPIHostCmd;
 
+typedef struct {
+    uint8_t csb;
+    uint8_t sck;
+    uint8_t sd0;
+} OtSPIHostHalfClk;
+
 struct OtSPIHostState {
     SysBusDevice parent_obj;
 
@@ -364,6 +370,18 @@ struct OtSPIHostState {
 
     unsigned pclk; /* Current input clock */
     const char *clock_src_name; /* IRQ name once connected */
+
+    /* Bitbang waveform recording for GPIO sampling */
+    OtSPIHostHalfClk bb_half_clks[2048];
+    unsigned bb_len;
+    int64_t bb_start_ns;
+    uint64_t bb_half_clk_ns;
+    bool bb_cpol;
+    bool bb_cpha;
+    uint8_t bb_cur_tx_bytes[256];
+    unsigned bb_cur_tx_len;
+    uint8_t bb_last_tx_bit;
+    unsigned bb_completed_txns;
 
     /* properties */
     char *ot_id;
@@ -526,9 +544,19 @@ static bool ot_spi_host_is_tx(uint32_t command)
     return (bool)(FIELD_EX32(command, COMMAND, DIRECTION) & 0x2u);
 }
 
+static bool ot_spi_host_is_stalled_in_idle(const OtSPIHostState *s)
+{
+    return s->active.state == CMD_ONGOING && s->active.size == 0u &&
+           s->fsm.tx_stall && !FIELD_EX32(s->active.cmd.opts, CONFIGOPTS, CPHA);
+}
+
 static bool ot_spi_host_is_ready(const OtSPIHostState *s)
 {
-    return !cmdfifo_is_full(s->cmd_fifo);
+    if (cmdfifo_is_full(s->cmd_fifo)) {
+        return false;
+    }
+    return !ot_spi_host_is_stalled_in_idle(s) ||
+           (cmdfifo_num_used(s->cmd_fifo) + 1u) < CMDFIFO_LEN;
 }
 
 /* Passthrough functionality is only implemented if there is one CS */
@@ -656,13 +684,17 @@ static uint32_t ot_spi_host_get_status(OtSPIHostState *s)
     status = FIELD_DP32(status, STATUS, TXSTALL, s->fsm.tx_stall);
 
     /* CMD */
-    status = FIELD_DP32(status, STATUS, CMDQD, cmdfifo_num_used(s->cmd_fifo));
+    bool stalled_in_idle = ot_spi_host_is_stalled_in_idle(s);
+    uint32_t cmdqd =
+        cmdfifo_num_used(s->cmd_fifo) + (stalled_in_idle ? 1u : 0u);
+    status = FIELD_DP32(status, STATUS, CMDQD, cmdqd);
 
     /* State */
     status =
         FIELD_DP32(status, STATUS, READY, (uint32_t)ot_spi_host_is_ready(s));
-    status = FIELD_DP32(status, STATUS, ACTIVE,
-                        (uint32_t)(s->active.state != CMD_NONE));
+    status =
+        FIELD_DP32(status, STATUS, ACTIVE,
+                   (uint32_t)(s->active.state != CMD_NONE && !stalled_in_idle));
 
     return status;
 }
@@ -685,7 +717,8 @@ static uint32_t ot_spi_host_build_event_bits(OtSPIHostState *s)
     events = FIELD_DP32(events, EVENT_ENABLE, READY,
                         (uint32_t)ot_spi_host_is_ready(s));
     events = FIELD_DP32(events, EVENT_ENABLE, IDLE,
-                        (uint32_t)(s->active.state == CMD_NONE));
+                        (uint32_t)(s->active.state == CMD_NONE ||
+                                   ot_spi_host_is_stalled_in_idle(s)));
     return events;
 }
 
@@ -709,7 +742,6 @@ static bool ot_spi_host_update_event(OtSPIHostState *s)
 
     bool event = (bool)eff_events;
     event |= (bool)(s->regs[R_INTR_TEST] & INTR_SPI_EVENT_MASK);
-    s->regs[R_INTR_TEST] &= ~INTR_SPI_EVENT_MASK;
     if (event) {
         s->regs[R_INTR_STATE] |= INTR_SPI_EVENT_MASK;
     } else {
@@ -728,10 +760,6 @@ static bool ot_spi_host_update_event(OtSPIHostState *s)
 
 static bool ot_spi_host_update_error(OtSPIHostState *s)
 {
-    if (s->regs[R_ERROR_STATUS] & s->regs[R_ERROR_ENABLE]) {
-        s->regs[R_INTR_STATE] |= INTR_ERROR_MASK;
-    }
-
     if (s->regs[R_INTR_TEST] & INTR_ERROR_MASK) {
         s->regs[R_INTR_TEST] &= ~INTR_ERROR_MASK;
         s->regs[R_INTR_STATE] |= INTR_ERROR_MASK;
@@ -751,6 +779,18 @@ static void ot_spi_host_update_regs(OtSPIHostState *s)
 {
     ot_spi_host_update_error(s);
     ot_spi_host_update_event(s);
+    s->regs[R_STATUS] = ot_spi_host_get_status(s);
+}
+
+static void ot_spi_host_raise_error(OtSPIHostState *s, uint32_t err_mask)
+{
+    s->regs[R_ERROR_STATUS] |= err_mask;
+    uint32_t error_enable =
+        s->regs[R_ERROR_ENABLE] | R_ERROR_STATUS_ACCESSINVAL_MASK;
+    if (err_mask & error_enable) {
+        s->regs[R_INTR_STATE] |= INTR_ERROR_MASK;
+    }
+    ot_spi_host_update_regs(s);
 }
 
 static void ot_spi_host_update_alert(OtSPIHostState *s)
@@ -767,6 +807,127 @@ static void ot_spi_host_update_alert(OtSPIHostState *s)
 /* State machine and I/O */
 /* ------------------------------------------------------------------------ */
 
+void ot_spi_host_clear_waveform(OtSPIHostState *s)
+{
+    if (s) {
+        s->bb_len = 0;
+        s->bb_start_ns = 0;
+        s->bb_cur_tx_len = 0;
+        s->bb_last_tx_bit = 0;
+        s->bb_completed_txns = 0;
+    }
+}
+
+static void ot_spi_host_update_bb_config(OtSPIHostState *s, uint32_t opts)
+{
+    s->bb_cpol = (bool)FIELD_EX32(opts, CONFIGOPTS, CPOL);
+    s->bb_cpha = (bool)FIELD_EX32(opts, CONFIGOPTS, CPHA);
+    unsigned clkdiv = FIELD_EX32(opts, CONFIGOPTS, CLKDIV);
+    unsigned pclk = s->pclk ? s->pclk : 12000000u;
+    s->bb_half_clk_ns =
+        ((uint64_t)(clkdiv + 1u) * NANOSECONDS_PER_SECOND) / pclk;
+    ot_spi_host_clear_waveform(s);
+}
+
+static void ot_spi_host_commit_bb_transaction(OtSPIHostState *s)
+{
+    if (s->bb_cur_tx_len == 0) {
+        return;
+    }
+    if (s->bb_len >= ARRAY_SIZE(s->bb_half_clks)) {
+        s->bb_cur_tx_len = 0;
+        s->bb_completed_txns++;
+        return;
+    }
+    uint8_t cpol = s->bb_cpol ? 1u : 0u;
+    uint8_t cpha = s->bb_cpha ? 1u : 0u;
+    uint8_t last_sd0 = 0u;
+    if (cpha == 1u && s->bb_len < ARRAY_SIZE(s->bb_half_clks)) {
+        s->bb_half_clks[s->bb_len++] = (OtSPIHostHalfClk){
+            .csb = 0u,
+            .sck = cpol,
+            .sd0 = (s->bb_cur_tx_bytes[0] >> 7) & 1u,
+        };
+    }
+    for (unsigned bi = 0; bi < s->bb_cur_tx_len; bi++) {
+        uint8_t b = s->bb_cur_tx_bytes[bi];
+        for (int bit = 7; bit >= 0; bit--) {
+            uint8_t d0 = (b >> bit) & 1u;
+            last_sd0 = d0;
+            if (s->bb_len + 2u <= ARRAY_SIZE(s->bb_half_clks)) {
+                if (cpha == 0u) {
+                    s->bb_half_clks[s->bb_len++] =
+                        (OtSPIHostHalfClk){ .csb = 0u, .sck = cpol, .sd0 = d0 };
+                    s->bb_half_clks[s->bb_len++] = (OtSPIHostHalfClk){
+                        .csb = 0u, .sck = !cpol, .sd0 = d0
+                    };
+                } else {
+                    s->bb_half_clks[s->bb_len++] = (OtSPIHostHalfClk){
+                        .csb = 0u, .sck = !cpol, .sd0 = d0
+                    };
+                    s->bb_half_clks[s->bb_len++] =
+                        (OtSPIHostHalfClk){ .csb = 0u, .sck = cpol, .sd0 = d0 };
+                }
+            }
+        }
+    }
+    if (s->bb_len < ARRAY_SIZE(s->bb_half_clks)) {
+        s->bb_half_clks[s->bb_len++] =
+            (OtSPIHostHalfClk){ .csb = 0u, .sck = cpol, .sd0 = last_sd0 };
+    }
+    for (unsigned idle = 0; idle < 4u; idle++) {
+        if (s->bb_len < ARRAY_SIZE(s->bb_half_clks)) {
+            s->bb_half_clks[s->bb_len++] =
+                (OtSPIHostHalfClk){ .csb = 1u, .sck = cpol, .sd0 = 1u };
+        }
+    }
+    s->bb_cur_tx_len = 0;
+    s->bb_completed_txns++;
+}
+
+bool ot_spi_host_is_waveform_ready(OtSPIHostState *s)
+{
+    return s && s->bb_completed_txns >= 3u;
+}
+
+void ot_spi_host_set_waveform_start_ns(OtSPIHostState *s, int64_t val_ns,
+                                       bool relative)
+{
+    if (s) {
+        s->bb_start_ns = relative ? (s->bb_start_ns + val_ns) : val_ns;
+    }
+}
+
+bool ot_spi_host_get_pin_level(OtSPIHostState *s, unsigned outsel,
+                               int64_t now_ns)
+{
+    if (!s) {
+        return false;
+    }
+    bool idle_val = true;
+    if (outsel == 53u) {
+        idle_val = s->bb_cpol;
+    }
+    if (s->bb_len == 0 || s->bb_half_clk_ns == 0 || now_ns < s->bb_start_ns) {
+        return idle_val;
+    }
+    uint64_t idx = (uint64_t)(now_ns - s->bb_start_ns) / s->bb_half_clk_ns;
+    if (idx >= s->bb_len) {
+        return idle_val;
+    }
+    const OtSPIHostHalfClk *hc = &s->bb_half_clks[idx];
+    switch (outsel) {
+    case 54u: /* CSB */
+        return (bool)hc->csb;
+    case 53u: /* SCK */
+        return (bool)hc->sck;
+    case 41u: /* SD0 */
+        return (bool)hc->sd0;
+    default:
+        return idle_val;
+    }
+}
+
 static void ot_spi_host_internal_reset(OtSPIHostState *s)
 {
     trace_ot_spi_host_internal_reset(s->ot_id, s->start_delay_ns,
@@ -781,6 +942,7 @@ static void ot_spi_host_internal_reset(OtSPIHostState *s)
 
     memset(&s->fsm, 0, sizeof(s->fsm));
     memset(&s->active, 0, sizeof(s->active));
+    ot_spi_host_clear_waveform(s);
 
     for (unsigned csid = 0u; csid < s->num_cs; csid++) {
         ot_spi_host_chip_select(s, csid, false);
@@ -798,6 +960,10 @@ static void ot_spi_host_internal_reset(OtSPIHostState *s)
 
 static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 {
+    if (s->regs[R_ERROR_STATUS] || !(REG_GET(s, CONTROL, SPIEN))) {
+        return;
+    }
+
     trace_ot_spi_host_fsm(s->ot_id, s->active.cmd.id, cause);
 
     ot_spi_host_update_event(s);
@@ -871,6 +1037,19 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         uint8_t tx = write ? (uint8_t)txfifo_pop(s->tx_fifo, length == 1u) :
                              SPI_DEFAULT_TX_RX_VALUE;
 
+        if (write) {
+            if (s->bb_cur_tx_len < ARRAY_SIZE(s->bb_cur_tx_bytes)) {
+                s->bb_cur_tx_bytes[s->bb_cur_tx_len++] = tx;
+            }
+            s->bb_last_tx_bit = tx & 1u;
+        } else if (read) {
+            uint8_t rx_sd0 = s->bb_last_tx_bit ? 0x80u : 0x00u;
+            s->bb_last_tx_bit = 0u;
+            if (s->bb_cur_tx_len < ARRAY_SIZE(s->bb_cur_tx_bytes)) {
+                s->bb_cur_tx_bytes[s->bb_cur_tx_len++] = rx_sd0;
+            }
+        }
+
         uint8_t rx = SPI_DEFAULT_TX_RX_VALUE;
 
         if (s->fsm.output_en) {
@@ -912,6 +1091,9 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     } else {
         s->active.cmd.command = FIELD_DP32(command, COMMAND, LEN, 0);
         s->active.state = CMD_EXECUTED;
+        if (!FIELD_EX32(command, COMMAND, CSAAT)) {
+            ot_spi_host_commit_bb_transaction(s);
+        }
     }
 
 post:
@@ -1004,7 +1186,17 @@ static void ot_spi_host_schedule_fsm(void *opaque)
 {
     OtSPIHostState *s = opaque;
 
+    if (s->regs[R_ERROR_STATUS] || !(REG_GET(s, CONTROL, SPIEN))) {
+        return;
+    }
+
     trace_ot_spi_host_fsm(s->ot_id, s->active.cmd.id, "sched");
+
+    if (s->active.state == CMD_NONE && !cmdfifo_is_empty(s->cmd_fifo)) {
+        cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
+        s->active.state = CMD_ONGOING;
+        s->active.size = 0u;
+    }
 
     bool retire = s->active.state == CMD_EXECUTED;
 
@@ -1081,8 +1273,7 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
         if (fifo8_num_used(s->rx_fifo) < sizeof(uint32_t)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Read underflow: %u\n",
                           __func__, s->ot_id, fifo8_num_used(s->rx_fifo));
-            REG_UPDATE(s, ERROR_STATUS, UNDERFLOW, 1);
-            ot_spi_host_update_regs(s);
+            ot_spi_host_raise_error(s, R_ERROR_STATUS_UNDERFLOW_MASK);
             val32 = 0u;
             break;
         }
@@ -1148,6 +1339,9 @@ static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
     trace_cache.value = val32;
 #endif /* DISCARD_REPEATED_STATUS_TRACES */
 
+    if (reg != R_RXDATA) {
+        val32 >>= (addr & 3u) * 8u;
+    }
     return val32;
 }
 
@@ -1189,8 +1383,10 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_ALERT_TEST:
         val32 &= R_ALERT_TEST_FATAL_FAULT_MASK;
-        s->regs[R_ALERT_TEST] = val32;
-        ot_spi_host_update_alert(s);
+        if (val32) {
+            ibex_irq_set(&s->alert, 1);
+            ibex_irq_set(&s->alert, 0);
+        }
         break;
     case R_CONTROL:
         val32 &= R_CONTROL_MASK;
@@ -1199,11 +1395,16 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             ot_spi_host_internal_reset(s);
         }
         s->fsm.output_en = FIELD_EX32(val32, CONTROL, OUTPUT_EN);
-        if (!cmdfifo_is_empty(s->cmd_fifo)) {
-            ot_spi_host_step_fsm(s, "ctrl");
+        if (REG_GET(s, CONTROL, SPIEN) && !s->regs[R_ERROR_STATUS] &&
+            (s->active.state != CMD_NONE || !cmdfifo_is_empty(s->cmd_fifo))) {
+            ot_spi_host_schedule_fsm(s);
         }
         break;
     case R_CONFIGOPTS:
+        val32 &= R_CONFIGOPTS_MASK;
+        s->regs[reg] = val32;
+        ot_spi_host_update_bb_config(s, val32);
+        break;
     case R_CSID:
         s->regs[reg] = val32;
         break;
@@ -1214,18 +1415,10 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         }
         val32 &= R_COMMAND_MASK;
 
-        /* IP not enabled */
-        if (!(REG_GET(s, CONTROL, SPIEN))) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: no SPI/EN\n", __func__,
-                          s->ot_id);
-            return;
-        }
-
         if (!ot_spi_host_is_ready(s)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: busy (cmd_fifo full)\n",
                           __func__, s->ot_id);
-            REG_UPDATE(s, ERROR_STATUS, CMDBUSY, 1u);
-            ot_spi_host_update_regs(s);
+            ot_spi_host_raise_error(s, R_ERROR_STATUS_CMDBUSY_MASK);
             break;
         }
 
@@ -1236,7 +1429,7 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: invalid command parameters\n", __func__,
                           s->ot_id);
-            REG_UPDATE(s, ERROR_STATUS, CMDINVAL, 1u);
+            ot_spi_host_raise_error(s, R_ERROR_STATUS_CMDINVAL_MASK);
         }
 
         unsigned csid = s->regs[R_CSID];
@@ -1245,8 +1438,13 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             /* CSID exceeds max num_cs */
             qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid csid: %u\n",
                           __func__, s->ot_id, csid);
-            REG_UPDATE(s, ERROR_STATUS, CSIDINVAL, 1u);
+            ot_spi_host_raise_error(s, R_ERROR_STATUS_CSIDINVAL_MASK);
             csid = 0;
+        }
+
+        if (REG_GET(s, CONTROL, SW_RST)) {
+            ot_spi_host_update_regs(s);
+            break;
         }
 
         CmdFifoSlot slot = {
@@ -1265,7 +1463,8 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
 
         cmdfifo_push(s->cmd_fifo, &slot);
 
-        if (s->active.state == CMD_NONE) {
+        if (REG_GET(s, CONTROL, SPIEN) && s->active.state == CMD_NONE &&
+            !s->regs[R_ERROR_STATUS]) {
             cmdfifo_pop(s->cmd_fifo, &s->active.cmd);
             s->active.state = CMD_ONGOING;
             s->active.size = 0u;
@@ -1295,9 +1494,12 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
                       __func__, s->ot_id, (uint32_t)addr, REG_NAME(reg));
         break;
     case R_TXDATA: {
-        if (txfifo_is_full(s->tx_fifo)) {
-            REG_UPDATE(s, ERROR_STATUS, OVERFLOW, 1u);
+        if (REG_GET(s, CONTROL, SW_RST)) {
             ot_spi_host_update_regs(s);
+            return;
+        }
+        if (txfifo_is_full(s->tx_fifo)) {
+            ot_spi_host_raise_error(s, R_ERROR_STATUS_OVERFLOW_MASK);
             return;
         }
 
@@ -1324,11 +1526,12 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
          */
         val32 &= R_ERROR_STATUS_MASK;
         s->regs[R_ERROR_STATUS] &= ~val32;
-        if (!cmdfifo_is_empty(s->cmd_fifo) && !s->regs[R_ERROR_STATUS] &&
+        if (!s->regs[R_ERROR_STATUS] &&
+            (s->active.state != CMD_NONE || !cmdfifo_is_empty(s->cmd_fifo)) &&
             !s->fsm.tx_stall && !s->fsm.rx_stall) {
-            ot_spi_host_step_fsm(s, "err");
+            ot_spi_host_schedule_fsm(s);
         } else {
-            ot_spi_host_update_error(s);
+            ot_spi_host_update_regs(s);
         }
         break;
     case R_EVENT_ENABLE:
@@ -1418,12 +1621,37 @@ ot_spi_host_device_passthrough_cs_input(void *opaque, int irq, int level)
 /* Device description/instanciation */
 /* ------------------------------------------------------------------------ */
 
+static bool ot_spi_host_accepts(void *opaque, hwaddr addr, unsigned size,
+                                bool is_write, MemTxAttrs attrs)
+{
+    OtSPIHostState *s = opaque;
+    (void)attrs;
+
+    if (!s->pclk) {
+        ot_common_stall_cpu_on_unclocked_mmio(DEVICE(s), addr);
+        return false;
+    }
+    uint32_t reg = R32_OFF(addr);
+    if (reg >= REGS_COUNT || reg == (is_write ? R_RXDATA : R_TXDATA)) {
+        return false;
+    }
+    if (is_write && reg != R_TXDATA) {
+        uint8_t permit = (reg >= R_CONTROL && reg <= R_CSID) ?
+                             0xfu :
+                             (reg == R_COMMAND ? 0x3u : 0x1u);
+        uint8_t reg_be = (uint8_t)(((1u << size) - 1u) << (addr & 3u));
+        return (permit & ~reg_be) == 0u;
+    }
+    return true;
+}
+
 /* clang-format off */
 static const MemoryRegionOps ot_spi_host_ops = {
-    .read = ot_spi_host_io_read,
-    .write = ot_spi_host_io_write,
+    .read = &ot_spi_host_io_read,
+    .write = &ot_spi_host_io_write,
     /* OpenTitan default LE */
     .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid.accepts = &ot_spi_host_accepts,
     .impl = {
         /* although some registers only supports 2 or 4 byte write access */
         .min_access_size = 1u,
@@ -1455,15 +1683,9 @@ static void ot_spi_host_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
-    s->regs[R_INTR_STATE] = 0x00u;
-    s->regs[R_INTR_ENABLE] = 0x00u;
-    s->regs[R_INTR_TEST] = 0x00u;
-    s->regs[R_ALERT_TEST] = 0x00u;
+    memset(s->regs, 0, REGS_SIZE);
     s->regs[R_CONTROL] = 0x7fu;
-    s->regs[R_CSID] = 0x00u;
     s->regs[R_ERROR_ENABLE] = 0x1fu;
-    s->regs[R_ERROR_STATUS] = 0x00u;
-    s->regs[R_EVENT_ENABLE] = 0x00u;
 
     s->on_reset = true;
 
@@ -1529,8 +1751,9 @@ static void ot_spi_host_instance_init(Object *obj)
 {
     OtSPIHostState *s = OT_SPI_HOST(obj);
 
+    s->pclk = 1u;
     memory_region_init_io(&s->mmio, obj, &ot_spi_host_ops, s, TYPE_OT_SPI_HOST,
-                          0x40u);
+                          REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 
     _Static_assert(IRQ_COUNT == ARRAY_SIZE(s->irqs), "Incoherent IRQ count");
