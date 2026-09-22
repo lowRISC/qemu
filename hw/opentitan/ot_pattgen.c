@@ -12,6 +12,7 @@
 #include "qemu/timer.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_pattgen.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -125,10 +126,11 @@ static void ot_pattgen_timer_cb(void *opaque)
     }
 
     uint64_t base_us =
-        10000ULL;
+        (s->gpio ? ot_gpio_eg_get_total_us(s->gpio) : 0ULL) + 10000ULL;
     uint32_t done_mask = 0;
 
     if (s->gpio) {
+        ot_gpio_eg_set_pattgen_batch(s->gpio, true);
     }
 
     while ((run_ch[0] && k[0] <= total_steps[0]) ||
@@ -165,10 +167,12 @@ static void ot_pattgen_timer_cb(void *opaque)
         }
 
         if (s->gpio) {
+            ot_gpio_eg_notify_pattgen_change(s->gpio, next_us);
         }
     }
 
     if (s->gpio) {
+        ot_gpio_eg_set_pattgen_batch(s->gpio, false);
     }
 
     if (done_mask) {
@@ -268,6 +272,7 @@ static void ot_pattgen_write(void *opaque, hwaddr addr, uint64_t val64,
         }
 
         if (s->gpio) {
+            ot_gpio_eg_notify_pattgen_change(s->gpio, 0);
         }
 
         if (schedule_timer) {

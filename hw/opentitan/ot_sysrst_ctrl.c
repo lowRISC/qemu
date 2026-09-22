@@ -14,6 +14,7 @@
 #include "hw/core/cpu.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_gpio_eg.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_rstmgr.h"
 #include "hw/opentitan/ot_sysrst_ctrl.h"
@@ -262,6 +263,7 @@ static void ot_sysrst_ctrl_update_outputs(OtSysrstCtrlState *s)
         (s->regs[R_WKUP_STATUS] & R_WKUP_STATUS_WAKEUP_STS_MASK) != 0;
     ibex_irq_set(&s->wkup_req, (int)wkup_level);
 
+    ot_gpio_eg_notify_sysrst_change();
 }
 
 static void ot_sysrst_ctrl_ec_rst_timer_cb(void *opaque)
