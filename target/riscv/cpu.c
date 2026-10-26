@@ -1463,7 +1463,10 @@ const RISCVCPUMultiExtConfig riscv_cpu_vendor_exts[] = {
 /* These are experimental so mark with 'x-' */
 const RISCVCPUMultiExtConfig riscv_cpu_experimental_exts[] = {
     MULTI_EXT_CFG_BOOL("x-svukte", ext_svukte, false),
+    MULTI_EXT_CFG_BOOL("x-zbf", ext_zbf, false),
+    MULTI_EXT_CFG_BOOL("x-zbp", ext_zbp, false),
     MULTI_EXT_CFG_BOOL("x-zbr", ext_zbr, false),
+    MULTI_EXT_CFG_BOOL("x-zbt", ext_zbt, false),
 
     { },
 };
@@ -3168,8 +3171,14 @@ static const TypeInfo riscv_cpu_type_infos[] = {
         .cfg.ext_zba = true,
         .cfg.ext_zbb = true,
         .cfg.ext_zbc = true,
+        .cfg.ext_zbf = true,
+        .cfg.ext_zbkb = true,
+        .cfg.ext_zbkc = true,
+        .cfg.ext_zbkx = true,
+        .cfg.ext_zbp = true,
         .cfg.ext_zbr = true,
         .cfg.ext_zbs = true,
+        .cfg.ext_zbt = true,
     ),
 
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_SIFIVE_E31, TYPE_RISCV_CPU_SIFIVE_E,

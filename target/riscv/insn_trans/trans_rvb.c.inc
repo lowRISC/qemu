@@ -36,8 +36,26 @@
     }                                            \
 } while (0)
 
+#define REQUIRE_ZBF(ctx) do {                    \
+    if (!ctx->cfg_ptr->ext_zbf) {                \
+        return false;                            \
+    }                                            \
+} while (0)
+
+#define REQUIRE_ZBP(ctx) do {                    \
+    if (!ctx->cfg_ptr->ext_zbp) {                \
+        return false;                            \
+    }                                            \
+} while (0)
+
 #define REQUIRE_ZBR(ctx) do {                    \
     if (!ctx->cfg_ptr->ext_zbr) {                \
+        return false;                            \
+    }                                            \
+} while (0)
+
+#define REQUIRE_ZBT(ctx) do {                    \
+    if (!ctx->cfg_ptr->ext_zbt) {                \
         return false;                            \
     }                                            \
 } while (0)
@@ -533,13 +551,13 @@ static bool trans_brev8(DisasContext *ctx, arg_brev8 *a)
 
 static bool trans_pack(DisasContext *ctx, arg_pack *a)
 {
-    REQUIRE_ZBKB(ctx);
-    return gen_arith(ctx, a, EXT_NONE, gen_pack, NULL);
+    REQUIRE_EITHER_EXT(ctx, zbkb, zbp);
+    return gen_arith_per_ol(ctx, a, EXT_NONE, gen_pack, gen_packw, NULL);
 }
 
 static bool trans_packh(DisasContext *ctx, arg_packh *a)
 {
-    REQUIRE_ZBKB(ctx);
+    REQUIRE_EITHER_EXT(ctx, zbkb, zbp);
     return gen_arith(ctx, a, EXT_NONE, gen_packh, NULL);
 }
 
@@ -566,14 +584,14 @@ static bool trans_zip(DisasContext *ctx, arg_zip *a)
 
 static bool trans_xperm4(DisasContext *ctx, arg_xperm4 *a)
 {
-    REQUIRE_ZBKX(ctx);
-    return gen_arith(ctx, a, EXT_NONE, gen_helper_xperm4, NULL);
+    REQUIRE_EITHER_EXT(ctx, zbkx, zbp);
+    return gen_arith(ctx, a, EXT_ZERO, gen_helper_xperm4, NULL);
 }
 
 static bool trans_xperm8(DisasContext *ctx, arg_xperm8 *a)
 {
-    REQUIRE_ZBKX(ctx);
-    return gen_arith(ctx, a, EXT_NONE, gen_helper_xperm8, NULL);
+    REQUIRE_EITHER_EXT(ctx, zbkx, zbp);
+    return gen_arith(ctx, a, EXT_ZERO, gen_helper_xperm8, NULL);
 }
 
 static bool gen_crc(DisasContext *ctx, arg_r2 *a,
@@ -606,3 +624,205 @@ TRANS_CRC32C(b, 1);
 TRANS_CRC32C(h, 2);
 TRANS_CRC32C(w, 4);
 TRANS_CRC32C(d, 8);
+
+static bool trans_bfp(DisasContext *ctx, arg_bfp *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBF(ctx);
+    return gen_arith(ctx, a, EXT_NONE, gen_helper_bfp, NULL);
+}
+
+static void gen_packu(TCGv ret, TCGv src1, TCGv src2)
+{
+    TCGv t = tcg_temp_new();
+
+    tcg_gen_extract_tl(t, src1, 16, 16);
+    tcg_gen_deposit_tl(ret, src2, t, 0, 16);
+}
+
+static bool trans_packu(DisasContext *ctx, arg_packu *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_arith(ctx, a, EXT_NONE, gen_packu, NULL);
+}
+
+static void gen_slo(TCGv ret, TCGv src1, TCGv src2)
+{
+    tcg_gen_not_tl(ret, src1);
+    tcg_gen_shl_tl(ret, ret, src2);
+    tcg_gen_not_tl(ret, ret);
+}
+
+static bool trans_slo(DisasContext *ctx, arg_slo *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift(ctx, a, EXT_NONE, gen_slo, NULL);
+}
+
+static bool trans_sloi(DisasContext *ctx, arg_sloi *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift_imm_tl(ctx, a, EXT_NONE, gen_slo);
+}
+
+static void gen_sro(TCGv ret, TCGv src1, TCGv src2)
+{
+    tcg_gen_not_tl(ret, src1);
+    tcg_gen_ext32u_tl(ret, ret);
+    tcg_gen_shr_tl(ret, ret, src2);
+    tcg_gen_not_tl(ret, ret);
+}
+
+static bool trans_sro(DisasContext *ctx, arg_sro *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift(ctx, a, EXT_ZERO, gen_sro, NULL);
+}
+
+static bool trans_sroi(DisasContext *ctx, arg_sroi *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift_imm_tl(ctx, a, EXT_ZERO, gen_sro);
+}
+
+static bool trans_grev(DisasContext *ctx, arg_grev *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift(ctx, a, EXT_ZERO, gen_helper_grev, NULL);
+}
+
+static bool trans_grevi(DisasContext *ctx, arg_grevi *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift_imm_tl(ctx, a, EXT_ZERO, gen_helper_grev);
+}
+
+static bool trans_gorc(DisasContext *ctx, arg_gorc *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift(ctx, a, EXT_ZERO, gen_helper_gorc, NULL);
+}
+
+static bool trans_gorci(DisasContext *ctx, arg_gorci *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift_imm_tl(ctx, a, EXT_ZERO, gen_helper_gorc);
+}
+
+static bool trans_shfl(DisasContext *ctx, arg_shfl *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift(ctx, a, EXT_ZERO, gen_helper_shfl, NULL);
+}
+
+static bool trans_shfli(DisasContext *ctx, arg_shfli *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift_imm_tl(ctx, a, EXT_ZERO, gen_helper_shfl);
+}
+
+static bool trans_unshfl(DisasContext *ctx, arg_unshfl *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift(ctx, a, EXT_ZERO, gen_helper_unshfl, NULL);
+}
+
+static bool trans_unshfli(DisasContext *ctx, arg_unshfli *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_shift_imm_tl(ctx, a, EXT_ZERO, gen_helper_unshfl);
+}
+
+static bool trans_xperm16(DisasContext *ctx, arg_xperm16 *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBP(ctx);
+    return gen_arith(ctx, a, EXT_ZERO, gen_helper_xperm16, NULL);
+}
+
+static bool trans_cmix(DisasContext *ctx, arg_cmix *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBT(ctx);
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+    TCGv t1 = tcg_temp_new();
+    TCGv t2 = tcg_temp_new();
+
+    tcg_gen_and_tl(t1, src1, src2);
+    tcg_gen_andc_tl(t2, src3, src2);
+    tcg_gen_or_tl(dest, t1, t2);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_cmov(DisasContext *ctx, arg_cmov *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBT(ctx);
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+
+    tcg_gen_movcond_tl(TCG_COND_NE, dest, src2, tcg_constant_tl(0), src1, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_fsl(DisasContext *ctx, arg_fsl *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBT(ctx);
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+
+    gen_helper_fsl(dest, src1, src2, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_fsr(DisasContext *ctx, arg_fsr *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBT(ctx);
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = get_gpr(ctx, a->rs2, EXT_NONE);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+
+    gen_helper_fsr(dest, src1, src2, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}
+
+static bool trans_fsri(DisasContext *ctx, arg_fsri *a)
+{
+    REQUIRE_32BIT(ctx);
+    REQUIRE_ZBT(ctx);
+    TCGv dest = dest_gpr(ctx, a->rd);
+    TCGv src1 = get_gpr(ctx, a->rs1, EXT_NONE);
+    TCGv src2 = tcg_constant_tl(a->shamt);
+    TCGv src3 = get_gpr(ctx, a->rs3, EXT_NONE);
+
+    gen_helper_fsr(dest, src1, src2, src3);
+    gen_set_gpr(ctx, a->rd, dest);
+    return true;
+}

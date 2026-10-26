@@ -6,12 +6,12 @@
   extensions
 * `Zicsr` and `Zifencei` extensions
 * `Smepmp` extension (ePMP)
-* `Zbr` v0.93 unratified ISA extension (crc32 instructions)
+* `Zbf`, `Zbp`, `Zbr`, and `Zbt` v0.93 unratified ISA extensions
 
 ## Unsupported features
 
-* Extensions not defined in RISC-V standard and/or not ratified are not supported (except `Zbr`)
-  * `Zbe`, `Zbf`, `Zbp` and `Zbt`
+* Extensions not defined in RISC-V standard and/or not ratified are not supported (except `Zbf`, `Zbp`, `Zbr`, and `Zbt`)
+  * `Zbe`
 * Ibex NMI
 * custom CSRs: `cpuctrlsts`, `secureseed`
 * `mret` extension (double fault management)

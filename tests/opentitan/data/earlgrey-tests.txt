@@ -522,6 +522,8 @@ pass: //sw/device/tests:rstmgr_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rstmgr_smoketest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:rstmgr_sw_req_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rstmgr_sw_req_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:rv_core_ibex_isa_test_prod_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:rv_core_ibex_isa_test_prod_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:rv_core_ibex_mem_test_prod_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rv_core_ibex_mem_test_prod_sim_qemu_sival_rom_ext
 flaky: //sw/device/tests:rv_core_ibex_rnd_test_sim_qemu_rom_with_fake_keys  # Passes and fails randomly, likely due to the test using randomness.

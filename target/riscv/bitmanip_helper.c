@@ -130,6 +130,125 @@ target_ulong HELPER(xperm8)(target_ulong rs1, target_ulong rs2)
     return do_xperm(rs1, rs2, 3);
 }
 
+target_ulong HELPER(xperm16)(target_ulong rs1, target_ulong rs2)
+{
+    return do_xperm(rs1, rs2, 4);
+}
+
+target_ulong HELPER(grev)(target_ulong rs1, target_ulong rs2)
+{
+    target_ulong x = rs1;
+
+    if (rs2 & 1) {
+        x = do_swap(x, 0x5555555555555555ull, 1);
+    }
+    if (rs2 & 2) {
+        x = do_swap(x, 0x3333333333333333ull, 2);
+    }
+    if (rs2 & 4) {
+        x = do_swap(x, 0x0f0f0f0f0f0f0f0full, 4);
+    }
+    if (rs2 & 8) {
+        x = do_swap(x, 0x00ff00ff00ff00ffull, 8);
+    }
+    if (rs2 & 16) {
+        x = do_swap(x, 0x0000ffff0000ffffull, 16);
+    }
+#if TARGET_LONG_BITS == 64
+    if (rs2 & 32) {
+        x = do_swap(x, 0x00000000ffffffffull, 32);
+    }
+#endif
+    return x;
+}
+
+target_ulong HELPER(gorc)(target_ulong rs1, target_ulong rs2)
+{
+    target_ulong x = rs1;
+
+    if (rs2 & 1) {
+        x |= do_swap(x, 0x5555555555555555ull, 1);
+    }
+    if (rs2 & 2) {
+        x |= do_swap(x, 0x3333333333333333ull, 2);
+    }
+    if (rs2 & 4) {
+        x |= do_swap(x, 0x0f0f0f0f0f0f0f0full, 4);
+    }
+    if (rs2 & 8) {
+        x |= do_swap(x, 0x00ff00ff00ff00ffull, 8);
+    }
+    if (rs2 & 16) {
+        x |= do_swap(x, 0x0000ffff0000ffffull, 16);
+    }
+#if TARGET_LONG_BITS == 64
+    if (rs2 & 32) {
+        x |= do_swap(x, 0x00000000ffffffffull, 32);
+    }
+#endif
+    return x;
+}
+
+target_ulong HELPER(shfl)(target_ulong rs1, target_ulong rs2)
+{
+    target_ulong x = rs1;
+
+    if (rs2 & 8) {
+        x = do_shuf_stage(x, shuf_masks[3], shuf_masks[3] >> 8, 8);
+    }
+    if (rs2 & 4) {
+        x = do_shuf_stage(x, shuf_masks[2], shuf_masks[2] >> 4, 4);
+    }
+    if (rs2 & 2) {
+        x = do_shuf_stage(x, shuf_masks[1], shuf_masks[1] >> 2, 2);
+    }
+    if (rs2 & 1) {
+        x = do_shuf_stage(x, shuf_masks[0], shuf_masks[0] >> 1, 1);
+    }
+    return x;
+}
+
+target_ulong HELPER(unshfl)(target_ulong rs1, target_ulong rs2)
+{
+    target_ulong x = rs1;
+
+    if (rs2 & 1) {
+        x = do_shuf_stage(x, shuf_masks[0], shuf_masks[0] >> 1, 1);
+    }
+    if (rs2 & 2) {
+        x = do_shuf_stage(x, shuf_masks[1], shuf_masks[1] >> 2, 2);
+    }
+    if (rs2 & 4) {
+        x = do_shuf_stage(x, shuf_masks[2], shuf_masks[2] >> 4, 4);
+    }
+    if (rs2 & 8) {
+        x = do_shuf_stage(x, shuf_masks[3], shuf_masks[3] >> 8, 8);
+    }
+    return x;
+}
+
+target_ulong HELPER(bfp)(target_ulong rs1, target_ulong rs2)
+{
+    uint32_t len = (rs2 >> 24) & 0xf;
+    uint32_t off = (rs2 >> 16) & 0x1f;
+    len = len ? len : 16;
+    uint32_t mask = ~(0xffffffffu << len);
+    return (target_long)(int32_t)(((uint32_t)rs1 & ~(mask << off)) |
+                                  (((uint32_t)rs2 & mask) << off));
+}
+
+target_ulong HELPER(fsl)(target_ulong rs1, target_ulong rs2, target_ulong rs3)
+{
+    uint64_t val = ((uint64_t)(uint32_t)rs1 << 32) | (uint32_t)rs3;
+    return (target_long)(int32_t)(rol64(val, rs2 & 63) >> 32);
+}
+
+target_ulong HELPER(fsr)(target_ulong rs1, target_ulong rs2, target_ulong rs3)
+{
+    uint64_t val = ((uint64_t)(uint32_t)rs3 << 32) | (uint32_t)rs1;
+    return (target_long)(int32_t)ror64(val, rs2 & 63);
+}
+
 /*
  * this table is already defined in hw/pc/pcnet.c, as well as likely implemented
  * in zlib. It would make sense to move pcnet implementation into util/ as the
