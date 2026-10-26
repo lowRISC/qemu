@@ -996,7 +996,8 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
             }
         }
         s->enabled = false;
-        s->regs[R_SW_CMD_STS] &= ~R_SW_CMD_STS_CMD_RDY_MASK;
+        s->regs[R_SW_CMD_STS] &=
+            ~(R_SW_CMD_STS_CMD_RDY_MASK | R_SW_CMD_STS_CMD_ACK_MASK);
         s->es_retry_count = 0;
 
         /* cancel any outstanding asynchronous request */
@@ -1049,16 +1050,14 @@ static void ot_csrng_handle_enable(OtCSRNGState *s)
     }
 }
 
-static void ot_csrng_complete_sw_command(OtCSRNGInstance *inst, bool res)
+static void
+ot_csrng_complete_sw_command(OtCSRNGInstance *inst, OtCSRNGCmdStatus sts)
 {
     OtCSRNGState *s = inst->parent;
 
-    if (res == CSRNG_CMD_OK) {
-        s->regs[R_SW_CMD_STS] &= R_SW_CMD_STS_CMD_STS_MASK;
-    } else {
-        s->regs[R_SW_CMD_STS] |= R_SW_CMD_STS_CMD_STS_MASK;
-    }
-    s->regs[R_SW_CMD_STS] |= R_SW_CMD_STS_CMD_RDY_MASK;
+    s->regs[R_SW_CMD_STS] =
+        FIELD_DP32(0, SW_CMD_STS, CMD_STS, sts) | R_SW_CMD_STS_CMD_RDY_MASK |
+        R_SW_CMD_STS_CMD_ACK_MASK;
     s->regs[R_INTR_STATE] |= INTR_CS_CMD_REQ_DONE_MASK;
 
     ot_csrng_update_irqs(s);
@@ -1842,6 +1841,7 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_CMD_REQ:
         inst = &s->instances[SW_INSTANCE_ID];
+        s->regs[R_SW_CMD_STS] &= ~R_SW_CMD_STS_CMD_ACK_MASK;
         if (!ot_fifo32_is_full(&inst->cmd_fifo)) {
             ot_fifo32_push(&inst->cmd_fifo, val32);
             if (ot_csrng_instance_is_command_ready(inst, false)) {

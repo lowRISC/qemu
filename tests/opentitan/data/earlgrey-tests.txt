@@ -377,6 +377,8 @@ pass: //sw/device/tests/crypto:ecdsa_p256_sideload_functest_sim_qemu_rom_with_fa
 pass: //sw/device/tests/crypto:ecdsa_p256_sideload_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdsa_p384_sideload_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdsa_p384_sideload_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:entropy_src_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:entropy_src_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:hkdf_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:hkdf_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:hmac_functest_sim_qemu_rom_with_fake_keys
@@ -431,10 +433,14 @@ flaky: //sw/device/tests:edn_auto_mode_sim_qemu_rom_with_fake_keys  # Fails ~75%
 flaky: //sw/device/tests:edn_auto_mode_sim_qemu_sival_rom_ext  # Fails ~75% of the time due to timing issues (deadline exceeded).
 pass: //sw/device/tests:edn_sw_mode_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:edn_sw_mode_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:entropy_src_edn_reqs_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:entropy_src_edn_reqs_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:entropy_src_fw_ovr_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:entropy_src_fw_ovr_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:entropy_src_kat_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:entropy_src_kat_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:entropy_src_smoketest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:entropy_src_smoketest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:example_concurrency_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:example_concurrency_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:example_test_from_flash_sim_qemu_rom_with_fake_keys
