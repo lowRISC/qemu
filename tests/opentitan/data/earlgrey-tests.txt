@@ -6,12 +6,16 @@ pass: //sw/device/lib/base:hardened_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/lib/base:hardened_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/lib/crypto/drivers:aes_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/lib/crypto/drivers:aes_test_sim_qemu_sival_rom_ext
+pass: //sw/device/lib/crypto/drivers:alert_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/lib/crypto/drivers:alert_test_sim_qemu_sival_rom_ext
 pass: //sw/device/lib/crypto/drivers:entropy_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/lib/crypto/drivers:entropy_test_sim_qemu_sival_rom_ext
 pass: //sw/device/lib/crypto/drivers:keymgr_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/lib/crypto/drivers:keymgr_test_sim_qemu_sival_rom_ext
+pass: //sw/device/lib/crypto/drivers:otbn_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/lib/crypto/drivers:otbn_test_sim_qemu_sival_rom_ext
 pass: //sw/device/lib/crypto/drivers:rv_core_ibex_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/lib/crypto/drivers:rv_core_ibex_test_sim_qemu_sival_rom_ext
-pass: //sw/device/silicon_creator/lib/cert:dice_cwt_functest_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/lib/drivers:hmac_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/lib/drivers:hmac_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/silicon_creator/lib/drivers:kmac_functest_sim_qemu_rom_with_fake_keys
@@ -71,7 +75,14 @@ pass: //sw/device/silicon_creator/lib/sigverify:spx_verify_functest_sim_qemu_siv
 pass: //sw/device/silicon_creator/lib:boot_data_functest_sim_qemu_rom_with_fake_keys
 flaky: //sw/device/silicon_creator/lib:irq_asm_functest_sim_qemu_rom_with_fake_keys  # Fails ~80% of the time due to an unknown BFV on intentional reset via watchdog/rstmgr. Unknown cause, perhaps timing.
 flaky: //sw/device/silicon_creator/lib:irq_asm_functest_sim_qemu_sival_rom_ext  # Fails ~80% of the time due to an unknown BFV on intentional reset via watchdog/rstmgr. Unknown cause, perhaps timing.
+pass: //sw/device/silicon_creator/manuf/lib:ast_program_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/silicon_creator/manuf/lib:individualize_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/silicon_creator/manuf/lib:individualize_sw_cfg_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/silicon_creator/manuf/tests:otp_ctrl_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_certs_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_flash_storage_mldsa_certs_overlapped_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_flash_storage_mldsa_certs_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_mldsa_certs_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_bad_next_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_bad_primary_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_empty_test_sim_qemu_rom_ext
@@ -82,56 +93,77 @@ pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_next_aab_test_si
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_next_aba_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_next_abb_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_primary_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:corrupted_digest_dice_mldsa_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:corrupted_digest_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:debug_mode_off_dice_cwt_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:debug_mode_off_dice_mldsa_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:debug_mode_off_dice_x509_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:debug_mode_on_dice_cwt_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:debug_mode_on_dice_mldsa_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:debug_mode_on_dice_x509_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_dice_cwt_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_dice_mldsa_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_dice_x509_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_flash_storage_dice_mldsa_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_on_change_dice_mldsa_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:on_demand_refresh_test_sim_qemu_rom_ext
 flaky: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:variation_interop_x509_first_test_sim_qemu_rom_with_fake_keys  # Expected to pass but can timeout in GitHub CI due to taking > 60 seconds.
 flaky: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:variation_interop_cwt_first_test_sim_qemu_rom_with_fake_keys  # Expected to pass but can timeout in GitHub CI due to taking > 60 seconds.
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_activate_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_appkey_constraint_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_app_key_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_endorsee_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_locked_update_no_exec_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_locked_update_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_owner_block_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_ownership_key_alg_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_ownership_key_alg_with_detached_sig_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_unlock_signature_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_unlock_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_error_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_aa_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_ab_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_ba_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_bb_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:good_appkey_constraint_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:install_owner_upgrade_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:invalid_device_id_request_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:invalid_key_alg_activate_request_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:invalid_nonce_request_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:locked_update_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_badlock_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_nodelock_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_noupdate_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_noupdate_with_bad_owner_block_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_pq_downgrade_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_pq_to_pq_update_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_update_test_sim_qemu_rom_ext
+flaky: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:watchdog_mldsa_test_sim_qemu_rom_ext  # Watchdog timing is sensitive to CI runner load
+pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:watchdog_skip_cert_gen_test_sim_qemu_rom_ext
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:anyversion_transfer_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:anyversion_unlock_transfer_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:anyversion_update_fails_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:anyversion_update_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:anyversion_wildcard_nonce_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_activate_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_appkey_constraint_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_app_key_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_endorsee_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_locked_update_no_exec_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_locked_update_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_owner_block_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_ownership_key_alg_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_ownership_key_alg_with_detached_sig_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_unlock_signature_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bad_unlock_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:bl0_secver_persistence_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_error_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_aa_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_ab_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_ba_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:flash_permission_test_slot_bb_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:good_appkey_constraint_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:install_owner_upgrade_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:invalid_device_id_request_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:invalid_key_alg_activate_request_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:invalid_nonce_request_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:locked_update_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_badlock_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_nodelock_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_noupdate_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_noupdate_with_bad_owner_block_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_pq_downgrade_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_pq_to_pq_update_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:newversion_update_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
 flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:rescue_limit_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
 flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:rescue_permission_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_any_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_bl0_slot_b_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_ecdsa_to_pq_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_endorsed_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_keymgr_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_pq_to_pq_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_spx_pure_to_spx_prehash_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:unlock_detached_sig_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:unlock_when_recovery_state_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/ownership:unlock_with_owner_recovery_key_test_sim_qemu_rom_ext
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:rom_ext_e2e_owner_transfer_manifest_invalid_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:rom_ext_e2e_owner_transfer_manifest_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_any_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_bl0_slot_b_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_ecdsa_to_pq_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_endorsed_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_keymgr_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_pq_to_pq_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:transfer_spx_pure_to_spx_prehash_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:unlock_detached_sig_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:unlock_when_recovery_state_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+flaky: //sw/device/silicon_creator/rom_ext/e2e/ownership:unlock_with_owner_recovery_key_test_sim_qemu_rom_ext  # Xmodem flow has tight timing on UART transfer which may fail when run in parallel on slower hosts.
+pass: //sw/device/silicon_creator/rom_ext/e2e/rescue:rescue_get_device_id_usbdfu_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/rescue:rescue_get_device_id_xmodem_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:bad_base_address_absent_large_rom_ext_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:bad_base_address_manifest_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:bad_manifest_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:bad_spx_manifest_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:isfb_boot_test_sim_qemu_rom_ext
@@ -142,9 +174,13 @@ pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:key_prod_sim_qemu_ro
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:key_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:key_unauthorized_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_imm_section_virtual_a_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_slot_a_absent_base_address_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_slot_a_manifest_v3_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_slot_a_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_slot_b_shifted_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_slot_b_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_virtual_a_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_virtual_b_shifted_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_owner_virtual_b_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_romext_slot_a_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:position_romext_slot_b_sim_qemu_rom_ext
@@ -315,6 +351,22 @@ pass: //sw/device/silicon_creator/rom/e2e/sigverify_usage_constraints:sigverify_
 pass: //sw/device/silicon_creator/rom/e2e/sigverify_usage_constraints:sigverify_usage_constraint_manuf_state_owner_match_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/rom/e2e/sigverify_usage_constraints:sigverify_usage_constraint_manuf_state_owner_no_match_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/rom/e2e:rom_e2e_flash_ctrl_init_sim_qemu_rom_with_fake_keys
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_a_64k_opposite_64k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_a_64k_opposite_88k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_a_64k_opposite_none_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_a_88k_opposite_64k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_a_88k_opposite_88k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_a_88k_opposite_none_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_b_64k_opposite_64k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_b_64k_opposite_88k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_b_64k_opposite_none_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_b_88k_opposite_64k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_b_88k_opposite_88k_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:rom_ext_lockdown_slot_b_88k_opposite_none_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/verified_boot:unprovisioned_secret1_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/imm_section/e2e/export:export_test_slot_a_sim_qemu_rom_with_fake_keys
+pass: //sw/device/silicon_creator/rom_ext/imm_section/e2e/export:export_test_slot_b_sim_qemu_rom_with_fake_keys
+pass: //sw/device/silicon_creator/rom_ext/imm_section/e2e/export:export_test_slot_virtual_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:aes_entropy_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:aes_entropy_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:aes_idle_test_sim_qemu_rom_with_fake_keys
@@ -329,6 +381,14 @@ pass: //sw/device/tests:alert_handler_ping_ok_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:alert_handler_ping_ok_test_sim_qemu_sival_rom_ext
 flaky: //sw/device/tests:aon_timer_irq_test_sim_qemu_rom_with_fake_keys # Test checks IRQ timing which may be slightly inaccurate on QEMU, and so rarely fails
 flaky: //sw/device/tests:aon_timer_irq_test_sim_qemu_sival_rom_ext # Test checks IRQ timing which may be slightly inaccurate on QEMU, and so rarely fails
+pass: //sw/device/tests:spi_device_ottf_console_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:spi_device_ottf_console_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:spi_host_smoketest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:spi_host_smoketest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests:spi_host_winbond_flash_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests:spi_host_winbond_flash_test_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests:usbdev_config_host_test_sim_qemu_rom_with_fake_keys  # Occasionally times out when running in parallel on CI runners
+flaky: //sw/device/tests:usbdev_config_host_test_sim_qemu_sival_rom_ext  # Occasionally times out when running in parallel on CI runners
 flaky: //sw/device/tests/autogen:alert_test_sim_qemu_rom_with_fake_keys  # Fails rarely when running in parallel on CI runners, likely due to timing issues.
 flaky: //sw/device/tests/autogen:alert_test_sim_qemu_sival_rom_ext  # Fails rarely when running in parallel on CI runners, likely due to timing issues.
 pass: //sw/device/tests:clkmgr_jitter_frequency_test_sim_qemu_rom_with_fake_keys
@@ -361,8 +421,28 @@ pass: //sw/device/tests/crypto:aes_kwp_sideload_functest_sim_qemu_rom_with_fake_
 pass: //sw/device/tests/crypto:aes_kwp_sideload_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:aes_sideload_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:aes_sideload_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:cmac_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:cmac_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:drbg_functest_sim_qemu_rom_with_fake_keys  # Rarely fails entropy randomness check due to lack of key masking
 pass: //sw/device/tests/crypto:drbg_functest_sim_qemu_sival_rom_ext  # Rarely fails entropy randomness check due to lack of key masking
+pass: //sw/device/tests/crypto:ecc_ed25519_point_on_curve_check_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_ed25519_point_on_curve_check_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p256_arith_share_private_key_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p256_arith_share_private_key_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p256_base_point_mult_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p256_base_point_mult_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p256_key_import_export_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p256_key_import_export_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p256_point_on_curve_check_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p256_point_on_curve_check_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p384_arith_share_private_key_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p384_arith_share_private_key_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p384_base_point_mult_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p384_base_point_mult_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p384_key_import_export_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p384_key_import_export_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecc_p384_point_on_curve_check_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecc_p384_point_on_curve_check_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdh_p256_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdh_p256_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdh_p256_sideload_functest_sim_qemu_rom_with_fake_keys
@@ -371,12 +451,20 @@ pass: //sw/device/tests/crypto:ecdh_p384_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdh_p384_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdh_p384_sideload_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdh_p384_sideload_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecdsa_p256_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecdsa_p256_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdsa_p256_verify_functest_hardcoded_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdsa_p256_verify_functest_hardcoded_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdsa_p256_sideload_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdsa_p256_sideload_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ecdsa_p384_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ecdsa_p384_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:ecdsa_p384_sideload_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:ecdsa_p384_sideload_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:ed25519_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:ed25519_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:entropy_src_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:entropy_src_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:hkdf_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:hkdf_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:hmac_functest_sim_qemu_rom_with_fake_keys
@@ -389,6 +477,8 @@ pass: //sw/device/tests/crypto:hmac_sha384_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:hmac_sha384_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:hmac_sha512_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:hmac_sha512_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:kats_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:kats_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:kdf_hmac_ctr_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:kdf_hmac_ctr_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:kdf_kmac_functest_sim_qemu_rom_with_fake_keys
@@ -399,6 +489,10 @@ pass: //sw/device/tests/crypto:kmac_functest_hardcoded_sim_qemu_rom_with_fake_ke
 pass: //sw/device/tests/crypto:kmac_functest_hardcoded_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:kmac_sideload_functest_hardcoded_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:kmac_sideload_functest_hardcoded_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:otcrypto_export_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:otcrypto_export_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:otcrypto_hash_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:otcrypto_hash_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:rsa_2048_encryption_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:rsa_2048_encryption_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:rsa_2048_key_from_cofactor_functest_sim_qemu_rom_with_fake_keys
@@ -409,10 +503,14 @@ pass: //sw/device/tests/crypto:rsa_2048_signature_functest_sim_qemu_rom_with_fak
 pass: //sw/device/tests/crypto:rsa_2048_signature_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:rsa_3072_encryption_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:rsa_3072_encryption_functest_sim_qemu_sival_rom_ext
-pass: //sw/device/tests/crypto:rsa_3072_signature_functest_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests/crypto:rsa_3072_signature_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:rsa_3072_key_from_cofactor_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:rsa_3072_key_from_cofactor_functest_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests/crypto:rsa_3072_signature_functest_sim_qemu_rom_with_fake_keys  # Occasionally times out due to public GitHub CI runners
+flaky: //sw/device/tests/crypto:rsa_3072_signature_functest_sim_qemu_sival_rom_ext  # Occasionally times out due to public GitHub CI runners
 flaky: //sw/device/tests/crypto:rsa_4096_encryption_functest_sim_qemu_rom_with_fake_keys  # Fails timing (max cycle count) check ~25% of the time
 flaky: //sw/device/tests/crypto:rsa_4096_encryption_functest_sim_qemu_sival_rom_ext  # Fails timing (max cycle count) check ~25% of the time
+pass: //sw/device/tests/crypto:rsa_4096_key_from_cofactor_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:rsa_4096_key_from_cofactor_functest_sim_qemu_sival_rom_ext
 flaky: //sw/device/tests/crypto:rsa_4096_signature_functest_sim_qemu_rom_with_fake_keys  # Fails timing (max cycle count) check ~25% of the time
 flaky: //sw/device/tests/crypto:rsa_4096_signature_functest_sim_qemu_sival_rom_ext  # Fails timing (max cycle count) check ~25% of the time
 pass: //sw/device/tests/crypto:sha256_functest_sim_qemu_rom_with_fake_keys
@@ -421,6 +519,10 @@ pass: //sw/device/tests/crypto:sha384_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:sha384_functest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests/crypto:sha512_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests/crypto:sha512_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:stateful_kats_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:stateful_kats_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:status_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:status_functest_sim_qemu_sival_rom_ext
 flaky: //sw/device/tests/crypto:symmetric_keygen_functest_sim_qemu_rom_with_fake_keys  # Rarely fails entropy randomness check due to lack of key masking
 flaky: //sw/device/tests/crypto:symmetric_keygen_functest_sim_qemu_sival_rom_ext  # Rarely fails entropy randomness check due to lack of key masking
 pass: //sw/device/tests:csrng_kat_test_sim_qemu_rom_with_fake_keys
@@ -514,6 +616,16 @@ pass: //sw/device/tests:pwrmgr_sleep_disabled_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:pwrmgr_sleep_disabled_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:pwrmgr_wdog_reset_reqs_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:pwrmgr_wdog_reset_reqs_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:x25519_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:x25519_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/crypto:x25519_sideload_functest_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/crypto:x25519_sideload_functest_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/embedpqc:mldsa44_tiny_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/embedpqc:mldsa44_tiny_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/embedpqc:mldsa87_tiny_test_sim_qemu_rom_with_fake_keys
+pass: //sw/device/tests/embedpqc:mldsa87_tiny_test_sim_qemu_sival_rom_ext
+pass: //sw/device/tests/penetrationtests:fi_unit_gdb_python_gdb_test_sim_qemu_rom_ext
+pass: //sw/device/tests/penetrationtests:fi_unit_gdb_python_test_sim_qemu_rom_ext
 flaky: //sw/device/tests/qemu:i2c_qemu_target_device_test_sim_qemu_rom_with_fake_keys  # Fails occassionally when running in parallel on a slow host, may be a timing issue.
 flaky: //sw/device/tests/qemu:i2c_qemu_target_device_test_sim_qemu_sival_rom_ext  # Fails occassionally when running in parallel on a slow host, may be a timing issue.
 flaky: //sw/device/tests/qemu:i2c_qemu_test_sim_qemu_rom_with_fake_keys  # Fails ~10% of the time when running in parallel. Root cause unknown.
@@ -530,8 +642,8 @@ pass: //sw/device/tests:rv_timer_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:rv_timer_smoketest_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:spi_device_flash_smoketest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:spi_device_flash_smoketest_sim_qemu_sival_rom_ext
-pass: //sw/device/tests:spi_device_tpm_tx_rx_test_sim_qemu_rom_with_fake_keys
-pass: //sw/device/tests:spi_device_tpm_tx_rx_test_sim_qemu_sival_rom_ext
+flaky: //sw/device/tests:spi_device_tpm_tx_rx_test_sim_qemu_rom_with_fake_keys  # Occasionally times out on TPM SPI polling in CI
+flaky: //sw/device/tests:spi_device_tpm_tx_rx_test_sim_qemu_sival_rom_ext  # Occasionally times out on TPM SPI polling in CI
 pass: //sw/device/tests:spi_host_irq_test_sim_qemu_rom_with_fake_keys
 pass: //sw/device/tests:spi_host_irq_test_sim_qemu_sival_rom_ext
 pass: //sw/device/tests:spi_passthru_test_sim_qemu_rom_with_fake_keys
