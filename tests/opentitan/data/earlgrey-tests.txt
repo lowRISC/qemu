@@ -80,8 +80,7 @@ pass: //sw/device/silicon_creator/manuf/lib:individualize_functest_sim_qemu_rom_
 pass: //sw/device/silicon_creator/manuf/lib:individualize_sw_cfg_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/manuf/tests:otp_ctrl_functest_sim_qemu_rom_with_fake_keys
 pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_certs_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_flash_storage_mldsa_certs_overlapped_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_flash_storage_mldsa_certs_test_sim_qemu_rom_ext
+pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_mldsa_certs_overlapped_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/attestation:print_mldsa_certs_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_bad_next_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/boot_svc:boot_svc_bad_primary_test_sim_qemu_rom_ext
@@ -104,7 +103,6 @@ pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:debug_mode_on_dice_x509
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_dice_cwt_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_dice_mldsa_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_dice_x509_test_sim_qemu_rom_ext
-pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_flash_storage_dice_mldsa_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:no_refresh_on_change_dice_mldsa_test_sim_qemu_rom_ext
 pass: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:on_demand_refresh_test_sim_qemu_rom_ext
 flaky: //sw/device/silicon_creator/rom_ext/e2e/dice_chain:variation_interop_x509_first_test_sim_qemu_rom_with_fake_keys  # Expected to pass but can timeout in GitHub CI due to taking > 60 seconds.
