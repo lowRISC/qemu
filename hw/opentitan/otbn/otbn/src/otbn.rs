@@ -97,6 +97,7 @@ pub struct Registers {
     pub fatal_bits: Arc<AtomicU32>,
     pub ctrl: Arc<AtomicBool>,
     pub insn_count: Arc<AtomicUsize>,
+    pub resetting: Arc<AtomicBool>,
 }
 
 /// OTBN executer
@@ -188,6 +189,20 @@ impl Executer {
             .unwrap();
         loop {
             let cmd = self.channel.0.recv().unwrap();
+            if let comm::Command::Reset = cmd {
+                self.registers.resetting.store(false, Ordering::Relaxed);
+                self.imem.lock().unwrap().reset();
+                self.dmem.lock().unwrap().reset();
+                self.registers
+                    .status
+                    .store(Status::Idle as u32, Ordering::Relaxed);
+                self.registers.err_bits.store(0, Ordering::Relaxed);
+                self.registers.fatal_bits.store(0, Ordering::Relaxed);
+                self.registers.ctrl.store(false, Ordering::Relaxed);
+                self.registers.insn_count.store(0, Ordering::Relaxed);
+                self.channel.1.send(comm::Response::Ack).unwrap();
+                continue;
+            }
             let state = self.get_status();
             match state {
                 Status::Idle => self.handle_comm(cmd),
@@ -237,24 +252,35 @@ impl Executer {
             comm::Command::Execute(dump) => {
                 // always update the state before replying
                 self.set_status(Status::BusyExecute);
+                self.registers
+                    .err_bits
+                    .store(ErrBits::empty().bits(), Ordering::Relaxed);
+                self.registers.insn_count.store(0, Ordering::Relaxed);
                 self.channel.1.send(comm::Response::Ack).unwrap();
                 self.execute(dump);
-                self.signal_completion();
+                if self.get_status() != Status::Locked {
+                    self.signal_completion();
+                }
             }
             comm::Command::WipeDMem => {
                 // always update the state before replying
                 self.set_status(Status::BusySecWipeDMem);
                 self.channel.1.send(comm::Response::Ack).unwrap();
                 self.wipe_memory(false);
-                self.signal_completion();
+                if self.get_status() != Status::Locked {
+                    self.signal_completion();
+                }
             }
             comm::Command::WipeIMem => {
                 // always update the state before replying
                 self.set_status(Status::BusySecWipeIMem);
                 self.channel.1.send(comm::Response::Ack).unwrap();
                 self.wipe_memory(true);
-                self.signal_completion();
+                if self.get_status() != Status::Locked {
+                    self.signal_completion();
+                }
             }
+            comm::Command::Reset => (),
             comm::Command::Terminate => {
                 self.set_status(Status::Locked);
                 self.channel.1.send(comm::Response::Ack).unwrap();
@@ -269,8 +295,19 @@ impl Executer {
         // "Each new execution of OTBN will reseed the URND PRNG."
         // Stall OTBN execution till entropy is injected
         self.syncurnd.sync_reseed();
-        match self.do_execute(dump) {
-            insn_exec::InstructionTrap::Exception(cause, _val) => {
+        if self.registers.resetting.load(Ordering::Relaxed)
+            || self.get_status() == Status::Locked
+        {
+            return;
+        }
+        let trap = self.do_execute(dump);
+        if self.registers.resetting.load(Ordering::Relaxed)
+            || self.get_status() == Status::Locked
+        {
+            return;
+        }
+        match trap {
+            insn_exec::InstructionTrap::Exception(cause, val) => {
                 let mut error: u32;
                 // let mut registers = self.registers.lock().unwrap();
                 (fatal, error) = match cause {
@@ -283,14 +320,23 @@ impl Executer {
                     ExceptionCause::EKeyInvalid => (false, ErrBits::KEY_INVALID.bits()),
                     ExceptionCause::ERndRepChkFail => (false, ErrBits::RND_REP_CHK_FAIL.bits()),
                     ExceptionCause::ERndFipsChkFail => (false, ErrBits::RND_FIPS_CHK_FAIL.bits()),
-                    ExceptionCause::EFatal => {
-                        (true, self.registers.fatal_bits.load(Ordering::Relaxed))
-                    }
+                    ExceptionCause::EFatal => (
+                        true,
+                        self.registers.fatal_bits.load(Ordering::Relaxed)
+                            | val.unwrap_or(0),
+                    ),
                 };
+
+                const SW_ERR_MASK: u32 = ErrBits::BAD_DATA_ADDR.bits()
+                    | ErrBits::BAD_INSN_ADDR.bits()
+                    | ErrBits::CALL_STACK.bits()
+                    | ErrBits::ILLEGAL_INSN.bits()
+                    | ErrBits::LOOP.bits()
+                    | ErrBits::KEY_INVALID.bits();
 
                 // ctrl: "Controls the reaction to software errors.
                 // When set software errors produce fatal errors, rather than recoverable errors."
-                if error != 0 && self.registers.ctrl.load(Ordering::Relaxed) {
+                if (error & SW_ERR_MASK) != 0 && self.registers.ctrl.load(Ordering::Relaxed) {
                     fatal = true;
                     error |= ErrBits::FATAL_SOFTWARE.bits();
                 }
@@ -304,6 +350,7 @@ impl Executer {
             self.imem.try_lock().unwrap().wipe(&mut *x.lock().unwrap());
             self.registers.insn_count.store(0, Ordering::Relaxed);
             self.set_status(Status::Locked);
+            self.signal_completion();
         };
         // note: it is required that the OTBN client calls
         // Proxy::acknowledge_execution() to reset the OTBN status once the
@@ -357,6 +404,15 @@ impl Executer {
                 }
             }
 
+            if self.registers.resetting.load(Ordering::Relaxed)
+                || Status::from_u32(self.registers.status.load(Ordering::Relaxed))
+                    == Status::Locked
+            {
+                return insn_exec::InstructionTrap::Exception(
+                    ExceptionCause::ECallMMode,
+                    None,
+                );
+            }
             let fatalbits = self.registers.fatal_bits.load(Ordering::Relaxed);
             let result = if fatalbits == 0 {
                 // Execute instruction
@@ -368,6 +424,12 @@ impl Executer {
                 ))
             };
             if let Err(trap) = result {
+                if self.registers.resetting.load(Ordering::Relaxed)
+                    || Status::from_u32(self.registers.status.load(Ordering::Relaxed))
+                        == Status::Locked
+                {
+                    return trap;
+                }
                 if let Some(log_file) = &mut self.log_file {
                     let log_line = match trap {
                         insn_exec::InstructionTrap::Exception(cause, val) => {
@@ -400,6 +462,9 @@ impl Executer {
                 let prng: Arc<Mutex<dyn PRNG>> = self.syncurnd.urnd();
                 executor.wipe_internal(&prng);
                 self.syncurnd.sync_reseed();
+                if self.registers.resetting.load(Ordering::Relaxed) {
+                    return trap;
+                }
                 executor.wipe_internal(&prng);
 
                 let insn_exec::InstructionTrap::Exception(cause, _) = trap;
@@ -426,6 +491,9 @@ impl Executer {
     }
 
     fn wipe_memory(&mut self, doi: bool) {
+        if self.registers.resetting.load(Ordering::Relaxed) {
+            return;
+        }
         let memory = if doi { &mut self.imem } else { &mut self.dmem };
 
         memory
@@ -433,6 +501,9 @@ impl Executer {
             .unwrap()
             .wipe(&mut *self.syncurnd.urnd().lock().unwrap());
 
+        if self.registers.resetting.load(Ordering::Relaxed) {
+            return;
+        }
         // simulate a "long lasting" op
         thread::sleep(Duration::from_micros(200));
 
@@ -442,6 +513,9 @@ impl Executer {
     }
 
     fn signal_completion(&mut self) {
+        if self.registers.resetting.load(Ordering::Relaxed) {
+            return;
+        }
         if let Some(cb) = &mut self.on_complete {
             cb.signal();
         }

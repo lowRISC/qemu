@@ -207,6 +207,10 @@ static const FlashPartInfo known_devices[] = {
     /* GigaDevice */
     { INFO("gd25q32",     0xc84016,      0,  64 << 10,  64, ER_4K) },
     { INFO("gd25q64",     0xc84017,      0,  64 << 10, 128, ER_4K) },
+    { INFO("gd25q256",    0xc84019,      0,  64 << 10, 512, ER_4K | ER_32K),
+      .sfdp_read = m25p80_sfdp_gd25q256 },
+    { INFO("gd25b01g",    0xc8401b,      0,  64 << 10, 2048, ER_4K | ER_32K),
+      .sfdp_read = m25p80_sfdp_gd25b01g },
 
     /* Intel/Numonyx -- xxxs33b */
     { INFO("160s33b",     0x898911,      0,  64 << 10,  32, 0) },
@@ -226,7 +230,7 @@ static const FlashPartInfo known_devices[] = {
     { INFO("is25wp064",   0x9d7017,      0,  64 << 10, 128, ER_4K) },
     { INFO("is25wp128",   0x9d7018,      0,  64 << 10, 256, ER_4K),
       .sfdp_read = m25p80_sfdp_is25wp128 },
-    { INFO("is25wp256",   0x9d7019,      0,  64 << 10, 512, ER_4K),
+    { INFO("is25wp256",   0x9d7019,      0,  64 << 10, 512, ER_4K | ER_32K),
       .sfdp_read = m25p80_sfdp_is25wp256 },
 
     /* Macronix */
@@ -237,6 +241,8 @@ static const FlashPartInfo known_devices[] = {
     { INFO("mx25l3205d",  0xc22016,      0,  64 << 10,  64, 0) },
     { INFO("mx25l6405d",  0xc22017,      0,  64 << 10, 128, 0) },
     { INFO("mx25l12805d", 0xc22018,      0,  64 << 10, 256, 0) },
+    { INFO("mx25l12835f", 0xc22018,      0,  64 << 10, 256, ER_4K | ER_32K),
+      .sfdp_read = m25p80_sfdp_mx25l12835f },
     { INFO("mx25l12855e", 0xc22618,      0,  64 << 10, 256, 0) },
     { INFO6("mx25l25635e", 0xc22019,     0xc22019,  64 << 10, 512,
             ER_4K | ER_32K), .sfdp_read = m25p80_sfdp_mx25l25635e },
@@ -267,7 +273,8 @@ static const FlashPartInfo known_devices[] = {
       .sfdp_read = m25p80_sfdp_n25q256a },
    { INFO("n25q512a",    0x20ba20,      0,  64 << 10, 1024, ER_4K) },
     { INFO("n25q512ax3",  0x20ba20,  0x1000,  64 << 10, 1024, ER_4K) },
-    { INFO("mt25ql512ab", 0x20ba20, 0x1044, 64 << 10, 1024, ER_4K | ER_32K) },
+    { INFO("mt25ql512ab", 0x20ba20, 0x1044, 64 << 10, 1024, ER_4K | ER_32K),
+      .sfdp_read = m25p80_sfdp_mt25ql512ab },
     { INFO_STACKED("mt35xu01g", 0x2c5b1b, 0x104100, 128 << 10, 1024,
                    ER_4K | ER_32K, 2),
                    .sfdp_read = m25p80_sfdp_mt35xu01g },
@@ -363,7 +370,7 @@ static const FlashPartInfo known_devices[] = {
       .sfdp_read = m25p80_sfdp_w25q256 },
     { INFO("w25q512jv",   0xef4020,      0,  64 << 10, 1024, ER_4K),
       .sfdp_read = m25p80_sfdp_w25q512jv },
-    { INFO("w25q01jvq",   0xef4021,      0,  64 << 10, 2048, ER_4K),
+    { INFO("w25q01jvq",   0xef4021,      0,  64 << 10, 2048, ER_4K | ER_32K),
       .sfdp_read = m25p80_sfdp_w25q01jvq },
     { INFO("w25q512nw",   0xef6020,      0,  64 << 10, 1024, ER_4K | ER_32K),
       .sfdp_read = m25p80_sfdp_w25q512nw },
@@ -407,6 +414,7 @@ typedef enum {
     QPP = 0x32,
     QPP_4 = 0x34,
     PP_4 = 0x38,
+    QPP_GD = 0xc2,
     RDID_90 = 0x90,
     RDID_AB = 0xab,
     AAI_WP = 0xad,
@@ -546,6 +554,7 @@ static inline Manufacturer get_man(Flash *s)
     case 0x20:
         return MAN_NUMONYX;
     case 0xEF:
+    case 0xC8:
         return MAN_WINBOND;
     case 0x01:
         return MAN_SPANSION;
@@ -768,6 +777,7 @@ static void complete_collecting_data(Flash *s)
     case PP4:
     case PP4_4:
     case PP_4:
+    case QPP_GD:
         s->state = STATE_PAGE_PROGRAM;
         break;
     case AAI_WP:
@@ -815,6 +825,7 @@ static void complete_collecting_data(Flash *s)
             s->quad_enable = !!(s->data[1] & 0x02);
             break;
         case MAN_ISSI:
+        case MAN_NUMONYX:
             s->quad_enable = extract32(s->data[0], 6, 1);
             break;
         case MAN_MACRONIX:
@@ -1011,7 +1022,7 @@ static void decode_fast_read_cmd(Flash *s)
         s->needed_bytes += 1;
         break;
     case MAN_NUMONYX:
-        s->needed_bytes += numonyx_extract_cfg_num_dummies(s);
+        s->needed_bytes += numonyx_extract_cfg_num_dummies(s) / 8;
         break;
     case MAN_MACRONIX:
         s->needed_bytes += 1;
@@ -1211,6 +1222,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case QPP:
     case QPP_4:
     case PP4_4:
+    case QPP_GD:
         if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) != MODE_DIO) {
             s->needed_bytes = get_addr_length(s);
             s->pos = 0;
@@ -1347,7 +1359,8 @@ static void decode_new_cmd(Flash *s, uint32_t value)
             s->data[0] |= (!!s->block_protect3) << 6;
         }
 
-        if (get_man(s) == MAN_MACRONIX || get_man(s) == MAN_ISSI) {
+        if (get_man(s) == MAN_MACRONIX || get_man(s) == MAN_ISSI ||
+            get_man(s) == MAN_NUMONYX) {
             s->data[0] |= (!!s->quad_enable) << 6;
         }
         if (get_man(s) == MAN_SST) {
@@ -1355,7 +1368,12 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         }
 
         s->pos = 0;
-        s->len = 1;
+        if (get_man(s) == MAN_WINBOND || get_man(s) == MAN_SPANSION) {
+            s->data[1] = (!!s->quad_enable) << 1;
+            s->len = 2;
+        } else {
+            s->len = 1;
+        }
         s->data_read_loop = true;
         s->state = STATE_READING_DATA;
         break;

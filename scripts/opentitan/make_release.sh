@@ -17,6 +17,7 @@ QEMU_BUILD="$3"
 # Create archive.
 tar --create --auto-compress --verbose --file="$OUT_TARBALL" \
     --directory="$QEMU_DIR" \
-    "$QEMU_BUILD"/qemu-{system-riscv32,img} \
+    "$QEMU_BUILD"/qemu-{system-riscv32,system-riscv32-cov,img} \
+    "$QEMU_BUILD"/lib{system,qemu-riscv32-softmmu}-ot-cov.a.p/*.gcno \
     scripts/opentitan/{otptool,flashgen,cfggen}.py \
     python/qemu/ot

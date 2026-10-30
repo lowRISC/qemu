@@ -1,5 +1,8 @@
 # OpenTitan devices
 
+config OT_ADC_CTRL
+    bool
+
 config OT_ADDRESS_SPACE
     bool
 
@@ -158,6 +161,9 @@ config OT_OTP_OT_BE
     select OT_OTP_IF
     bool
 
+config OT_PATTGEN
+    bool
+
 config OT_PINMUX_DJ
     bool
 
@@ -174,6 +180,9 @@ config OT_PRINCE
     bool
 
 config OT_PRNG
+    bool
+
+config OT_PWM
     bool
 
 config OT_PWRMGR
@@ -208,6 +217,9 @@ config OT_SPI_HOST
 config OT_SRAM_CTRL
     select OT_PRESENT
     select OT_OTP_IF
+    bool
+
+config OT_SYSRST_CTRL
     bool
 
 config OT_TIMER

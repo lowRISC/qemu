@@ -245,6 +245,7 @@ const RISCVIsaExtData isa_edata_arr[] = {
     ISA_EXT_DATA_ENTRY(xtheadmempair, PRIV_VERSION_1_11_0, ext_xtheadmempair),
     ISA_EXT_DATA_ENTRY(xtheadsync, PRIV_VERSION_1_11_0, ext_xtheadsync),
     ISA_EXT_DATA_ENTRY(xventanacondops, PRIV_VERSION_1_12_0, ext_XVentanaCondOps),
+    ISA_EXT_DATA_ENTRY(xdraft093b, PRIV_VERSION_1_11_0, ext_xdraft093b),
 
     { },
 };
@@ -670,6 +671,9 @@ bool riscv_cpu_has_work(CPUState *cs)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);
     CPURISCVState *env = &cpu->env;
+    if (env->double_fault_seen || env->unclocked_mmio_stall) {
+        return false;
+    }
     /*
      * Definition of the WFI instruction requires it to ignore the privilege
      * mode and delegation registers, but respect individual enables
@@ -677,6 +681,7 @@ bool riscv_cpu_has_work(CPUState *cs)
     return riscv_cpu_all_pending(env) != 0 ||
         riscv_cpu_sirq_pending(env) != RISCV_EXCP_NONE ||
         riscv_cpu_vsirq_pending(env) != RISCV_EXCP_NONE ||
+        env->rnmip != 0 ||
         env->debug_cs;
 }
 #endif /* !CONFIG_USER_ONLY */
@@ -724,6 +729,10 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     env->miclaim = MIP_SGEIP;
     env->bins = 0;
     env->two_stage_lookup = false;
+    env->debugger = false;
+    env->debug_cause = DCSR_CAUSE_NONE;
+    env->dcsr = set_field(env->dcsr, DCSR_STEP, 0);
+    cs->singlestep_enabled = 0;
 
     env->menvcfg = (cpu->cfg.ext_svpbmt ? MENVCFG_PBMTE : 0) |
                    (!cpu->cfg.ext_svade && cpu->cfg.ext_svadu ?
@@ -787,8 +796,11 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
         riscv_trigger_reset_hold(env);
     }
 
+    env->rnmip = 0;
+    env->nmi_mode = false;
+    env->rnmi_int_mtval = 0;
+    env->rnmi_int_pending_count = 0;
     if (cpu->cfg.ext_smrnmi) {
-        env->rnmip = 0;
         env->mnstatus = set_field(env->mnstatus, MNSTATUS_NMIE, false);
     }
 
@@ -814,6 +826,14 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     pmp_update_rule_nums(env);
 
     env->mseccfg = (target_ulong)cfg->mseccfg;
+    env->sync_exc_seen = false;
+    env->double_fault_seen = false;
+    env->unclocked_mmio_stall = false;
+    env->prev_exception_pc = 0;
+    env->prev_exception_addr = 0;
+    env->last_data_addr = 0;
+    env->wfi_pc = 0;
+    cs->halted = 0;
 #endif
 }
 
@@ -1456,6 +1476,7 @@ const RISCVCPUMultiExtConfig riscv_cpu_vendor_exts[] = {
     MULTI_EXT_CFG_BOOL("xtheadmempair", ext_xtheadmempair, false),
     MULTI_EXT_CFG_BOOL("xtheadsync", ext_xtheadsync, false),
     MULTI_EXT_CFG_BOOL("xventanacondops", ext_XVentanaCondOps, false),
+    MULTI_EXT_CFG_BOOL("xdraft093b", ext_xdraft093b, false),
 
     { },
 };
@@ -3152,6 +3173,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
 
         .cfg.marchid = 0x16u,
         .cfg.mtvec = 0x00000001u,
+        .cfg.pmu_mask = MAKE_64BIT_MASK(3, 29),
 
 #ifndef CONFIG_USER_ONLY
         .custom_csrs = ibex_csr_list,
@@ -3168,8 +3190,11 @@ static const TypeInfo riscv_cpu_type_infos[] = {
         .cfg.ext_zba = true,
         .cfg.ext_zbb = true,
         .cfg.ext_zbc = true,
+        .cfg.ext_zbkb = true,
+        .cfg.ext_zbkx = true,
         .cfg.ext_zbr = true,
         .cfg.ext_zbs = true,
+        .cfg.ext_xdraft093b = true,
     ),
 
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_SIFIVE_E31, TYPE_RISCV_CPU_SIFIVE_E,

@@ -29,13 +29,16 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "qom/object.h"
+#include "exec/icount.h"
 #include "hw/block/flash.h"
 #include "hw/boards.h"
 #include "hw/core/split-irq.h"
+#include "hw/i2c/i2c.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/jtag/tap_ctrl.h"
 #include "hw/jtag/tap_ctrl_rbb.h"
 #include "hw/misc/pulp_rv_dm.h"
+#include "hw/opentitan/ot_adc_ctrl.h"
 #include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert.h"
@@ -60,8 +63,10 @@
 #include "hw/opentitan/ot_otp_eg.h"
 #include "hw/opentitan/ot_otp_if.h"
 #include "hw/opentitan/ot_otp_ot_be.h"
+#include "hw/opentitan/ot_pattgen.h"
 #include "hw/opentitan/ot_pinmux_eg.h"
 #include "hw/opentitan/ot_plic_ext.h"
+#include "hw/opentitan/ot_pwm.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rstmgr.h"
@@ -69,6 +74,7 @@
 #include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
+#include "hw/opentitan/ot_sysrst_ctrl.h"
 #include "hw/opentitan/ot_timer.h"
 #include "hw/opentitan/ot_uart.h"
 #include "hw/opentitan/ot_unimp.h"
@@ -181,6 +187,7 @@ enum OtEGSocDevice {
     OT_EG_SOC_DEV_VMAPPER,
     /* IRQ splitters, i.e. 1-to-N signal dispatchers */
     OT_EG_SOC_SPLITTER_LC_HW_DEBUG,
+    OT_EG_SOC_SPLITTER_LC_DFT,
     OT_EG_SOC_SPLITTER_LC_ESCALATE,
     OT_EG_SOC_SPLITTER_LC_SEED_HW_RD,
     OT_EG_SOC_SPLITTER_LC_CREATOR_SEED_SW_RW,
@@ -393,7 +400,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .cfg = &ot_eg_soc_tap_ctrl_configure,
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("ir_length", IBEX_TAP_IR_LENGTH),
-            IBEX_DEV_UINT_PROP("idcode", EG_RV_DM_TAP_IDCODE)
+            IBEX_DEV_UINT_PROP("idcode", EG_RV_DM_TAP_IDCODE),
+            IBEX_DEV_BOOL_PROP("enabled", false)
         ),
     },
     [OT_EG_SOC_DEV_LC_CTRL_TAP_CTRL] = {
@@ -425,6 +433,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_DM] = {
         .type = TYPE_RISCV_DM,
         .cfg = &ot_eg_soc_dm_configure,
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_SIGNAL(RISCV_DM_NDMRESET_LINE, 0, PWRMGR,
+                             OT_PWRMGR_NDM_RST, 0)
+        ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("dtm", DTM)
         ),
@@ -595,7 +607,49 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(29, PLIC, 66),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(30, PLIC, 67),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(31, PLIC, 68),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 0, PINMUX, OT_PINMUX_PAD_IN, 0),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 1, PINMUX, OT_PINMUX_PAD_IN, 1),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 2, PINMUX, OT_PINMUX_PAD_IN, 2),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 3, PINMUX, OT_PINMUX_PAD_IN, 3),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 4, PINMUX, OT_PINMUX_PAD_IN, 4),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 5, PINMUX, OT_PINMUX_PAD_IN, 5),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 6, PINMUX, OT_PINMUX_PAD_IN, 6),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 7, PINMUX, OT_PINMUX_PAD_IN, 7),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 8, PINMUX, OT_PINMUX_PAD_IN, 8),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 9, PINMUX, OT_PINMUX_PAD_IN, 9),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 10, PINMUX, OT_PINMUX_PAD_IN, 10),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 11, PINMUX, OT_PINMUX_PAD_IN, 11),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 12, PINMUX, OT_PINMUX_PAD_IN, 12),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 13, PINMUX, OT_PINMUX_PAD_IN, 13),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 14, PINMUX, OT_PINMUX_PAD_IN, 14),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 15, PINMUX, OT_PINMUX_PAD_IN, 15),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 16, PINMUX, OT_PINMUX_PAD_IN, 16),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 17, PINMUX, OT_PINMUX_PAD_IN, 17),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 18, PINMUX, OT_PINMUX_PAD_IN, 18),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 19, PINMUX, OT_PINMUX_PAD_IN, 19),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 20, PINMUX, OT_PINMUX_PAD_IN, 20),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 21, PINMUX, OT_PINMUX_PAD_IN, 21),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 22, PINMUX, OT_PINMUX_PAD_IN, 22),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 23, PINMUX, OT_PINMUX_PAD_IN, 23),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 24, PINMUX, OT_PINMUX_PAD_IN, 24),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 25, PINMUX, OT_PINMUX_PAD_IN, 25),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 26, PINMUX, OT_PINMUX_PAD_IN, 26),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 27, PINMUX, OT_PINMUX_PAD_IN, 27),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 28, PINMUX, OT_PINMUX_PAD_IN, 28),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 29, PINMUX, OT_PINMUX_PAD_IN, 29),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 30, PINMUX, OT_PINMUX_PAD_IN, 30),
+            OT_EG_SOC_SIGNAL(OT_GPIO_OUT, 31, PINMUX, OT_PINMUX_PAD_IN, 31),
             OT_EG_SOC_GPIO_ALERT(0, 4)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("pinmux", PINMUX),
+            OT_EG_SOC_DEVLINK("pattgen", PATTGEN),
+            OT_EG_SOC_DEVLINK("pwm", PWM),
+            OT_EG_SOC_DEVLINK("spi-host1", SPI_HOST1),
+            OT_EG_SOC_DEVLINK("sysrst-ctrl", SYSRST_CTRL),
+            OT_EG_SOC_DEVLINK("i2c0", I2C0),
+            OT_EG_SOC_DEVLINK("i2c1", I2C1),
+            OT_EG_SOC_DEVLINK("i2c2", I2C2)
         )
     },
     [OT_EG_SOC_DEV_SPI_DEVICE] = {
@@ -728,20 +782,20 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_PATTGEN] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_PATTGEN,
         .memmap = MEMMAPENTRIES(
             { .base = 0x400e0000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pattgen"),
-            IBEX_DEV_UINT_PROP("size", 0x40u),
-            IBEX_DEV_UINT_PROP("irq-count", 2u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pattgen")
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 122),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 123),
             OT_EG_SOC_GPIO_ALERT(0, 9)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("gpio", GPIO)
         )
     },
     [OT_EG_SOC_DEV_TIMER] = {
@@ -788,7 +842,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     [OT_EG_SOC_DEV_OTP_BACKEND] = {
         .type = TYPE_OT_OTP_OT_BE,
         .memmap = MEMMAPENTRIES(
-            { .base = 0x40132000u }
+            { .base = 0x40138000u }
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("parent", OTP_CTRL)
@@ -829,8 +883,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_OWNER_SEED_SW_RW_EN,
                              FLASH_CTRL, OT_LC_BROADCAST,
                              OT_FLASH_LC_OWNER_SEED_SW_RW_EN),
-            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_SEED_HW_RD_EN, FLASH_CTRL,
-                             OT_LC_BROADCAST, OT_FLASH_LC_SEED_HW_RD_EN),
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_ISO_PART_SW_RD_EN,
                              FLASH_CTRL, OT_LC_BROADCAST,
                              OT_FLASH_LC_ISO_PART_SW_RD_EN),
@@ -839,9 +891,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_FLASH_LC_ISO_PART_SW_WR_EN),
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_NVM_DEBUG_EN, FLASH_CTRL,
                              OT_LC_BROADCAST, OT_FLASH_LC_NVM_DEBUG_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_RMA, FLASH_CTRL,
+                             OT_LC_BROADCAST, OT_FLASH_LC_RMA),
             /* Signals to OTP */
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CHECK_BYP_EN, OTP_CTRL,
-                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN)
+                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN),
+            /* Signals to pwrmgr and rv_dm */
+            OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_DFT_EN, LC_DFT)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL),
@@ -851,7 +907,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             IBEX_DEV_UINT_PROP("silicon_creator_id", 0x4001u),
             IBEX_DEV_UINT_PROP("product_id", 0x0002u),
             IBEX_DEV_UINT_PROP("revision_id", 0x1u),
-            IBEX_DEV_BOOL_PROP("volatile_raw_unlock", true),
+            IBEX_DEV_BOOL_PROP("volatile_raw_unlock", false),
             IBEX_DEV_UINT_PROP("kmac-app", 1u)
         )
     },
@@ -867,7 +923,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 130),
             OT_EG_SOC_GPIO_ESCALATE(0, IBEX_WRAPPER, 0),
             OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 0),
-            OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 1),
+            OT_EG_SOC_GPIO_ESCALATE(2, LC_CTRL, 1),
             OT_EG_SOC_GPIO_ESCALATE(3, PWRMGR, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -900,7 +956,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4"),
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io"),
             IBEX_DEV_UINT_PROP("version", 2u)
         ),
     },
@@ -921,12 +977,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi1"),
             IBEX_DEV_UINT_PROP("bus-num", 1),
-            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4"),
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div2"),
             IBEX_DEV_UINT_PROP("version", 2u)
         ),
     },
     [OT_EG_SOC_DEV_USBDEV] = {
         .type = TYPE_OT_USBDEV,
+        .instance = IBEX_MAKE_INSTANCE_NUM(0),
         .cfg = &ot_eg_soc_usbdev_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40320000u }
@@ -950,6 +1007,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(15, PLIC, 150),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(16, PLIC, 151),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(17, PLIC, 152),
+            OT_EG_SOC_SIGNAL(OT_USBDEV_WKUP, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_USBDEV),
             OT_EG_SOC_GPIO_ALERT(0, 21)
             /* The VBUS sense pin is handled by a chardev */
         ),
@@ -958,7 +1017,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "usbdev"),
-            IBEX_DEV_STRING_PROP("clock-name", "usb"),
+            IBEX_DEV_STRING_PROP("clock-name", "peri.usb"),
             IBEX_DEV_STRING_PROP("clock-name-aon", "aon")
         ),
     },
@@ -976,6 +1035,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_IBEX_WRAPPER_CPU_EN,
                              OT_IBEX_PWRMGR_CPU_EN),
             /* todo: add pwmgr GPIO strap when Earlgrey GPIO is updated */
+            OT_EG_SOC_SIGNAL(OT_PWRMGR_SLEEP_EN, 0, PINMUX,
+                             OT_PINMUX_SLEEP_EN, 0),
             OT_EG_SOC_SIGNAL(OT_PWRMGR_RST_REQ, 0, RSTMGR,
                              OT_RSTMGR_RST_REQ, 0)
         ),
@@ -1020,50 +1081,41 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
     },
     [OT_EG_SOC_DEV_SYSRST_CTRL] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_SYSRST_CTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40430000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "sysrst_ctrl"),
-            IBEX_DEV_UINT_PROP("size", 0x100u),
-            IBEX_DEV_UINT_PROP("irq-count", 1u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "sysrst_ctrl")
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 154),
+            OT_EG_SOC_SIGNAL(OT_SYSRST_CTRL_WKUP_REQ, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_SYSRST),
+            OT_EG_SOC_SIGNAL(OT_SYSRST_CTRL_RST_REQ, 0, PWRMGR,
+                             OT_PWRMGR_RST, OT_EG_RESET_SYSRST_CTRL),
             OT_EG_SOC_GPIO_ALERT(0, 27)
         )
     },
     [OT_EG_SOC_DEV_ADC_CTRL] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_ADC_CTRL,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40440000u }
         ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "adc_ctrl"),
-            IBEX_DEV_UINT_PROP("size", 0x80u),
-            IBEX_DEV_UINT_PROP("irq-count", 1u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
-        ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 155),
+            OT_EG_SOC_SIGNAL(OT_ADC_CTRL_WKUP, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_ADC_CTRL),
             OT_EG_SOC_GPIO_ALERT(0, 28)
         )
     },
     [OT_EG_SOC_DEV_PWM] = {
-        .type = TYPE_OT_UNIMP,
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_PWM,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40450000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pwm"),
-            IBEX_DEV_UINT_PROP("size", 0x80u),
-            IBEX_DEV_UINT_PROP("alert-count", 1u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "pwm")
         ),
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_ALERT(0, 29)
@@ -1075,7 +1127,89 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40460000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_ALERT(0, 30)
+            OT_EG_SOC_GPIO_ALERT(0, 30),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_WKUP, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_PINMUX),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 0, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 0),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 1, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 1),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 2, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 2),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 3, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 3),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 4, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 4),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 5, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 5),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 6, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 6),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_SYSRST_IN, 7, SYSRST_CTRL,
+                             OT_SYSRST_CTRL_INPUT, 7),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 0, GPIO, OT_PINMUX_PAD, 0),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 1, GPIO, OT_PINMUX_PAD, 1),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 2, GPIO, OT_PINMUX_PAD, 2),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 3, GPIO, OT_PINMUX_PAD, 3),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 4, GPIO, OT_PINMUX_PAD, 4),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 5, GPIO, OT_PINMUX_PAD, 5),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 6, GPIO, OT_PINMUX_PAD, 6),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 7, GPIO, OT_PINMUX_PAD, 7),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 8, GPIO, OT_PINMUX_PAD, 8),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 9, GPIO, OT_PINMUX_PAD, 9),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 10, GPIO, OT_PINMUX_PAD, 10),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 11, GPIO, OT_PINMUX_PAD, 11),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 12, GPIO, OT_PINMUX_PAD, 12),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 13, GPIO, OT_PINMUX_PAD, 13),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 14, GPIO, OT_PINMUX_PAD, 14),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 15, GPIO, OT_PINMUX_PAD, 15),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 16, GPIO, OT_PINMUX_PAD, 16),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 17, GPIO, OT_PINMUX_PAD, 17),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 18, GPIO, OT_PINMUX_PAD, 18),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 19, GPIO, OT_PINMUX_PAD, 19),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 20, GPIO, OT_PINMUX_PAD, 20),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 21, GPIO, OT_PINMUX_PAD, 21),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 22, GPIO, OT_PINMUX_PAD, 22),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 23, GPIO, OT_PINMUX_PAD, 23),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 24, GPIO, OT_PINMUX_PAD, 24),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 25, GPIO, OT_PINMUX_PAD, 25),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 26, GPIO, OT_PINMUX_PAD, 26),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 27, GPIO, OT_PINMUX_PAD, 27),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 28, GPIO, OT_PINMUX_PAD, 28),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 29, GPIO, OT_PINMUX_PAD, 29),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 30, GPIO, OT_PINMUX_PAD, 30),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_PAD, 31, GPIO, OT_PINMUX_PAD, 31),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 0, GPIO, OT_GPIO_IN, 0),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 1, GPIO, OT_GPIO_IN, 1),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 2, GPIO, OT_GPIO_IN, 2),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 3, GPIO, OT_GPIO_IN, 3),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 4, GPIO, OT_GPIO_IN, 4),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 5, GPIO, OT_GPIO_IN, 5),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 6, GPIO, OT_GPIO_IN, 6),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 7, GPIO, OT_GPIO_IN, 7),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 8, GPIO, OT_GPIO_IN, 8),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 9, GPIO, OT_GPIO_IN, 9),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 10, GPIO, OT_GPIO_IN, 10),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 11, GPIO, OT_GPIO_IN, 11),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 12, GPIO, OT_GPIO_IN, 12),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 13, GPIO, OT_GPIO_IN, 13),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 14, GPIO, OT_GPIO_IN, 14),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 15, GPIO, OT_GPIO_IN, 15),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 16, GPIO, OT_GPIO_IN, 16),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 17, GPIO, OT_GPIO_IN, 17),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 18, GPIO, OT_GPIO_IN, 18),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 19, GPIO, OT_GPIO_IN, 19),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 20, GPIO, OT_GPIO_IN, 20),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 21, GPIO, OT_GPIO_IN, 21),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 22, GPIO, OT_GPIO_IN, 22),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 23, GPIO, OT_GPIO_IN, 23),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 24, GPIO, OT_GPIO_IN, 24),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 25, GPIO, OT_GPIO_IN, 25),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 26, GPIO, OT_GPIO_IN, 26),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 27, GPIO, OT_GPIO_IN, 27),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 28, GPIO, OT_GPIO_IN, 28),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 29, GPIO, OT_GPIO_IN, 29),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 30, GPIO, OT_GPIO_IN, 30),
+            OT_EG_SOC_SIGNAL(OT_PINMUX_GPIO_IN, 31, GPIO, OT_GPIO_IN, 31)
         )
     },
     [OT_EG_SOC_DEV_AON_TIMER] = {
@@ -1088,6 +1222,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 157),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_WKUP, 0, PWRMGR, \
                              OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
+            OT_EG_SOC_SIGNAL(OT_AON_TIMER_BARK, 0, IBEX_WRAPPER, \
+                             OT_IBEX_WRAPPER_WDOG_BARK, 0),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
                              OT_PWRMGR_RST, OT_EG_RESET_AON_TIMER),
             OT_EG_SOC_GPIO_ALERT(0, 31)
@@ -1113,6 +1249,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x40490000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 158),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 159),
+            OT_EG_SOC_SIGNAL(OT_SENSOR_WKUP, 0, PWRMGR,
+                             OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_SENSOR),
             OT_EG_SOC_GPIO_ALERT(0, 32),
             OT_EG_SOC_GPIO_ALERT(1, 33)
         ),
@@ -1413,6 +1553,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DM_CONNECTION(OT_EG_SOC_DEV_DM, 3),
             OT_EG_SOC_GPIO_ALERT(0, 40)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("otp-ctrl", OTP_CTRL)
+        ),
     },
     [OT_EG_SOC_DEV_DM_LC_CTRL] = {
         .type = TYPE_OT_DM_TL,
@@ -1472,10 +1615,24 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .type = TYPE_SPLIT_IRQ,
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_S2D(0, SRAM_MAIN_CTRL, OT_SRAM_CTRL_HW_DEBUG_EN, 0),
-            OT_EG_SOC_S2D(1, SRAM_RET_CTRL, OT_SRAM_CTRL_HW_DEBUG_EN, 0)
+            OT_EG_SOC_S2D(1, PWRMGR, OT_PWRMGR_LC_HW_DEBUG_EN, 0),
+            OT_EG_SOC_S2D(2, TAP_CTRL, TAP_CTRL_RBB_ENABLE, 0),
+            OT_EG_SOC_S2D(3, RV_DM, PULP_RV_DM_LC_HW_DEBUG_EN, 0),
+            OT_EG_SOC_S2D(4, CLKMGR, OT_CLKMGR_LC_HW_DEBUG_EN, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 2u) /* @todo to be changed */
+            IBEX_DEV_UINT_PROP("num-lines", 5u)
+        )
+    },
+    [OT_EG_SOC_SPLITTER_LC_DFT] = {
+        .type = TYPE_SPLIT_IRQ,
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_S2D(0, PWRMGR, OT_PWRMGR_LC_DFT_EN, 0),
+            OT_EG_SOC_S2D(1, RV_DM, PULP_RV_DM_LC_DFT_EN, 0),
+            OT_EG_SOC_S2D(2, OTP_CTRL, OT_LC_BROADCAST, OT_OTP_LC_DFT_EN)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("num-lines", 3u)
         )
     },
     [OT_EG_SOC_SPLITTER_LC_ESCALATE] = {
@@ -1484,10 +1641,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
                           OT_OTP_LC_ESCALATE_EN),
             OT_EG_SOC_S2D(1, FLASH_CTRL, OT_LC_BROADCAST,
-                          OT_FLASH_LC_ESCALATE_EN)
+                          OT_FLASH_LC_ESCALATE_EN),
+            OT_EG_SOC_S2D(2, AON_TIMER, OT_AON_TIMER_LC_ESCALATE, 0),
+            OT_EG_SOC_S2D(3, SRAM_RET_CTRL, OT_SRAM_CTRL_LC_ESCALATE_EN, 0),
+            OT_EG_SOC_S2D(4, SRAM_MAIN_CTRL, OT_SRAM_CTRL_LC_ESCALATE_EN, 0),
+            OT_EG_SOC_S2D(5, AES, OT_AES_LC_ESCALATE_EN, 0),
+            OT_EG_SOC_S2D(6, KMAC, OT_KMAC_LC_ESCALATE_EN, 0),
+            OT_EG_SOC_S2D(7, OTBN, OT_OTBN_LC_ESCALATE_EN, 0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("num-lines", 2u) /* @todo to be changed */
+            IBEX_DEV_UINT_PROP("num-lines", 8u)
         )
     },
     [OT_EG_SOC_SPLITTER_LC_SEED_HW_RD] = {
@@ -1588,6 +1751,8 @@ static void ot_eg_soc_ast_configure(DeviceState *dev, const IbexDeviceDef *def,
     }
 
     qdev_prop_set_string(dev, "topclocks", clock_cfg);
+    /* Align icount virtual clock frequency with the active AST main clock */
+    icount_set_freq_hz(!verilator_mode ? 24000000u : 500000u);
 }
 
 static void ot_eg_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
@@ -1778,7 +1943,7 @@ static void ot_eg_soc_hw_reset(void *opaque, int irq, int level)
     g_assert(irq == 0);
 
     if (level) {
-        resettable_reset(OBJECT(s), RESET_TYPE_COLD);
+        resettable_reset(OBJECT(s), RESET_TYPE_WAKEUP);
     }
 }
 
@@ -2011,6 +2176,31 @@ static void ot_eg_board_realize(DeviceState *dev, Error **errp)
         qdev_connect_gpio_out_named(spihost, SSI_GPIO_CS, 0, cs);
 
         g_free(flashname);
+        g_free(busname);
+    }
+
+    for (unsigned i2c_idx = 0; i2c_idx < 3; i2c_idx++) {
+        DeviceState *i2cdev =
+            RISCV_OT_EG_SOC(soc)->devices[OT_EG_SOC_DEV_I2C0 + i2c_idx];
+        char *busname = g_strdup_printf("ot-i2c%u", i2c_idx);
+        BusState *i2cbus = qdev_get_child_bus(i2cdev, busname);
+        g_assert(i2cbus);
+
+        /* PMOD I2C Sensor / Stretch / FRAM / EEPROM targets */
+        static const uint8_t pmod_sensor_addrs[] = {
+            0x10u, 0x1du, 0x22u, 0x29u, 0x30u, 0x40u, 0x51u, 0x52u, 0x59u, 0x7cu
+        };
+        for (size_t s_idx = 0; s_idx < ARRAY_SIZE(pmod_sensor_addrs); s_idx++) {
+            DeviceState *sensor = qdev_new("pmod-i2c-sensor");
+            qdev_prop_set_uint8(sensor, "address", pmod_sensor_addrs[s_idx]);
+            char *sensor_name = g_strdup_printf("pmod-sensor%u-%02x", i2c_idx,
+                                                pmod_sensor_addrs[s_idx]);
+            object_property_add_child(OBJECT(board), sensor_name,
+                                      OBJECT(sensor));
+            qdev_realize_and_unref(sensor, i2cbus, &error_fatal);
+            g_free(sensor_name);
+        }
+
         g_free(busname);
     }
 }

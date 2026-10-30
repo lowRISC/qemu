@@ -39,9 +39,11 @@
 #include "qapi/util.h"
 #include "qom/object.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_ibex_wrapper.h"
 #include "hw/opentitan/ot_rom_ctrl.h"
 #include "hw/opentitan/ot_rom_ctrl_img.h"
 #include "hw/riscv/ibex_common.h"
+#include "hw/sysbus.h"
 #include "trace.h"
 
 typedef struct OtCommonObjectNode {
@@ -92,7 +94,7 @@ static int ot_common_node_child_walker(Object *child, void *opaque)
     return nodes->count ? 0 : 1;
 }
 
-CPUState *ot_common_get_local_cpu(DeviceState *s)
+static Object *ot_common_get_local_object(DeviceState *s, const char *type)
 {
     BusState *bus = s->parent_bus;
     if (!bus) {
@@ -109,7 +111,7 @@ CPUState *ot_common_get_local_cpu(DeviceState *s)
     }
 
     OtCommonObjectNodes nodes = {
-        .type = TYPE_CPU,
+        .type = type,
         .count = 1u,
     };
     QSIMPLEQ_INIT(&nodes.list);
@@ -119,13 +121,19 @@ CPUState *ot_common_get_local_cpu(DeviceState *s)
                                        &ot_common_node_child_walker, &nodes)) {
         g_assert(!QSIMPLEQ_EMPTY(&nodes.list));
         OtCommonObjectNode *node = QSIMPLEQ_FIRST(&nodes.list);
-        object_unref(node->obj);
-        CPUState *cpu = CPU(node->obj);
+        Object *obj = node->obj;
+        object_unref(obj);
         g_free(node);
-        return cpu;
+        return obj;
     }
 
     return NULL;
+}
+
+CPUState *ot_common_get_local_cpu(DeviceState *s)
+{
+    Object *obj = ot_common_get_local_object(s, TYPE_CPU);
+    return obj ? CPU(obj) : NULL;
 }
 
 unsigned ot_common_check_rom_configuration(void)
@@ -430,4 +438,27 @@ void ot_common_ignore_chr_status_lines(CharFrontend *chr)
     tty.c_cflag |= CLOCAL; /* ignore modem status lines */
     tcsetattr(fioc->fd, TCSANOW, &tty);
 #endif
+}
+
+G_NORETURN extern void
+riscv_cpu_stall_on_unclocked_mmio(CPUState *cs, uint64_t phys_addr);
+
+G_NORETURN void
+ot_common_stall_cpu_on_unclocked_mmio(DeviceState *dev, hwaddr offset)
+{
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+    hwaddr base = sbd->mmio[0].addr;
+    dev->mem_reentrancy_guard.engaged_in_io = false;
+    riscv_cpu_stall_on_unclocked_mmio(current_cpu, base + offset);
+}
+
+void ot_common_raise_load_integrity_error(DeviceState *dev, hwaddr offset)
+{
+    Object *obj = ot_common_get_local_object(dev, TYPE_OT_IBEX_WRAPPER);
+    if (obj) {
+        SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+        hwaddr base = sbd->mmio[0].addr;
+        ot_ibex_wrapper_raise_load_integrity_error(OT_IBEX_WRAPPER(obj),
+                                                   base + offset);
+    }
 }

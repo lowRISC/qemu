@@ -30,6 +30,7 @@
 #include "semihosting/semihost.h"
 
 #include "internals.h"
+#include "pmp.h"
 
 #define HELPER_H "helper.h"
 #include "exec/helper-info.c.inc"
@@ -862,6 +863,7 @@ static int ex_rvc_shiftri(DisasContext *ctx, int imm)
 
 /* Include the auto-generated decoder for 32 bit insn */
 #include "decode-insn32.c.inc"
+#include "decode-Xdraft093b.c.inc"
 
 static bool gen_logic_imm_fn(DisasContext *ctx, arg_i *a,
                              void (*func)(TCGv, TCGv, target_long))
@@ -1231,6 +1233,7 @@ const RISCVDecoder decoder_table[] = {
     { always_true_p, decode_insn32 },
     { has_xthead_p, decode_xthead},
     { has_XVentanaCondOps_p, decode_XVentanaCodeOps},
+    { has_xdraft093b_p, decode_Xdraft093b },
 };
 
 const size_t decoder_table_size = ARRAY_SIZE(decoder_table);
@@ -1338,6 +1341,11 @@ static void riscv_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
     ctx->zero = tcg_constant_tl(0);
     ctx->virt_inst_excp = false;
     ctx->decoders = cpu->decoders;
+#ifndef CONFIG_USER_ONLY
+    if (pmp_get_tlb_size(env, ctx->base.pc_first) == 1) {
+        ctx->base.max_insns = 1;
+    }
+#endif
 }
 
 static void riscv_tr_tb_start(DisasContextBase *db, CPUState *cpu)

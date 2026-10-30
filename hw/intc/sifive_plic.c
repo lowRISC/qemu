@@ -91,10 +91,17 @@ static void sifive_plic_set_claimed(SiFivePLICState *plic, int irq, bool level)
     }
 }
 
-static uint32_t sifive_plic_claimed(SiFivePLICState *plic, uint32_t addrid)
+static bool sifive_plic_is_claimed(SiFivePLICState *plic, int irq)
+{
+    return (plic->claimed[irq >> 5] & (1 << (irq & 31))) != 0;
+}
+
+static uint32_t sifive_plic_claimed(SiFivePLICState *plic, uint32_t addrid,
+                                    bool ignore_threshold)
 {
     uint32_t max_irq = 0;
-    uint32_t max_prio = plic->target_priority[addrid];
+    uint32_t max_prio = ignore_threshold ? 0 : plic->target_priority[addrid];
+    bool found = false;
     int i, j;
     int num_irq_in_word = 32;
 
@@ -121,7 +128,8 @@ static uint32_t sifive_plic_claimed(SiFivePLICState *plic, uint32_t addrid)
             uint32_t prio = plic->source_priority[irq];
             int enabled = pending_enabled_not_claimed & (1 << j);
 
-            if (enabled && prio > max_prio) {
+            if (enabled && ((ignore_threshold && !found) || prio > max_prio)) {
+                found = true;
                 max_irq = irq;
                 max_prio = prio;
             }
@@ -139,7 +147,7 @@ static void sifive_plic_update(SiFivePLICState *plic)
     for (addrid = 0; addrid < plic->num_addrs; addrid++) {
         uint32_t hartid = plic->addr_config[addrid].hartid;
         PLICMode mode = plic->addr_config[addrid].mode;
-        bool level = !!sifive_plic_claimed(plic, addrid);
+        bool level = !!sifive_plic_claimed(plic, addrid, false);
 
         switch (mode) {
         case PLICMode_M:
@@ -156,6 +164,34 @@ static void sifive_plic_update(SiFivePLICState *plic)
     }
 }
 
+static bool sifive_plic_accepts(void *opaque, hwaddr addr, unsigned size,
+                                bool is_write, MemTxAttrs attrs)
+{
+    SiFivePLICState *plic = opaque;
+    uint32_t reg_be = ((1u << size) - 1u) << (addr & 3u);
+    uint32_t permit = 0;
+
+    if (addr_between(addr, plic->priority_base, plic->num_sources << 2)) {
+        permit = 0x1u;
+    } else if (addr_between(addr, plic->pending_base,
+                            plic->bitfield_words << 2)) {
+        permit = 0xfu;
+    } else if (addr_between(addr, plic->enable_base,
+                            plic->num_addrs * plic->enable_stride)) {
+        if (((addr & (plic->enable_stride - 1)) >> 2) <
+            plic->bitfield_words) {
+            permit = 0xfu;
+        }
+    } else if (addr_between(addr, plic->context_base,
+                            plic->num_addrs * plic->context_stride)) {
+        uint32_t contextid = addr & (plic->context_stride - 4);
+        if (contextid == 0 || contextid == 4) {
+            permit = 0x1u;
+        }
+    }
+    return permit != 0 && (!is_write || !(permit & ~reg_be));
+}
+
 static uint64_t sifive_plic_read(void *opaque, hwaddr addr, unsigned size)
 {
     SiFivePLICState *plic = opaque;
@@ -165,7 +201,7 @@ static uint64_t sifive_plic_read(void *opaque, hwaddr addr, unsigned size)
 
         return plic->source_priority[irq];
     } else if (addr_between(addr, plic->pending_base,
-                            (plic->num_sources + 31) >> 3)) {
+                            plic->bitfield_words << 2)) {
         uint32_t word = (addr - plic->pending_base) >> 2;
 
         return plic->pending[word];
@@ -185,7 +221,7 @@ static uint64_t sifive_plic_read(void *opaque, hwaddr addr, unsigned size)
         if (contextid == 0) {
             return plic->target_priority[addrid];
         } else if (contextid == 4) {
-            uint32_t max_irq = sifive_plic_claimed(plic, addrid);
+            uint32_t max_irq = sifive_plic_claimed(plic, addrid, true);
 
             if (max_irq) {
                 sifive_plic_set_pending(plic, max_irq, false);
@@ -210,13 +246,7 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
 
     if (addr_between(addr, plic->priority_base, plic->num_sources << 2)) {
         uint32_t irq = (addr - plic->priority_base) >> 2;
-        if (irq == 0) {
-            /* IRQ 0 source prioority is reserved */
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Invalid source priority write 0x%"
-                          HWADDR_PRIx "\n", __func__, addr);
-            return;
-        } else if (((plic->num_priorities + 1) & plic->num_priorities) == 0) {
+        if (((plic->num_priorities + 1) & plic->num_priorities) == 0) {
             /*
              * if "num_priorities + 1" is power-of-2, make each register bit of
              * interrupt priority WARL (Write-Any-Read-Legal). Just filter
@@ -231,7 +261,7 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
             sifive_plic_update(plic);
         }
     } else if (addr_between(addr, plic->pending_base,
-                            (plic->num_sources + 31) >> 3)) {
+                            plic->bitfield_words << 2)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: invalid pending write: 0x%" HWADDR_PRIx "",
                       __func__, addr);
@@ -241,12 +271,12 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
         uint32_t wordid = (addr & (plic->enable_stride - 1)) >> 2;
 
         if (wordid < plic->bitfield_words) {
+            if (wordid == (plic->bitfield_words - 1) &&
+                (plic->num_sources & 31)) {
+                value &= (1u << (plic->num_sources & 31)) - 1u;
+            }
             plic->enable[addrid * plic->bitfield_words + wordid] = value;
             sifive_plic_update(plic);
-        } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Invalid enable write 0x%" HWADDR_PRIx "\n",
-                          __func__, addr);
         }
     } else if (addr_between(addr, plic->context_base,
                             plic->num_addrs * plic->context_stride)) {
@@ -268,19 +298,20 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
                 sifive_plic_update(plic);
             }
         } else if (contextid == 4) {
-            if (value < plic->num_sources) {
+            uint32_t src_bits = (plic->num_sources > 1u) ?
+                                    (32u - clz32(plic->num_sources - 1u)) :
+                                    1u;
+            value &= (src_bits >= 32u) ? 0xffffffffu : ((1u << src_bits) - 1u);
+            if (value < plic->num_sources &&
+                sifive_plic_is_claimed(plic, value)) {
                 sifive_plic_set_claimed(plic, value, false);
+                if (!plic->edge_triggered &&
+                    sifive_plic_get_level(plic, value)) {
+                    sifive_plic_set_pending(plic, value, true);
+                }
                 sifive_plic_update(plic);
             }
-        } else {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Invalid context write 0x%" HWADDR_PRIx "\n",
-                          __func__, addr);
         }
-    } else {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Invalid register write 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
     }
 }
 
@@ -288,9 +319,11 @@ static const MemoryRegionOps sifive_plic_ops = {
     .read = sifive_plic_read,
     .write = sifive_plic_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl.min_access_size = 4,
     .valid = {
-        .min_access_size = 4,
-        .max_access_size = 4
+        .min_access_size = 1,
+        .max_access_size = 4,
+        .accepts = sifive_plic_accepts,
     }
 };
 
@@ -387,7 +420,8 @@ static void sifive_plic_irq_request(void *opaque, int irq, int level)
         }
         sifive_plic_set_level(s, irq, !!level);
     } else {
-        if (level > 0) {
+        sifive_plic_set_level(s, irq, !!level);
+        if (level > 0 && !sifive_plic_is_claimed(s, irq)) {
             sifive_plic_set_pending(s, irq, true);
         }
     }

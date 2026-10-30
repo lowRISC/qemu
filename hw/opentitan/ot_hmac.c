@@ -268,6 +268,7 @@ typedef struct OtHMACRegisters OtHMACRegisters;
 struct OtHMACContext {
     hash_state state;
     OtHMACDigestSize digest_size_started;
+    bool msg_length_overflow;
 };
 typedef struct OtHMACContext OtHMACContext;
 
@@ -420,7 +421,9 @@ static void ot_hmac_update_alert(OtHMACState *s)
 
 static void ot_hmac_report_error(OtHMACState *s, uint32_t error)
 {
-    s->regs->err_code = error;
+    if (!(s->regs->intr_state & INTR_HMAC_ERR_MASK)) {
+        s->regs->err_code = error;
+    }
     s->regs->intr_state |= INTR_HMAC_ERR_MASK;
     ot_hmac_update_irqs(s);
 }
@@ -432,6 +435,7 @@ static void ot_hmac_writeback_digest_state(OtHMACState *s)
     case HMAC_SHA2_256:
         for (unsigned idx = 0; idx < 8u; idx++) {
             STORE32H(s->ctx->state.sha256.state[idx], s->regs->digest + idx);
+            s->regs->digest[idx + 8u] = s->regs->digest[idx];
         }
         break;
     case HMAC_SHA2_384:
@@ -463,9 +467,9 @@ static void ot_hmac_restore_context(OtHMACState *s)
      * SW interface. This is because the extra block containing the key XORed
      * with the inner pad is not included in the SW-visible message length.
      */
-    unsigned msg_length = s->regs->msg_length;
+    uint64_t msg_length = s->regs->msg_length;
     if (s->regs->cfg & R_CFG_HMAC_EN_MASK) {
-        msg_length += ot_hmac_get_block_size_bytes(s) * 8u;
+        msg_length += (uint64_t)ot_hmac_get_block_size_bytes(s) * 8u;
     }
 
     switch (s->ctx->digest_size_started) {
@@ -576,9 +580,16 @@ static void ot_hmac_sha_done(OtHMACState *s)
     switch (s->ctx->digest_size_started) {
     case HMAC_SHA2_256:
         sha256_done(&s->ctx->state, (uint8_t *)s->regs->digest);
+        for (unsigned idx = 0; idx < 8u; idx++) {
+            s->regs->digest[idx + 8u] = s->regs->digest[idx];
+        }
         return;
     case HMAC_SHA2_384:
         sha384_done(&s->ctx->state, (uint8_t *)s->regs->digest);
+        for (unsigned idx = 6u; idx < 8u; idx++) {
+            STORE64H(s->ctx->state.sha512.state[idx],
+                     s->regs->digest + 2 * idx);
+        }
         return;
     case HMAC_SHA2_512:
         sha512_done(&s->ctx->state, (uint8_t *)s->regs->digest);
@@ -641,11 +652,6 @@ static void ot_hmac_process_fifo(OtHMACState *s)
         if (fifo8_is_empty(&s->input_fifo) || stop) {
             ot_hmac_writeback_digest_state(s);
         }
-
-        /* assert FIFO Empty IRQ */
-        if (fifo8_is_empty(&s->input_fifo)) {
-            s->regs->intr_state |= INTR_FIFO_EMPTY_MASK;
-        }
     }
 
     if (stop && ot_hmac_get_curlen(s) == 0) {
@@ -654,6 +660,9 @@ static void ot_hmac_process_fifo(OtHMACState *s)
     }
 
     if (s->regs->cmd & R_CMD_HASH_PROCESS_MASK) {
+        if (s->ctx->msg_length_overflow) {
+            return;
+        }
         ot_hmac_compute_digest(s);
         s->regs->intr_state |= INTR_HMAC_DONE_MASK;
         s->regs->cmd = 0;
@@ -684,6 +693,25 @@ static void ot_hmac_clock_input(void *opaque, int irq, int level)
     /* TODO: disable HMAC execution when PCLK is 0 */
 }
 
+static bool ot_hmac_regs_accepts(void *opaque, hwaddr addr, unsigned size,
+                                 bool is_write, MemTxAttrs attrs)
+{
+    (void)opaque;
+    (void)attrs;
+    hwaddr reg = R32_OFF(addr);
+    if (reg >= REGS_COUNT) {
+        return false;
+    }
+    if (!is_write) {
+        return true;
+    }
+    uint32_t reg_be = (((1u << size) - 1u) << (addr & 0x3u)) & 0xfu;
+    uint32_t permit = (reg <= R_ALERT_TEST || reg == R_CMD) ?
+                          0x1u :
+                          ((reg == R_CFG || reg == R_STATUS) ? 0x3u : 0xfu);
+    return (permit & ~reg_be) == 0u;
+}
+
 static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtHMACState *s = OT_HMAC(opaque);
@@ -691,6 +719,7 @@ static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     uint32_t val32;
 
     hwaddr reg = R32_OFF(addr);
+
     switch (reg) {
     case R_INTR_STATE:
         val32 = s->regs->intr_state;
@@ -833,7 +862,8 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
 
     switch (reg) {
     case R_INTR_STATE:
-        s->regs->intr_state &= ~(val32 & INTR_MASK);
+        s->regs->intr_state &=
+            ~(val32 & (INTR_HMAC_DONE_MASK | INTR_HMAC_ERR_MASK));
         ot_hmac_update_irqs(s);
         break;
     case R_INTR_ENABLE:
@@ -841,7 +871,8 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         ot_hmac_update_irqs(s);
         break;
     case R_INTR_TEST:
-        s->regs->intr_state |= val32 & INTR_MASK;
+        s->regs->intr_state =
+            (s->regs->intr_state & ~INTR_FIFO_EMPTY_MASK) | (val32 & INTR_MASK);
         ot_hmac_update_irqs(s);
         break;
     case R_ALERT_TEST:
@@ -849,9 +880,20 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         ot_hmac_update_alert(s);
         break;
     case R_CFG:
-        /* ignore write if engine is not idle */
+        /*
+         * In RTL (hmac.sv:354-400), cfg_reg writes are gated by !cfg_block,
+         * where cfg_block is cleared by reg_hash_done or reg_hash_stop.
+         */
         if (s->regs->cmd) {
-            break;
+            if (s->regs->cmd & R_CMD_HASH_STOP_MASK) {
+                if (!(val32 & R_CFG_SHA_EN_MASK)) {
+                    s->regs->cmd = 0;
+                    s->ctx->msg_length_overflow = false;
+                    fifo8_reset(&s->input_fifo);
+                }
+            } else {
+                break;
+            }
         }
 
         val32 &=
@@ -873,12 +915,17 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             val32 |= OT_HMAC_CFG_KEY_LENGTH_NONE << R_CFG_KEY_LENGTH_SHIFT;
         }
 
+        bool prev_sha_en = (bool)(s->regs->cfg & R_CFG_SHA_EN_MASK);
         s->regs->cfg = val32;
 
-        /* clear digest when SHA is disabled */
-        if (!(s->regs->cfg & R_CFG_SHA_EN_MASK)) {
-            ot_hmac_wipe_buffer(s, s->regs->digest,
-                                ARRAY_SIZE(s->regs->digest));
+        /*
+         * In RTL (prim_sha2.sv:159-160, 396), `clear_digest = hash_start_i |
+         * (~sha_en_i & sha_en_q)` zeroes digest_q to 0 ONLY on the falling edge
+         * of sha_en (1 -> 0). Note that message_length (hmac.sv:629-650) is NOT
+         * cleared by sha_en 1 -> 0.
+         */
+        if (prev_sha_en && !(s->regs->cfg & R_CFG_SHA_EN_MASK)) {
+            memset(s->regs->digest, 0, sizeof(s->regs->digest));
         }
         break;
     case R_CMD:
@@ -911,6 +958,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             }
             s->regs->cmd = R_CMD_HASH_START_MASK;
             s->regs->msg_length = 0;
+            s->ctx->msg_length_overflow = false;
 
             ibex_irq_set(&s->clock_active, true);
 
@@ -964,7 +1012,12 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         }
 
         if (val32 & R_CMD_HASH_STOP_MASK) {
+            if (!(s->regs->cmd &
+                  (R_CMD_HASH_START_MASK | R_CMD_HASH_CONTINUE_MASK))) {
+                break;
+            }
             s->regs->cmd = R_CMD_HASH_STOP_MASK;
+            s->ctx->msg_length_overflow = false;
 
             /*
              * trigger delayed processing of FIFO until the next block is
@@ -986,6 +1039,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             }
 
             s->regs->cmd = R_CMD_HASH_CONTINUE_MASK;
+            s->ctx->msg_length_overflow = false;
 
             /*
              * Hold the previous digest size until the HMAC is started with the
@@ -1004,7 +1058,16 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     case R_WIPE_SECRET:
         s->regs->wipe_secret = val32;
         ot_hmac_wipe_buffer(s, s->regs->key, ARRAY_SIZE(s->regs->key));
-        ot_hmac_wipe_buffer(s, s->regs->digest, ARRAY_SIZE(s->regs->digest));
+        /*
+         * In RTL (prim_sha2.sv:148 & hmac.sv:270), WIPE_SECRET=V stores V into
+         * each 32-bit word of digest[], and reading DIGEST_k returns
+         * conv_endian32(V, digest_swap). Since s->regs->digest[] is stored in
+         * big-endian format, store bswap32(val32) so DIGEST_k reads as val32
+         * when digest_swap==0 and bswap32(val32) when digest_swap==1.
+         */
+        for (unsigned index = 0; index < ARRAY_SIZE(s->regs->digest); index++) {
+            s->regs->digest[index] = bswap32(val32);
+        }
         break;
     case R_KEY_0:
     case R_KEY_1:
@@ -1087,6 +1150,12 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
                           "%s: Cannot W register 0x%02x (%s) whilst SHA Engine "
                           "is enabled\n",
                           __func__, (uint32_t)addr, REG_NAME(reg));
+            break;
+        }
+        digest_size = ot_hmac_get_digest_size(s->regs->cfg);
+        if (digest_size == HMAC_SHA2_NONE ||
+            (digest_size == HMAC_SHA2_256 && (reg - R_DIGEST_0) >= 8u)) {
+            break;
         }
 
         /*
@@ -1101,6 +1170,10 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             s->regs->digest[reg - R_DIGEST_0] = val32;
         } else {
             s->regs->digest[reg - R_DIGEST_0] = bswap32(val32);
+        }
+        if (digest_size == HMAC_SHA2_256 && (reg - R_DIGEST_0) < 8u) {
+            s->regs->digest[(reg - R_DIGEST_0) + 8u] =
+                s->regs->digest[reg - R_DIGEST_0];
         }
         break;
     case R_MSG_LENGTH_LOWER:
@@ -1142,14 +1215,14 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
-static uint64_t ot_hmac_fifo_read(void *opaque, hwaddr addr, unsigned size)
+static bool ot_hmac_fifo_accepts(void *opaque, hwaddr addr, unsigned size,
+                                 bool is_write, MemTxAttrs attrs)
 {
     (void)opaque;
     (void)addr;
     (void)size;
-    qemu_log_mask(LOG_GUEST_ERROR, "%s: MSG_FIFO is write only\n", __func__);
-
-    return 0;
+    (void)attrs;
+    return is_write;
 }
 
 static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
@@ -1161,13 +1234,8 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
     trace_ot_hmac_fifo_write(s->ot_id, (uint32_t)addr, (uint32_t)value, size,
                              pc);
 
-    if (!s->regs->cmd) {
+    if (!s->regs->cmd || !(s->regs->cfg & R_CFG_SHA_EN_MASK)) {
         ot_hmac_report_error(s, R_ERR_CODE_PUSH_MSG_WHEN_DISALLOWED);
-        return;
-    }
-
-    if (!(s->regs->cfg & R_CFG_SHA_EN_MASK)) {
-        ot_hmac_report_error(s, R_ERR_CODE_PUSH_MSG_WHEN_SHA_DISABLED);
         return;
     }
 
@@ -1188,7 +1256,11 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
         value >>= 8u;
     }
 
-    s->regs->msg_length += (uint64_t)size * 8u;
+    uint64_t add_bits = (uint64_t)size * 8u;
+    if (s->regs->msg_length + add_bits < s->regs->msg_length) {
+        s->ctx->msg_length_overflow = true;
+    }
+    s->regs->msg_length += add_bits;
 
     /*
      * Note: real HW may stall the bus till some room is available in the input
@@ -1217,19 +1289,20 @@ static const MemoryRegionOps ot_hmac_regs_ops = {
     .read = &ot_hmac_regs_read,
     .write = &ot_hmac_regs_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
-    .valid = {
+    .impl = {
         .min_access_size = 4u,
         .max_access_size = 4u,
     },
+    .valid.accepts = &ot_hmac_regs_accepts,
 };
 
 static const MemoryRegionOps ot_hmac_fifo_ops = {
-    .read = &ot_hmac_fifo_read,
     .write = &ot_hmac_fifo_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
         .min_access_size = 1u,
         .max_access_size = 4u,
+        .accepts = &ot_hmac_fifo_accepts,
     },
 };
 

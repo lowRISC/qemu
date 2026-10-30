@@ -30,6 +30,7 @@
 #include "trace.h"
 
 #ifndef CONFIG_USER_ONLY
+#include "qemu/main-loop.h"
 static inline MemOp mo_endian_env(CPURISCVState *env)
 {
     /*
@@ -418,9 +419,22 @@ target_ulong helper_mret(CPURISCVState *env)
                              (prev_priv != PRV_M);
     mstatus = set_field(mstatus, MSTATUS_MIE,
                         get_field(mstatus, MSTATUS_MPIE));
-    mstatus = set_field(mstatus, MSTATUS_MPIE, 1);
-    mstatus = set_field(mstatus, MSTATUS_MPP,
-                        riscv_has_ext(env, RVU) ? PRV_U : PRV_M);
+    if (env->nmi_mode) {
+        /*
+         * Returning from Ibex NMI restores mstack CSRs and exits nmi_mode
+         * (ibex_cs_registers.sv & ibex_controller.sv).
+         */
+        mstatus = set_field(mstatus, MSTATUS_MPIE, env->mstack_mpie);
+        mstatus = set_field(mstatus, MSTATUS_MPP, env->mstack_mpp);
+        env->mepc = env->mstack_epc;
+        env->mcause = env->mstack_cause;
+        env->nmi_mode = false;
+    } else {
+        env->sync_exc_seen = false;
+        mstatus = set_field(mstatus, MSTATUS_MPIE, 1);
+        mstatus = set_field(mstatus, MSTATUS_MPP,
+                            riscv_has_ext(env, RVU) ? PRV_U : PRV_M);
+    }
     mstatus = set_field(mstatus, MSTATUS_MPV, 0);
     if (riscv_cpu_cfg(env)->ext_ssdbltrp) {
         mstatus = ssdbltrp_mxret(env, mstatus, prev_priv, prev_virt);
@@ -432,6 +446,12 @@ target_ulong helper_mret(CPURISCVState *env)
         mstatus = set_field(mstatus, MSTATUS_MPRV, 0);
     }
     env->mstatus = mstatus;
+
+    if (env->rnmip || riscv_cpu_all_pending(env)) {
+        BQL_LOCK_GUARD();
+        cpu_interrupt(env_cpu(env),
+                      env->rnmip ? CPU_INTERRUPT_RNMI : CPU_INTERRUPT_HARD);
+    }
 
     if (riscv_has_ext(env, RVH) && prev_virt) {
         riscv_cpu_swap_hypervisor_regs(env);
@@ -591,6 +611,13 @@ void helper_wfi(CPURISCVState *env)
         riscv_raise_exception(env, RISCV_EXCP_VIRT_INSTRUCTION_FAULT, GETPC());
     } else {
         if (!unlikely(env->debugger || env->debug_cs)) {
+            env->wfi_pc = env->pc - 4;
+            uint32_t insn = cpu_ldl_code(env, env->wfi_pc - 4);
+            if ((insn & 0x7f) == 0x23) {
+                int32_t imm = (((int32_t)insn >> 25) << 5) |
+                              ((insn >> 7) & 0x1f);
+                env->last_data_addr = env->gpr[(insn >> 15) & 0x1f] + imm;
+            }
             cs->halted = 1;
             cs->exception_index = EXCP_HLT;
             cpu_loop_exit(cs);

@@ -474,6 +474,14 @@ static int riscv_cpu_local_irq_pending(CPURISCVState *env)
     uint64_t vsbits, irq_delegated;
     int virq;
 
+    /*
+     * Interrupts including NMI are ignored while in NMI mode
+     * (ibex_controller.sv: handle_irq = ... & ~nmi_mode_q & ...).
+     */
+    if (env->nmi_mode) {
+        return RISCV_EXCP_NONE;
+    }
+
     /* Priority: RNMI > Other interrupt. */
     if (riscv_cpu_cfg(env)->ext_smrnmi) {
         /* If mnstatus.NMIE == 0, all interrupts are disabled. */
@@ -484,6 +492,8 @@ static int riscv_cpu_local_irq_pending(CPURISCVState *env)
         if (env->rnmip) {
             return ctz64(env->rnmip); /* since non-zero */
         }
+    } else if (env->rnmip) {
+        return (env->rnmip & (1ULL << 31)) ? 31 : ctz64(env->rnmip);
     }
 
     /* Determine interrupt enable state of all privilege modes */
@@ -553,6 +563,9 @@ bool riscv_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     if (interrupt_request & mask) {
         RISCVCPU *cpu = RISCV_CPU(cs);
         CPURISCVState *env = &cpu->env;
+        if (env->double_fault_seen || env->unclocked_mmio_stall) {
+            return false;
+        }
         if (unlikely(env->debug_dm &&
                      (env->debugger || get_field(env->dcsr, DCSR_STEP)))) {
             return false;
@@ -711,6 +724,18 @@ void riscv_cpu_set_rnmi(RISCVCPU *cpu, uint32_t irq, bool level)
 
     if (release_lock) {
         bql_unlock();
+    }
+}
+
+void riscv_cpu_set_rnmi_int(RISCVCPU *cpu, uint32_t cause, target_ulong mtval)
+{
+    CPURISCVState *env = &cpu->env;
+
+    if (!env->nmi_mode) {
+        env->rnmi_int_pending_count++;
+        env->rnmi_int_mtval = mtval;
+        env->rnmip |= (1ULL << cause);
+        cpu_interrupt(CPU(cpu), CPU_INTERRUPT_RNMI);
     }
 }
 
@@ -1978,6 +2003,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     }
 
     if (ret == TRANSLATE_SUCCESS) {
+        if (env->tlb_subpage || ((address ^ pa) & ~TARGET_PAGE_MASK)) {
+            tlb_size = 1;
+        }
         tlb_set_page(cs, address & ~(tlb_size - 1), pa & ~(tlb_size - 1),
                      prot, mmu_idx, tlb_size);
         return true;
@@ -2291,6 +2319,8 @@ void riscv_cpu_do_interrupt(CPUState *cs)
     int mxlen = 16 << riscv_cpu_mxl(env);
     bool nnmi_excep = false;
 
+    env->wfi_pc = 0;
+
     if (cpu->cfg.ext_smrnmi && env->rnmip && async) {
         riscv_do_nmi(env, cause | ((target_ulong)1U << (mxlen - 1)),
                      env->virt_enabled);
@@ -2390,6 +2420,19 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                 return;
             }
         }
+
+        if (cause == RISCV_EXCP_LOAD_ACCESS_FAULT ||
+            cause == RISCV_EXCP_STORE_AMO_ACCESS_FAULT ||
+            cause == RISCV_EXCP_LOAD_ADDR_MIS ||
+            cause == RISCV_EXCP_STORE_AMO_ADDR_MIS) {
+            env->last_data_addr = tval;
+        }
+        if (env->sync_exc_seen) {
+            env->double_fault_seen = true;
+            env->prev_exception_pc = env->mepc;
+            env->prev_exception_addr = env->mtval;
+        }
+        env->sync_exc_seen = true;
     }
 
     trace_riscv_trap(env->mhartid, async, cause, env->pc, tval,
@@ -2530,6 +2573,31 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                      !get_field(env->mnstatus, MNSTATUS_NMIE) &&
                      !async;
 
+        bool is_ibex_nmi = async && env->rnmip && !cpu->cfg.ext_smrnmi;
+        if (is_ibex_nmi) {
+            /*
+             * Ibex saves previous status to mstack CSRs and enters nmi_mode
+             * (ibex_cs_registers.sv & ibex_controller.sv).
+             */
+            env->mstack_mpie = get_field(env->mstatus, MSTATUS_MPIE);
+            env->mstack_mpp = get_field(env->mstatus, MSTATUS_MPP);
+            env->mstack_epc = env->mepc;
+            env->mstack_cause = env->mcause;
+            env->nmi_mode = true;
+            if (cause < 31) {
+                tval = env->rnmi_int_mtval;
+                if (env->rnmi_int_pending_count > 0) {
+                    env->rnmi_int_pending_count--;
+                }
+                if (env->rnmi_int_pending_count == 0) {
+                    env->rnmip &= ~(1ULL << cause);
+                    if (!env->rnmip) {
+                        cpu_reset_interrupt(cs, CPU_INTERRUPT_RNMI);
+                    }
+                }
+            }
+        }
+
         s = env->mstatus;
         s = set_field(s, MSTATUS_MPIE, get_field(s, MSTATUS_MIE));
         s = set_field(s, MSTATUS_MPP, env->priv);
@@ -2548,7 +2616,11 @@ void riscv_cpu_do_interrupt(CPUState *cs)
             s = set_field(s, MSTATUS_MDT, 1);
         }
         env->mstatus = s;
-        env->mcause = cause | ((target_ulong)async << (mxlen - 1));
+        if (is_ibex_nmi && cause < 31) {
+            env->mcause = 0xffffffe0ULL | (cause & 0x1fULL);
+        } else {
+            env->mcause = cause | ((target_ulong)async << (mxlen - 1));
+        }
         if (smode_double_trap) {
             env->mtval2 = env->mcause;
             env->mcause = RISCV_EXCP_DOUBLE_TRAP;
@@ -2566,8 +2638,9 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         if (nnmi_excep) {
             env->pc = env->rnmi_excpvec;
         } else {
+            target_ulong vec_cause = is_ibex_nmi ? 31 : cause;
             env->pc = (env->mtvec >> 2 << 2) +
-                      ((async && (env->mtvec & 3) == 1) ? cause * 4 : 0);
+                      ((async && (env->mtvec & 3) == 1) ? vec_cause * 4 : 0);
         }
         riscv_cpu_set_mode(env, PRV_M, virt);
         src = env->mepc;
@@ -2607,6 +2680,48 @@ void riscv_cpu_do_interrupt(CPUState *cs)
 
     env->two_stage_lookup = false;
     env->two_stage_indirect_lookup = false;
+
+    if (env->double_fault_seen) {
+        cs->halted = 1;
+        cs->exception_index = EXCP_HLT;
+        cpu_loop_exit(cs);
+    }
+}
+
+void riscv_cpu_get_crash_dump(CPUState *cs, uint32_t dump[8])
+{
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    dump[0] = env->mtval;
+    dump[1] = env->mepc;
+    dump[2] = env->last_data_addr;
+    if (env->double_fault_seen) {
+        dump[3] = env->pc;
+        dump[4] = env->mepc;
+    } else if (env->wfi_pc != 0) {
+        dump[3] = env->wfi_pc + 4;
+        dump[4] = env->wfi_pc;
+    } else {
+        dump[3] = env->pc + 4;
+        dump[4] = env->pc;
+    }
+    dump[5] = env->prev_exception_addr;
+    dump[6] = env->prev_exception_pc;
+    dump[7] = env->double_fault_seen ? 1u : 0u;
+}
+
+G_NORETURN void riscv_cpu_stall_on_unclocked_mmio(CPUState *cs,
+                                                  uint64_t phys_addr)
+{
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    env->last_data_addr = (target_ulong)phys_addr;
+    env->unclocked_mmio_stall = true;
+    cs->halted = 1;
+    cs->exception_index = EXCP_HLT;
+    cpu_loop_exit(cs);
 }
 
 #endif /* !CONFIG_USER_ONLY */

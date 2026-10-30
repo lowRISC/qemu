@@ -33,4 +33,7 @@
 #define TYPE_OT_UART "ot-uart"
 OBJECT_DECLARE_TYPE(OtUARTState, OtUARTClass, OT_UART)
 
+void ot_uart_update_pinmux(const uint32_t *mio_outsel,
+                           const uint32_t *mio_periph_insel);
+
 #endif /* HW_OPENTITAN_OT_UART_H */
