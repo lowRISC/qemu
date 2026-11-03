@@ -37,6 +37,7 @@
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "hw/core/cpu.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_i2c.h"
@@ -173,6 +174,7 @@ struct OtRstMgrState {
     QEMUBH *bus_reset_bh;
     QEMUTimer *sw_reset_timer;
     CPUState *cpu;
+    bool reset_bus_queued;
 
     uint32_t *regs;
     uint32_t cpu_info_dump[8];
@@ -330,13 +332,41 @@ static void ot_rstmgr_sw_reset_timer_cb(void *opaque)
 
 extern void riscv_cpu_get_crash_dump(CPUState *cs, uint32_t dump[8]);
 
+static void ot_rstmgr_reset_bus(void *opaque);
+
+static void ot_rstmgr_reset_bus_on_cpu(CPUState *cpu, run_on_cpu_data data)
+{
+    OtRstMgrState *s = data.host_ptr;
+
+    (void)cpu;
+    if (!s->reset_bus_queued) {
+        return;
+    }
+    s->reset_bus_queued = false;
+    ot_rstmgr_reset_bus(s);
+}
+
 static void ot_rstmgr_reset_bus(void *opaque)
 {
     OtRstMgrState *s = opaque;
 
     g_assert(s->cpu);
 
-    if (!s->cpu->stopped) {
+    if (s->cpu->running) {
+        if (!s->reset_bus_queued) {
+            s->reset_bus_queued = true;
+            cpu_exit(s->cpu);
+            async_run_on_cpu(s->cpu, &ot_rstmgr_reset_bus_on_cpu,
+                             RUN_ON_CPU_HOST_PTR(s));
+        }
+        return;
+    }
+
+    if (s->reset_bus_queued) {
+        return;
+    }
+
+    if (!qemu_cpu_is_self(s->cpu) && !s->cpu->stopped) {
         /* request the vCPU to stop */
         s->cpu->stop = true;
 
@@ -355,9 +385,8 @@ static void ot_rstmgr_reset_bus(void *opaque)
         replay_mutex_lock();
         bql_lock();
         qemu_notify_event();
-    } else {
-        s->cpu->stop = false;
     }
+    s->cpu->stop = false;
 
     if (s->regs[R_CPU_INFO_CTRL] & R_CPU_INFO_CTRL_EN_MASK) {
         riscv_cpu_get_crash_dump(s->cpu, s->cpu_info_dump);
@@ -477,7 +506,11 @@ static void ot_rstmgr_reset_req(void *opaque, int irq, int level)
     trace_ot_rstmgr_reset_req(s->ot_id, REQ_NAME(level), req, fastclk);
 
     if (s->cpu) {
-        cpu_pause(s->cpu);
+        if (qemu_cpu_is_self(s->cpu)) {
+            cpu_exit(s->cpu);
+        } else {
+            cpu_pause(s->cpu);
+        }
     }
 
     if (level == OT_RSTMGR_RESET_RV_DM) {
@@ -748,6 +781,7 @@ static void ot_rstmgr_reset_enter(Object *obj, ResetType type)
 
     qemu_bh_cancel(s->bus_reset_bh);
     timer_del(s->sw_reset_timer);
+    s->reset_bus_queued = false;
 
     uint32_t reset_info = s->regs[R_RESET_INFO];
     uint32_t alert_info_ctrl = s->regs[R_ALERT_INFO_CTRL];

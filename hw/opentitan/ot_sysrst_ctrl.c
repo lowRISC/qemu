@@ -388,6 +388,7 @@ static void ot_sysrst_ctrl_check_events(OtSysrstCtrlState *s)
         } else if (prev_trig && !curr_trig) {
             if (out_ctl & R_COM_OUT_CTL_0_RST_REQ_MASK) {
                 timer_del(s->combo_rst_timer);
+                ibex_irq_set(&s->rst_req, 0);
             }
             if (out_ctl &
                 (R_COM_OUT_CTL_0_EC_RST_MASK | R_COM_OUT_CTL_0_RST_REQ_MASK)) {
@@ -414,8 +415,8 @@ static void ot_sysrst_ctrl_check_events(OtSysrstCtrlState *s)
 
     if (trigger_rst) {
         timer_mod_ns(s->combo_rst_timer,
-                     qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
-                         (rst_det_cyc > 0u ? 3000000LL : 0LL));
+                     qemu_clock_get_ns(OT_VIRTUAL_CLOCK) +
+                         (int64_t)(rst_det_cyc + 1u) * 5000LL);
     }
 
     ot_sysrst_ctrl_update_outputs(s);
@@ -436,11 +437,6 @@ static void ot_sysrst_ctrl_input_change(void *opaque, int irq, int level)
         s->pin_in_raw &= ~(1u << irq);
     }
     s->poll_count = 0;
-
-    if (timer_pending(s->combo_rst_timer)) {
-        timer_mod_ns(s->combo_rst_timer,
-                     qemu_clock_get_ns(QEMU_CLOCK_REALTIME) + 3000000LL);
-    }
 
     /*
      * Per sysrst_ctrl_comboact.sv: ec_rst_l_i High -> Low transition
@@ -689,8 +685,8 @@ static void ot_sysrst_ctrl_init(Object *obj)
     s->ec_rst_l_hw = true;
     s->ec_rst_timer =
         timer_new_ns(QEMU_CLOCK_REALTIME, &ot_sysrst_ctrl_ec_rst_timer_cb, s);
-    s->combo_rst_timer = timer_new_ns(QEMU_CLOCK_REALTIME,
-                                      &ot_sysrst_ctrl_combo_rst_timer_cb, s);
+    s->combo_rst_timer =
+        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_sysrst_ctrl_combo_rst_timer_cb, s);
     s->ulp_timer =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_sysrst_ctrl_ulp_timer_cb, s);
 
