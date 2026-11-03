@@ -1294,6 +1294,12 @@ static void ot_gpio_eg_chr_receive(void *opaque, const uint8_t *buf, int size)
                 ot_gpio_eg_update_data_in(s);
                 ot_gpio_eg_send_input_ack(s);
                 ot_gpio_eg_update_backend(s, false);
+            } else if (cmd == 'Q') {
+                char qbuf[64u];
+                int qlen = snprintf(qbuf, sizeof(qbuf),
+                                    "M:%08x\r\nI:%08x\r\nH:%08x\r\n",
+                                    s->data_bi, s->data_ib, s->host_pull);
+                qemu_chr_fe_write(&s->chr, (const uint8_t *)qbuf, qlen);
             } else if (cmd == 'R') {
                 s->sync_seq = data_in;
                 timer_mod(s->sync_timer,
@@ -1521,13 +1527,6 @@ static void ot_gpio_eg_chr_event_hander(void *opaque, QEMUChrEvent event)
         }
 
         ot_gpio_eg_update_backend(s, true);
-
-        /* query backend for current input status */
-        char buf[16u];
-        int len = snprintf(buf, sizeof(buf), "Q:%08x\r\n", s->data_oe);
-        qemu_chr_fe_write(&s->chr, (const uint8_t *)buf, len);
-        buf[MIN((unsigned)len - 1, sizeof(buf) - 1u)] = '\0';
-        trace_ot_gpio_backend_send(s->ot_id, buf);
     }
 }
 
